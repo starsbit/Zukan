@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zukan
+      POSTGRES_PASSWORD: zukan
+      POSTGRES_DB: zukan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zukan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zukan:zukan@db:5432/zukan
+    volumes:
+      - storage_data:/app/storage
+      - model_cache:/app/model_cache
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  storage_data:
+  model_cache:
