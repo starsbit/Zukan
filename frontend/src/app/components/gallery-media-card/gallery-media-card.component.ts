@@ -48,8 +48,11 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     this.open.emit(this.media);
   }
 
-  onCardKeydown(event: KeyboardEvent): void {
-    event.preventDefault();
+  onCardKeydown(event: Event): void {
+    if (event instanceof KeyboardEvent) {
+      event.preventDefault();
+    }
+
     this.onCardClick();
   }
 
