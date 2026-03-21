@@ -17,13 +17,6 @@ from app.services.tagger import tagger
 tag_queue: asyncio.Queue = asyncio.Queue()
 
 
-def _top_character_name(predictions: list[dict]) -> str | None:
-    character_predictions = [pred for pred in predictions if pred["category"] == 4]
-    if not character_predictions:
-        return None
-    return max(character_predictions, key=lambda pred: pred["confidence"])["name"]
-
-
 async def tagging_worker():
     while True:
         image_id: uuid.UUID = await tag_queue.get()
@@ -37,8 +30,8 @@ async def tagging_worker():
                 image.tagging_status = "processing"
                 await db.commit()
 
-                predictions, is_nsfw = await tagger.predict(image.filepath)
-                image.character_name = _top_character_name(predictions)
+                tagging_result = await tagger.predict(image.filepath)
+                image.character_name = tagging_result.character_name
 
                 existing_its = await db.execute(
                     select(ImageTag).where(ImageTag.image_id == image_id)
@@ -54,19 +47,19 @@ async def tagging_worker():
                     )
 
                 tag_names = []
-                for pred in predictions:
-                    tag_result = await db.execute(select(Tag).where(Tag.name == pred["name"]))
+                for prediction in tagging_result.predictions:
+                    tag_result = await db.execute(select(Tag).where(Tag.name == prediction.name))
                     tag = tag_result.scalar_one_or_none()
                     if tag is None:
-                        tag = Tag(name=pred["name"], category=pred["category"], image_count=0)
+                        tag = Tag(name=prediction.name, category=prediction.category, image_count=0)
                         db.add(tag)
                         await db.flush()
                     tag.image_count += 1
-                    db.add(ImageTag(image_id=image_id, tag_id=tag.id, confidence=pred["confidence"]))
-                    tag_names.append(pred["name"])
+                    db.add(ImageTag(image_id=image_id, tag_id=tag.id, confidence=prediction.confidence))
+                    tag_names.append(prediction.name)
 
                 image.tags = tag_names
-                image.is_nsfw = is_nsfw
+                image.is_nsfw = tagging_result.is_nsfw
                 image.tagging_status = "done"
                 await db.commit()
 

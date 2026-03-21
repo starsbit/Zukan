@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -14,6 +16,32 @@ from app.config import settings
 NSFW_RATING_TAGS = {"rating:questionable", "rating:explicit"}
 
 _executor = ThreadPoolExecutor(max_workers=1)
+
+
+@dataclass(frozen=True)
+class TagPrediction:
+    name: str
+    category: int
+    confidence: float
+
+
+@dataclass(frozen=True)
+class TaggingResult:
+    predictions: list[TagPrediction]
+    character_name: str | None
+    is_nsfw: bool
+
+
+class TaggerBackend(Protocol):
+    def load(self) -> None: ...
+    async def predict(self, image_path: str) -> TaggingResult: ...
+
+
+def derive_character_name(predictions: list[TagPrediction]) -> str | None:
+    character_predictions = [prediction for prediction in predictions if prediction.category == 4]
+    if not character_predictions:
+        return None
+    return max(character_predictions, key=lambda prediction: prediction.confidence).name
 
 
 class WDTagger:
@@ -50,12 +78,12 @@ class WDTagger:
         arr = arr[:, :, ::-1]
         return np.expand_dims(arr, 0)
 
-    def _predict_sync(self, image_path: str) -> tuple[list[dict], bool]:
+    def _predict_sync(self, image_path: str) -> TaggingResult:
         image = Image.open(image_path)
         arr = self._preprocess(image)
         probs = self._session.run(None, {self._input_name: arr})[0][0]
 
-        results = []
+        predictions: list[TagPrediction] = []
         best_rating: tuple[str, float] = ("rating:general", 0.0)
 
         for i, prob in enumerate(probs):
@@ -66,19 +94,29 @@ class WDTagger:
             if category == 9:
                 if float(prob) > best_rating[1]:
                     best_rating = (name, float(prob))
-                results.append({"name": name, "category": category, "confidence": float(prob)})
+                predictions.append(TagPrediction(name=name, category=category, confidence=float(prob)))
                 continue
 
             threshold = settings.tagger_threshold_character if category == 4 else settings.tagger_threshold_general
             if float(prob) >= threshold:
-                results.append({"name": name, "category": category, "confidence": float(prob)})
+                predictions.append(TagPrediction(name=name, category=category, confidence=float(prob)))
 
         is_nsfw = best_rating[0] in NSFW_RATING_TAGS
-        return results, is_nsfw
+        return TaggingResult(
+            predictions=predictions,
+            character_name=derive_character_name(predictions),
+            is_nsfw=is_nsfw,
+        )
 
-    async def predict(self, image_path: str) -> tuple[list[dict], bool]:
+    async def predict(self, image_path: str) -> TaggingResult:
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(_executor, self._predict_sync, image_path)
 
 
-tagger = WDTagger()
+def create_tagger() -> TaggerBackend:
+    if settings.tagger_backend == "wd_v3":
+        return WDTagger()
+    raise ValueError(f"Unsupported tagger backend: {settings.tagger_backend}")
+
+
+tagger = create_tagger()

@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 
 from app.services import tagger as tagger_module
-from app.services.tagger import NSFW_RATING_TAGS
+from app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult
 
 
 def test_questionable_is_nsfw():
@@ -41,6 +41,25 @@ def test_preprocess_converts_to_expected_shape_and_rgb():
     assert arr.dtype == np.float32
 
 
+def test_derive_character_name_uses_highest_confidence_character():
+    predictions = [
+        TagPrediction(name="sky", category=0, confidence=0.88),
+        TagPrediction(name="heroine_a", category=4, confidence=0.76),
+        TagPrediction(name="heroine_b", category=4, confidence=0.92),
+    ]
+
+    assert tagger_module.derive_character_name(predictions) == "heroine_b"
+
+
+def test_derive_character_name_returns_none_without_character_predictions():
+    predictions = [
+        TagPrediction(name="sky", category=0, confidence=0.88),
+        TagPrediction(name="rating:general", category=9, confidence=0.99),
+    ]
+
+    assert tagger_module.derive_character_name(predictions) is None
+
+
 def test_predict_sync_filters_by_thresholds_and_marks_nsfw(tmp_path, monkeypatch):
     wd = tagger_module.WDTagger()
     wd._input_name = "input"
@@ -62,10 +81,11 @@ def test_predict_sync_filters_by_thresholds_and_marks_nsfw(tmp_path, monkeypatch
     image_path = tmp_path / "predict.png"
     Image.new("RGB", (16, 12), color=(0, 255, 0)).save(image_path)
 
-    results, is_nsfw = wd._predict_sync(str(image_path))
+    result = wd._predict_sync(str(image_path))
 
-    assert is_nsfw is True
-    assert [item["name"] for item in results] == ["rating:general", "rating:questionable", "hero", "forest"]
+    assert result.is_nsfw is True
+    assert result.character_name == "hero"
+    assert [item.name for item in result.predictions] == ["rating:general", "rating:questionable", "hero", "forest"]
 
 
 def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_path, monkeypatch):
@@ -89,20 +109,32 @@ def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_p
     image_path = tmp_path / "characters.png"
     Image.new("RGB", (16, 12), color=(0, 0, 255)).save(image_path)
 
-    results, is_nsfw = wd._predict_sync(str(image_path))
+    result = wd._predict_sync(str(image_path))
 
-    assert is_nsfw is False
-    assert [item["name"] for item in results] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
+    assert result.is_nsfw is False
+    assert result.character_name == "heroine_a"
+    assert [item.name for item in result.predictions] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
 
 
 def test_predict_uses_executor(monkeypatch):
     wd = tagger_module.WDTagger()
-    monkeypatch.setattr(wd, "_predict_sync", lambda path: ([{"name": "sky"}], False))
+    monkeypatch.setattr(
+        wd,
+        "_predict_sync",
+        lambda path: TaggingResult(
+            predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
+            character_name=None,
+            is_nsfw=False,
+        ),
+    )
 
-    results, is_nsfw = asyncio.run(wd.predict("image.png"))
+    result = asyncio.run(wd.predict("image.png"))
 
-    assert results == [{"name": "sky"}]
-    assert is_nsfw is False
+    assert result == TaggingResult(
+        predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
+        character_name=None,
+        is_nsfw=False,
+    )
 
 
 def test_load_populates_session_and_input_details(monkeypatch, tmp_path):
@@ -139,3 +171,22 @@ def test_load_populates_session_and_input_details(monkeypatch, tmp_path):
     assert wd._input_name == "input_tensor"
     assert wd._input_size == 448
     assert isinstance(wd._tags_df, pd.DataFrame)
+
+
+def test_create_tagger_returns_wd_backend(monkeypatch):
+    monkeypatch.setattr(tagger_module.settings, "tagger_backend", "wd_v3")
+
+    created = tagger_module.create_tagger()
+
+    assert isinstance(created, tagger_module.WDTagger)
+
+
+def test_create_tagger_rejects_unknown_backend(monkeypatch):
+    monkeypatch.setattr(tagger_module.settings, "tagger_backend", "unknown")
+
+    try:
+        tagger_module.create_tagger()
+    except ValueError as exc:
+        assert str(exc) == "Unsupported tagger backend: unknown"
+    else:
+        raise AssertionError("Expected ValueError for unsupported tagger backend")

@@ -1,20 +1,25 @@
-from app.main import _top_character_name
+from app.services.tagger import TagPrediction, TaggingResult
 
 
-def test_top_character_name_returns_highest_confidence_character():
-    predictions = [
-        {"name": "sky", "category": 0, "confidence": 0.92},
-        {"name": "ayanami_rei", "category": 4, "confidence": 0.81},
-        {"name": "souryuu_asuka_langley", "category": 4, "confidence": 0.95},
-    ]
+def test_tagging_result_can_carry_character_name():
+    result = TaggingResult(
+        predictions=[
+            TagPrediction(name="souryuu_asuka_langley", category=4, confidence=0.95),
+            TagPrediction(name="sky", category=0, confidence=0.82),
+        ],
+        character_name="souryuu_asuka_langley",
+        is_nsfw=False,
+    )
 
-    assert _top_character_name(predictions) == "souryuu_asuka_langley"
+    assert result.character_name == "souryuu_asuka_langley"
+    assert [prediction.name for prediction in result.predictions] == ["souryuu_asuka_langley", "sky"]
 
 
-def test_top_character_name_returns_none_when_no_character_prediction_exists():
-    predictions = [
-        {"name": "sky", "category": 0, "confidence": 0.92},
-        {"name": "rating:general", "category": 9, "confidence": 0.99},
-    ]
+def test_tagging_result_allows_missing_character_name():
+    result = TaggingResult(
+        predictions=[TagPrediction(name="forest", category=0, confidence=0.91)],
+        character_name=None,
+        is_nsfw=False,
+    )
 
-    assert _top_character_name(predictions) is None
+    assert result.character_name is None

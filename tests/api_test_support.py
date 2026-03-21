@@ -139,6 +139,7 @@ def api():
     import app.database as database_module
     import app.main as main_module
     import app.services.tagger as tagger_module
+    from app.services.tagger import TagPrediction, TaggingResult
 
     original_database_url = settings.database_url
     original_storage_dir = settings.storage_dir
@@ -155,23 +156,35 @@ def api():
             r, g, b = img.convert("RGB").getpixel((0, 0))
 
         if r > 200 and g < 120 and b < 120:
-            return [
-                {"name": "rose", "category": 0, "confidence": 0.97},
-                {"name": "warm", "category": 0, "confidence": 0.88},
-                {"name": "rating:questionable", "category": 9, "confidence": 0.99},
-            ], True
+            return TaggingResult(
+                predictions=[
+                    TagPrediction(name="rose", category=0, confidence=0.97),
+                    TagPrediction(name="warm", category=0, confidence=0.88),
+                    TagPrediction(name="rating:questionable", category=9, confidence=0.99),
+                ],
+                character_name=None,
+                is_nsfw=True,
+            )
         if b > 200:
-            return [
-                {"name": "ayanami_rei", "category": 4, "confidence": 0.98},
-                {"name": "sky", "category": 0, "confidence": 0.96},
-                {"name": "blue", "category": 0, "confidence": 0.9},
-                {"name": "rating:general", "category": 9, "confidence": 0.99},
-            ], False
-        return [
-            {"name": "forest", "category": 0, "confidence": 0.95},
-            {"name": "green", "category": 0, "confidence": 0.87},
-            {"name": "rating:general", "category": 9, "confidence": 0.99},
-        ], False
+            return TaggingResult(
+                predictions=[
+                    TagPrediction(name="ayanami_rei", category=4, confidence=0.98),
+                    TagPrediction(name="sky", category=0, confidence=0.96),
+                    TagPrediction(name="blue", category=0, confidence=0.9),
+                    TagPrediction(name="rating:general", category=9, confidence=0.99),
+                ],
+                character_name="ayanami_rei",
+                is_nsfw=False,
+            )
+        return TaggingResult(
+            predictions=[
+                TagPrediction(name="forest", category=0, confidence=0.95),
+                TagPrediction(name="green", category=0, confidence=0.87),
+                TagPrediction(name="rating:general", category=9, confidence=0.99),
+            ],
+            character_name=None,
+            is_nsfw=False,
+        )
 
     settings.database_url = database_url
     settings.storage_dir = storage_dir

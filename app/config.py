@@ -10,6 +10,7 @@ class Settings(BaseSettings):
 
     storage_dir: Path = Path("storage")
 
+    tagger_backend: str = "wd_v3"
     tagger_model_repo: str = "SmilingWolf/wd-vit-tagger-v3"
     tagger_threshold_general: float = 0.35
     tagger_threshold_character: float = 0.85
