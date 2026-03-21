@@ -8,8 +8,7 @@ from sqlalchemy import delete, select
 
 from app.database import AsyncSessionLocal, init_db
 from app.models import Image, ImageTag, Tag, User
-from app.routers import auth, images, tags
-from app.routers import admin, albums, bulk
+from app.routers import admin, albums, auth, images, tags, users
 from app.services.auth import get_user_by_username, hash_password
 from app.services.images import set_tag_queue
 from app.services.tagger import tagger
@@ -114,7 +113,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
-app.include_router(bulk.router)
+app.include_router(users.router)
 app.include_router(images.router)
 app.include_router(tags.router)
 app.include_router(albums.router)

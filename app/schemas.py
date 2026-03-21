@@ -3,7 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 
@@ -104,7 +104,12 @@ class ImageDetail(ImageRead):
     )
 
 
-class ImageMetadataUpdate(BaseModel):
+class ImageListState(str, Enum):
+    ACTIVE = "active"
+    TRASHED = "trashed"
+
+
+class ImageUpdate(BaseModel):
     tags: list[str] | None = Field(
         default=None,
         description="Complete replacement tag list. Omit to keep tags unchanged.",
@@ -113,6 +118,20 @@ class ImageMetadataUpdate(BaseModel):
         default=None,
         description="Manual character name override. Send null or an empty string to clear it.",
     )
+    deleted: bool | None = Field(
+        default=None,
+        description="Whether the image should be in the trash. Omit to keep deletion state unchanged.",
+    )
+    favorited: bool | None = Field(
+        default=None,
+        description="Whether the current user has favorited the image. Omit to keep favorite state unchanged.",
+    )
+
+    @model_validator(mode="after")
+    def validate_non_empty(self):
+        if not self.model_fields_set:
+            raise ValueError("At least one mutable field must be provided")
+        return self
 
 
 class ImageListResponse(BaseModel):
@@ -169,16 +188,23 @@ class AlbumShareRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class AddImagesToAlbum(BaseModel):
-    image_ids: list[uuid.UUID] = Field(min_length=1)
+class ImageBatchUpdate(BaseModel):
+    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    deleted: bool | None = None
+    favorited: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_non_empty(self):
+        if self.deleted is None and self.favorited is None:
+            raise ValueError("At least one mutable field must be provided")
+        return self
 
 
-class BulkImageRequest(BaseModel):
+class ImageBatchDelete(BaseModel):
     image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 
-class BulkAlbumRequest(BaseModel):
-    album_id: uuid.UUID
+class AlbumImageBatchUpdate(BaseModel):
     image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 
@@ -189,6 +215,10 @@ class BulkResult(BaseModel):
 
 class DownloadRequest(BaseModel):
     image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class TaggingJobQueuedResponse(BaseModel):
+    queued: int
 
 
 class AdminUserUpdate(BaseModel):

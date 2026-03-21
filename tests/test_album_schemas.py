@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.routers.albums import album_access
-from app.schemas import AddImagesToAlbum, AlbumCreate, AlbumRead, AlbumShareCreate, AlbumUpdate
+from app.schemas import AlbumCreate, AlbumImageBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
 
 
 def _now():
@@ -113,16 +113,16 @@ def test_album_share_create_can_edit_true():
     assert m.can_edit is True
 
 
-# --- AddImagesToAlbum ---
+# --- AlbumImageBatchUpdate ---
 
 def test_add_images_requires_at_least_one():
     with pytest.raises(ValidationError):
-        AddImagesToAlbum(image_ids=[])
+        AlbumImageBatchUpdate(image_ids=[])
 
 
 def test_add_images_valid():
     ids = [uuid.uuid4(), uuid.uuid4()]
-    m = AddImagesToAlbum(image_ids=ids)
+    m = AlbumImageBatchUpdate(image_ids=ids)
     assert len(m.image_ids) == 2
 
 

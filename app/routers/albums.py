@@ -8,12 +8,13 @@ from app.database import get_db
 from app.deps import current_user
 from app.models import User
 from app.schemas import (
-    AddImagesToAlbum,
+    AlbumImageBatchUpdate,
     AlbumCreate,
     AlbumRead,
     AlbumShareCreate,
     AlbumShareRead,
     AlbumUpdate,
+    BulkResult,
     ImageListResponse,
     TagFilterMode,
 )
@@ -84,27 +85,29 @@ async def list_album_images(
     return await album_service.list_album_images(db, album_id, user, tags, exclude_tags, mode, page, page_size)
 
 
-@router.post("/{album_id}/images", status_code=status.HTTP_204_NO_CONTENT)
+@router.put("/{album_id}/images", response_model=BulkResult)
 async def add_images_to_album(
     album_id: uuid.UUID,
-    body: AddImagesToAlbum,
+    body: AlbumImageBatchUpdate,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await album_service.add_images_to_album(db, album_id, body.image_ids, user)
+    processed, skipped = await album_service.bulk_add_to_album(db, album_id, body.image_ids, user)
+    return BulkResult(processed=processed, skipped=skipped)
 
 
-@router.delete("/{album_id}/images/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def remove_image_from_album(
+@router.delete("/{album_id}/images", response_model=BulkResult)
+async def remove_images_from_album(
     album_id: uuid.UUID,
-    image_id: uuid.UUID,
+    body: AlbumImageBatchUpdate,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await album_service.remove_image_from_album(db, album_id, image_id, user)
+    processed, skipped = await album_service.bulk_remove_from_album(db, album_id, body.image_ids, user)
+    return BulkResult(processed=processed, skipped=skipped)
 
 
-@router.post("/{album_id}/share", response_model=AlbumShareRead)
+@router.post("/{album_id}/shares", response_model=AlbumShareRead)
 async def share_album(
     album_id: uuid.UUID,
     body: AlbumShareCreate,
@@ -130,7 +133,7 @@ async def download_album(
     )
 
 
-@router.delete("/{album_id}/share/{shared_user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{album_id}/shares/{shared_user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_share(
     album_id: uuid.UUID,
     shared_user_id: uuid.UUID,

@@ -13,8 +13,12 @@ def test_get_admin_stats_reports_totals(api):
     api.wait_for_image_status(str(blue["id"]))
     api.wait_for_image_status(str(red["id"]))
 
-    trashed = api.client.delete(f"/images/{red['id']}", headers=api.auth_headers(user["access_token"]))
-    assert trashed.status_code == 204
+    trashed = api.client.patch(
+        f"/images/{red['id']}",
+        headers=api.auth_headers(user["access_token"]),
+        json={"deleted": True},
+    )
+    assert trashed.status_code == 200
 
     async def _exercise(session):
         stats = await admin_service.get_admin_stats(session)
@@ -36,8 +40,12 @@ def test_retag_all_images_only_queues_active_images(api):
     active_id = uuid.UUID(str(active["id"]))
     trashed_id = uuid.UUID(str(trashed["id"]))
 
-    deleted = api.client.delete(f"/images/{trashed['id']}", headers=api.auth_headers(user["access_token"]))
-    assert deleted.status_code == 204
+    deleted = api.client.patch(
+        f"/images/{trashed['id']}",
+        headers=api.auth_headers(user["access_token"]),
+        json={"deleted": True},
+    )
+    assert deleted.status_code == 200
 
     queue = asyncio.Queue()
     image_service.set_tag_queue(queue)

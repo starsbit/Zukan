@@ -49,7 +49,7 @@ def test_search_tags_returns_prefix_matches_in_popularity_order(api):
     api.wait_for_image_status(str(second["id"]))
 
     async def _exercise(session):
-        results = await tag_service.search_tags(session, query="r", limit=10)
+        results = await tag_service.list_tags(session, limit=10, offset=0, category=None, query="r")
         names = [tag.name for tag in results]
         assert "rose" in names
         assert all(name.startswith("r") for name in names)

@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 from app.services import images as image_service
-from app.schemas import ImageMetadataUpdate
+from app.schemas import ImageListState, ImageUpdate
 from tests.api_test_support import png_bytes
 
 
@@ -17,8 +17,12 @@ def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
     user_id = uuid.UUID(user["user"]["id"])
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
-    deleted = api.client.delete(f"/images/{uploaded['id']}", headers=api.auth_headers(user["access_token"]))
-    assert deleted.status_code == 204
+    deleted = api.client.patch(
+        f"/images/{uploaded['id']}",
+        headers=api.auth_headers(user["access_token"]),
+        json={"deleted": True},
+    )
+    assert deleted.status_code == 200
 
     queue = asyncio.Queue()
     image_service.set_tag_queue(queue)
@@ -101,7 +105,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
     blue_id = uuid.UUID(str(blue["id"]))
     red_id = uuid.UUID(str(red["id"]))
     enabled = api.client.patch(
-        "/auth/me",
+        "/users/me",
         headers=api.auth_headers(user["access_token"]),
         json={"show_nsfw": True},
     )
@@ -115,6 +119,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
         listing = await image_service.list_images(
             session,
             db_user,
+            ImageListState.ACTIVE,
             tags="sky",
             character_name="REI",
             exclude_tags=None,
@@ -131,6 +136,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
         character_only = await image_service.list_images(
             session,
             db_user,
+            ImageListState.ACTIVE,
             tags=None,
             character_name="yAnAmI",
             exclude_tags=None,
@@ -239,7 +245,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             session,
             uploaded_id,
             db_user,
-            ImageMetadataUpdate(tags=["custom_tag", "rating:questionable"], character_name="ikari_shinji"),
+            ImageUpdate(tags=["custom_tag", "rating:questionable"], character_name="ikari_shinji"),
         )
         assert updated.tags == ["custom_tag", "rating:questionable"]
         assert updated.character_name == "ikari_shinji"
@@ -249,6 +255,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
         by_new_tag = await image_service.list_images(
             session,
             db_user,
+            ImageListState.ACTIVE,
             tags="custom_tag",
             character_name="shinji",
             exclude_tags=None,
@@ -264,6 +271,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
         by_old_tag = await image_service.list_images(
             session,
             db_user,
+            ImageListState.ACTIVE,
             tags="sky",
             character_name=None,
             exclude_tags=None,
@@ -280,7 +288,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             session,
             uploaded_id,
             db_user,
-            ImageMetadataUpdate(character_name=""),
+            ImageUpdate(character_name=""),
         )
         assert cleared.character_name is None
 

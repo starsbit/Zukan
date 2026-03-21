@@ -21,20 +21,12 @@ async def list_tags(
     limit: int,
     offset: int,
     category: int | None,
+    query: str | None = None,
 ) -> list[TagRead]:
     stmt = select(Tag).order_by(Tag.image_count.desc()).offset(offset).limit(limit)
     if category is not None:
         stmt = stmt.where(Tag.category == category)
-    tags = (await db.execute(stmt)).scalars().all()
-    return [_to_tag_read(tag) for tag in tags]
-
-
-async def search_tags(
-    db: AsyncSession,
-    *,
-    query: str,
-    limit: int,
-) -> list[TagRead]:
-    stmt = select(Tag).where(Tag.name.ilike(f"{query}%")).order_by(Tag.image_count.desc()).limit(limit)
+    if query:
+        stmt = stmt.where(Tag.name.ilike(f"{query}%"))
     tags = (await db.execute(stmt)).scalars().all()
     return [_to_tag_read(tag) for tag in tags]

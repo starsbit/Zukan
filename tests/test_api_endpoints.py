@@ -77,7 +77,7 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert forest_search.status_code == 200
     assert [item["id"] for item in forest_search.json()["items"]] == [str(green["id"])]
 
-    tag_prefix = api.client.get("/tags/search", headers=headers, params={"q": "bl"})
+    tag_prefix = api.client.get("/tags", headers=headers, params={"q": "bl"})
     assert tag_prefix.status_code == 200
     assert [item["name"] for item in tag_prefix.json()] == ["blue"]
 
@@ -85,7 +85,7 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert rating_tags.status_code == 200
     assert {item["name"] for item in rating_tags.json()} == {"rating:general", "rating:questionable"}
 
-    show_nsfw = api.client.patch("/auth/me", headers=headers, json={"show_nsfw": True})
+    show_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
     assert show_nsfw.status_code == 200
 
     nsfw_search = api.client.get("/images", headers=headers, params={"tags": "rose", "nsfw": "include"})
@@ -126,24 +126,25 @@ def test_user_journey_full_personal_library_workflow(api):
     assert album.status_code == 201
     album_id = album.json()["id"]
 
-    add_images = api.client.post(
+    add_images = api.client.put(
         f"/albums/{album_id}/images",
         headers=headers,
         json={"image_ids": [str(first["id"]), str(second["id"]), str(third["id"])]},
     )
-    assert add_images.status_code == 204
+    assert add_images.status_code == 200
+    assert add_images.json() == {"processed": 3, "skipped": 0}
 
-    favorite = api.client.post(f"/images/{first['id']}/favorite", headers=headers)
-    assert favorite.status_code == 204
+    favorite = api.client.patch(f"/images/{first['id']}", headers=headers, json={"favorited": True})
+    assert favorite.status_code == 200
 
     favorite_view = api.client.get("/images", headers=headers, params={"favorited": "true"})
     assert favorite_view.status_code == 200
     assert [item["id"] for item in favorite_view.json()["items"]] == [str(first["id"])]
 
-    bulk_delete = api.client.post(
-        "/images/bulk/delete",
+    bulk_delete = api.client.patch(
+        "/images",
         headers=headers,
-        json={"image_ids": [str(second["id"]), str(third["id"])]},
+        json={"image_ids": [str(second["id"]), str(third["id"])], "deleted": True},
     )
     assert bulk_delete.status_code == 200
     assert bulk_delete.json() == {"processed": 2, "skipped": 0}
@@ -152,14 +153,14 @@ def test_user_journey_full_personal_library_workflow(api):
     assert album_after_delete.status_code == 200
     assert [item["id"] for item in album_after_delete.json()["items"]] == [str(first["id"])]
 
-    trash = api.client.get("/images/trash", headers=headers)
+    trash = api.client.get("/images", headers=headers, params={"state": "trashed"})
     assert trash.status_code == 200
     assert {item["id"] for item in trash.json()["items"]} == {str(second["id"]), str(third["id"])}
 
-    bulk_restore = api.client.post(
-        "/images/bulk/restore",
+    bulk_restore = api.client.patch(
+        "/images",
         headers=headers,
-        json={"image_ids": [str(second["id"]), str(third["id"])]},
+        json={"image_ids": [str(second["id"]), str(third["id"])], "deleted": False},
     )
     assert bulk_restore.status_code == 200
     assert bulk_restore.json() == {"processed": 2, "skipped": 0}
@@ -171,11 +172,10 @@ def test_user_journey_full_personal_library_workflow(api):
         str(second["id"]),
     }
 
-    bulk_unfavorite = api.client.request(
-        "DELETE",
-        "/images/bulk/favorite",
+    bulk_unfavorite = api.client.patch(
+        "/images",
         headers=headers,
-        json={"image_ids": [str(first["id"])]},
+        json={"image_ids": [str(first["id"])], "favorited": False},
     )
     assert bulk_unfavorite.status_code == 200
     assert bulk_unfavorite.json() == {"processed": 1, "skipped": 0}
@@ -184,7 +184,7 @@ def test_user_journey_full_personal_library_workflow(api):
     assert download.status_code == 200
     assert download.headers["content-type"] == "application/zip"
 
-    retag = api.client.post(f"/images/{first['id']}/retag", headers=headers)
+    retag = api.client.post(f"/images/{first['id']}/tagging-jobs", headers=headers)
     assert retag.status_code == 202
     api.wait_for_image_status(str(first["id"]))
 
@@ -194,16 +194,23 @@ def test_user_journey_full_personal_library_workflow(api):
     assert on_this_day.status_code == 200
     assert on_this_day.json()["years"]
 
-    purge = api.client.post(
-        "/images/bulk/purge",
+    purge = api.client.request(
+        "DELETE",
+        "/images",
         headers=headers,
         json={"image_ids": [str(third["id"])]},
     )
     assert purge.status_code == 200
     assert purge.json() == {"processed": 1, "skipped": 0}
 
-    remove_from_album = api.client.delete(f"/albums/{album_id}/images/{second['id']}", headers=headers)
-    assert remove_from_album.status_code == 204
+    remove_from_album = api.client.request(
+        "DELETE",
+        f"/albums/{album_id}/images",
+        headers=headers,
+        json={"image_ids": [str(second["id"])]},
+    )
+    assert remove_from_album.status_code == 200
+    assert remove_from_album.json() == {"processed": 1, "skipped": 0}
 
     delete_album = api.client.delete(f"/albums/{album_id}", headers=headers)
     assert delete_album.status_code == 204
@@ -233,15 +240,16 @@ def test_user_journey_collaboration_workflow(api):
     assert album.status_code == 201
     album_id = album.json()["id"]
 
-    add_image = api.client.post(
+    add_image = api.client.put(
         f"/albums/{album_id}/images",
         headers=owner_headers,
         json={"image_ids": [str(first["id"]), str(second["id"])]},
     )
-    assert add_image.status_code == 204
+    assert add_image.status_code == 200
+    assert add_image.json() == {"processed": 2, "skipped": 0}
 
     share = api.client.post(
-        f"/albums/{album_id}/share",
+        f"/albums/{album_id}/shares",
         headers=owner_headers,
         json={"user_id": collaborator["user"]["id"], "can_edit": False},
     )
@@ -255,11 +263,16 @@ def test_user_journey_collaboration_workflow(api):
     assert viewer_album_images.status_code == 200
     assert {item["id"] for item in viewer_album_images.json()["items"]} == {str(first["id"]), str(second["id"])}
 
-    no_edit_yet = api.client.delete(f"/albums/{album_id}/images/{first['id']}", headers=viewer_headers)
+    no_edit_yet = api.client.request(
+        "DELETE",
+        f"/albums/{album_id}/images",
+        headers=viewer_headers,
+        json={"image_ids": [str(first["id"])]},
+    )
     assert no_edit_yet.status_code == 403
 
     upgrade_share = api.client.post(
-        f"/albums/{album_id}/share",
+        f"/albums/{album_id}/shares",
         headers=owner_headers,
         json={"user_id": collaborator["user"]["id"], "can_edit": True},
     )
@@ -267,20 +280,24 @@ def test_user_journey_collaboration_workflow(api):
 
     bulk_remove = api.client.request(
         "DELETE",
-        "/images/bulk/album",
+        f"/albums/{album_id}/images",
         headers=viewer_headers,
-        json={"album_id": album_id, "image_ids": [str(second["id"])]},
+        json={"image_ids": [str(second["id"])]},
     )
     assert bulk_remove.status_code == 200
     assert bulk_remove.json() == {"processed": 1, "skipped": 0}
 
-    owner_favorite = api.client.post(f"/images/{first['id']}/favorite", headers=owner_headers)
-    assert owner_favorite.status_code == 204
+    owner_favorite = api.client.patch(f"/images/{first['id']}", headers=owner_headers, json={"favorited": True})
+    assert owner_favorite.status_code == 200
 
-    collaborator_favorite = api.client.post(f"/images/{first['id']}/favorite", headers=viewer_headers)
-    assert collaborator_favorite.status_code == 204
+    collaborator_favorite = api.client.patch(
+        f"/images/{first['id']}",
+        headers=viewer_headers,
+        json={"favorited": True},
+    )
+    assert collaborator_favorite.status_code == 200
 
-    retag = api.client.post(f"/images/{first['id']}/retag", headers=owner_headers)
+    retag = api.client.post(f"/images/{first['id']}/tagging-jobs", headers=owner_headers)
     assert retag.status_code == 202
     api.wait_for_image_status(str(first["id"]))
 
@@ -289,7 +306,7 @@ def test_user_journey_collaboration_workflow(api):
     assert [item["id"] for item in rediscovered.json()["items"]] == [str(first["id"])]
 
     revoke = api.client.delete(
-        f"/albums/{album_id}/share/{collaborator['user']['id']}",
+        f"/albums/{album_id}/shares/{collaborator['user']['id']}",
         headers=owner_headers,
     )
     assert revoke.status_code == 204
@@ -335,22 +352,22 @@ def test_user_journey_admin_moderation_workflow(api):
     assert update.json()["show_nsfw"] is True
 
     retag_all = api.client.post(
-        f"/admin/users/{target['user']['id']}/retag-all",
+        f"/admin/users/{target['user']['id']}/tagging-jobs",
         headers=admin_headers,
     )
     assert retag_all.status_code == 202
     assert retag_all.json()["queued"] == 1
     api.wait_for_image_status(str(uploaded["id"]))
 
-    trash_as_admin = api.client.delete(f"/images/{uploaded['id']}", headers=admin_headers)
-    assert trash_as_admin.status_code == 204
+    trash_as_admin = api.client.patch(f"/images/{uploaded['id']}", headers=admin_headers, json={"deleted": True})
+    assert trash_as_admin.status_code == 200
 
-    trash_list = api.client.get("/images/trash", headers=admin_headers)
+    trash_list = api.client.get("/images", headers=admin_headers, params={"state": "trashed"})
     assert trash_list.status_code == 200
     assert [item["id"] for item in trash_list.json()["items"]] == [str(uploaded["id"])]
 
-    restore = api.client.post(f"/images/{uploaded['id']}/restore", headers=admin_headers)
-    assert restore.status_code == 204
+    restore = api.client.patch(f"/images/{uploaded['id']}", headers=admin_headers, json={"deleted": False})
+    assert restore.status_code == 200
 
     delete_user = api.client.delete(
         f"/admin/users/{target['user']['id']}",

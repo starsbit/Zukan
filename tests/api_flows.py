@@ -24,12 +24,12 @@ def assert_auth_endpoints(api):
     })
     assert duplicate_email.status_code == 400
 
-    me = api.client.get("/auth/me", headers=headers)
+    me = api.client.get("/users/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["username"] == "alice"
     assert me.json()["show_nsfw"] is False
 
-    updated = api.client.patch("/auth/me", headers=headers, json={
+    updated = api.client.patch("/users/me", headers=headers, json={
         "show_nsfw": True,
         "password": "newpassword123",
     })
@@ -95,7 +95,7 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert default_list.status_code == 200
     assert [item["id"] for item in default_list.json()["items"]] == [str(blue["id"])]
 
-    api.client.patch("/auth/me", headers=api.auth_headers(owner["access_token"]), json={"show_nsfw": True})
+    api.client.patch("/users/me", headers=api.auth_headers(owner["access_token"]), json={"show_nsfw": True})
 
     nsfw_only = api.client.get("/images", headers=api.auth_headers(owner["access_token"]), params={"nsfw": "only"})
     assert nsfw_only.status_code == 200
@@ -161,8 +161,12 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert thumbnail.status_code == 200
     assert thumbnail.headers["content-type"] == "image/webp"
 
-    favorite = api.client.post(f"/images/{blue['id']}/favorite", headers=api.auth_headers(owner["access_token"]))
-    assert favorite.status_code == 204
+    favorite = api.client.patch(
+        f"/images/{blue['id']}",
+        headers=api.auth_headers(owner["access_token"]),
+        json={"favorited": True},
+    )
+    assert favorite.status_code == 200
 
     favorites = api.client.get(
         "/images",
@@ -184,11 +188,19 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert favorited_filter.status_code == 200
     assert favorited_filter.json()["total"] == 1
 
-    unfavorite = api.client.delete(f"/images/{blue['id']}/favorite", headers=api.auth_headers(owner["access_token"]))
-    assert unfavorite.status_code == 204
+    unfavorite = api.client.patch(
+        f"/images/{blue['id']}",
+        headers=api.auth_headers(owner["access_token"]),
+        json={"favorited": False},
+    )
+    assert unfavorite.status_code == 200
 
-    missing_favorite = api.client.delete(f"/images/{blue['id']}/favorite", headers=api.auth_headers(owner["access_token"]))
-    assert missing_favorite.status_code == 404
+    missing_favorite = api.client.patch(
+        f"/images/{blue['id']}",
+        headers=api.auth_headers(owner["access_token"]),
+        json={"favorited": False},
+    )
+    assert missing_favorite.status_code == 200
 
     tags = api.client.get("/tags", headers=api.auth_headers(owner["access_token"]))
     assert tags.status_code == 200
@@ -198,7 +210,7 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert rating_tags.status_code == 200
     assert {tag["name"] for tag in rating_tags.json()} == {"rating:general", "rating:questionable"}
 
-    tag_search = api.client.get("/tags/search", headers=api.auth_headers(owner["access_token"]), params={"q": "sk"})
+    tag_search = api.client.get("/tags", headers=api.auth_headers(owner["access_token"]), params={"q": "sk"})
     assert tag_search.status_code == 200
     assert [tag["name"] for tag in tag_search.json()] == ["sky"]
 
@@ -232,7 +244,7 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert corrected_detail.json()["character_name"] == "ikari_shinji"
     assert {tag["name"] for tag in corrected_detail.json()["tag_details"]} == {"pilot", "rating:general"}
 
-    retag = api.client.post(f"/images/{blue['id']}/retag", headers=api.auth_headers(owner["access_token"]))
+    retag = api.client.post(f"/images/{blue['id']}/tagging-jobs", headers=api.auth_headers(owner["access_token"]))
     assert retag.status_code == 202
     api.wait_for_image_status(str(blue["id"]))
 
@@ -251,12 +263,12 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     with zipfile.ZipFile(io.BytesIO(download.content)) as zf:
         assert set(zf.namelist()) == {"first.png", "second.png"}
 
-    assert api.client.delete(f"/images/{first['id']}", headers=headers).status_code == 204
-    trash = api.client.get("/images/trash", headers=headers)
+    assert api.client.patch(f"/images/{first['id']}", headers=headers, json={"deleted": True}).status_code == 200
+    trash = api.client.get("/images", headers=headers, params={"state": "trashed"})
     assert trash.status_code == 200
     assert trash.json()["items"][0]["id"] == str(first["id"])
 
-    assert api.client.post(f"/images/{first['id']}/restore", headers=headers).status_code == 204
+    assert api.client.patch(f"/images/{first['id']}", headers=headers, json={"deleted": False}).status_code == 200
 
     now = datetime.now(timezone.utc)
     old_date = now.replace(year=now.year - 1)
@@ -265,9 +277,9 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     assert on_this_day.status_code == 200
     assert on_this_day.json()["years"][0]["year"] == old_date.year
 
-    assert api.client.delete(f"/images/{second['id']}", headers=headers).status_code == 204
+    assert api.client.patch(f"/images/{second['id']}", headers=headers, json={"deleted": True}).status_code == 200
     restored_upload = api.client.post(
-        "/images/upload",
+        "/images",
         headers=headers,
         files=[("files", ("second.png", png_bytes((0, 255, 0)), "image/png"))],
     )
@@ -276,11 +288,11 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     assert restored_json["results"][0]["id"] == str(second["id"])
     api.wait_for_image_status(str(second["id"]))
 
-    assert api.client.delete(f"/images/{first['id']}", headers=headers).status_code == 204
-    assert api.client.post("/images/trash/empty", headers=headers).status_code == 204
+    assert api.client.patch(f"/images/{first['id']}", headers=headers, json={"deleted": True}).status_code == 200
+    assert api.client.delete("/images/trash", headers=headers).status_code == 204
     assert api.fetch_image_row(uuid.UUID(str(first["id"]))) is None
 
-    assert api.client.delete(f"/images/{second['id']}/purge", headers=headers).status_code == 204
+    assert api.client.delete(f"/images/{second['id']}", headers=headers).status_code == 204
     assert api.fetch_image_row(uuid.UUID(str(second["id"]))) is None
 
 
@@ -289,7 +301,7 @@ def assert_image_upload_edge_cases(api):
     headers = api.auth_headers(user["access_token"])
 
     accepted = api.client.post(
-        "/images/upload",
+        "/images",
         headers=headers,
         files=[("files", ("duplicate.png", png_bytes((0, 0, 255)), "image/png"))],
     )
@@ -298,7 +310,7 @@ def assert_image_upload_edge_cases(api):
     api.wait_for_image_status(str(accepted_result["id"]))
 
     duplicate = api.client.post(
-        "/images/upload",
+        "/images",
         headers=headers,
         files=[("files", ("duplicate-copy.png", png_bytes((0, 0, 255)), "image/png"))],
     )
@@ -309,7 +321,7 @@ def assert_image_upload_edge_cases(api):
     assert duplicate_result["results"][0]["status"] == "duplicate"
 
     invalid = api.client.post(
-        "/images/upload",
+        "/images",
         headers=headers,
         files=[("files", ("notes.txt", b"not an image", "text/plain"))],
     )
@@ -343,11 +355,11 @@ def assert_album_endpoints(api):
     assert created.status_code == 201
     album = created.json()
 
-    assert api.client.post(
+    assert api.client.put(
         f"/albums/{album['id']}/images",
         headers=api.auth_headers(owner["access_token"]),
         json={"image_ids": [str(first["id"]), str(second["id"])]},
-    ).status_code == 204
+    ).status_code == 200
 
     listed = api.client.get("/albums", headers=api.auth_headers(owner["access_token"]))
     assert listed.status_code == 200
@@ -374,7 +386,7 @@ def assert_album_endpoints(api):
     assert updated.json()["cover_image_id"] == str(second["id"])
 
     share_read_only = api.client.post(
-        f"/albums/{album['id']}/share",
+        f"/albums/{album['id']}/shares",
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": viewer["user"]["id"], "can_edit": False},
     )
@@ -385,22 +397,26 @@ def assert_album_endpoints(api):
     assert [item["id"] for item in shared_albums.json()] == [album["id"]]
 
     assert api.client.get(f"/albums/{album['id']}", headers=api.auth_headers(viewer["access_token"])).status_code == 200
-    assert api.client.delete(
-        f"/albums/{album['id']}/images/{first['id']}",
+    assert api.client.request(
+        "DELETE",
+        f"/albums/{album['id']}/images",
         headers=api.auth_headers(viewer["access_token"]),
+        json={"image_ids": [str(first["id"])]},
     ).status_code == 403
 
     share_edit = api.client.post(
-        f"/albums/{album['id']}/share",
+        f"/albums/{album['id']}/shares",
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": viewer["user"]["id"], "can_edit": True},
     )
     assert share_edit.status_code == 200
 
-    assert api.client.delete(
-        f"/albums/{album['id']}/images/{first['id']}",
+    assert api.client.request(
+        "DELETE",
+        f"/albums/{album['id']}/images",
         headers=api.auth_headers(viewer["access_token"]),
-    ).status_code == 204
+        json={"image_ids": [str(first["id"])]},
+    ).status_code == 200
 
     download = api.client.get(f"/albums/{album['id']}/download", headers=api.auth_headers(owner["access_token"]))
     assert download.status_code == 200
@@ -408,7 +424,7 @@ def assert_album_endpoints(api):
         assert zf.namelist() == ["album-green.png"]
 
     assert api.client.delete(
-        f"/albums/{album['id']}/share/{viewer['user']['id']}",
+        f"/albums/{album['id']}/shares/{viewer['user']['id']}",
         headers=api.auth_headers(owner["access_token"]),
     ).status_code == 204
 
@@ -439,18 +455,18 @@ def assert_album_edge_cases(api):
     assert empty_download.status_code == 404
 
     share_with_self = api.client.post(
-        f"/albums/{empty_album_id}/share",
+        f"/albums/{empty_album_id}/shares",
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": owner["user"]["id"], "can_edit": True},
     )
     assert share_with_self.status_code == 400
 
-    add_image = api.client.post(
+    add_image = api.client.put(
         f"/albums/{empty_album_id}/images",
         headers=api.auth_headers(owner["access_token"]),
         json={"image_ids": [str(image["id"])]},
     )
-    assert add_image.status_code == 204
+    assert add_image.status_code == 200
 
     invalid_cover = api.client.patch(
         f"/albums/{empty_album_id}",
@@ -460,16 +476,16 @@ def assert_album_edge_cases(api):
     assert invalid_cover.status_code == 400
 
     share_read_only = api.client.post(
-        f"/albums/{empty_album_id}/share",
+        f"/albums/{empty_album_id}/shares",
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": viewer["user"]["id"], "can_edit": False},
     )
     assert share_read_only.status_code == 200
 
-    bulk_add_as_reader = api.client.post(
-        "/images/bulk/album",
+    bulk_add_as_reader = api.client.put(
+        f"/albums/{empty_album_id}/images",
         headers=api.auth_headers(viewer["access_token"]),
-        json={"album_id": empty_album_id, "image_ids": [str(image["id"])]},
+        json={"image_ids": [str(image["id"])]},
     )
     assert bulk_add_as_reader.status_code == 403
 
@@ -489,38 +505,38 @@ def assert_bulk_endpoints(api):
     assert album.status_code == 201
     album_id = album.json()["id"]
 
-    assert api.client.post("/images/bulk/favorite", headers=api.auth_headers(owner["access_token"]), json={
+    assert api.client.patch("/images", headers=api.auth_headers(owner["access_token"]), json={
+        "image_ids": [str(first["id"]), str(second["id"])],
+        "favorited": True,
+    }).json() == {"processed": 2, "skipped": 0}
+
+    assert api.client.patch("/images", headers=api.auth_headers(owner["access_token"]), json={
+        "image_ids": [str(first["id"]), str(uuid.uuid4())],
+        "favorited": False,
+    }).json() == {"processed": 1, "skipped": 1}
+
+    assert api.client.put(f"/albums/{album_id}/images", headers=api.auth_headers(owner["access_token"]), json={
         "image_ids": [str(first["id"]), str(second["id"])],
     }).json() == {"processed": 2, "skipped": 0}
 
     assert api.client.request(
         "DELETE",
-        "/images/bulk/favorite",
+        f"/albums/{album_id}/images",
         headers=api.auth_headers(owner["access_token"]),
         json={"image_ids": [str(first["id"]), str(uuid.uuid4())]},
     ).json() == {"processed": 1, "skipped": 1}
 
-    assert api.client.post("/images/bulk/album", headers=api.auth_headers(owner["access_token"]), json={
-        "album_id": album_id,
-        "image_ids": [str(first["id"]), str(second["id"])],
-    }).json() == {"processed": 2, "skipped": 0}
-
-    assert api.client.request(
-        "DELETE",
-        "/images/bulk/album",
-        headers=api.auth_headers(owner["access_token"]),
-        json={"album_id": album_id, "image_ids": [str(first["id"]), str(uuid.uuid4())]},
-    ).json() == {"processed": 1, "skipped": 1}
-
-    assert api.client.post("/images/bulk/delete", headers=api.auth_headers(owner["access_token"]), json={
+    assert api.client.patch("/images", headers=api.auth_headers(owner["access_token"]), json={
         "image_ids": [str(second["id"]), str(third["id"])],
+        "deleted": True,
     }).json() == {"processed": 1, "skipped": 1}
 
-    assert api.client.post("/images/bulk/restore", headers=api.auth_headers(owner["access_token"]), json={
+    assert api.client.patch("/images", headers=api.auth_headers(owner["access_token"]), json={
         "image_ids": [str(second["id"]), str(third["id"])],
+        "deleted": False,
     }).json() == {"processed": 1, "skipped": 1}
 
-    assert api.client.post("/images/bulk/purge", headers=api.auth_headers(owner["access_token"]), json={
+    assert api.client.request("DELETE", "/images", headers=api.auth_headers(owner["access_token"]), json={
         "image_ids": [str(second["id"]), str(third["id"])],
     }).json() == {"processed": 1, "skipped": 1}
 
@@ -559,7 +575,7 @@ def assert_admin_endpoints(api):
     assert updated.status_code == 200
     assert updated.json()["is_admin"] is True
 
-    retag = api.client.post(f"/admin/users/{target['user']['id']}/retag-all", headers=admin_headers)
+    retag = api.client.post(f"/admin/users/{target['user']['id']}/tagging-jobs", headers=admin_headers)
     assert retag.status_code == 202
     assert retag.json()["queued"] == 1
     api.wait_for_image_status(str(image["id"]))
@@ -575,5 +591,25 @@ def assert_admin_endpoints(api):
 
 def assert_admin_permissions(api):
     user = api.register_and_login("plain-user")
-    forbidden = api.client.get("/admin/stats", headers=api.auth_headers(user["access_token"]))
-    assert forbidden.status_code == 403
+    target = api.register_and_login("plain-target")
+
+    user_headers = api.auth_headers(user["access_token"])
+    target_id = target["user"]["id"]
+
+    assert api.client.get("/admin/stats", headers=user_headers).status_code == 403
+    assert api.client.get("/admin/users", headers=user_headers).status_code == 403
+    assert api.client.get(f"/admin/users/{target_id}", headers=user_headers).status_code == 403
+    assert api.client.patch(
+        f"/admin/users/{target_id}",
+        headers=user_headers,
+        json={"show_nsfw": True},
+    ).status_code == 403
+    assert api.client.post(f"/admin/users/{target_id}/tagging-jobs", headers=user_headers).status_code == 403
+    assert api.client.delete(
+        f"/admin/users/{target_id}",
+        headers=user_headers,
+        params={"delete_images": "true"},
+    ).status_code == 403
+
+    assert api.client.get("/admin/stats").status_code == 401
+    assert api.client.get("/admin/users").status_code == 401

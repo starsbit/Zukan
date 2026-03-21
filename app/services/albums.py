@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Album, AlbumImage, AlbumShare, Image, User
 from app.schemas import AlbumRead, AlbumShareCreate, AlbumUpdate, ImageListResponse, TagFilterMode
-from app.services.images import enrich_images, favorited_ids
+from app.services.images import _apply_tag_filters, enrich_images, favorited_ids
 
 
 async def get_album(db: AsyncSession, album_id: uuid.UUID) -> Album:
@@ -146,14 +146,7 @@ async def list_album_images(
     if not user.show_nsfw:
         stmt = stmt.where(Image.is_nsfw == False)
 
-    if tags:
-        tag_list = [tag.strip() for tag in tags.split(",") if tag.strip()]
-        if tag_list:
-            stmt = stmt.where(Image.tags.contains(tag_list) if mode == TagFilterMode.AND else Image.tags.overlap(tag_list))
-    if exclude_tags:
-        excluded = [tag.strip() for tag in exclude_tags.split(",") if tag.strip()]
-        if excluded:
-            stmt = stmt.where(~Image.tags.contains(excluded))
+    stmt = _apply_tag_filters(stmt, tags, exclude_tags, mode)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (

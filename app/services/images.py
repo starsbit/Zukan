@@ -12,11 +12,15 @@ from app.config import settings
 from app.models import Image, ImageTag, Tag, User, UserFavorite
 from app.schemas import (
     BatchUploadResponse,
+    BulkResult,
     CATEGORY_NAMES,
     ImageDetail,
+    ImageBatchDelete,
+    ImageBatchUpdate,
     ImageListResponse,
-    ImageMetadataUpdate,
+    ImageListState,
     ImageRead,
+    ImageUpdate,
     NsfwFilter,
     OnThisDayResponse,
     OnThisDayYear,
@@ -109,6 +113,7 @@ def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
 async def list_images(
     db: AsyncSession,
     user: User,
+    state: ImageListState,
     tags: str | None,
     character_name: str | None,
     exclude_tags: str | None,
@@ -119,8 +124,14 @@ async def list_images(
     page: int,
     page_size: int,
 ) -> ImageListResponse:
-    stmt = select(Image).where(Image.deleted_at.is_(None))
-    stmt = _apply_nsfw_list_filter(stmt, user, nsfw)
+    stmt = select(Image)
+    if state == ImageListState.TRASHED:
+        stmt = stmt.where(Image.deleted_at.is_not(None))
+        if not user.is_admin:
+            stmt = stmt.where(Image.uploader_id == user.id)
+    else:
+        stmt = stmt.where(Image.deleted_at.is_(None))
+        stmt = _apply_nsfw_list_filter(stmt, user, nsfw)
 
     if status_filter and status_filter != "any":
         stmt = stmt.where(Image.tagging_status == status_filter)
@@ -140,16 +151,20 @@ async def list_images(
 
 
 async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) -> ImageListResponse:
-    stmt = select(Image).where(Image.deleted_at.is_not(None))
-    if not user.is_admin:
-        stmt = stmt.where(Image.uploader_id == user.id)
-
-    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-    rows = (
-        await db.execute(stmt.order_by(Image.deleted_at.desc()).offset((page - 1) * page_size).limit(page_size))
-    ).scalars().all()
-    favs = await favorited_ids(db, user.id, [row.id for row in rows])
-    return ImageListResponse(total=total, page=page, page_size=page_size, items=enrich_images(rows, favs))
+    return await list_images(
+        db,
+        user,
+        ImageListState.TRASHED,
+        tags=None,
+        character_name=None,
+        exclude_tags=None,
+        mode=TagFilterMode.AND,
+        nsfw=NsfwFilter.DEFAULT,
+        status_filter=None,
+        favorited=None,
+        page=page,
+        page_size=page_size,
+    )
 
 
 async def empty_trash(db: AsyncSession, user: User) -> None:
@@ -321,42 +336,25 @@ async def get_visible_image(db: AsyncSession, image_id: uuid.UUID, user: User) -
 
 
 async def get_image_detail(db: AsyncSession, image_id: uuid.UUID, user: User) -> ImageDetail:
-    image = (
-        await db.execute(
-            select(Image)
-            .options(selectinload(Image.image_tags).selectinload(ImageTag.tag))
-            .where(Image.id == image_id, Image.deleted_at.is_(None))
-        )
-    ).scalar_one_or_none()
+    image = await _get_image_with_tags(db, image_id, deleted=False)
     if image is None:
         raise HTTPException(status_code=404, detail="Not found")
     if image.is_nsfw and not user.show_nsfw and not user.is_admin:
         raise HTTPException(status_code=403, detail="NSFW content hidden")
-
-    is_favorited = (
-        await db.execute(select(UserFavorite).where(UserFavorite.user_id == user.id, UserFavorite.image_id == image_id))
-    ).scalar_one_or_none() is not None
-
-    tag_details = [
-        TagWithConfidence(
-            name=item.tag.name,
-            category=item.tag.category,
-            category_name=CATEGORY_NAMES.get(item.tag.category, "unknown"),
-            confidence=item.confidence,
-        )
-        for item in sorted(image.image_tags, key=lambda item: item.confidence, reverse=True)
-    ]
-    base = ImageRead.model_validate(image).model_copy(update={"is_favorited": is_favorited})
-    return ImageDetail(**base.model_dump(), tag_details=tag_details)
+    return await build_image_detail(db, image, user.id)
 
 
 async def update_image_metadata(
     db: AsyncSession,
     image_id: uuid.UUID,
     user: User,
-    payload: ImageMetadataUpdate,
+    payload: ImageUpdate,
 ) -> ImageDetail:
-    image = await get_owned_or_admin_image(db, image_id, user, trashed=False)
+    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "deleted"})
+    if needs_owner_access:
+        image = await get_owned_or_admin_image(db, image_id, user, trashed=None)
+    else:
+        image = await get_active_image(db, image_id)
 
     if "tags" in payload.model_fields_set and payload.tags is not None:
         normalized_tags = _normalize_manual_tags(payload.tags)
@@ -399,8 +397,15 @@ async def update_image_metadata(
     if "character_name" in payload.model_fields_set:
         image.character_name = payload.character_name.strip() if payload.character_name and payload.character_name.strip() else None
 
+    if "deleted" in payload.model_fields_set:
+        image.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
+
+    if "favorited" in payload.model_fields_set:
+        await set_favorite_state(db, image.id, user, payload.favorited)
+
     await db.commit()
-    return await get_image_detail(db, image_id, user)
+    image = await _get_image_with_tags(db, image_id, deleted=None)
+    return await build_image_detail(db, image, user.id)
 
 
 async def soft_delete_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:
@@ -422,21 +427,12 @@ async def purge_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None
 
 
 async def favorite_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:
-    if (await db.execute(select(Image).where(Image.id == image_id, Image.deleted_at.is_(None)))).scalar_one_or_none() is None:
-        raise HTTPException(status_code=404, detail="Not found")
-
-    existing = (
-        await db.execute(select(UserFavorite).where(UserFavorite.user_id == user.id, UserFavorite.image_id == image_id))
-    ).scalar_one_or_none()
-    if existing is None:
-        db.add(UserFavorite(user_id=user.id, image_id=image_id))
-        await db.commit()
+    await set_favorite_state(db, image_id, user, True)
+    await db.commit()
 
 
 async def unfavorite_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:
-    favorite = (
-        await db.execute(select(UserFavorite).where(UserFavorite.user_id == user.id, UserFavorite.image_id == image_id))
-    ).scalar_one_or_none()
+    favorite = await get_favorite(db, image_id, user.id)
     if favorite is None:
         raise HTTPException(status_code=404, detail="Not in favorites")
     await db.delete(favorite)
@@ -451,6 +447,43 @@ async def retag_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> int:
     if queue:
         await queue.put(image_id)
     return 1
+
+
+async def batch_update_images(
+    db: AsyncSession,
+    payload: ImageBatchUpdate,
+    user: User,
+) -> BulkResult:
+    processed = skipped = 0
+
+    if payload.deleted is not None:
+        processed, skipped = await _batch_update_deleted_state(db, payload.image_ids, payload.deleted, user)
+    elif payload.favorited is not None:
+        processed, skipped = await _batch_update_favorite_state(db, payload.image_ids, payload.favorited, user)
+
+    return BulkResult(processed=processed, skipped=skipped)
+
+
+async def batch_purge_images(
+    db: AsyncSession,
+    payload: ImageBatchDelete,
+    user: User,
+) -> BulkResult:
+    rows = (await db.execute(select(Image).where(Image.id.in_(payload.image_ids)))).scalars().all()
+
+    found_ids = {row.id for row in rows}
+    skipped = len(payload.image_ids) - len(found_ids)
+    processed = 0
+
+    for image in rows:
+        if image.uploader_id == user.id or user.is_admin:
+            await purge_image_record(image, db)
+            processed += 1
+        else:
+            skipped += 1
+
+    await db.commit()
+    return BulkResult(processed=processed, skipped=skipped)
 
 
 async def get_owned_or_admin_image(
@@ -472,6 +505,125 @@ async def get_owned_or_admin_image(
     if image.uploader_id != user.id and not user.is_admin:
         raise HTTPException(status_code=403, detail="Forbidden")
     return image
+
+
+async def get_active_image(db: AsyncSession, image_id: uuid.UUID) -> Image:
+    image = (await db.execute(select(Image).where(Image.id == image_id, Image.deleted_at.is_(None)))).scalar_one_or_none()
+    if image is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    return image
+
+
+async def get_favorite(db: AsyncSession, image_id: uuid.UUID, user_id: uuid.UUID) -> UserFavorite | None:
+    return (
+        await db.execute(select(UserFavorite).where(UserFavorite.user_id == user_id, UserFavorite.image_id == image_id))
+    ).scalar_one_or_none()
+
+
+async def set_favorite_state(db: AsyncSession, image_id: uuid.UUID, user: User, favorited: bool | None) -> bool:
+    await get_active_image(db, image_id)
+    existing = await get_favorite(db, image_id, user.id)
+    if favorited is True and existing is None:
+        db.add(UserFavorite(user_id=user.id, image_id=image_id))
+        return True
+    if favorited is False and existing is not None:
+        await db.delete(existing)
+        return True
+    return False
+
+
+async def _get_image_with_tags(db: AsyncSession, image_id: uuid.UUID, deleted: bool | None) -> Image | None:
+    stmt = select(Image).options(selectinload(Image.image_tags).selectinload(ImageTag.tag)).where(Image.id == image_id)
+    if deleted is True:
+        stmt = stmt.where(Image.deleted_at.is_not(None))
+    elif deleted is False:
+        stmt = stmt.where(Image.deleted_at.is_(None))
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def build_image_detail(db: AsyncSession, image: Image, user_id: uuid.UUID) -> ImageDetail:
+    is_favorited = await get_favorite(db, image.id, user_id) is not None
+    tag_details = [
+        TagWithConfidence(
+            name=item.tag.name,
+            category=item.tag.category,
+            category_name=CATEGORY_NAMES.get(item.tag.category, "unknown"),
+            confidence=item.confidence,
+        )
+        for item in sorted(image.image_tags, key=lambda item: item.confidence, reverse=True)
+    ]
+    base = ImageRead.model_validate(image).model_copy(update={"is_favorited": is_favorited})
+    return ImageDetail(**base.model_dump(), tag_details=tag_details)
+
+
+async def _batch_update_deleted_state(
+    db: AsyncSession,
+    image_ids: list[uuid.UUID],
+    deleted: bool,
+    user: User,
+) -> tuple[int, int]:
+    rows = (await db.execute(select(Image).where(Image.id.in_(image_ids)))).scalars().all()
+    found_ids = {row.id for row in rows}
+    skipped = len(image_ids) - len(found_ids)
+    processed = 0
+    now = datetime.now(timezone.utc)
+
+    for image in rows:
+        if image.uploader_id != user.id and not user.is_admin:
+            skipped += 1
+            continue
+        if deleted and image.deleted_at is None:
+            image.deleted_at = now
+            processed += 1
+        elif not deleted and image.deleted_at is not None:
+            image.deleted_at = None
+            processed += 1
+        else:
+            skipped += 1
+
+    await db.commit()
+    return processed, skipped
+
+
+async def _batch_update_favorite_state(
+    db: AsyncSession,
+    image_ids: list[uuid.UUID],
+    favorited: bool,
+    user: User,
+) -> tuple[int, int]:
+    active_ids = set(
+        (await db.execute(select(Image.id).where(Image.id.in_(image_ids), Image.deleted_at.is_(None)))).scalars().all()
+    )
+    existing_ids = set(
+        (
+            await db.execute(
+                select(UserFavorite.image_id).where(
+                    UserFavorite.user_id == user.id,
+                    UserFavorite.image_id.in_(image_ids),
+                )
+            )
+        ).scalars().all()
+    )
+
+    if favorited:
+        to_change = active_ids - existing_ids
+        for image_id in to_change:
+            db.add(UserFavorite(user_id=user.id, image_id=image_id))
+    else:
+        to_change = existing_ids
+        favorites = (
+            await db.execute(
+                select(UserFavorite).where(
+                    UserFavorite.user_id == user.id,
+                    UserFavorite.image_id.in_(image_ids),
+                )
+            )
+        ).scalars().all()
+        for favorite in favorites:
+            await db.delete(favorite)
+
+    await db.commit()
+    return len(to_change), len(image_ids) - len(to_change)
 
 
 async def purge_image_record(image: Image, db: AsyncSession) -> None:

@@ -71,7 +71,7 @@ class ApiHarness:
 
     def upload_image(self, token: str, filename: str, color: tuple[int, int, int]) -> dict:
         response = self.client.post(
-            "/images/upload",
+            "/images",
             headers=self.auth_headers(token),
             files=[("files", (filename, png_bytes(color), "image/png"))],
         )

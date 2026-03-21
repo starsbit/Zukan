@@ -15,17 +15,8 @@ async def list_tags(
     limit: int = Query(default=100, ge=1, le=1000),
     offset: int = Query(default=0, ge=0),
     category: int | None = None,
+    q: str | None = Query(default=None, min_length=1),
     _: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await tag_service.list_tags(db, limit=limit, offset=offset, category=category)
-
-
-@router.get("/search", response_model=list[TagRead])
-async def search_tags(
-    q: str = Query(min_length=1),
-    limit: int = Query(default=20, ge=1, le=100),
-    _: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await tag_service.search_tags(db, query=q, limit=limit)
+    return await tag_service.list_tags(db, limit=limit, offset=offset, category=category, query=q)

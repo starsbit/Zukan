@@ -10,13 +10,18 @@ from app.deps import current_user
 from app.models import User
 from app.schemas import (
     BatchUploadResponse,
+    BulkResult,
     DownloadRequest,
+    ImageBatchDelete,
+    ImageBatchUpdate,
     ImageDetail,
     ImageListResponse,
-    ImageMetadataUpdate,
+    ImageListState,
+    ImageUpdate,
     NsfwFilter,
     OnThisDayResponse,
     TagFilterMode,
+    TaggingJobQueuedResponse,
 )
 from app.services import images as image_service
 from app.services.storage import zip_images
@@ -25,7 +30,7 @@ router = APIRouter(prefix="/images", tags=["images"])
 
 
 @router.post(
-    "/upload",
+    "",
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload Images",
@@ -40,21 +45,66 @@ async def upload(
 
 
 @router.get(
-    "/trash",
+    "",
     response_model=ImageListResponse,
-    summary="List Trashed Images",
-    response_description="Paginated list of images currently in the trash.",
+    summary="List Images",
+    response_description="Paginated list of images matching the provided filters.",
 )
-async def list_trash(
+async def list_images(
+    state: ImageListState = Query(default=ImageListState.ACTIVE, description="Whether to list active or trashed images."),
+    tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
+    character_name: Annotated[
+        str | None,
+        Query(description="Case-insensitive partial match against the image's derived character name."),
+    ] = None,
+    exclude_tags: Annotated[str | None, Query(description="Comma-separated tags that must not be present.")] = None,
+    mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
+    nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW images are included."),
+    status_filter: Annotated[
+        str | None,
+        Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any."),
+    ] = None,
+    favorited: bool | None = Query(default=None, description="If true, return only images favorited by the current user."),
     page: int = Query(default=1, ge=1, description="1-based page number."),
     page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of images to return."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await image_service.list_trash(db, user, page, page_size)
+    return await image_service.list_images(
+        db,
+        user,
+        state,
+        tags,
+        character_name,
+        exclude_tags,
+        mode,
+        nsfw,
+        status_filter,
+        favorited,
+        page,
+        page_size,
+    )
 
 
-@router.post("/trash/empty", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
+@router.patch("", response_model=BulkResult, summary="Batch Update Images")
+async def batch_update_images(
+    body: ImageBatchUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await image_service.batch_update_images(db, body, user)
+
+
+@router.delete("", response_model=BulkResult, summary="Batch Purge Images")
+async def batch_purge_images(
+    body: ImageBatchDelete,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await image_service.batch_purge_images(db, body, user)
+
+
+@router.delete("/trash", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
 async def empty_trash(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -91,46 +141,6 @@ async def download_images(
 
 
 @router.get(
-    "",
-    response_model=ImageListResponse,
-    summary="List Images",
-    response_description="Paginated list of images matching the provided filters.",
-)
-async def list_images(
-    tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
-    character_name: Annotated[
-        str | None,
-        Query(description="Case-insensitive partial match against the image's derived character name."),
-    ] = None,
-    exclude_tags: Annotated[str | None, Query(description="Comma-separated tags that must not be present.")] = None,
-    mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
-    nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW images are included."),
-    status_filter: Annotated[
-        str | None,
-        Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any."),
-    ] = None,
-    favorited: bool | None = Query(default=None, description="If true, return only images favorited by the current user."),
-    page: int = Query(default=1, ge=1, description="1-based page number."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of images to return."),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await image_service.list_images(
-        db,
-        user,
-        tags,
-        character_name,
-        exclude_tags,
-        mode,
-        nsfw,
-        status_filter,
-        favorited,
-        page,
-        page_size,
-    )
-
-
-@router.get(
     "/{image_id}",
     response_model=ImageDetail,
     summary="Get Image Detail",
@@ -147,12 +157,12 @@ async def get_image(
 @router.patch(
     "/{image_id}",
     response_model=ImageDetail,
-    summary="Update Image Metadata",
-    response_description="Updated image metadata after applying manual tag and character name changes.",
+    summary="Update Image",
+    response_description="Updated image metadata and state after applying the requested changes.",
 )
-async def update_image_metadata(
+async def update_image(
     image_id: uuid.UUID,
-    body: ImageMetadataUpdate,
+    body: ImageUpdate,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -181,25 +191,7 @@ async def get_image_thumbnail(
     return FileResponse(image.thumbnail_path, media_type="image/webp")
 
 
-@router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Move Image To Trash")
-async def delete_image(
-    image_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await image_service.soft_delete_image(db, image_id, user)
-
-
-@router.post("/{image_id}/restore", status_code=status.HTTP_204_NO_CONTENT, summary="Restore Image From Trash")
-async def restore_image(
-    image_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await image_service.restore_image(db, image_id, user)
-
-
-@router.delete("/{image_id}/purge", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently Delete Image")
+@router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently Delete Image")
 async def purge_image(
     image_id: uuid.UUID,
     user: User = Depends(current_user),
@@ -208,34 +200,16 @@ async def purge_image(
     await image_service.purge_image(db, image_id, user)
 
 
-@router.post("/{image_id}/favorite", status_code=status.HTTP_204_NO_CONTENT, summary="Favorite Image")
-async def favorite_image(
-    image_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await image_service.favorite_image(db, image_id, user)
-
-
-@router.delete("/{image_id}/favorite", status_code=status.HTTP_204_NO_CONTENT, summary="Remove Image Favorite")
-async def unfavorite_image(
-    image_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await image_service.unfavorite_image(db, image_id, user)
-
-
 @router.post(
-    "/{image_id}/retag",
+    "/{image_id}/tagging-jobs",
     status_code=status.HTTP_202_ACCEPTED,
-    summary="Re-queue Image For Tagging",
-    response_description="Confirmation that the image was queued for tagging again.",
+    response_model=TaggingJobQueuedResponse,
+    summary="Queue Image Retagging",
 )
-async def retag_image(
+async def queue_image_tagging_job(
     image_id: uuid.UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await image_service.retag_image(db, image_id, user)
-    return {"message": "Re-queued for tagging"}
+    queued = await image_service.retag_image(db, image_id, user)
+    return {"queued": queued}

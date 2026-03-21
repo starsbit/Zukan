@@ -5,12 +5,13 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas import (
+    AlbumImageBatchUpdate,
     AdminStatsResponse,
     AdminUserUpdate,
-    BulkAlbumRequest,
-    BulkImageRequest,
     BulkResult,
     DownloadRequest,
+    ImageBatchDelete,
+    ImageBatchUpdate,
     OnThisDayResponse,
     OnThisDayYear,
 )
@@ -42,39 +43,49 @@ def _image_data(**overrides):
     return data
 
 
-# --- BulkImageRequest ---
+# --- ImageBatchUpdate ---
 
-def test_bulk_image_request_valid():
+def test_image_batch_update_valid():
     ids = [uuid.uuid4(), uuid.uuid4()]
-    m = BulkImageRequest(image_ids=ids)
+    m = ImageBatchUpdate(image_ids=ids, deleted=True)
     assert len(m.image_ids) == 2
 
 
-def test_bulk_image_request_empty_rejected():
+def test_image_batch_update_empty_rejected():
     with pytest.raises(ValidationError):
-        BulkImageRequest(image_ids=[])
+        ImageBatchUpdate(image_ids=[], deleted=True)
 
 
-def test_bulk_image_request_max_500():
+def test_image_batch_update_requires_mutation():
     with pytest.raises(ValidationError):
-        BulkImageRequest(image_ids=[uuid.uuid4() for _ in range(501)])
+        ImageBatchUpdate(image_ids=[uuid.uuid4()])
 
 
-def test_bulk_image_request_exactly_500():
-    m = BulkImageRequest(image_ids=[uuid.uuid4() for _ in range(500)])
+def test_image_batch_update_max_500():
+    with pytest.raises(ValidationError):
+        ImageBatchUpdate(image_ids=[uuid.uuid4() for _ in range(501)], favorited=True)
+
+
+def test_image_batch_update_exactly_500():
+    m = ImageBatchUpdate(image_ids=[uuid.uuid4() for _ in range(500)], favorited=False)
     assert len(m.image_ids) == 500
 
 
-# --- BulkAlbumRequest ---
+# --- AlbumImageBatchUpdate / ImageBatchDelete ---
 
-def test_bulk_album_request_valid():
-    m = BulkAlbumRequest(album_id=uuid.uuid4(), image_ids=[uuid.uuid4()])
-    assert m.album_id is not None
+def test_album_image_batch_update_valid():
+    m = AlbumImageBatchUpdate(image_ids=[uuid.uuid4()])
+    assert len(m.image_ids) == 1
 
 
-def test_bulk_album_request_empty_images_rejected():
+def test_album_image_batch_update_empty_images_rejected():
     with pytest.raises(ValidationError):
-        BulkAlbumRequest(album_id=uuid.uuid4(), image_ids=[])
+        AlbumImageBatchUpdate(image_ids=[])
+
+
+def test_image_batch_delete_valid():
+    m = ImageBatchDelete(image_ids=[uuid.uuid4()])
+    assert len(m.image_ids) == 1
 
 
 # --- BulkResult ---
