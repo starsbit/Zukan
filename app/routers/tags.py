@@ -1,23 +1,13 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import current_user
-from app.models import Tag, User
-from app.schemas import CATEGORY_NAMES, TagRead
+from app.models import User
+from app.schemas import TagRead
+from app.services import tags as tag_service
 
 router = APIRouter(prefix="/tags", tags=["tags"])
-
-
-def _to_tag_read(tag: Tag) -> TagRead:
-    return TagRead(
-        id=tag.id,
-        name=tag.name,
-        category=tag.category,
-        category_name=CATEGORY_NAMES.get(tag.category, "unknown"),
-        image_count=tag.image_count,
-    )
 
 
 @router.get("", response_model=list[TagRead])
@@ -28,11 +18,7 @@ async def list_tags(
     _: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Tag).order_by(Tag.image_count.desc()).offset(offset).limit(limit)
-    if category is not None:
-        stmt = stmt.where(Tag.category == category)
-    tags = (await db.execute(stmt)).scalars().all()
-    return [_to_tag_read(t) for t in tags]
+    return await tag_service.list_tags(db, limit=limit, offset=offset, category=category)
 
 
 @router.get("/search", response_model=list[TagRead])
@@ -42,11 +28,4 @@ async def search_tags(
     _: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = (
-        select(Tag)
-        .where(Tag.name.ilike(f"{q}%"))
-        .order_by(Tag.image_count.desc())
-        .limit(limit)
-    )
-    tags = (await db.execute(stmt)).scalars().all()
-    return [_to_tag_read(t) for t in tags]
+    return await tag_service.search_tags(db, query=q, limit=limit)

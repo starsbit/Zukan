@@ -10,8 +10,8 @@ from app.database import AsyncSessionLocal, init_db
 from app.models import Image, ImageTag, Tag, User
 from app.routers import auth, images, tags
 from app.routers import admin, albums, bulk
-from app.routers.images import set_tag_queue
 from app.services.auth import get_user_by_username, hash_password
+from app.services.images import set_tag_queue
 from app.services.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()

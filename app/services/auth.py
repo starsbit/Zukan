@@ -4,12 +4,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
+from fastapi import HTTPException
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import RefreshToken, User
+from app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
 ALGORITHM = "HS256"
 
@@ -95,3 +97,51 @@ async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     result = await db.execute(select(User).where(User.email == email))
     return result.scalar_one_or_none()
+
+
+async def register_user(db: AsyncSession, body: UserRegister) -> User:
+    if await get_user_by_username(db, body.username):
+        raise HTTPException(status_code=400, detail="Username already taken")
+    if await get_user_by_email(db, body.email):
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        username=body.username,
+        email=body.email,
+        hashed_password=hash_password(body.password),
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+async def login_user(db: AsyncSession, body: UserLogin) -> TokenResponse:
+    user = await get_user_by_username(db, body.username)
+    if user is None or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    access = create_access_token(user.id)
+    refresh = await create_refresh_token(db, user.id)
+    return TokenResponse(access_token=access, refresh_token=refresh)
+
+
+async def refresh_access_token(db: AsyncSession, raw_refresh_token: str) -> AccessTokenResponse:
+    result = await rotate_refresh_token(db, raw_refresh_token)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    _new_raw, user_id = result
+    access = create_access_token(user_id)
+    return AccessTokenResponse(access_token=access)
+
+
+async def update_current_user(db: AsyncSession, user: User, body: UserUpdate) -> User:
+    if body.show_nsfw is not None:
+        user.show_nsfw = body.show_nsfw
+    if body.password is not None:
+        user.hashed_password = hash_password(body.password)
+
+    await db.commit()
+    await db.refresh(user)
+    return user
