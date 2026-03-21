@@ -297,6 +297,25 @@ export class GalleryPageComponent {
       });
   }
 
+  deleteMedia(media: MediaRead): void {
+    this.mediaService.deleteMedia(media.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (this.selectedMedia?.id === media.id) {
+            this.selectedMedia = null;
+          }
+
+          if (this.isSelected(media.id)) {
+            this.toggleSelection(media);
+          }
+        },
+        error: () => {
+          // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
   emptyTrash(): void {
     this.selectedMedia = null;
     this.mediaService.emptyTrash()

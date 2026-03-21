@@ -164,7 +164,9 @@
 <app-gallery-viewer
   [media]="selectedMedia"
   [canRestore]="isTrashView"
+  [canDelete]="!isTrashView"
   (closed)="closeMedia()"
+  (deleteRequested)="deleteMedia($event)"
   (restoreRequested)="restoreMedia($event)"
 />
 

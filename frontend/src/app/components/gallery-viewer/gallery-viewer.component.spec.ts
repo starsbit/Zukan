@@ -1,6 +1,7 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
 import { of, Subject, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GalleryViewerComponent } from './gallery-viewer.component';
 import { MediaUploadService } from '../../services/media-upload.service';
@@ -177,11 +178,67 @@ describe('GalleryViewerComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    (fixture.nativeElement.querySelector('.close-button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('button[aria-label="Close viewer"]') as HTMLButtonElement).click();
     (fixture.nativeElement.querySelector('.viewer-backdrop') as HTMLElement).click();
     component.handleEscape();
 
     expect(closedSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('opens the tags sidebar from the toolbar', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    fixture.componentRef.setInput('media', createMediaRead({ tags: ['fox', 'tail', 'smile'] }));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeNull();
+
+    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(component.tagsPanelOpen).toBe(true);
+    expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeTruthy();
+    expect(fixture.nativeElement.textContent).toContain('fox');
+    expect(fixture.nativeElement.textContent).toContain('tail');
+  });
+
+  it('emits delete when the delete action is used', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+    const deleteSpy = vi.fn();
+    component.deleteRequested.subscribe(deleteSpy);
+
+    fixture.componentRef.setInput('media', media);
+    fixture.componentRef.setInput('canDelete', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('button[aria-label="Delete media"]') as HTMLButtonElement).click();
+
+    expect(deleteSpy).toHaveBeenCalledWith(media);
+  });
+
+  it('zooms images with the mouse wheel and resets pan when zoom returns to one', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    fixture.componentRef.setInput('media', createMediaRead());
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    const preventDefault = vi.fn();
+    component.onWheelZoom({ deltaY: -120, preventDefault } as unknown as WheelEvent);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(component.zoom).toBeGreaterThan(1);
+
+    component.resetZoom();
+
+    expect(component.zoom).toBe(1);
+    expect(component.panX).toBe(0);
+    expect(component.panY).toBe(0);
   });
 
   it('emits restore when the trash action is used', async () => {

@@ -55,7 +55,9 @@ class StubGalleryMediaCardComponent {
 class StubGalleryViewerComponent {
   @Input() media: MediaRead | null = null;
   @Input() canRestore = false;
+  @Input() canDelete = false;
   @Output() readonly closed = new EventEmitter<void>();
+  @Output() readonly deleteRequested = new EventEmitter<MediaRead>();
   @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
 }
 
@@ -79,6 +81,7 @@ describe('GalleryPageComponent', () => {
     batchUpdateMedia: ReturnType<typeof vi.fn>;
     restoreMediaBatch: ReturnType<typeof vi.fn>;
     restoreMedia: ReturnType<typeof vi.fn>;
+    deleteMedia: ReturnType<typeof vi.fn>;
     emptyTrash: ReturnType<typeof vi.fn>;
   };
   let mediaUploadService: {
@@ -98,6 +101,7 @@ describe('GalleryPageComponent', () => {
       batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMediaBatch: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMedia: vi.fn().mockReturnValue(of(createMediaRead())),
+      deleteMedia: vi.fn().mockReturnValue(of(undefined)),
       emptyTrash: vi.fn().mockReturnValue(of(null))
     };
     mediaUploadService = {
@@ -360,6 +364,18 @@ describe('GalleryPageComponent', () => {
     component.restoreMedia(media);
 
     expect(mediaService.restoreMedia).toHaveBeenCalledWith(media.id);
+    expect(component.selectedMedia).toBeNull();
+    expect(component.selectedCount).toBe(0);
+  });
+
+  it('deletes a single active item and closes the viewer for that item', () => {
+    const media = createMediaRead();
+    component.selectedMedia = media;
+    component.toggleSelection(media);
+
+    component.deleteMedia(media);
+
+    expect(mediaService.deleteMedia).toHaveBeenCalledWith(media.id);
     expect(component.selectedMedia).toBeNull();
     expect(component.selectedCount).toBe(0);
   });
