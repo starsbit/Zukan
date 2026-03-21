@@ -1,10 +1,29 @@
-<button
+<article
   class="media-card"
-  type="button"
+  [class.media-card-selection-mode]="selectionMode"
+  [class.media-card-selected]="selected"
   [style.aspect-ratio]="aspectRatio"
-  [attr.aria-label]="'Open ' + (media.original_filename || media.filename)"
-  (click)="openMedia()"
+  [attr.aria-label]="selectionMode ? selectionLabel : 'Open ' + (media.original_filename || media.filename)"
+  [attr.aria-pressed]="selectionMode ? selected : null"
+  tabindex="0"
+  role="button"
+  (click)="onCardClick()"
+  (keydown.enter)="onCardKeydown($event)"
+  (keydown.space)="onCardKeydown($event)"
 >
+  <button
+    mat-icon-button
+    type="button"
+    class="selection-toggle"
+    [class.selection-toggle-visible]="selectionMode || selected"
+    [class.selection-toggle-selected]="selected"
+    [attr.aria-label]="selectionLabel"
+    [attr.aria-pressed]="selected"
+    (click)="toggleSelection($event)"
+  >
+    <mat-icon>{{ selected ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+  </button>
+
   @if (thumbnailUrl) {
     <img
       class="media-thumb"
@@ -37,4 +56,4 @@
     <p>{{ media.original_filename || media.filename }}</p>
     <span>{{ media.metadata.captured_at | date:'mediumDate' }}</span>
   </div>
-</button>
+</article>

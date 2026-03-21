@@ -36,7 +36,7 @@ from backend.app.services.storage import (
     sample_media_frames,
     save_upload,
 )
-from backend.app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult, derive_character_name, tagger
+from backend.app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult, derive_character_name, tag_names_mark_nsfw, tagger
 
 _tag_queue: asyncio.Queue | None = None
 
@@ -456,7 +456,7 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
             tag.media_count += 1
             db.add(MediaTag(media_id=media_id, tag_id=tag.id, confidence=1.0))
         media.tags = normalized_tags
-        media.is_nsfw = any(tag in NSFW_RATING_TAGS for tag in normalized_tags)
+        media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
 
     if "character_name" in payload.model_fields_set:
         media.character_name = payload.character_name.strip() if payload.character_name and payload.character_name.strip() else None
@@ -693,7 +693,7 @@ def aggregate_tagging_results(results: list[TaggingResult]) -> TaggingResult:
     return TaggingResult(
         predictions=predictions,
         character_name=derive_character_name(predictions),
-        is_nsfw=any(result.is_nsfw for result in results),
+        is_nsfw=any(result.is_nsfw for result in results) or tag_names_mark_nsfw([prediction.name for prediction in predictions]),
     )
 
 
@@ -720,6 +720,6 @@ async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: 
 
     media.tags = tag_names
     media.character_name = tagging_result.character_name
-    media.is_nsfw = tagging_result.is_nsfw
+    media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(tag_names)
     media.tagging_status = "done"
     await db.commit()

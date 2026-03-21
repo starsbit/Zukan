@@ -135,9 +135,63 @@ describe('GalleryMediaCardComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('.media-card') as HTMLElement).click();
 
     expect(openSpy).toHaveBeenCalledWith(media);
+  });
+
+  it('shows the selection control and pressed state when selected', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.componentRef.setInput('selectionMode', true);
+    fixture.componentRef.setInput('selected', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const toggle = fixture.nativeElement.querySelector('.selection-toggle') as HTMLButtonElement;
+    expect(toggle).toBeTruthy();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(toggle.textContent).toContain('check_circle');
+  });
+
+  it('emits selection toggles from the circle without opening the media', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+    const toggleSpy = vi.fn();
+    const openSpy = vi.fn();
+    component.selectionToggled.subscribe(toggleSpy);
+    component.open.subscribe(openSpy);
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    (fixture.nativeElement.querySelector('.selection-toggle') as HTMLButtonElement).click();
+
+    expect(toggleSpy).toHaveBeenCalledWith(media);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('toggles selection from the card surface while selection mode is active', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+    const toggleSpy = vi.fn();
+    const openSpy = vi.fn();
+    component.selectionToggled.subscribe(toggleSpy);
+    component.open.subscribe(openSpy);
+
+    fixture.componentRef.setInput('media', media);
+    fixture.componentRef.setInput('selectionMode', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    (fixture.nativeElement.querySelector('.media-card') as HTMLElement).click();
+
+    expect(toggleSpy).toHaveBeenCalledWith(media);
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it('computes the aspect ratio from metadata and revokes object URLs on destroy', async () => {

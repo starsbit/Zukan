@@ -35,7 +35,10 @@ class StubGalleryNavbarComponent {
 })
 class StubGalleryMediaCardComponent {
   @Input({ required: true }) media!: MediaRead;
+  @Input() selectionMode = false;
+  @Input() selected = false;
   @Output() readonly open = new EventEmitter<MediaRead>();
+  @Output() readonly selectionToggled = new EventEmitter<MediaRead>();
 }
 
 @Component({
@@ -60,10 +63,12 @@ describe('GalleryPageComponent', () => {
   let component: GalleryPageComponent;
   let mediaService: {
     items$: BehaviorSubject<MediaRead[]>;
-    loading$: BehaviorSubject<boolean>;
+    requestLoading$: BehaviorSubject<boolean>;
     loaded$: BehaviorSubject<boolean>;
     error$: BehaviorSubject<unknown | null>;
+    mutationPending$: BehaviorSubject<boolean>;
     loadPage: ReturnType<typeof vi.fn>;
+    batchUpdateMedia: ReturnType<typeof vi.fn>;
   };
   let mediaUploadService: {
     refreshRequested$: Subject<void>;
@@ -74,10 +79,12 @@ describe('GalleryPageComponent', () => {
   beforeEach(async () => {
     mediaService = {
       items$: new BehaviorSubject<MediaRead[]>([]),
-      loading$: new BehaviorSubject(false),
+      requestLoading$: new BehaviorSubject(false),
       loaded$: new BehaviorSubject(false),
       error$: new BehaviorSubject<unknown | null>(null),
-      loadPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] }))
+      mutationPending$: new BehaviorSubject(false),
+      loadPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
+      batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 }))
     };
     mediaUploadService = {
       refreshRequested$: new Subject<void>(),
@@ -132,6 +139,7 @@ describe('GalleryPageComponent', () => {
     component.applySearch(nextState);
 
     expect(component.searchState).toEqual(nextState);
+    expect(component.selectedCount).toBe(0);
     expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery(nextState.searchText, nextState.filters));
   });
 
@@ -146,11 +154,11 @@ describe('GalleryPageComponent', () => {
   });
 
   it('renders loading, error, and empty states from the service streams', () => {
-    mediaService.loading$.next(true);
+    mediaService.requestLoading$.next(true);
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Loading media...');
 
-    mediaService.loading$.next(false);
+    mediaService.requestLoading$.next(false);
     mediaService.error$.next(new Error('broken'));
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Gallery unavailable');
@@ -166,6 +174,65 @@ describe('GalleryPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('app-gallery-media-card')).toHaveLength(2);
+  });
+
+  it('tracks multi-selection and exits selection mode when cleared', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+
+    component.toggleSelection(media);
+    expect(component.selectionMode).toBe(true);
+    expect(component.selectedCount).toBe(1);
+    expect(component.isSelected(media.id)).toBe(true);
+
+    component.toggleSelection(second);
+    expect(component.selectedCount).toBe(2);
+
+    component.toggleSelection(media);
+    expect(component.selectedCount).toBe(1);
+    expect(component.isSelected(media.id)).toBe(false);
+
+    component.clearSelection();
+    expect(component.selectionMode).toBe(false);
+    expect(component.selectedCount).toBe(0);
+  });
+
+  it('routes open requests into selection toggles while selection mode is active', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+
+    component.toggleSelection(media);
+    component.openMedia(second);
+
+    expect(component.selectedMedia).toBeNull();
+    expect(component.isSelected(second.id)).toBe(true);
+    expect(component.selectedCount).toBe(2);
+  });
+
+  it('deletes the selected items and clears selection on success', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+    component.toggleSelection(media);
+    component.toggleSelection(second);
+
+    component.deleteSelected();
+
+    expect(mediaService.batchUpdateMedia).toHaveBeenCalledWith({
+      media_ids: [media.id, second.id],
+      deleted: true
+    });
+    expect(component.selectedCount).toBe(0);
+  });
+
+  it('keeps the current selection when delete fails', () => {
+    mediaService.batchUpdateMedia.mockReturnValueOnce(throwError(() => new Error('broken')));
+    const media = createMediaRead();
+    component.toggleSelection(media);
+
+    component.deleteSelected();
+
+    expect(component.selectedCount).toBe(1);
+    expect(component.selectionMode).toBe(true);
   });
 
   it('swallows load errors because the template renders the service error state', () => {

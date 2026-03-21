@@ -1,6 +1,7 @@
 import { AsyncPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -20,6 +21,7 @@ import { MediaUploadService } from '../../services/media-upload.service';
   selector: 'app-gallery-page',
   imports: [
     AsyncPipe,
+    MatButtonModule,
     MatIconModule,
     MatProgressSpinnerModule,
     GalleryMediaCardComponent,
@@ -38,12 +40,14 @@ export class GalleryPageComponent {
   private readonly mediaUploadService = inject(MediaUploadService);
 
   readonly items$ = this.mediaService.items$;
-  readonly loading$ = this.mediaService.loading$;
+  readonly loading$ = this.mediaService.requestLoading$;
   readonly loaded$ = this.mediaService.loaded$;
   readonly error$ = this.mediaService.error$;
+  readonly mutationPending$ = this.mediaService.mutationPending$;
 
   selectedMedia: MediaRead | null = null;
   dragActive = false;
+  selectedMediaIds = new Set<string>();
   private dragDepth = 0;
   searchState: GallerySearchState = {
     searchText: '',
@@ -67,10 +71,16 @@ export class GalleryPageComponent {
   applySearch(searchState: GallerySearchState): void {
     this.searchState = searchState;
     this.activeQuery = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
+    this.clearSelection();
     this.loadMedia(this.activeQuery);
   }
 
   openMedia(media: MediaRead): void {
+    if (this.selectionMode) {
+      this.toggleSelection(media);
+      return;
+    }
+
     this.selectedMedia = media;
   }
 
@@ -127,6 +137,59 @@ export class GalleryPageComponent {
     this.dragDepth = 0;
     this.dragActive = false;
     this.mediaUploadService.startUpload(Array.from(event.dataTransfer?.files ?? []));
+  }
+
+  toggleSelection(media: MediaRead): void {
+    const next = new Set(this.selectedMediaIds);
+
+    if (next.has(media.id)) {
+      next.delete(media.id);
+    } else {
+      next.add(media.id);
+    }
+
+    this.selectedMediaIds = next;
+
+    if (this.selectionMode) {
+      this.selectedMedia = null;
+    }
+  }
+
+  clearSelection(): void {
+    this.selectedMediaIds = new Set<string>();
+  }
+
+  isSelected(mediaId: string): boolean {
+    return this.selectedMediaIds.has(mediaId);
+  }
+
+  deleteSelected(): void {
+    if (this.selectedMediaIds.size === 0) {
+      return;
+    }
+
+    this.selectedMedia = null;
+    this.mediaService.batchUpdateMedia({
+      media_ids: Array.from(this.selectedMediaIds),
+      deleted: true
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.clearSelection();
+        },
+        error: () => {
+          // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
+  get selectionMode(): boolean {
+    return this.selectedMediaIds.size > 0;
+  }
+
+  get selectedCount(): number {
+    return this.selectedMediaIds.size;
   }
 
   private loadMedia(query = this.activeQuery): void {

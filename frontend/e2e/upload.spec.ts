@@ -92,3 +92,54 @@ test('marks red uploads as tagged and leaves them hidden from the default galler
   await page.getByRole('button', { name: 'Refresh gallery' }).click();
   await expect(page.locator('img[alt="red-upload.png"]')).toHaveCount(0);
 });
+
+test('selects multiple images from the gallery and moves them to trash', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  const firstUpload = await request.post('http://127.0.0.1:8000/media', {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: bluePngFile('multi-select-a.png', 'a')
+    }
+  });
+  await expect(firstUpload).toBeOK();
+
+  const secondUpload = await request.post('http://127.0.0.1:8000/media', {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: bluePngFile('multi-select-b.png', 'b')
+    }
+  });
+  await expect(secondUpload).toBeOK();
+
+  await page.goto('/gallery');
+  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+
+  const firstCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-a.png"]') }).first();
+  const secondCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-b.png"]') }).first();
+
+  await firstCard.hover();
+  await firstCard.getByRole('button', { name: 'Select multi-select-a.png' }).click();
+  await expect(page.getByText('1 selected')).toBeVisible();
+
+  await secondCard.click();
+  await expect(page.getByText('2 selected')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.locator('img[alt="multi-select-a.png"]')).toHaveCount(0);
+  await expect(page.locator('img[alt="multi-select-b.png"]')).toHaveCount(0);
+
+  const activeItems = await listMedia(request, session.accessToken);
+  expect(activeItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(false);
+  expect(activeItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(false);
+
+  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  expect(trashedItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
+  expect(trashedItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+});

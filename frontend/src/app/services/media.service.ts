@@ -67,6 +67,14 @@ export class MediaService {
     map((state) => state.selectedMediaId ? state.details[state.selectedMediaId] ?? null : null),
     distinctUntilChanged()
   );
+  readonly requestLoading$ = this.state$.pipe(
+    map((state) => state.request.loading),
+    distinctUntilChanged()
+  );
+  readonly mutationPending$ = this.state$.pipe(
+    map((state) => state.mutationPending),
+    distinctUntilChanged()
+  );
   readonly loading$ = this.state$.pipe(
     map((state) => state.request.loading || state.mutationPending),
     distinctUntilChanged()

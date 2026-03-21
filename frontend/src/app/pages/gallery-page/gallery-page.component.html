@@ -6,12 +6,34 @@
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
 >
-  <app-gallery-navbar
-    [searchState]="searchState"
-    (searchApplied)="applySearch($event)"
-    (refreshRequested)="reload()"
-    (uploadRequested)="openUploadDialog()"
-  />
+  @if (selectionMode) {
+    <section class="selection-toolbar" aria-label="Selection toolbar">
+      <div class="selection-toolbar-start">
+        <button mat-icon-button type="button" aria-label="Unselect all items" (click)="clearSelection()">
+          <mat-icon>close</mat-icon>
+        </button>
+        <p>{{ selectedCount }} selected</p>
+      </div>
+
+      <button
+        mat-flat-button
+        type="button"
+        class="selection-delete-button"
+        [disabled]="(mutationPending$ | async) || selectedCount === 0"
+        (click)="deleteSelected()"
+      >
+        <mat-icon>delete</mat-icon>
+        <span>Delete</span>
+      </button>
+    </section>
+  } @else {
+    <app-gallery-navbar
+      [searchState]="searchState"
+      (searchApplied)="applySearch($event)"
+      (refreshRequested)="reload()"
+      (uploadRequested)="openUploadDialog()"
+    />
+  }
 
   @if (dragActive) {
     <div class="drop-overlay" aria-hidden="true">
@@ -53,7 +75,10 @@
         @for (item of items; track item.id) {
           <app-gallery-media-card
             [media]="item"
+            [selectionMode]="selectionMode"
+            [selected]="isSelected(item.id)"
             (open)="openMedia($event)"
+            (selectionToggled)="toggleSelection($event)"
           />
         }
       </section>

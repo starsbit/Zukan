@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, OnDestroy, Output, SimpleChanges, inject } from '@angular/core';
 import { CommonModule, DatePipe } from '@angular/common';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
@@ -8,7 +9,7 @@ import { MediaClientService } from '../../services/web/media-client.service';
 
 @Component({
   selector: 'app-gallery-media-card',
-  imports: [CommonModule, DatePipe, MatIconModule, MatProgressSpinnerModule],
+  imports: [CommonModule, DatePipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   templateUrl: './gallery-media-card.component.html',
   styleUrl: './gallery-media-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -19,7 +20,10 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   private thumbnailRequestId = 0;
 
   @Input({ required: true }) media!: MediaRead;
+  @Input() selectionMode = false;
+  @Input() selected = false;
   @Output() readonly open = new EventEmitter<MediaRead>();
+  @Output() readonly selectionToggled = new EventEmitter<MediaRead>();
 
   thumbnailUrl: string | null = null;
   loadingThumbnail = false;
@@ -35,8 +39,23 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     this.revokeThumbnailUrl();
   }
 
-  openMedia(): void {
+  onCardClick(): void {
+    if (this.selectionMode) {
+      this.selectionToggled.emit(this.media);
+      return;
+    }
+
     this.open.emit(this.media);
+  }
+
+  onCardKeydown(event: KeyboardEvent): void {
+    event.preventDefault();
+    this.onCardClick();
+  }
+
+  toggleSelection(event: Event): void {
+    event.stopPropagation();
+    this.selectionToggled.emit(this.media);
   }
 
   get aspectRatio(): number {
@@ -51,6 +70,11 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
 
   get statusBadgeLabel(): string {
     return this.media.tagging_status === 'processing' ? 'Processing' : 'Pending';
+  }
+
+  get selectionLabel(): string {
+    const name = this.media.original_filename || this.media.filename;
+    return `${this.selected ? 'Unselect' : 'Select'} ${name}`;
   }
 
   private loadThumbnail(): void {

@@ -7,7 +7,7 @@ import pandas as pd
 from PIL import Image
 
 from backend.app.services import tagger as tagger_module
-from backend.app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult
+from backend.app.services.tagger import NSFW_HINT_TAGS, NSFW_RATING_TAGS, TagPrediction, TaggingResult
 
 
 def test_questionable_is_nsfw():
@@ -28,6 +28,11 @@ def test_sensitive_is_not_nsfw():
 
 def test_nsfw_set_size():
     assert len(NSFW_RATING_TAGS) == 2
+
+
+def test_nsfw_hint_tags_include_direct_nsfw_terms():
+    assert "nsfw" in NSFW_HINT_TAGS
+    assert "nude" in NSFW_HINT_TAGS
 
 
 def test_preprocess_converts_to_expected_shape_and_rgb():
@@ -114,6 +119,32 @@ def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_p
     assert result.is_nsfw is False
     assert result.character_name == "heroine_a"
     assert [item.name for item in result.predictions] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
+
+
+def test_predict_sync_marks_direct_nsfw_tags_as_nsfw_even_without_rating_tags(tmp_path, monkeypatch):
+    wd = tagger_module.WDTagger()
+    wd._input_name = "input"
+    wd._input_size = 8
+    wd._tags_df = pd.DataFrame(
+        [
+            {"name": "nsfw", "category": 0},
+            {"name": "rating:general", "category": 9},
+            {"name": "hero", "category": 4},
+        ]
+    )
+    wd._session = Mock()
+    wd._session.run.return_value = [np.array([[0.96, 0.99, 0.8]], dtype=np.float32)]
+
+    monkeypatch.setattr(tagger_module.settings, "tagger_threshold_character", 0.6)
+    monkeypatch.setattr(tagger_module.settings, "tagger_threshold_general", 0.75)
+
+    image_path = tmp_path / "nsfw.png"
+    Image.new("RGB", (16, 12), color=(255, 0, 0)).save(image_path)
+
+    result = wd._predict_sync(str(image_path))
+
+    assert result.is_nsfw is True
+    assert [item.name for item in result.predictions] == ["nsfw", "rating:general", "hero"]
 
 
 def test_predict_uses_executor(monkeypatch):

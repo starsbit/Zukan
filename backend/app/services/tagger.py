@@ -14,6 +14,20 @@ from PIL import Image
 from backend.app.config import settings
 
 NSFW_RATING_TAGS = {"rating:questionable", "rating:explicit"}
+NSFW_HINT_TAGS = {
+    "nsfw",
+    "explicit",
+    "nude",
+    "nudity",
+    "nipples",
+    "areolae",
+    "penis",
+    "pussy",
+    "vagina",
+    "sex",
+    "censored",
+    "uncensored",
+}
 
 _executor = ThreadPoolExecutor(max_workers=1)
 
@@ -42,6 +56,11 @@ def derive_character_name(predictions: list[TagPrediction]) -> str | None:
     if not character_predictions:
         return None
     return max(character_predictions, key=lambda prediction: prediction.confidence).name
+
+
+def tag_names_mark_nsfw(tag_names: list[str]) -> bool:
+    normalized = {tag_name.strip().lower() for tag_name in tag_names if tag_name.strip()}
+    return bool(normalized & NSFW_RATING_TAGS or normalized & NSFW_HINT_TAGS)
 
 
 class WDTagger:
@@ -101,7 +120,7 @@ class WDTagger:
             if float(prob) >= threshold:
                 predictions.append(TagPrediction(name=name, category=category, confidence=float(prob)))
 
-        is_nsfw = best_rating[0] in NSFW_RATING_TAGS
+        is_nsfw = best_rating[0] in NSFW_RATING_TAGS or tag_names_mark_nsfw([prediction.name for prediction in predictions])
         return TaggingResult(
             predictions=predictions,
             character_name=derive_character_name(predictions),
