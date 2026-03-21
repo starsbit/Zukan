@@ -17,6 +17,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     username: str
     password: str
+    remember_me: bool = False
 
 
 class UserRead(BaseModel):
@@ -43,6 +44,7 @@ class TokenResponse(BaseModel):
 
 class AccessTokenResponse(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
 
 

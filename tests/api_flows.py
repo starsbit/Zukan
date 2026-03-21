@@ -47,6 +47,23 @@ def assert_auth_endpoints(api):
     assert refreshed.status_code == 200
     assert refreshed.json()["token_type"] == "bearer"
     assert refreshed.json()["access_token"]
+    assert refreshed.json()["refresh_token"]
+
+    second_refresh = api.client.post("/auth/refresh", json={"refresh_token": refreshed.json()["refresh_token"]})
+    assert second_refresh.status_code == 200
+    assert second_refresh.json()["access_token"]
+    assert second_refresh.json()["refresh_token"]
+
+    remembered_login = api.client.post("/auth/login", json={
+        "username": "alice",
+        "password": "newpassword123",
+        "remember_me": True,
+    })
+    assert remembered_login.status_code == 200
+    remembered_json = remembered_login.json()
+    remembered_refresh = api.client.post("/auth/refresh", json={"refresh_token": remembered_json["refresh_token"]})
+    assert remembered_refresh.status_code == 200
+    assert remembered_refresh.json()["refresh_token"]
 
     logged_out = api.client.post("/auth/logout", json={"refresh_token": auth["refresh_token"]})
     assert logged_out.status_code == 204

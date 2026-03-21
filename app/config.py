@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
+    remember_me_refresh_token_expire_days: int = 90
 
     host: str = "0.0.0.0"
     port: int = 8000

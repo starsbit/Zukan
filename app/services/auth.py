@@ -41,12 +41,19 @@ def _hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def create_refresh_token(db: AsyncSession, user_id: uuid.UUID) -> str:
+def _refresh_token_expiry_days(remember_me: bool) -> int:
+    if remember_me:
+        return settings.remember_me_refresh_token_expire_days
+    return settings.refresh_token_expire_days
+
+
+async def create_refresh_token(db: AsyncSession, user_id: uuid.UUID, *, remember_me: bool = False) -> str:
     raw = secrets.token_hex(32)
     record = RefreshToken(
         user_id=user_id,
         token_hash=_hash_token(raw),
-        expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
+        remember_me=remember_me,
+        expires_at=datetime.now(UTC) + timedelta(days=_refresh_token_expiry_days(remember_me)),
     )
     db.add(record)
     await db.commit()
@@ -66,7 +73,8 @@ async def rotate_refresh_token(db: AsyncSession, raw_token: str) -> tuple[str, u
     new_record = RefreshToken(
         user_id=record.user_id,
         token_hash=_hash_token(new_raw),
-        expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days),
+        remember_me=record.remember_me,
+        expires_at=datetime.now(UTC) + timedelta(days=_refresh_token_expiry_days(record.remember_me)),
     )
     db.add(new_record)
     await db.commit()
@@ -122,7 +130,7 @@ async def login_user(db: AsyncSession, body: UserLogin) -> TokenResponse:
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access = create_access_token(user.id)
-    refresh = await create_refresh_token(db, user.id)
+    refresh = await create_refresh_token(db, user.id, remember_me=body.remember_me)
     return TokenResponse(access_token=access, refresh_token=refresh)
 
 
@@ -131,9 +139,9 @@ async def refresh_access_token(db: AsyncSession, raw_refresh_token: str) -> Acce
     if result is None:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    _new_raw, user_id = result
+    new_raw, user_id = result
     access = create_access_token(user_id)
-    return AccessTokenResponse(access_token=access)
+    return AccessTokenResponse(access_token=access, refresh_token=new_raw)
 
 
 async def update_current_user(db: AsyncSession, user: User, body: UserUpdate) -> User:

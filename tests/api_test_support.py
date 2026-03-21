@@ -44,6 +44,7 @@ class ApiHarness:
         *,
         email: str | None = None,
         password: str = "password123",
+        remember_me: bool = False,
     ) -> dict:
         email = email or f"{username}@example.com"
         register = self.client.post("/auth/register", json={
@@ -56,6 +57,7 @@ class ApiHarness:
         login = self.client.post("/auth/login", json={
             "username": username,
             "password": password,
+            "remember_me": remember_me,
         })
         assert login.status_code == 200, login.text
         tokens = login.json()
@@ -64,6 +66,7 @@ class ApiHarness:
             "access_token": tokens["access_token"],
             "refresh_token": tokens["refresh_token"],
             "password": password,
+            "remember_me": remember_me,
         }
 
     def upload_image(self, token: str, filename: str, color: tuple[int, int, int]) -> dict:

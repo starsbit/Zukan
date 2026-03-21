@@ -34,6 +34,9 @@ async def init_db():
             text("CREATE INDEX IF NOT EXISTS idx_images_tags ON images USING GIN(tags)")
         )
         await conn.execute(
+            text("ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS remember_me BOOLEAN NOT NULL DEFAULT FALSE")
+        )
+        await conn.execute(
             text("ALTER TABLE images ADD COLUMN IF NOT EXISTS thumbnail_path VARCHAR(1024)")
         )
         await conn.execute(

@@ -4,9 +4,13 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import HTTPException
 from jose import jwt
+from sqlalchemy import select
 
+from app.models import RefreshToken
 from app.services.auth import (
     ALGORITHM,
+    _hash_token,
+    _refresh_token_expiry_days,
     create_access_token,
     decode_access_token,
     login_user,
@@ -141,6 +145,32 @@ def test_login_user_returns_tokens_and_rejects_bad_password(api):
     assert exc.value.status_code == 401
 
 
+def test_login_user_remember_me_sets_long_lived_refresh_session(api):
+    created = api.register_and_login("service-auth-remember")
+    user_id = uuid.UUID(created["user"]["id"])
+
+    async def _exercise(session):
+        before = datetime.now(UTC)
+        tokens = await login_user(
+            session,
+            UserLogin(username="service-auth-remember", password="password123", remember_me=True),
+        )
+        after = datetime.now(UTC)
+
+        result = await session.execute(select(RefreshToken).where(RefreshToken.token_hash == _hash_token(tokens.refresh_token)))
+        record = result.scalar_one()
+
+        assert decode_access_token(tokens.access_token) == user_id
+        assert record.remember_me is True
+
+        lower_bound = before + timedelta(days=_refresh_token_expiry_days(True)) - timedelta(seconds=1)
+        upper_bound = after + timedelta(days=_refresh_token_expiry_days(True)) + timedelta(seconds=1)
+        expires_at = record.expires_at.replace(tzinfo=UTC)
+        assert lower_bound <= expires_at <= upper_bound
+
+    api.run_db(_exercise)
+
+
 def test_refresh_and_revoke_refresh_token_flow(api):
     created = api.register_and_login("service-auth-refresh")
     original_refresh = created["refresh_token"]
@@ -148,12 +178,37 @@ def test_refresh_and_revoke_refresh_token_flow(api):
     async def _exercise(session):
         refreshed = await refresh_access_token(session, original_refresh)
         assert decode_access_token(refreshed.access_token) == uuid.UUID(created["user"]["id"])
+        assert refreshed.refresh_token
+
+        second_refresh = await refresh_access_token(session, refreshed.refresh_token)
+        assert decode_access_token(second_refresh.access_token) == uuid.UUID(created["user"]["id"])
+        assert second_refresh.refresh_token
 
         rotated = await rotate_refresh_token(session, original_refresh)
         assert rotated is None
 
         revoked = await revoke_refresh_token(session, "not-a-real-token")
         assert revoked is False
+
+    api.run_db(_exercise)
+
+
+def test_refresh_rotation_preserves_remember_me_duration(api):
+    created = api.register_and_login("service-auth-refresh-remember", remember_me=True)
+
+    async def _exercise(session):
+        before = datetime.now(UTC)
+        refreshed = await refresh_access_token(session, created["refresh_token"])
+        after = datetime.now(UTC)
+
+        result = await session.execute(select(RefreshToken).where(RefreshToken.token_hash == _hash_token(refreshed.refresh_token)))
+        record = result.scalar_one()
+
+        assert record.remember_me is True
+        lower_bound = before + timedelta(days=_refresh_token_expiry_days(True)) - timedelta(seconds=1)
+        upper_bound = after + timedelta(days=_refresh_token_expiry_days(True)) + timedelta(seconds=1)
+        expires_at = record.expires_at.replace(tzinfo=UTC)
+        assert lower_bound <= expires_at <= upper_bound
 
     api.run_db(_exercise)
 
