@@ -31,6 +31,10 @@ describe('gallery search utils', () => {
     });
   });
 
+  it('includes in-flight uploads in the default status filter', () => {
+    expect(createDefaultGallerySearchFilters().status).toEqual(['pending', 'processing', 'done']);
+  });
+
   it('counts active advanced filters relative to defaults', () => {
     const filters = createDefaultGallerySearchFilters();
     filters.nsfw = 'include';

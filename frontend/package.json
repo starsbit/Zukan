@@ -6,7 +6,8 @@
     "start": "ng serve",
     "build": "ng build",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "e2e": "playwright test"
   },
   "private": true,
   "packageManager": "npm@11.11.0",
@@ -23,6 +24,7 @@
     "tslib": "^2.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.53.0",
     "@angular/build": "^21.2.1",
     "@angular/cli": "^21.2.1",
     "@angular/compiler-cli": "^21.2.0",

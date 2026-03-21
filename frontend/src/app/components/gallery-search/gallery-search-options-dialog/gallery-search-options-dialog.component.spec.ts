@@ -54,7 +54,7 @@ describe('GallerySearchOptionsDialogComponent', () => {
     expect(component.form.getRawValue()).toEqual({
       favorited: 'any',
       nsfw: 'default',
-      status: ['done'],
+      status: ['pending', 'processing', 'done'],
       media_type: [],
       captured_after: '',
       captured_before: ''
