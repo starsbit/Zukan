@@ -119,13 +119,13 @@ async def batch_update_images(
     return await image_service.batch_update_images(db, body, user)
 
 
-@router.delete("", response_model=BulkResult, summary="Batch Purge Images")
-async def batch_purge_images(
+@router.delete("", response_model=BulkResult, summary="Batch Delete Images")
+async def batch_delete_images(
     body: ImageBatchDelete,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await image_service.batch_purge_images(db, body, user)
+    return await image_service.batch_delete_images(db, body, user)
 
 
 @router.delete("/trash", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
@@ -202,13 +202,13 @@ async def get_image_thumbnail(
     return FileResponse(image.thumbnail_path, media_type="image/webp")
 
 
-@router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Permanently Delete Image")
-async def purge_image(
+@router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Image")
+async def delete_image(
     image_id: uuid.UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await image_service.purge_image(db, image_id, user)
+    await image_service.delete_image(db, image_id, user)
 
 
 @router.post(

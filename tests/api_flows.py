@@ -330,6 +330,11 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     assert api.fetch_image_row(uuid.UUID(str(first["id"]))) is None
 
     assert api.client.delete(f"/images/{second['id']}", headers=headers).status_code == 204
+    second_in_trash = api.client.get("/images", headers=headers, params={"state": "trashed"})
+    assert second_in_trash.status_code == 200
+    assert [item["id"] for item in second_in_trash.json()["items"]] == [str(second["id"])]
+
+    assert api.client.delete("/images/trash", headers=headers).status_code == 204
     assert api.fetch_image_row(uuid.UUID(str(second["id"]))) is None
 
 
@@ -730,6 +735,11 @@ def assert_bulk_endpoints(api):
         "image_ids": [str(second["id"]), str(third["id"])],
     }).json() == {"processed": 1, "skipped": 1}
 
+    trashed = api.client.get("/images", headers=api.auth_headers(owner["access_token"]), params={"state": "trashed"})
+    assert trashed.status_code == 200
+    assert [item["id"] for item in trashed.json()["items"]] == [str(second["id"])]
+
+    assert api.client.delete("/images/trash", headers=api.auth_headers(owner["access_token"])).status_code == 204
     assert api.fetch_image_row(uuid.UUID(str(second["id"]))) is None
     assert api.fetch_image_row(uuid.UUID(str(third["id"]))) is not None
 

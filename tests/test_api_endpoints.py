@@ -1,3 +1,6 @@
+import uuid
+
+
 def _login(api, username: str, password: str = "password123") -> dict:
     response = api.client.post("/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200, response.text
@@ -207,14 +210,22 @@ def test_user_journey_full_personal_library_workflow(api):
     assert on_this_day.status_code == 200
     assert on_this_day.json()["items"]
 
-    purge = api.client.request(
+    delete = api.client.request(
         "DELETE",
         "/images",
         headers=headers,
         json={"image_ids": [str(third["id"])]},
     )
-    assert purge.status_code == 200
-    assert purge.json() == {"processed": 1, "skipped": 0}
+    assert delete.status_code == 200
+    assert delete.json() == {"processed": 1, "skipped": 0}
+
+    trash_after_delete = api.client.get("/images", headers=headers, params={"state": "trashed"})
+    assert trash_after_delete.status_code == 200
+    assert [item["id"] for item in trash_after_delete.json()["items"]] == [str(third["id"])]
+
+    empty_trash = api.client.delete("/images/trash", headers=headers)
+    assert empty_trash.status_code == 204
+    assert api.fetch_image_row(uuid.UUID(str(third["id"]))) is None
 
     remove_from_album = api.client.request(
         "DELETE",

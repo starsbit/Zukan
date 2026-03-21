@@ -455,6 +455,10 @@ async def soft_delete_image(db: AsyncSession, image_id: uuid.UUID, user: User) -
     await db.commit()
 
 
+async def delete_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:
+    await soft_delete_image(db, image_id, user)
+
+
 async def restore_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:
     image = await get_owned_or_admin_image(db, image_id, user, trashed=True)
     image.deleted_at = None
@@ -502,6 +506,15 @@ async def batch_update_images(
     elif payload.favorited is not None:
         processed, skipped = await _batch_update_favorite_state(db, payload.image_ids, payload.favorited, user)
 
+    return BulkResult(processed=processed, skipped=skipped)
+
+
+async def batch_delete_images(
+    db: AsyncSession,
+    payload: ImageBatchDelete,
+    user: User,
+) -> BulkResult:
+    processed, skipped = await _batch_update_deleted_state(db, payload.image_ids, True, user)
     return BulkResult(processed=processed, skipped=skipped)
 
 

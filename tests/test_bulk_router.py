@@ -52,7 +52,7 @@ def test_bulk_favorite_delete_and_restore_endpoints(api):
     assert bulk_restore.json() == {"processed": 1, "skipped": 2}
 
 
-def test_bulk_album_and_purge_endpoints(api):
+def test_bulk_album_and_delete_endpoints(api):
     owner = api.register_and_login("bulk-album-owner")
     collaborator = api.register_and_login("bulk-collaborator")
     outsider = api.register_and_login("bulk-outsider")
@@ -102,23 +102,39 @@ def test_bulk_album_and_purge_endpoints(api):
     assert remove_from_album.status_code == 200
     assert remove_from_album.json() == {"processed": 1, "skipped": 1}
 
-    purge = api.client.request(
+    delete = api.client.request(
         "DELETE",
         "/images",
         headers=owner_headers,
         json={"image_ids": [str(first["id"]), str(outsider_image["id"]), str(uuid.uuid4())]},
     )
-    assert purge.status_code == 200
-    assert purge.json() == {"processed": 1, "skipped": 2}
+    assert delete.status_code == 200
+    assert delete.json() == {"processed": 1, "skipped": 2}
 
-    admin_purge = api.client.request(
+    trash = api.client.get("/images", headers=owner_headers, params={"state": "trashed"})
+    assert trash.status_code == 200
+    assert [item["id"] for item in trash.json()["items"]] == [str(first["id"])]
+
+    admin_delete = api.client.request(
         "DELETE",
         "/images",
         headers=admin_headers,
         json={"image_ids": [str(outsider_image["id"]), str(uuid.uuid4())]},
     )
-    assert admin_purge.status_code == 200
-    assert admin_purge.json() == {"processed": 1, "skipped": 1}
+    assert admin_delete.status_code == 200
+    assert admin_delete.json() == {"processed": 1, "skipped": 1}
+
+    outsider_trash = api.client.get("/images", headers=admin_headers, params={"state": "trashed"})
+    assert outsider_trash.status_code == 200
+    assert {item["id"] for item in outsider_trash.json()["items"]} >= {str(first["id"]), str(outsider_image["id"])}
+
+    empty_owner_trash = api.client.delete("/images/trash", headers=owner_headers)
+    assert empty_owner_trash.status_code == 204
+    assert api.fetch_image_row(uuid.UUID(str(first["id"]))) is None
+
+    empty_admin_trash = api.client.delete("/images/trash", headers=admin_headers)
+    assert empty_admin_trash.status_code == 204
+    assert api.fetch_image_row(uuid.UUID(str(outsider_image["id"]))) is None
 
 
 def test_batch_patch_validation_and_empty_trash_endpoint(api):
