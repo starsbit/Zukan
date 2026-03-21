@@ -4,14 +4,12 @@
 }
 
 .gallery-layout {
-  display: block;
+  position: relative;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1.5rem;
   width: min(1560px, calc(100vw - 2rem));
   margin: 0 auto;
-  background: transparent;
-}
-
-.gallery-shell {
-  position: relative;
   padding: 1.5rem 0 3rem;
 }
 
@@ -23,15 +21,14 @@
   position: sticky;
   top: 1rem;
   align-self: start;
-  width: 280px;
-  padding: 1.5rem 1rem 1.5rem 0;
-  background: transparent;
-  border-right: 0;
+}
+
+.gallery-shell {
+  position: relative;
 }
 
 .gallery-main {
   min-width: 0;
-  padding-left: 1.25rem;
 }
 
 .drop-overlay {
@@ -139,18 +136,15 @@
 
 @media (max-width: 720px) {
   .gallery-layout {
+    grid-template-columns: minmax(0, 1fr);
     width: min(100vw - 1rem, 1560px);
   }
 
   .gallery-sidebar {
     position: static;
-    width: 100%;
-    padding: 1rem 0;
   }
 
-  .gallery-main,
   .gallery-shell {
-    padding-left: 0;
     padding-top: 1rem;
   }
 

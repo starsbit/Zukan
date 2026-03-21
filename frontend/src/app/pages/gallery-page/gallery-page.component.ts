@@ -7,7 +7,6 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSidenavModule } from '@angular/material/sidenav';
 import { ActivatedRoute, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { MediaRead } from '../../models/api';
@@ -30,7 +29,6 @@ import { MediaUploadService } from '../../services/media-upload.service';
     MatIconModule,
     MatListModule,
     MatProgressSpinnerModule,
-    MatSidenavModule,
     RouterLink,
     RouterLinkActive,
     GalleryMediaCardComponent,
