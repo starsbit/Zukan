@@ -1,9 +1,10 @@
+import '@angular/compiler';
 import { AsyncPipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { MatDialog } from '@angular/material/dialog';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
+import { describe, beforeEach, expect, it, vi } from 'vitest';
 
 import { GalleryPageComponent } from './gallery-page.component';
 import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
@@ -84,7 +85,6 @@ describe('GalleryPageComponent', () => {
     refreshRequested$: Subject<void>;
     startUpload: ReturnType<typeof vi.fn>;
   };
-  let dialog: { open: ReturnType<typeof vi.fn> };
   let routeData: BehaviorSubject<Record<string, unknown>>;
 
   beforeEach(async () => {
@@ -104,9 +104,6 @@ describe('GalleryPageComponent', () => {
       refreshRequested$: new Subject<void>(),
       startUpload: vi.fn()
     };
-    dialog = {
-      open: vi.fn()
-    };
     routeData = new BehaviorSubject<Record<string, unknown>>({ state: 'active' });
 
     await TestBed.configureTestingModule({
@@ -116,7 +113,6 @@ describe('GalleryPageComponent', () => {
         provideRouter([]),
         { provide: MediaService, useValue: mediaService },
         { provide: MediaUploadService, useValue: mediaUploadService },
-        { provide: MatDialog, useValue: dialog },
         { provide: ActivatedRoute, useValue: { data: routeData.asObservable() } }
       ]
     })
@@ -205,6 +201,19 @@ describe('GalleryPageComponent', () => {
     expect(fixture.nativeElement.querySelectorAll('app-gallery-media-card')).toHaveLength(2);
   });
 
+  it('renders media grouped under date headings', () => {
+    mediaService.items$.next([
+      createMediaRead({ metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T12:00:00.000Z' } }),
+      createMediaRead({ id: 'media-2', metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T06:00:00.000Z' } }),
+      createMediaRead({ id: 'media-3', metadata: { ...createMediaRead().metadata, captured_at: '2024-01-19T18:00:00.000Z' } })
+    ]);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelectorAll('.gallery-group')).toHaveLength(2);
+    expect(fixture.nativeElement.textContent).toContain('Jan 20');
+    expect(fixture.nativeElement.textContent).toContain('Jan 19');
+  });
+
   it('tracks multi-selection and exits selection mode when cleared', () => {
     const media = createMediaRead();
     const second = createMediaRead({ id: 'media-2' });
@@ -236,6 +245,82 @@ describe('GalleryPageComponent', () => {
     expect(component.selectedMedia).toBeNull();
     expect(component.isSelected(second.id)).toBe(true);
     expect(component.selectedCount).toBe(2);
+  });
+
+  it('selects all currently visible items when ctrl+a is pressed in selection mode', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+    const third = createMediaRead({ id: 'media-3' });
+    mediaService.items$.next([media, second, third]);
+    component.toggleSelection(media);
+
+    const preventDefault = vi.fn();
+    component.onDocumentKeydown({
+      ctrlKey: true,
+      metaKey: false,
+      key: 'a',
+      preventDefault,
+      target: document.body
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(component.selectedCount).toBe(3);
+    expect(component.isSelected(media.id)).toBe(true);
+    expect(component.isSelected(second.id)).toBe(true);
+    expect(component.isSelected(third.id)).toBe(true);
+  });
+
+  it('does not override native ctrl+a inside editable fields', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+    mediaService.items$.next([media, second]);
+    component.toggleSelection(media);
+
+    const input = document.createElement('input');
+    const preventDefault = vi.fn();
+    component.onDocumentKeydown({
+      ctrlKey: true,
+      metaKey: false,
+      key: 'a',
+      preventDefault,
+      target: input
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(component.selectedCount).toBe(1);
+    expect(component.isSelected(second.id)).toBe(false);
+  });
+
+  it('clears the current selection when escape is pressed', () => {
+    const media = createMediaRead();
+    const second = createMediaRead({ id: 'media-2' });
+    component.toggleSelection(media);
+    component.toggleSelection(second);
+
+    const preventDefault = vi.fn();
+    component.onDocumentKeydown({
+      key: 'Escape',
+      preventDefault,
+      target: document.body
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(component.selectionMode).toBe(false);
+    expect(component.selectedCount).toBe(0);
+  });
+
+  it('selects all items in a date group from the group action', () => {
+    const dayOneA = createMediaRead({ metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T12:00:00.000Z' } });
+    const dayOneB = createMediaRead({ id: 'media-2', metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T06:00:00.000Z' } });
+    const dayTwo = createMediaRead({ id: 'media-3', metadata: { ...createMediaRead().metadata, captured_at: '2024-01-19T18:00:00.000Z' } });
+    mediaService.items$.next([dayOneA, dayOneB, dayTwo]);
+
+    component.selectGroup(component.groupedItems[0]);
+
+    expect(component.selectedCount).toBe(2);
+    expect(component.isSelected(dayOneA.id)).toBe(true);
+    expect(component.isSelected(dayOneB.id)).toBe(true);
+    expect(component.isSelected(dayTwo.id)).toBe(false);
   });
 
   it('deletes the selected items and clears selection on success', () => {
@@ -312,10 +397,16 @@ describe('GalleryPageComponent', () => {
     expect(mediaService.loadPage).toHaveBeenCalled();
   });
 
-  it('opens the upload dialog from the navbar action', () => {
-    component.openUploadDialog();
+  it('starts upload from the file picker selection', () => {
+    const file = new File(['a'], 'picked.png', { type: 'image/png' });
+    const input = document.createElement('input');
+    Object.defineProperty(input, 'files', { value: [file] });
+    input.value = 'picked.png';
 
-    expect(dialog.open).toHaveBeenCalled();
+    component.onUploadSelection({ target: input } as unknown as Event);
+
+    expect(mediaUploadService.startUpload).toHaveBeenCalledWith([file]);
+    expect(input.value).toBe('');
   });
 
   it('starts upload when files are dropped onto the gallery', () => {

@@ -127,6 +127,12 @@ describe('GalleryNavbarComponent', () => {
     expect(refreshSpy).toHaveBeenCalled();
   });
 
+  it('opens the settings dialog from the toolbar button', () => {
+    (fixture.nativeElement.querySelector('button[aria-label="Open settings"]') as HTMLButtonElement).click();
+
+    expect(dialog.open).toHaveBeenCalled();
+  });
+
   it('emits uploadRequested from the upload button', () => {
     const uploadSpy = vi.fn();
     component.uploadRequested.subscribe(uploadSpy);

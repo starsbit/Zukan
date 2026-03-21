@@ -24,6 +24,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     show_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    tag_confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     media: Mapped[list["Media"]] = relationship("Media", back_populates="uploader")

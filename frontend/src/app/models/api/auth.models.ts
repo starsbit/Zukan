@@ -38,5 +38,6 @@ export interface AuthenticatedUser {
   email: string;
   is_admin: boolean;
   show_nsfw: boolean;
+  tag_confidence_threshold: number;
   created_at: string;
 }

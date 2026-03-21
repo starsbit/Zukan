@@ -28,6 +28,7 @@ class UserRead(BaseModel):
     email: str
     is_admin: bool
     show_nsfw: bool
+    tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -35,6 +36,7 @@ class UserRead(BaseModel):
 
 class UserUpdate(BaseModel):
     show_nsfw: bool | None = None
+    tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
 
 
@@ -272,6 +274,7 @@ class TaggingJobQueuedResponse(BaseModel):
 class AdminUserUpdate(BaseModel):
     is_admin: bool | None = None
     show_nsfw: bool | None = None
+    tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
 
 
 class AdminUserDetail(UserRead):

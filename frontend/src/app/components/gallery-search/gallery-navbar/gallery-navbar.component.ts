@@ -7,6 +7,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { GallerySearchState } from '../gallery-search.models';
 import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-bar.component';
 import { GallerySearchOptionsDialogComponent } from '../gallery-search-options-dialog/gallery-search-options-dialog.component';
+import { GallerySettingsDialogComponent } from '../gallery-settings-dialog/gallery-settings-dialog.component';
 import { countActiveAdvancedFilters, createDefaultGallerySearchFilters } from '../gallery-search.utils';
 
 @Component({
@@ -66,6 +67,13 @@ export class GalleryNavbarComponent {
         searchText: this.searchState.searchText,
         filters
       });
+    });
+  }
+
+  openSettings(): void {
+    this.dialog.open(GallerySettingsDialogComponent, {
+      width: '420px',
+      maxWidth: 'calc(100vw - 2rem)'
     });
   }
 

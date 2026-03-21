@@ -6,17 +6,20 @@ export interface UserRead {
   email: string;
   is_admin: boolean;
   show_nsfw: boolean;
+  tag_confidence_threshold: number;
   created_at: string;
 }
 
 export interface UserUpdateDto {
   show_nsfw?: boolean | null;
+  tag_confidence_threshold?: number | null;
   password?: string | null;
 }
 
 export interface AdminUserUpdateDto {
   is_admin?: boolean | null;
   show_nsfw?: boolean | null;
+  tag_confidence_threshold?: number | null;
 }
 
 export interface AdminUserDetail extends UserRead {

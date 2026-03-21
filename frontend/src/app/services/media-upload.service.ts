@@ -406,11 +406,7 @@ export class MediaUploadService {
     const nextStatuses = { ...this.taggingStatusByMediaId() };
 
     for (const item of items) {
-      if (item.taggingStatus === 'pending' || item.taggingStatus === 'processing') {
-        nextStatuses[item.mediaId] = item.taggingStatus;
-      } else {
-        delete nextStatuses[item.mediaId];
-      }
+      nextStatuses[item.mediaId] = item.taggingStatus;
     }
 
     this.taggingStatusByMediaId.set(nextStatuses);

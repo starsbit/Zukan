@@ -90,6 +90,7 @@ def test_register_user_creates_account(api):
         assert user.username == "service-auth-user"
         assert user.email == "service-auth@example.com"
         assert user.hashed_password != "password123"
+        assert user.tag_confidence_threshold == settings.tagger_threshold_general
 
     api.run_db(_exercise)
 
@@ -225,9 +226,10 @@ def test_update_current_user_changes_password_and_nsfw_setting(api):
         updated = await update_current_user(
             session,
             user,
-            UserUpdate(show_nsfw=True, password="newpassword123"),
+            UserUpdate(show_nsfw=True, tag_confidence_threshold=0.72, password="newpassword123"),
         )
         assert updated.show_nsfw is True
+        assert updated.tag_confidence_threshold == 0.72
         assert updated.hashed_password != old_hash
         assert verify_password("newpassword123", updated.hashed_password) is True
 

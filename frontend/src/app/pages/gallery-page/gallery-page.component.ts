@@ -1,9 +1,8 @@
 import { AsyncPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -16,9 +15,14 @@ import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../
 import { MediaService } from '../../services/media.service';
 import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
 import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
-import { GalleryUploadDialogComponent } from '../../components/gallery-upload-dialog/gallery-upload-dialog.component';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
 import { MediaUploadService } from '../../services/media-upload.service';
+
+interface GalleryDayGroup {
+  key: string;
+  label: string;
+  items: MediaRead[];
+}
 
 @Component({
   selector: 'app-gallery-page',
@@ -42,10 +46,11 @@ import { MediaUploadService } from '../../services/media-upload.service';
 })
 export class GalleryPageComponent {
   private readonly destroyRef = inject(DestroyRef);
-  private readonly dialog = inject(MatDialog);
   private readonly route = inject(ActivatedRoute);
   private readonly mediaService = inject(MediaService);
   private readonly mediaUploadService = inject(MediaUploadService);
+
+  @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
 
   readonly items$ = this.mediaService.items$;
   readonly loading$ = this.mediaService.requestLoading$;
@@ -57,6 +62,8 @@ export class GalleryPageComponent {
   dragActive = false;
   isTrashView = false;
   selectedMediaIds = new Set<string>();
+  private currentItems: MediaRead[] = [];
+  groupedItems: GalleryDayGroup[] = [];
   private dragDepth = 0;
   searchState: GallerySearchState = {
     searchText: '',
@@ -79,6 +86,13 @@ export class GalleryPageComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.reload();
+      });
+
+    this.items$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((items) => {
+        this.currentItems = items;
+        this.groupedItems = buildGalleryDayGroups(items);
       });
   }
 
@@ -106,12 +120,16 @@ export class GalleryPageComponent {
     this.selectedMedia = null;
   }
 
-  openUploadDialog(): void {
-    this.dialog.open(GalleryUploadDialogComponent, {
-      width: '720px',
-      maxWidth: 'calc(100vw - 1.5rem)',
-      panelClass: 'gallery-upload-dialog-panel'
-    });
+  openUploadPicker(): void {
+    this.uploadInput?.nativeElement.click();
+  }
+
+  onUploadSelection(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const files = Array.from(input.files ?? []);
+
+    input.value = '';
+    this.mediaUploadService.startUpload(files);
   }
 
   onDragEnter(event: DragEvent): void {
@@ -157,6 +175,28 @@ export class GalleryPageComponent {
     this.mediaUploadService.startUpload(Array.from(event.dataTransfer?.files ?? []));
   }
 
+  @HostListener('document:keydown', ['$event'])
+  onDocumentKeydown(event: KeyboardEvent): void {
+    if (!this.selectionMode) {
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      this.clearSelection();
+      this.selectedMedia = null;
+      return;
+    }
+
+    if (!isSelectAllShortcut(event) || isEditableTarget(event.target)) {
+      return;
+    }
+
+    event.preventDefault();
+    this.selectedMediaIds = new Set(this.currentItems.map((item) => item.id));
+    this.selectedMedia = null;
+  }
+
   toggleSelection(media: MediaRead): void {
     const next = new Set(this.selectedMediaIds);
 
@@ -173,12 +213,30 @@ export class GalleryPageComponent {
     }
   }
 
+  selectGroup(group: GalleryDayGroup): void {
+    if (group.items.length === 0) {
+      return;
+    }
+
+    const next = new Set(this.selectedMediaIds);
+    for (const item of group.items) {
+      next.add(item.id);
+    }
+
+    this.selectedMediaIds = next;
+    this.selectedMedia = null;
+  }
+
   clearSelection(): void {
     this.selectedMediaIds = new Set<string>();
   }
 
   isSelected(mediaId: string): boolean {
     return this.selectedMediaIds.has(mediaId);
+  }
+
+  isGroupSelected(group: GalleryDayGroup): boolean {
+    return group.items.length > 0 && group.items.every((item) => this.selectedMediaIds.has(item.id));
   }
 
   deleteSelected(): void {
@@ -280,4 +338,61 @@ export class GalleryPageComponent {
 
 function containsFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function buildGalleryDayGroups(items: MediaRead[]): GalleryDayGroup[] {
+  const groups = new Map<string, GalleryDayGroup>();
+
+  for (const item of items) {
+    const key = getLocalDayKey(item.metadata.captured_at);
+    const existing = groups.get(key);
+
+    if (existing) {
+      existing.items.push(item);
+      continue;
+    }
+
+    groups.set(key, {
+      key,
+      label: formatGroupLabel(item.metadata.captured_at),
+      items: [item]
+    });
+  }
+
+  return Array.from(groups.values());
+}
+
+function isSelectAllShortcut(event: KeyboardEvent): boolean {
+  return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a';
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+}
+
+function getLocalDayKey(value: string): string {
+  const date = new Date(value);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '00';
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatGroupLabel(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric'
+  }).format(new Date(value));
 }

@@ -6,6 +6,8 @@
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
 >
+  <input #uploadInput type="file" multiple hidden (change)="onUploadSelection($event)" />
+
   <aside class="gallery-sidebar" aria-label="Gallery navigation">
     <mat-card appearance="outlined">
       <mat-card-header>
@@ -79,7 +81,7 @@
           [isTrashView]="isTrashView"
           (searchApplied)="applySearch($event)"
           (refreshRequested)="reload()"
-          (uploadRequested)="openUploadDialog()"
+          (uploadRequested)="openUploadPicker()"
           (emptyTrashRequested)="emptyTrash()"
         />
       }
@@ -120,17 +122,37 @@
             </div>
           </section>
         } @else {
-          <section class="gallery-grid" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
-            @for (item of items; track item.id) {
-              <app-gallery-media-card
-                [media]="item"
-                [selectionMode]="selectionMode"
-                [selected]="isSelected(item.id)"
-                [trashMode]="isTrashView"
-                (open)="openMedia($event)"
-                (selectionToggled)="toggleSelection($event)"
-                (restoreRequested)="restoreMedia($event)"
-              />
+          <section class="gallery-groups" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
+            @for (group of groupedItems; track group.key) {
+              <section class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
+                <header class="gallery-group-header">
+                  <h2 class="gallery-group-title" [id]="'gallery-group-' + group.key">{{ group.label }}</h2>
+                  <button
+                    mat-button
+                    type="button"
+                    class="gallery-group-select"
+                    [attr.aria-pressed]="isGroupSelected(group)"
+                    (click)="selectGroup(group)"
+                  >
+                    <mat-icon>{{ isGroupSelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                    <span>Select all</span>
+                  </button>
+                </header>
+
+                <section class="gallery-grid">
+                  @for (item of group.items; track item.id) {
+                    <app-gallery-media-card
+                      [media]="item"
+                      [selectionMode]="selectionMode"
+                      [selected]="isSelected(item.id)"
+                      [trashMode]="isTrashView"
+                      (open)="openMedia($event)"
+                      (selectionToggled)="toggleSelection($event)"
+                      (restoreRequested)="restoreMedia($event)"
+                    />
+                  }
+                </section>
+              </section>
             }
           </section>
         }

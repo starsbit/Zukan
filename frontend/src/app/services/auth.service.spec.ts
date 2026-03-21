@@ -60,6 +60,7 @@ describe('AuthService', () => {
       email: 'admin@example.test',
       is_admin: true,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -85,6 +86,7 @@ describe('AuthService', () => {
       email: 'new-user@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -106,6 +108,7 @@ describe('AuthService', () => {
       email: 'new-user@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -126,6 +129,7 @@ describe('AuthService', () => {
       email: 'admin@example.test',
       is_admin: true,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -149,6 +153,7 @@ describe('AuthService', () => {
       email: 'admin@example.test',
       is_admin: true,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -186,6 +191,7 @@ describe('AuthService', () => {
       email: 'refresh@example.test',
       is_admin: false,
       show_nsfw: true,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -218,6 +224,7 @@ describe('AuthService', () => {
       email: 'remembered@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -244,6 +251,7 @@ describe('AuthService', () => {
       email: 'admin@example.test',
       is_admin: true,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 

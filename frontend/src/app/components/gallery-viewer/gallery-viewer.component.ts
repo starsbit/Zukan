@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { MediaRead } from '../../models/api';
+import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 
 @Component({
@@ -17,6 +18,7 @@ import { MediaClientService } from '../../services/web/media-client.service';
 export class GalleryViewerComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly mediaClient = inject(MediaClientService);
+  private readonly mediaUploadService = inject(MediaUploadService);
   private mediaRequestId = 0;
 
   @Input() media: MediaRead | null = null;
@@ -62,7 +64,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   }
 
   get showTaggingSpinner(): boolean {
-    return this.media?.tagging_status === 'pending' || this.media?.tagging_status === 'processing';
+    return this.currentTaggingStatus === 'pending' || this.currentTaggingStatus === 'processing';
   }
 
   get statusLabel(): string {
@@ -74,7 +76,15 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
       return 'Processing';
     }
 
-    return this.media.tagging_status;
+    return this.currentTaggingStatus;
+  }
+
+  private get currentTaggingStatus(): string {
+    if (!this.media) {
+      return '';
+    }
+
+    return this.mediaUploadService.getMediaTaggingStatus(this.media.id) ?? this.media.tagging_status;
   }
 
   private loadMedia(): void {

@@ -92,7 +92,7 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.phase).toBe('completed');
       expect(service.snapshot.processingProgress).toBe(100);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
-      expect(service.getMediaTaggingStatus('media-1')).toBeNull();
+      expect(service.getMediaTaggingStatus('media-1')).toBe('done');
 
       await vi.advanceTimersByTimeAsync(4000);
       expect(service.snapshot.expanded).toBe(false);
@@ -153,6 +153,49 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.processingProgress).toBe(100);
       expect(service.snapshot.items[0]?.status).toBe('done');
       expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(service.getMediaTaggingStatus('media-1')).toBe('done');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps terminal per-media statuses until the session is dismissed', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const events$ = new Subject<any>();
+      mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
+        id: 'media-1',
+        tagging_status: 'processing',
+        thumbnail_status: 'done',
+        poster_status: 'done'
+      })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
+        id: 'media-1',
+        tagging_status: 'done',
+        thumbnail_status: 'done',
+        poster_status: 'done'
+      })));
+
+      service.startUpload([new File(['a'], 'a.png', { type: 'image/png' })]);
+
+      events$.next({
+        type: HttpEventType.Response,
+        body: {
+          accepted: 1,
+          duplicates: 0,
+          errors: 0,
+          results: [{ id: 'media-1', original_filename: 'a.png', status: 'accepted' }]
+        }
+      });
+
+      await vi.advanceTimersByTimeAsync(2000);
+
+      expect(service.getMediaTaggingStatus('media-1')).toBe('done');
+
+      service.dismissSession();
+
       expect(service.getMediaTaggingStatus('media-1')).toBeNull();
     } finally {
       vi.useRealTimers();

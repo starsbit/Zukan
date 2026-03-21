@@ -1,0 +1,45 @@
+<h2 mat-dialog-title>Settings</h2>
+
+<mat-dialog-content class="settings-dialog" [formGroup]="form">
+  <section class="settings-row settings-toggle-row">
+    <div class="settings-copy">
+      <div class="settings-label">Show NSFW media</div>
+      <p class="settings-description">Include explicit media in galleries and searches when you want it visible.</p>
+    </div>
+
+    <mat-slide-toggle
+      class="settings-toggle"
+      aria-label="Show NSFW media"
+      formControlName="show_nsfw"
+    />
+  </section>
+
+  <section class="settings-row settings-threshold-row">
+    <div class="settings-copy">
+      <div class="settings-label">Minimum tag confidence</div>
+      <p class="settings-description">Only tagger results at or above this score are saved as tags.</p>
+    </div>
+
+    <mat-form-field class="threshold-field" appearance="fill" subscriptSizing="dynamic">
+      <mat-label>Confidence</mat-label>
+      <input
+        matInput
+        type="number"
+        min="0"
+        max="1"
+        step="0.01"
+        formControlName="tag_confidence_threshold"
+      />
+      @if (form.controls.tag_confidence_threshold.hasError('min') || form.controls.tag_confidence_threshold.hasError('max')) {
+        <mat-error>Enter a value between 0 and 1.</mat-error>
+      }
+    </mat-form-field>
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end" class="settings-actions">
+  <button mat-button type="button" matDialogClose>Cancel</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="form.invalid || (saving$ | async)" (click)="save()">
+    Save
+  </button>
+</mat-dialog-actions>

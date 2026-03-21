@@ -1,7 +1,9 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { of, Subject, throwError } from 'rxjs';
 
 import { GalleryViewerComponent } from './gallery-viewer.component';
+import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 import { createMediaRead } from '../../testing/media-test.utils';
 
@@ -9,12 +11,26 @@ describe('GalleryViewerComponent', () => {
   let fixture: ComponentFixture<GalleryViewerComponent>;
   let component: GalleryViewerComponent;
   let mediaClient: { getMediaFile: ReturnType<typeof vi.fn> };
+  let mediaUploadService: {
+    taggingStatusByMediaId: ReturnType<typeof signal<Record<string, string>>>;
+    getMediaTaggingStatus: ReturnType<typeof vi.fn>;
+  };
   let createObjectUrlSpy: ReturnType<typeof vi.spyOn>;
   let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     mediaClient = {
       getMediaFile: vi.fn()
+    };
+    mediaUploadService = {
+      taggingStatusByMediaId: signal<Record<string, string>>({}),
+      getMediaTaggingStatus: vi.fn((mediaId: string | null | undefined) => {
+        if (!mediaId) {
+          return null;
+        }
+
+        return mediaUploadService.taggingStatusByMediaId()[mediaId] ?? null;
+      })
     };
 
     createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:media-url');
@@ -23,7 +39,8 @@ describe('GalleryViewerComponent', () => {
     await TestBed.configureTestingModule({
       imports: [GalleryViewerComponent],
       providers: [
-        { provide: MediaClientService, useValue: mediaClient }
+        { provide: MediaClientService, useValue: mediaClient },
+        { provide: MediaUploadService, useValue: mediaUploadService }
       ]
     }).compileComponents();
 
@@ -84,6 +101,21 @@ describe('GalleryViewerComponent', () => {
     expect(fixture.nativeElement.querySelector('.viewer-status mat-spinner')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('Processing');
     expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).not.toContain('pending');
+  });
+
+  it('prefers the live upload status when the selected media input is stale', async () => {
+    const media = createMediaRead({ tagging_status: 'pending' });
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    mediaUploadService.taggingStatusByMediaId.set({ [media.id]: 'done' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.viewer-status mat-spinner')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('done');
   });
 
   it('shows the failed state when loading the media file errors', async () => {

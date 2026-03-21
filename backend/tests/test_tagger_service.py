@@ -90,7 +90,7 @@ def test_predict_sync_filters_by_thresholds_and_marks_nsfw(tmp_path, monkeypatch
 
     assert result.is_nsfw is True
     assert result.character_name == "hero"
-    assert [item.name for item in result.predictions] == ["rating:general", "rating:questionable", "hero", "forest"]
+    assert [item.name for item in result.predictions] == ["hero", "forest", "rating:questionable"]
 
 
 def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_path, monkeypatch):
@@ -121,6 +121,32 @@ def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_p
     assert [item.name for item in result.predictions] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
 
 
+def test_predict_sync_does_not_mark_general_rated_image_as_nsfw_when_other_ratings_are_lower(tmp_path, monkeypatch):
+    wd = tagger_module.WDTagger()
+    wd._input_name = "input"
+    wd._input_size = 8
+    wd._tags_df = pd.DataFrame(
+        [
+            {"name": "rating:general", "category": 9},
+            {"name": "rating:questionable", "category": 9},
+            {"name": "rating:explicit", "category": 9},
+            {"name": "landscape", "category": 0},
+        ]
+    )
+    wd._session = Mock()
+    wd._session.run.return_value = [np.array([[0.97, 0.12, 0.03, 0.91]], dtype=np.float32)]
+
+    monkeypatch.setattr(tagger_module.settings, "tagger_threshold_general", 0.75)
+
+    image_path = tmp_path / "general-safe.png"
+    Image.new("RGB", (16, 12), color=(0, 128, 255)).save(image_path)
+
+    result = wd._predict_sync(str(image_path))
+
+    assert result.is_nsfw is False
+    assert [item.name for item in result.predictions] == ["landscape", "rating:general"]
+
+
 def test_predict_sync_marks_direct_nsfw_tags_as_nsfw_even_without_rating_tags(tmp_path, monkeypatch):
     wd = tagger_module.WDTagger()
     wd._input_name = "input"
@@ -144,7 +170,7 @@ def test_predict_sync_marks_direct_nsfw_tags_as_nsfw_even_without_rating_tags(tm
     result = wd._predict_sync(str(image_path))
 
     assert result.is_nsfw is True
-    assert [item.name for item in result.predictions] == ["nsfw", "rating:general", "hero"]
+    assert [item.name for item in result.predictions] == ["nsfw", "hero", "rating:general"]
 
 
 def test_predict_uses_executor(monkeypatch):

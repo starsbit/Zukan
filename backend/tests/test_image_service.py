@@ -213,6 +213,50 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
     assert attempts["count"] == 3
 
 
+def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monkeypatch):
+    user = api.register_and_login("image-service-threshold")
+    user_id = uuid.UUID(user["user"]["id"])
+
+    async def fake_predict(_image_path: str):
+        from backend.app.services.tagger import TagPrediction, TaggingResult
+
+        return TaggingResult(
+            predictions=[
+                TagPrediction(name="sky", category=0, confidence=0.91),
+                TagPrediction(name="blue", category=0, confidence=0.68),
+                TagPrediction(name="heroine_a", category=4, confidence=0.74),
+                TagPrediction(name="rating:general", category=9, confidence=0.99),
+            ],
+            character_name="heroine_a",
+            is_nsfw=False,
+        )
+
+    monkeypatch.setattr(media_service.tagger, "predict", fake_predict)
+
+    async def _exercise(session):
+        from backend.app.models import Media, User
+
+        db_user = await session.get(User, user_id)
+        db_user.tag_confidence_threshold = 0.75
+        await session.commit()
+
+        upload = UploadFile(
+            filename="threshold-me.png",
+            file=io.BytesIO(png_bytes((0, 0, 255))),
+            headers={"content-type": "image/png"},
+        )
+        response = await media_service.build_upload_response(session, db_user, [upload])
+        media_id = response.results[0].id
+
+        await media_service.tag_media(session, media_id)
+
+        media = await session.get(Media, media_id)
+        assert media.tags == ["rating:general", "sky"]
+        assert media.character_name is None
+
+    api.run_db(_exercise)
+
+
 def test_mark_tagging_failure_persists_error_and_retag_clears_it(api):
     user = api.register_and_login("image-service-tagging-error")
     uploaded = api.upload_media(user["access_token"], "tagging-error.png", (0, 0, 255))

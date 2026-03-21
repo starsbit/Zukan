@@ -744,8 +744,19 @@ async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: 
             tag.media_count = max(0, tag.media_count - 1)
         await db.execute(MediaTag.__table__.delete().where(MediaTag.media_id == media.id))
 
+    uploader = None
+    if media.uploader_id is not None:
+        uploader = await db.get(User, media.uploader_id)
+    tag_threshold = uploader.tag_confidence_threshold if uploader is not None else settings.tagger_threshold_general
+
+    filtered_predictions = [
+        prediction
+        for prediction in tagging_result.predictions
+        if prediction.category == 9 or prediction.confidence >= tag_threshold
+    ]
+
     tag_names: list[str] = []
-    for prediction in tagging_result.predictions:
+    for prediction in filtered_predictions:
         tag_result = await db.execute(select(Tag).where(Tag.name == prediction.name))
         tag = tag_result.scalar_one_or_none()
         if tag is None:
@@ -757,7 +768,7 @@ async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: 
         tag_names.append(prediction.name)
 
     media.tags = tag_names
-    media.character_name = tagging_result.character_name
+    media.character_name = derive_character_name(filtered_predictions)
     media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(tag_names)
     media.tagging_status = "done"
     media.tagging_error = None

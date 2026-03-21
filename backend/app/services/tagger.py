@@ -103,7 +103,7 @@ class WDTagger:
         probs = self._session.run(None, {self._input_name: arr})[0][0]
 
         predictions: list[TagPrediction] = []
-        best_rating: tuple[str, float] = ("rating:general", 0.0)
+        best_rating: TagPrediction | None = None
 
         for i, prob in enumerate(probs):
             row = self._tags_df.iloc[i]
@@ -111,16 +111,20 @@ class WDTagger:
             name = str(row["name"])
 
             if category == 9:
-                if float(prob) > best_rating[1]:
-                    best_rating = (name, float(prob))
-                predictions.append(TagPrediction(name=name, category=category, confidence=float(prob)))
+                rating_prediction = TagPrediction(name=name, category=category, confidence=float(prob))
+                if best_rating is None or rating_prediction.confidence > best_rating.confidence:
+                    best_rating = rating_prediction
                 continue
 
             threshold = settings.tagger_threshold_character if category == 4 else settings.tagger_threshold_general
             if float(prob) >= threshold:
                 predictions.append(TagPrediction(name=name, category=category, confidence=float(prob)))
 
-        is_nsfw = best_rating[0] in NSFW_RATING_TAGS or tag_names_mark_nsfw([prediction.name for prediction in predictions])
+        if best_rating is not None:
+            predictions.append(best_rating)
+
+        rating_is_nsfw = best_rating is not None and best_rating.name in NSFW_RATING_TAGS
+        is_nsfw = rating_is_nsfw or tag_names_mark_nsfw([prediction.name for prediction in predictions])
         return TaggingResult(
             predictions=predictions,
             character_name=derive_character_name(predictions),

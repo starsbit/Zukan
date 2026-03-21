@@ -22,6 +22,10 @@
       </button>
     }
 
+    <button mat-icon-button type="button" aria-label="Open settings" (click)="openSettings()">
+      <mat-icon>settings</mat-icon>
+    </button>
+
     <button mat-icon-button type="button" [attr.aria-label]="refreshLabel" (click)="refreshRequested.emit()">
       <mat-icon>refresh</mat-icon>
     </button>

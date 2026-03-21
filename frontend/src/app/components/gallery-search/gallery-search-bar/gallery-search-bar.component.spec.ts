@@ -52,6 +52,7 @@ describe('GallerySearchBarComponent', () => {
     component.submit();
 
     expect(submittedSpy).toHaveBeenCalledWith('fox');
+    expect(component.queryControl.getRawValue()).toBe('fox');
   });
 
   it('displays labels for suggestion objects', () => {

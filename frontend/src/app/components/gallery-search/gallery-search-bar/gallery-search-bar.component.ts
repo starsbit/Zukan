@@ -106,7 +106,12 @@ export class GallerySearchBarComponent implements OnChanges {
 
   submit(): void {
     const value = this.queryControl.getRawValue();
-    this.searchSubmitted.emit((typeof value === 'string' ? value : this.lastTextValue).trim());
+    const submittedQuery = (typeof value === 'string' ? value : this.lastTextValue).trim();
+
+    this.lastTextValue = submittedQuery;
+    this.queryControl.setValue(submittedQuery, { emitEvent: false });
+    this.cdr.markForCheck();
+    this.searchSubmitted.emit(submittedQuery);
   }
 
   displaySuggestion(value: string | GallerySearchSuggestion | null): string {

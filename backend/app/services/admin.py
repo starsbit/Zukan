@@ -49,6 +49,8 @@ async def update_user(db: AsyncSession, user_id: uuid.UUID, body: AdminUserUpdat
         target.is_admin = body.is_admin
     if "show_nsfw" in body.model_fields_set:
         target.show_nsfw = body.show_nsfw
+    if "tag_confidence_threshold" in body.model_fields_set:
+        target.tag_confidence_threshold = body.tag_confidence_threshold
     await db.commit()
     await db.refresh(target)
     return target

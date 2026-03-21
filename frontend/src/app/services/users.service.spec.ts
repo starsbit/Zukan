@@ -49,6 +49,7 @@ describe('UsersService', () => {
       email: 'rin@example.test',
       is_admin: false,
       show_nsfw: true,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -64,6 +65,7 @@ describe('UsersService', () => {
       email: 'rin@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -78,11 +80,13 @@ describe('UsersService', () => {
       email: 'rin@example.test',
       is_admin: false,
       show_nsfw: true,
+      tag_confidence_threshold: 0.65,
       created_at: '2026-03-21T00:00:00Z'
     });
 
-    await expect(updatePromise).resolves.toMatchObject({ show_nsfw: true });
+    await expect(updatePromise).resolves.toMatchObject({ show_nsfw: true, tag_confidence_threshold: 0.65 });
     expect(service.snapshot.profile?.show_nsfw).toBe(true);
+    expect(service.snapshot.profile?.tag_confidence_threshold).toBe(0.65);
     expect(authService.snapshot.user?.show_nsfw).toBe(true);
   });
 
@@ -95,6 +99,7 @@ describe('UsersService', () => {
       email: 'refreshed@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -109,6 +114,7 @@ describe('UsersService', () => {
       email: 'rin@example.test',
       is_admin: false,
       show_nsfw: true,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -134,6 +140,7 @@ describe('UsersService', () => {
       email: 'rin@example.test',
       is_admin: false,
       show_nsfw: false,
+      tag_confidence_threshold: 0.35,
       created_at: '2026-03-21T00:00:00Z'
     });
 

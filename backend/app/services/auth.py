@@ -126,6 +126,7 @@ async def register_user(db: AsyncSession, body: UserRegister) -> User:
         username=body.username,
         email=body.email,
         hashed_password=hash_password(body.password),
+        tag_confidence_threshold=settings.tagger_threshold_general,
     )
     db.add(user)
     await db.commit()
@@ -156,6 +157,8 @@ async def refresh_access_token(db: AsyncSession, raw_refresh_token: str) -> Acce
 async def update_current_user(db: AsyncSession, user: User, body: UserUpdate) -> User:
     if body.show_nsfw is not None:
         user.show_nsfw = body.show_nsfw
+    if body.tag_confidence_threshold is not None:
+        user.tag_confidence_threshold = body.tag_confidence_threshold
     if body.password is not None:
         user.hashed_password = hash_password(body.password)
 

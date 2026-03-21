@@ -51,21 +51,21 @@ describe('resource clients', () => {
 
   it('maps users and tags requests to the correct endpoints', async () => {
     const mePromise = firstValueFrom(usersClient.getMe());
-    const updateMePromise = firstValueFrom(usersClient.updateMe({ show_nsfw: true }));
+    const updateMePromise = firstValueFrom(usersClient.updateMe({ show_nsfw: true, tag_confidence_threshold: 0.7 }));
     const tagsPromise = firstValueFrom(tagsClient.list({ limit: 10, offset: 20, category: 4, q: 'fox' }));
 
     const meRequest = expectRequest('GET', 'http://api.example.test/users/me');
     meRequest.flush({ id: 'user-1' });
 
     const updateMeRequest = expectRequest('PATCH', 'http://api.example.test/users/me');
-    expect(updateMeRequest.request.body).toEqual({ show_nsfw: true });
-    updateMeRequest.flush({ id: 'user-1', show_nsfw: true });
+    expect(updateMeRequest.request.body).toEqual({ show_nsfw: true, tag_confidence_threshold: 0.7 });
+    updateMeRequest.flush({ id: 'user-1', show_nsfw: true, tag_confidence_threshold: 0.7 });
 
     const tagsRequest = expectRequest('GET', 'http://api.example.test/tags?limit=10&offset=20&category=4&q=fox');
     tagsRequest.flush([{ id: 1, name: 'fox' }]);
 
     await expect(mePromise).resolves.toEqual({ id: 'user-1' });
-    await expect(updateMePromise).resolves.toEqual({ id: 'user-1', show_nsfw: true });
+    await expect(updateMePromise).resolves.toEqual({ id: 'user-1', show_nsfw: true, tag_confidence_threshold: 0.7 });
     await expect(tagsPromise).resolves.toEqual([{ id: 1, name: 'fox' }]);
   });
 

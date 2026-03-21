@@ -122,6 +122,20 @@ describe('GalleryMediaCardComponent', () => {
     expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Processing');
   });
 
+  it('hides the badge when the live upload status is done even if the media input is stale', async () => {
+    const media = createMediaRead({ tagging_status: 'pending' });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    mediaUploadService.taggingStatusByMediaId.set({ [media.id]: 'done' });
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.status-badge')).toBeNull();
+  });
+
   it('marks thumbnail loading as failed when the request errors', async () => {
     mediaClient.getMediaThumbnail.mockReturnValue(throwError(() => new Error('broken')));
 
