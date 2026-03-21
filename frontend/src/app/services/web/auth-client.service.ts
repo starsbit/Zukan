@@ -9,7 +9,7 @@ import {
   UserLoginDto,
   UserRead,
   UserRegisterDto
-} from './api-models';
+} from '../../models/api';
 import { ClientApiService } from './api.service';
 import { ClientAuthStore } from './auth.store';
 

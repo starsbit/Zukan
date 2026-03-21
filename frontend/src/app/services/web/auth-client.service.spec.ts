@@ -54,6 +54,25 @@ describe('AuthClientService', () => {
     expect(authStore.getTokenType()).toBe('bearer');
   });
 
+  it('registers without auth and returns the created user', async () => {
+    const registerPromise = firstValueFrom(service.register({
+      username: 'new-user',
+      email: 'new-user@example.test',
+      password: 'secret'
+    }));
+
+    const request = httpTesting.expectOne('http://api.example.test/auth/register');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({
+      username: 'new-user',
+      email: 'new-user@example.test',
+      password: 'secret'
+    });
+    request.flush({ id: 'user-2', username: 'new-user', email: 'new-user@example.test' });
+
+    await expect(registerPromise).resolves.toEqual({ id: 'user-2', username: 'new-user', email: 'new-user@example.test' });
+  });
+
   it('uses the stored refresh token and replaces both tokens on refresh', async () => {
     authStore.setTokens({
       accessToken: 'stale-access',
@@ -76,6 +95,27 @@ describe('AuthClientService', () => {
     expect(authStore.getRefreshToken()).toBe('refresh-2');
   });
 
+  it('prefers an explicit refresh token when refreshing', async () => {
+    authStore.setTokens({
+      accessToken: 'stale-access',
+      refreshToken: 'stored-refresh'
+    });
+
+    const refreshPromise = firstValueFrom(service.refresh({ refresh_token: 'explicit-refresh' }));
+
+    const request = httpTesting.expectOne('http://api.example.test/auth/refresh');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ refresh_token: 'explicit-refresh' });
+    request.flush({
+      access_token: 'access-3',
+      refresh_token: 'refresh-3',
+      token_type: 'bearer'
+    });
+
+    await expect(refreshPromise).resolves.toMatchObject({ access_token: 'access-3' });
+    expect(authStore.getRefreshToken()).toBe('refresh-3');
+  });
+
   it('clears stored tokens on logout', async () => {
     authStore.setTokens({
       accessToken: 'access-1',
@@ -86,6 +126,24 @@ describe('AuthClientService', () => {
 
     const request = httpTesting.expectOne('http://api.example.test/auth/logout');
     expect(request.request.body).toEqual({ refresh_token: 'refresh-1' });
+    request.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(logoutPromise).resolves.toBeNull();
+    expect(authStore.getAccessToken()).toBeNull();
+    expect(authStore.getRefreshToken()).toBeNull();
+  });
+
+  it('prefers an explicit refresh token when logging out', async () => {
+    authStore.setTokens({
+      accessToken: 'access-1',
+      refreshToken: 'stored-refresh'
+    });
+
+    const logoutPromise = firstValueFrom(service.logout({ refresh_token: 'explicit-refresh' }));
+
+    const request = httpTesting.expectOne('http://api.example.test/auth/logout');
+    expect(request.request.method).toBe('POST');
+    expect(request.request.body).toEqual({ refresh_token: 'explicit-refresh' });
     request.flush(null, { status: 204, statusText: 'No Content' });
 
     await expect(logoutPromise).resolves.toBeNull();

@@ -2,8 +2,8 @@ import { HttpClient, HttpContext, HttpContextToken, HttpErrorResponse, HttpInter
 import { inject } from '@angular/core';
 import { catchError, finalize, map, Observable, shareReplay, switchMap, throwError } from 'rxjs';
 
+import { AccessTokenResponse } from '../../models/api';
 import { CLIENT_API_BASE_URL } from './api.config';
-import { AccessTokenResponse } from './api-models';
 import { ClientAuthStore } from './auth.store';
 
 export type ClientAuthMode = 'required' | 'optional' | 'none';

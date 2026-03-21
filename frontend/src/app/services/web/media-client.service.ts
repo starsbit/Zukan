@@ -13,7 +13,7 @@ import {
   MediaUpdateDto,
   TaggingJobQueuedResponse,
   Uuid
-} from './api-models';
+} from '../../models/api';
 import { ClientApiService } from './api.service';
 
 @Injectable({

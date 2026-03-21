@@ -10,7 +10,7 @@ import {
   UserListResponse,
   UserRead,
   Uuid
-} from './api-models';
+} from '../../models/api';
 import { ClientApiService } from './api.service';
 
 @Injectable({

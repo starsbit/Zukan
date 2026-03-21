@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-import { ListTagsQuery, TagRead } from './api-models';
+import { ListTagsQuery, TagRead } from '../../models/api';
 import { ClientApiService } from './api.service';
 
 @Injectable({
