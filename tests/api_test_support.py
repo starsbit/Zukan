@@ -162,6 +162,7 @@ def api():
             ], True
         if b > 200:
             return [
+                {"name": "ayanami_rei", "category": 4, "confidence": 0.98},
                 {"name": "sky", "category": 0, "confidence": 0.96},
                 {"name": "blue", "category": 0, "confidence": 0.9},
                 {"name": "rating:general", "category": 9, "confidence": 0.99},

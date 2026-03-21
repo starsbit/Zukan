@@ -83,6 +83,7 @@ class ImageRead(BaseModel):
     height: int | None
     mime_type: str | None
     tags: list[str]
+    character_name: str | None = None
     is_nsfw: bool
     tagging_status: str
     thumbnail_status: str

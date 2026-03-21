@@ -68,6 +68,33 @@ def test_predict_sync_filters_by_thresholds_and_marks_nsfw(tmp_path, monkeypatch
     assert [item["name"] for item in results] == ["rating:general", "rating:questionable", "hero", "forest"]
 
 
+def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_path, monkeypatch):
+    wd = tagger_module.WDTagger()
+    wd._input_name = "input"
+    wd._input_size = 8
+    wd._tags_df = pd.DataFrame(
+        [
+            {"name": "heroine_a", "category": 4},
+            {"name": "heroine_b", "category": 4},
+            {"name": "landscape", "category": 0},
+            {"name": "rating:general", "category": 9},
+        ]
+    )
+    wd._session = Mock()
+    wd._session.run.return_value = [np.array([[0.91, 0.87, 0.8, 0.99]], dtype=np.float32)]
+
+    monkeypatch.setattr(tagger_module.settings, "tagger_threshold_character", 0.85)
+    monkeypatch.setattr(tagger_module.settings, "tagger_threshold_general", 0.75)
+
+    image_path = tmp_path / "characters.png"
+    Image.new("RGB", (16, 12), color=(0, 0, 255)).save(image_path)
+
+    results, is_nsfw = wd._predict_sync(str(image_path))
+
+    assert is_nsfw is False
+    assert [item["name"] for item in results] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
+
+
 def test_predict_uses_executor(monkeypatch):
     wd = tagger_module.WDTagger()
     monkeypatch.setattr(wd, "_predict_sync", lambda path: ([{"name": "sky"}], False))

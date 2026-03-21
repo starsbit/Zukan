@@ -115,6 +115,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
             session,
             db_user,
             tags="sky",
+            character_name="REI",
             exclude_tags=None,
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.INCLUDE,
@@ -124,9 +125,26 @@ def test_image_service_listing_detail_and_favorites_flow(api):
             page_size=20,
         )
         assert [item.id for item in listing.items] == [blue_id]
+        assert listing.items[0].character_name == "ayanami_rei"
+
+        character_only = await image_service.list_images(
+            session,
+            db_user,
+            tags=None,
+            character_name="yAnAmI",
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            favorited=None,
+            page=1,
+            page_size=20,
+        )
+        assert [item.id for item in character_only.items] == [blue_id]
 
         detail = await image_service.get_image_detail(session, blue_id, db_user)
         assert detail.id == blue_id
+        assert detail.character_name == "ayanami_rei"
         assert detail.tag_details[0].name == "rating:general"
 
         visible = await image_service.get_visible_image(session, blue_id, db_user)

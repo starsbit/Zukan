@@ -107,6 +107,31 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     })
     assert by_tag.status_code == 200
     assert by_tag.json()["total"] == 1
+    assert by_tag.json()["items"][0]["character_name"] == "ayanami_rei"
+
+    by_character_name = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"character_name": "rei"},
+    )
+    assert by_character_name.status_code == 200
+    assert by_character_name.json()["total"] == 1
+
+    by_tag_and_character_name = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"tags": "sky", "character_name": "ayanami"},
+    )
+    assert by_tag_and_character_name.status_code == 200
+    assert by_tag_and_character_name.json()["total"] == 1
+
+    no_tag_and_character_match = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"tags": "rose", "character_name": "ayanami"},
+    )
+    assert no_tag_and_character_match.status_code == 200
+    assert no_tag_and_character_match.json()["total"] == 0
 
     by_or_tag = api.client.get("/images", headers=api.auth_headers(owner["access_token"]), params={
         "tags": "rose,sky",
@@ -125,7 +150,8 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     detail = api.client.get(f"/images/{blue['id']}", headers=api.auth_headers(owner["access_token"]))
     assert detail.status_code == 200
     assert detail.json()["is_favorited"] is False
-    assert [tag["name"] for tag in detail.json()["tag_details"]] == ["rating:general", "sky", "blue"]
+    assert detail.json()["character_name"] == "ayanami_rei"
+    assert [tag["name"] for tag in detail.json()["tag_details"]] == ["rating:general", "ayanami_rei", "sky", "blue"]
 
     image_file = api.client.get(f"/images/{blue['id']}/file", headers=api.auth_headers(owner["access_token"]))
     assert image_file.status_code == 200

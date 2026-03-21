@@ -72,6 +72,12 @@ def _apply_tag_filters(stmt, tags: str | None, exclude_tags: str | None, mode: T
     return stmt
 
 
+def _apply_character_name_filter(stmt, character_name: str | None):
+    if character_name and character_name.strip():
+        stmt = stmt.where(Image.character_name.ilike(f"%{character_name.strip()}%"))
+    return stmt
+
+
 def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     if nsfw == NsfwFilter.DEFAULT:
         if not user.show_nsfw:
@@ -90,6 +96,7 @@ async def list_images(
     db: AsyncSession,
     user: User,
     tags: str | None,
+    character_name: str | None,
     exclude_tags: str | None,
     mode: TagFilterMode,
     nsfw: NsfwFilter,
@@ -108,6 +115,7 @@ async def list_images(
         stmt = stmt.join(UserFavorite, and_(UserFavorite.image_id == Image.id, UserFavorite.user_id == user.id))
 
     stmt = _apply_tag_filters(stmt, tags, exclude_tags, mode)
+    stmt = _apply_character_name_filter(stmt, character_name)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
@@ -256,6 +264,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             sha256=sha256,
             mime_type=upload.content_type,
             tags=[],
+            character_name=None,
             tagging_status="pending",
             thumbnail_path=str(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",

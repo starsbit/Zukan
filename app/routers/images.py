@@ -89,6 +89,7 @@ async def download_images(
 @router.get("", response_model=ImageListResponse)
 async def list_images(
     tags: Annotated[str | None, Query(description="Comma-separated tags")] = None,
+    character_name: Annotated[str | None, Query(description="Case-insensitive character name search")] = None,
     exclude_tags: Annotated[str | None, Query()] = None,
     mode: TagFilterMode = TagFilterMode.AND,
     nsfw: NsfwFilter = NsfwFilter.DEFAULT,
@@ -103,6 +104,7 @@ async def list_images(
         db,
         user,
         tags,
+        character_name,
         exclude_tags,
         mode,
         nsfw,

@@ -16,6 +16,7 @@ def _base_image_data(**overrides):
         height=100,
         mime_type="image/jpeg",
         tags=[],
+        character_name=None,
         is_nsfw=False,
         tagging_status="done",
         thumbnail_status="done",
@@ -45,6 +46,11 @@ def test_image_read_uploader_id_nullable():
 def test_image_read_tags_list():
     m = ImageRead(**_base_image_data(tags=["1girl", "solo"]))
     assert m.tags == ["1girl", "solo"]
+
+
+def test_image_read_character_name_nullable():
+    m = ImageRead(**_base_image_data(character_name="ayanami_rei"))
+    assert m.character_name == "ayanami_rei"
 
 
 def test_image_detail_inherits_deleted_at():

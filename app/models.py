@@ -50,6 +50,7 @@ class Image(Base):
     sha256: Mapped[str] = mapped_column(String(64), nullable=True, unique=True, index=True)
     mime_type: Mapped[str] = mapped_column(String(64), nullable=True)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    character_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     tagging_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     thumbnail_path: Mapped[str] = mapped_column(String(1024), nullable=True)

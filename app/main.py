@@ -17,6 +17,13 @@ from app.services.tagger import tagger
 tag_queue: asyncio.Queue = asyncio.Queue()
 
 
+def _top_character_name(predictions: list[dict]) -> str | None:
+    character_predictions = [pred for pred in predictions if pred["category"] == 4]
+    if not character_predictions:
+        return None
+    return max(character_predictions, key=lambda pred: pred["confidence"])["name"]
+
+
 async def tagging_worker():
     while True:
         image_id: uuid.UUID = await tag_queue.get()
@@ -31,6 +38,7 @@ async def tagging_worker():
                 await db.commit()
 
                 predictions, is_nsfw = await tagger.predict(image.filepath)
+                image.character_name = _top_character_name(predictions)
 
                 existing_its = await db.execute(
                     select(ImageTag).where(ImageTag.image_id == image_id)

@@ -30,6 +30,27 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     sky_search = api.client.get("/images", headers=headers, params={"tags": "sky"})
     assert sky_search.status_code == 200
     assert [item["id"] for item in sky_search.json()["items"]] == [str(blue["id"])]
+    assert sky_search.json()["items"][0]["character_name"] == "ayanami_rei"
+
+    character_search = api.client.get("/images", headers=headers, params={"character_name": "rei"})
+    assert character_search.status_code == 200
+    assert [item["id"] for item in character_search.json()["items"]] == [str(blue["id"])]
+
+    combined_search = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "sky", "character_name": "ayanami"},
+    )
+    assert combined_search.status_code == 200
+    assert [item["id"] for item in combined_search.json()["items"]] == [str(blue["id"])]
+
+    combined_miss = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "forest", "character_name": "ayanami"},
+    )
+    assert combined_miss.status_code == 200
+    assert combined_miss.json()["items"] == []
 
     forest_search = api.client.get("/images", headers=headers, params={"tags": "forest"})
     assert forest_search.status_code == 200
