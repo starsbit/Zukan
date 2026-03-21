@@ -15,6 +15,7 @@ from app.schemas import (
     CATEGORY_NAMES,
     ImageDetail,
     ImageListResponse,
+    ImageMetadataUpdate,
     ImageRead,
     NsfwFilter,
     OnThisDayResponse,
@@ -24,6 +25,7 @@ from app.schemas import (
     UploadResult,
 )
 from app.services.storage import delete_file, generate_thumbnail, get_image_dimensions, save_upload
+from app.services.tagger import NSFW_RATING_TAGS
 
 _tag_queue: asyncio.Queue | None = None
 
@@ -76,6 +78,18 @@ def _apply_character_name_filter(stmt, character_name: str | None):
     if character_name and character_name.strip():
         stmt = stmt.where(Image.character_name.ilike(f"%{character_name.strip()}%"))
     return stmt
+
+
+def _normalize_manual_tags(tags: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for tag in tags:
+        cleaned = tag.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        normalized.append(cleaned)
+        seen.add(cleaned)
+    return normalized
 
 
 def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
@@ -334,6 +348,59 @@ async def get_image_detail(db: AsyncSession, image_id: uuid.UUID, user: User) ->
     ]
     base = ImageRead.model_validate(image).model_copy(update={"is_favorited": is_favorited})
     return ImageDetail(**base.model_dump(), tag_details=tag_details)
+
+
+async def update_image_metadata(
+    db: AsyncSession,
+    image_id: uuid.UUID,
+    user: User,
+    payload: ImageMetadataUpdate,
+) -> ImageDetail:
+    image = await get_owned_or_admin_image(db, image_id, user, trashed=False)
+
+    if "tags" in payload.model_fields_set and payload.tags is not None:
+        normalized_tags = _normalize_manual_tags(payload.tags)
+        existing_image_tags = (
+            await db.execute(
+                select(ImageTag)
+                .options(selectinload(ImageTag.tag))
+                .where(ImageTag.image_id == image_id)
+            )
+        ).scalars().all()
+        existing_by_name = {item.tag.name: item for item in existing_image_tags}
+
+        for name, image_tag in existing_by_name.items():
+            if name not in normalized_tags:
+                image_tag.tag.image_count = max(0, image_tag.tag.image_count - 1)
+                await db.delete(image_tag)
+
+        new_tag_names = [name for name in normalized_tags if name not in existing_by_name]
+        existing_tags = {}
+        if new_tag_names:
+            existing_tags = {
+                tag.name: tag
+                for tag in (
+                    await db.execute(select(Tag).where(Tag.name.in_(new_tag_names)))
+                ).scalars().all()
+            }
+
+        for name in new_tag_names:
+            tag = existing_tags.get(name)
+            if tag is None:
+                tag = Tag(name=name, category=0, image_count=0)
+                db.add(tag)
+                await db.flush()
+            tag.image_count += 1
+            db.add(ImageTag(image_id=image_id, tag_id=tag.id, confidence=1.0))
+
+        image.tags = normalized_tags
+        image.is_nsfw = any(tag in NSFW_RATING_TAGS for tag in normalized_tags)
+
+    if "character_name" in payload.model_fields_set:
+        image.character_name = payload.character_name.strip() if payload.character_name and payload.character_name.strip() else None
+
+    await db.commit()
+    return await get_image_detail(db, image_id, user)
 
 
 async def soft_delete_image(db: AsyncSession, image_id: uuid.UUID, user: User) -> None:

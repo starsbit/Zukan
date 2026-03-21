@@ -52,6 +52,27 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert combined_miss.status_code == 200
     assert combined_miss.json()["items"] == []
 
+    manual_edit = api.client.patch(
+        f"/images/{blue['id']}/metadata",
+        headers=headers,
+        json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
+    )
+    assert manual_edit.status_code == 200
+    assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
+    assert manual_edit.json()["character_name"] == "ikari_shinji"
+
+    corrected_search = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "pilot", "character_name": "shinji"},
+    )
+    assert corrected_search.status_code == 200
+    assert [item["id"] for item in corrected_search.json()["items"]] == [str(blue["id"])]
+
+    stale_search = api.client.get("/images", headers=headers, params={"tags": "sky"})
+    assert stale_search.status_code == 200
+    assert stale_search.json()["items"] == []
+
     forest_search = api.client.get("/images", headers=headers, params={"tags": "forest"})
     assert forest_search.status_code == 200
     assert [item["id"] for item in forest_search.json()["items"]] == [str(green["id"])]
@@ -70,6 +91,14 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     nsfw_search = api.client.get("/images", headers=headers, params={"tags": "rose", "nsfw": "include"})
     assert nsfw_search.status_code == 200
     assert [item["id"] for item in nsfw_search.json()["items"]] == [str(red["id"])]
+
+    clear_character_name = api.client.patch(
+        f"/images/{blue['id']}/metadata",
+        headers=headers,
+        json={"character_name": ""},
+    )
+    assert clear_character_name.status_code == 200
+    assert clear_character_name.json()["character_name"] is None
 
     refreshed = api.client.post("/auth/refresh", json={"refresh_token": logged_in["refresh_token"]})
     assert refreshed.status_code == 200

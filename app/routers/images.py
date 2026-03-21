@@ -13,6 +13,7 @@ from app.schemas import (
     DownloadRequest,
     ImageDetail,
     ImageListResponse,
+    ImageMetadataUpdate,
     NsfwFilter,
     OnThisDayResponse,
     TagFilterMode,
@@ -159,6 +160,21 @@ async def get_image(
     db: AsyncSession = Depends(get_db),
 ):
     return await image_service.get_image_detail(db, image_id, user)
+
+
+@router.patch(
+    "/{image_id}/metadata",
+    response_model=ImageDetail,
+    summary="Manually Edit Image Metadata",
+    response_description="Updated image metadata after applying manual tag and character name changes.",
+)
+async def update_image_metadata(
+    image_id: uuid.UUID,
+    body: ImageMetadataUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await image_service.update_image_metadata(db, image_id, user, body)
 
 
 @router.get("/{image_id}/file", summary="Download Original Image")

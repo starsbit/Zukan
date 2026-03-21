@@ -198,6 +198,36 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert tag_search.status_code == 200
     assert [tag["name"] for tag in tag_search.json()] == ["sky"]
 
+    manual_edit = api.client.patch(
+        f"/images/{blue['id']}/metadata",
+        headers=api.auth_headers(owner["access_token"]),
+        json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
+    )
+    assert manual_edit.status_code == 200
+    assert manual_edit.json()["character_name"] == "ikari_shinji"
+    assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
+
+    corrected = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"tags": "pilot", "character_name": "shinji"},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["total"] == 1
+
+    old_search = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"tags": "sky"},
+    )
+    assert old_search.status_code == 200
+    assert old_search.json()["total"] == 0
+
+    corrected_detail = api.client.get(f"/images/{blue['id']}", headers=api.auth_headers(owner["access_token"]))
+    assert corrected_detail.status_code == 200
+    assert corrected_detail.json()["character_name"] == "ikari_shinji"
+    assert {tag["name"] for tag in corrected_detail.json()["tag_details"]} == {"pilot", "rating:general"}
+
     retag = api.client.post(f"/images/{blue['id']}/retag", headers=api.auth_headers(owner["access_token"]))
     assert retag.status_code == 202
     api.wait_for_image_status(str(blue["id"]))

@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException, UploadFile
 
 from app.services import images as image_service
+from app.schemas import ImageMetadataUpdate
 from tests.api_test_support import png_bytes
 
 
@@ -216,5 +217,71 @@ def test_image_service_trash_restore_on_this_day_and_purge_flow(api):
 
         await image_service.purge_image(session, purged_id, db_user)
         assert await session.get(Image, purged_id) is None
+
+    api.run_db(_exercise)
+
+
+def test_update_image_metadata_replaces_tags_and_character_name(api):
+    user = api.register_and_login("image-service-manual-edit")
+    uploaded = api.upload_image(user["access_token"], "manual-edit-blue.png", (0, 0, 255))
+    api.wait_for_image_status(str(uploaded["id"]))
+    user_id = uuid.UUID(user["user"]["id"])
+    uploaded_id = uuid.UUID(str(uploaded["id"]))
+
+    async def _exercise(session):
+        from app.models import User
+        from app.schemas import NsfwFilter, TagFilterMode
+
+        db_user = await session.get(User, user_id)
+        db_user.show_nsfw = True
+        await session.commit()
+        updated = await image_service.update_image_metadata(
+            session,
+            uploaded_id,
+            db_user,
+            ImageMetadataUpdate(tags=["custom_tag", "rating:questionable"], character_name="ikari_shinji"),
+        )
+        assert updated.tags == ["custom_tag", "rating:questionable"]
+        assert updated.character_name == "ikari_shinji"
+        assert updated.is_nsfw is True
+        assert {tag.name for tag in updated.tag_details} == {"custom_tag", "rating:questionable"}
+
+        by_new_tag = await image_service.list_images(
+            session,
+            db_user,
+            tags="custom_tag",
+            character_name="shinji",
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            favorited=None,
+            page=1,
+            page_size=20,
+        )
+        assert [item.id for item in by_new_tag.items] == [uploaded_id]
+
+        by_old_tag = await image_service.list_images(
+            session,
+            db_user,
+            tags="sky",
+            character_name=None,
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            favorited=None,
+            page=1,
+            page_size=20,
+        )
+        assert by_old_tag.items == []
+
+        cleared = await image_service.update_image_metadata(
+            session,
+            uploaded_id,
+            db_user,
+            ImageMetadataUpdate(character_name=""),
+        )
+        assert cleared.character_name is None
 
     api.run_db(_exercise)

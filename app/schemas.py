@@ -104,6 +104,17 @@ class ImageDetail(ImageRead):
     )
 
 
+class ImageMetadataUpdate(BaseModel):
+    tags: list[str] | None = Field(
+        default=None,
+        description="Complete replacement tag list. Omit to keep tags unchanged.",
+    )
+    character_name: str | None = Field(
+        default=None,
+        description="Manual character name override. Send null or an empty string to clear it.",
+    )
+
+
 class ImageListResponse(BaseModel):
     total: int = Field(description="Total number of images matching the current filters.")
     page: int = Field(description="Current page number.")
