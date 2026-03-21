@@ -20,12 +20,13 @@
           }
           <button
             class="toolbar-button"
+            [class.toolbar-button-active]="tagsPanelOpen"
             mat-icon-button
             type="button"
             [attr.aria-label]="tagsPanelOpen ? 'Hide tags panel' : 'Show tags panel'"
             (click)="toggleTagsPanel()"
           >
-            <mat-icon>{{ tagsPanelOpen ? 'right_panel_close' : 'sell' }}</mat-icon>
+            <mat-icon>sell</mat-icon>
           </button>
           @if (canDelete) {
             <button class="toolbar-button danger-button" mat-icon-button type="button" aria-label="Delete media" (click)="deleteMedia()">

@@ -10,7 +10,10 @@ import { createMediaRead } from '../../testing/media-test.utils';
 describe('GalleryMediaCardComponent', () => {
   let fixture: ComponentFixture<GalleryMediaCardComponent>;
   let component: GalleryMediaCardComponent;
-  let mediaClient: { getMediaThumbnail: ReturnType<typeof vi.fn> };
+  let mediaClient: {
+    getMediaThumbnail: ReturnType<typeof vi.fn>;
+    getMediaFile: ReturnType<typeof vi.fn>;
+  };
   let mediaUploadService: {
     getMediaTaggingStatus: ReturnType<typeof vi.fn>;
     taggingStatusByMediaId: ReturnType<typeof signal<Record<string, string>>>;
@@ -20,7 +23,8 @@ describe('GalleryMediaCardComponent', () => {
 
   beforeEach(async () => {
     mediaClient = {
-      getMediaThumbnail: vi.fn()
+      getMediaThumbnail: vi.fn(),
+      getMediaFile: vi.fn()
     };
     mediaUploadService = {
       taggingStatusByMediaId: signal<Record<string, string>>({}),
@@ -82,6 +86,32 @@ describe('GalleryMediaCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('image');
   });
 
+  it('uses a quilted span for landscape media tiles', () => {
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', createMediaRead({
+      metadata: { ...createMediaRead().metadata, width: 1600, height: 900 }
+    }));
+    fixture.componentRef.setInput('tileIndex', 0);
+    fixture.detectChanges();
+
+    expect(component.gridColumn).toBe('span 5');
+    expect(component.gridRow).toBe('span 2');
+  });
+
+  it('uses a taller span for portrait media tiles', () => {
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', createMediaRead({
+      metadata: { ...createMediaRead().metadata, width: 700, height: 1200 }
+    }));
+    fixture.componentRef.setInput('tileIndex', 4);
+    fixture.detectChanges();
+
+    expect(component.gridColumn).toBe('span 2');
+    expect(component.gridRow).toBe('span 5');
+  });
+
   it('shows a compact spinner badge while tagging is pending', async () => {
     const media = createMediaRead({ tagging_status: 'pending' });
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
@@ -106,6 +136,39 @@ describe('GalleryMediaCardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('.status-badge mat-spinner')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Processing');
+  });
+
+  it('shows a video badge with duration', async () => {
+    const media = createMediaRead({
+      media_type: 'video',
+      metadata: { ...createMediaRead().metadata, mime_type: 'video/mp4', duration_seconds: 120 }
+    });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-type-badge')?.textContent).toContain('02:00');
+    expect(fixture.nativeElement.querySelector('.media-type-badge mat-icon')?.textContent).toContain('play_circle');
+  });
+
+  it('shows a gif badge', async () => {
+    const media = createMediaRead({
+      media_type: 'gif',
+      filename: 'loop.gif',
+      metadata: { ...createMediaRead().metadata, mime_type: 'image/gif' }
+    });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-type-badge')?.textContent).toContain('GIF');
+    expect(fixture.nativeElement.querySelector('.media-type-badge mat-icon')?.textContent).toContain('gif_box');
   });
 
   it('prefers the live upload tagging status without replacing the media input', async () => {
@@ -256,6 +319,54 @@ describe('GalleryMediaCardComponent', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it('loads a video preview on hover and renders a muted looping player', async () => {
+    const media = createMediaRead({
+      media_type: 'video',
+      metadata: { ...createMediaRead().metadata, mime_type: 'video/mp4', duration_seconds: 45 }
+    });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['video'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    component.onPreviewEnter();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(mediaClient.getMediaFile).toHaveBeenCalledWith(media.id);
+    const video = fixture.nativeElement.querySelector('video') as HTMLVideoElement | null;
+    expect(video).toBeTruthy();
+    expect(video?.muted).toBe(true);
+    expect(video?.loop).toBe(true);
+  });
+
+  it('loads a gif preview on hover and removes it when hover ends', async () => {
+    const media = createMediaRead({
+      media_type: 'gif',
+      filename: 'loop.gif',
+      metadata: { ...createMediaRead().metadata, mime_type: 'image/gif' }
+    });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['gif'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    component.onPreviewEnter();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-preview-image')).toBeTruthy();
+
+    component.onPreviewLeave();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-preview-image')).toBeNull();
+  });
+
   it('toggles selection from the card surface while selection mode is active', async () => {
     const media = createMediaRead();
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
@@ -291,8 +402,8 @@ describe('GalleryMediaCardComponent', () => {
     await fixture.whenStable();
 
     expect(component.aspectRatio).toBeCloseTo(1920 / 1080);
-    expect(component.columnSpan).toBe(4);
-    expect(component.gridColumn).toBe('span 4');
+    expect(component.columnSpan).toBe(5);
+    expect(component.gridColumn).toBe('span 5');
     expect(component.gridRow).toBe('span 2');
 
     fixture.destroy();

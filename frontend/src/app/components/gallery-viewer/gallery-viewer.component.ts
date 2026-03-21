@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, HostListener, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
-import { CommonModule, DatePipe } from '@angular/common';
+import { CommonModule, DatePipe, DOCUMENT } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -17,6 +17,7 @@ import { MediaClientService } from '../../services/web/media-client.service';
 })
 export class GalleryViewerComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
+  private readonly document = inject(DOCUMENT);
   private readonly mediaClient = inject(MediaClientService);
   private readonly mediaUploadService = inject(MediaUploadService);
   private mediaRequestId = 0;
@@ -24,6 +25,9 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   private pointerStartY = 0;
   private panStartX = 0;
   private panStartY = 0;
+  private previousBodyOverflow = '';
+  private previousHtmlOverflow = '';
+  private scrollLocked = false;
 
   @ViewChild('zoomStage') private zoomStage?: ElementRef<HTMLElement>;
   @Input() media: MediaRead | null = null;
@@ -45,6 +49,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['media']) {
       if (this.media) {
+        this.lockDocumentScroll();
         this.loadMedia();
       } else {
         this.resetViewer();
@@ -53,6 +58,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.unlockDocumentScroll();
     this.revokeMediaUrl();
   }
 
@@ -210,6 +216,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
 
   private resetViewer(): void {
     this.mediaRequestId += 1;
+    this.unlockDocumentScroll();
     this.revokeMediaUrl();
     this.loading = false;
     this.failed = false;
@@ -244,6 +251,28 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
+  }
+
+  private lockDocumentScroll(): void {
+    if (this.scrollLocked) {
+      return;
+    }
+
+    this.previousBodyOverflow = this.document.body.style.overflow;
+    this.previousHtmlOverflow = this.document.documentElement.style.overflow;
+    this.document.body.style.overflow = 'hidden';
+    this.document.documentElement.style.overflow = 'hidden';
+    this.scrollLocked = true;
+  }
+
+  private unlockDocumentScroll(): void {
+    if (!this.scrollLocked) {
+      return;
+    }
+
+    this.document.body.style.overflow = this.previousBodyOverflow;
+    this.document.documentElement.style.overflow = this.previousHtmlOverflow;
+    this.scrollLocked = false;
   }
 }
 

@@ -50,10 +50,17 @@ export class GallerySearchBarComponent implements OnChanges {
 
   constructor() {
     this.queryControl.valueChanges.pipe(
+      takeUntilDestroyed()
+    ).subscribe((value) => {
+      if (typeof value === 'string') {
+        this.lastTextValue = value;
+      }
+    });
+
+    this.queryControl.valueChanges.pipe(
       debounceTime(200),
       distinctUntilChanged(),
       switchMap((value) => {
-        this.lastTextValue = typeof value === 'string' ? value : this.lastTextValue;
         const context = getAutocompleteContext(typeof value === 'string' ? value : this.lastTextValue);
         if (!context) {
           return of({ tags: [], characters: [] });

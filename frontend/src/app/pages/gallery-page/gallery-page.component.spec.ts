@@ -39,6 +39,7 @@ class StubGalleryNavbarComponent {
 })
 class StubGalleryMediaCardComponent {
   @Input({ required: true }) media!: MediaRead;
+  @Input() tileIndex = 0;
   @Input() selectionMode = false;
   @Input() selected = false;
   @Input() trashMode = false;

@@ -2,6 +2,8 @@
   class="media-card"
   [class.media-card-selection-mode]="selectionMode"
   [class.media-card-selected]="selected"
+  [class.media-card-has-type-badge]="showMediaTypeBadge"
+  [class.media-card-previewing]="previewActive"
   [attr.aria-label]="selectionMode ? selectionLabel : 'Open ' + (media.original_filename || media.filename)"
   [attr.aria-pressed]="selectionMode ? selected : null"
   tabindex="0"
@@ -9,6 +11,8 @@
   (click)="onCardClick()"
   (keydown.enter)="onCardKeydown($event)"
   (keydown.space)="onCardKeydown($event)"
+  (mouseenter)="onPreviewEnter()"
+  (mouseleave)="onPreviewLeave()"
 >
   <button
     mat-icon-button
@@ -35,6 +39,13 @@
     </button>
   }
 
+  @if (showMediaTypeBadge) {
+    <span class="media-badge media-type-badge">
+      <mat-icon>{{ mediaTypeIcon }}</mat-icon>
+      <span>{{ mediaTypeLabel }}</span>
+    </span>
+  }
+
   @if (thumbnailUrl) {
     <img
       class="media-thumb"
@@ -50,6 +61,30 @@
         <mat-icon>{{ media.media_type === 'video' ? 'videocam' : 'image' }}</mat-icon>
       }
     </div>
+  }
+
+  @if (showGifPreview) {
+    <img
+      class="media-preview media-preview-image"
+      [src]="previewUrl"
+      [alt]="media.original_filename || media.filename"
+    >
+  }
+
+  @if (showVideoPreview) {
+    <video
+      #previewVideo
+      class="media-preview media-preview-video"
+      [src]="previewUrl"
+      [attr.aria-label]="media.original_filename || media.filename"
+      autoplay
+      muted
+      loop
+      playsinline
+      preload="metadata"
+      (loadeddata)="onPreviewVideoLoaded(previewVideo)"
+      (canplay)="onPreviewVideoLoaded(previewVideo)"
+    ></video>
   }
 
   @if (showStatusBadge) {

@@ -1,5 +1,17 @@
 import { AsyncPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, ViewChild, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  ChangeDetectorRef,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  NgZone,
+  QueryList,
+  ViewChild,
+  ViewChildren,
+  inject
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -24,6 +36,18 @@ interface GalleryDayGroup {
   items: MediaRead[];
 }
 
+interface GalleryTimelineMarker {
+  key: string;
+  ariaLabel: string;
+  year: string;
+  topPercent: number;
+}
+
+interface GalleryTimelineYear {
+  year: string;
+  topPercent: number;
+}
+
 @Component({
   selector: 'app-gallery-page',
   imports: [
@@ -45,12 +69,15 @@ interface GalleryDayGroup {
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GalleryPageComponent {
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly ngZone = inject(NgZone);
   private readonly route = inject(ActivatedRoute);
   private readonly mediaService = inject(MediaService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
   @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
+  @ViewChildren('groupSection') private groupSections?: QueryList<ElementRef<HTMLElement>>;
 
   readonly items$ = this.mediaService.items$;
   readonly loading$ = this.mediaService.requestLoading$;
@@ -62,9 +89,16 @@ export class GalleryPageComponent {
   dragActive = false;
   isTrashView = false;
   selectedMediaIds = new Set<string>();
+  timelineMarkers: GalleryTimelineMarker[] = [];
+  timelineYears: GalleryTimelineYear[] = [];
+  activeTimelineKey: string | null = null;
+  activeTimelineYear: string | null = null;
+  activeTimelineLabel = '';
+  activeTimelineTopPercent = 0;
   private currentItems: MediaRead[] = [];
   groupedItems: GalleryDayGroup[] = [];
   private dragDepth = 0;
+  private timelineRefreshQueued = false;
   searchState: GallerySearchState = {
     searchText: '',
     filters: createDefaultGallerySearchFilters()
@@ -93,7 +127,18 @@ export class GalleryPageComponent {
       .subscribe((items) => {
         this.currentItems = items;
         this.groupedItems = buildGalleryDayGroups(items);
+        this.scheduleTimelineRefresh();
       });
+  }
+
+  ngAfterViewInit(): void {
+    this.groupSections?.changes
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        this.scheduleTimelineRefresh();
+      });
+
+    this.scheduleTimelineRefresh();
   }
 
   reload(): void {
@@ -195,6 +240,16 @@ export class GalleryPageComponent {
     event.preventDefault();
     this.selectedMediaIds = new Set(this.currentItems.map((item) => item.id));
     this.selectedMedia = null;
+  }
+
+  @HostListener('window:scroll')
+  onWindowScroll(): void {
+    this.scheduleTimelineRefresh();
+  }
+
+  @HostListener('window:resize')
+  onWindowResize(): void {
+    this.scheduleTimelineRefresh();
   }
 
   toggleSelection(media: MediaRead): void {
@@ -338,6 +393,27 @@ export class GalleryPageComponent {
     return this.selectedMediaIds.size;
   }
 
+  scrollToGroup(groupKey: string): void {
+    const section = this.findGroupElement(groupKey);
+    if (!section) {
+      return;
+    }
+
+    section.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
+  }
+
+  scrollToYear(year: string): void {
+    const firstGroup = this.groupedItems.find((group) => group.key.startsWith(`${year}-`));
+    if (!firstGroup) {
+      return;
+    }
+
+    this.scrollToGroup(firstGroup.key);
+  }
+
   private loadMedia(query = this.activeQuery): void {
     this.mediaService.loadPage(query)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -352,6 +428,92 @@ export class GalleryPageComponent {
     const query = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
 
     return this.isTrashView ? { ...query, state: 'trashed' as const } : query;
+  }
+
+  private scheduleTimelineRefresh(): void {
+    if (this.timelineRefreshQueued) {
+      return;
+    }
+
+    this.timelineRefreshQueued = true;
+
+    this.ngZone.runOutsideAngular(() => {
+      requestAnimationFrame(() => {
+        this.timelineRefreshQueued = false;
+        this.ngZone.run(() => {
+          this.refreshTimeline();
+        });
+      });
+    });
+  }
+
+  private refreshTimeline(): void {
+    const sections = this.groupSections?.toArray() ?? [];
+    if (sections.length === 0 || this.groupedItems.length === 0 || typeof window === 'undefined') {
+      this.timelineMarkers = [];
+      this.timelineYears = [];
+      this.activeTimelineKey = null;
+      this.activeTimelineYear = null;
+      this.activeTimelineLabel = '';
+      this.activeTimelineTopPercent = 0;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    const metrics = sections.map((sectionRef, index) => {
+      const element = sectionRef.nativeElement;
+      const header = element.querySelector('.gallery-group-header') as HTMLElement | null;
+      const anchor = header ?? element;
+      const rect = anchor.getBoundingClientRect();
+
+      return {
+        key: this.groupedItems[index]?.key ?? '',
+        center: rect.top + window.scrollY + (rect.height / 2)
+      };
+    }).filter((metric) => metric.key.length > 0);
+
+    if (metrics.length === 0) {
+      return;
+    }
+
+    const firstCenter = metrics[0].center;
+    const lastCenter = metrics[metrics.length - 1].center;
+    const range = Math.max(lastCenter - firstCenter, 1);
+
+    this.timelineMarkers = metrics.map((metric) => ({
+      key: metric.key,
+      ariaLabel: formatTimelineMarkerLabel(metric.key),
+      year: metric.key.slice(0, 4),
+      topPercent: clampPercent(((metric.center - firstCenter) / range) * 100)
+    }));
+
+    const years = new Map<string, GalleryTimelineYear>();
+    for (const marker of this.timelineMarkers) {
+      if (!years.has(marker.year)) {
+        years.set(marker.year, {
+          year: marker.year,
+          topPercent: marker.topPercent
+        });
+      }
+    }
+    this.timelineYears = Array.from(years.values());
+
+    const viewportCenter = window.scrollY + (window.innerHeight / 2);
+    const activeMetric = metrics.reduce((closest, candidate) =>
+      Math.abs(candidate.center - viewportCenter) < Math.abs(closest.center - viewportCenter) ? candidate : closest
+    );
+
+    this.activeTimelineKey = activeMetric.key;
+    this.activeTimelineYear = activeMetric.key.slice(0, 4);
+    this.activeTimelineLabel = formatTimelineCurrentLabel(activeMetric.key);
+    this.activeTimelineTopPercent = clampPercent(((activeMetric.center - firstCenter) / range) * 100);
+    this.cdr.markForCheck();
+  }
+
+  private findGroupElement(groupKey: string): HTMLElement | null {
+    const sections = this.groupSections?.toArray() ?? [];
+    const index = this.groupedItems.findIndex((group) => group.key === groupKey);
+    return index >= 0 ? sections[index]?.nativeElement ?? null : null;
   }
 }
 
@@ -414,4 +576,25 @@ function formatGroupLabel(value: string): string {
     month: 'short',
     day: 'numeric'
   }).format(new Date(value));
+}
+
+function formatTimelineMarkerLabel(groupKey: string): string {
+  const [year, month, day] = groupKey.split('-').map((part) => Number(part));
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  }).format(new Date(year, (month || 1) - 1, day || 1));
+}
+
+function formatTimelineCurrentLabel(groupKey: string): string {
+  const [year, month] = groupKey.split('-').map((part) => Number(part));
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    year: 'numeric'
+  }).format(new Date(year, (month || 1) - 1, 1));
+}
+
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
 }

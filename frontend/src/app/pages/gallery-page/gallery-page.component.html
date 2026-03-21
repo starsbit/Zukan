@@ -124,7 +124,7 @@
         } @else {
           <section class="gallery-groups" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
             @for (group of groupedItems; track group.key) {
-              <section class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
+              <section #groupSection class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
                 <header class="gallery-group-header">
                   <h2 class="gallery-group-title" [id]="'gallery-group-' + group.key">{{ group.label }}</h2>
                   <button
@@ -140,9 +140,10 @@
                 </header>
 
                 <section class="gallery-grid">
-                  @for (item of group.items; track item.id) {
+                  @for (item of group.items; track item.id; let itemIndex = $index) {
                     <app-gallery-media-card
                       [media]="item"
+                      [tileIndex]="itemIndex"
                       [selectionMode]="selectionMode"
                       [selected]="isSelected(item.id)"
                       [trashMode]="isTrashView"
@@ -158,6 +159,42 @@
         }
       }
     </section>
+
+    @if (timelineMarkers.length > 0) {
+      <aside class="gallery-timeline" aria-label="Timeline navigation">
+        <div class="gallery-timeline-track"></div>
+
+        @for (marker of timelineMarkers; track marker.key) {
+          <button
+            type="button"
+            class="gallery-timeline-marker"
+            [class.gallery-timeline-marker-active]="marker.key === activeTimelineKey"
+            [style.top.%]="marker.topPercent"
+            [attr.aria-label]="'Jump to ' + marker.ariaLabel"
+            (click)="scrollToGroup(marker.key)"
+          ></button>
+        }
+
+        @for (year of timelineYears; track year.year) {
+          <button
+            type="button"
+            class="gallery-timeline-year"
+            [class.gallery-timeline-year-active]="year.year === activeTimelineYear"
+            [style.top.%]="year.topPercent"
+            [attr.aria-label]="'Jump to year ' + year.year"
+            (click)="scrollToYear(year.year)"
+          >
+            {{ year.year }}
+          </button>
+        }
+
+        @if (activeTimelineLabel) {
+          <div class="gallery-timeline-current" [style.top.%]="activeTimelineTopPercent" aria-hidden="true">
+            {{ activeTimelineLabel }}
+          </div>
+        }
+      </aside>
+    }
   </section>
 </section>
 

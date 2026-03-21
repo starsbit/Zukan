@@ -55,6 +55,18 @@ describe('GallerySearchBarComponent', () => {
     expect(component.queryControl.getRawValue()).toBe('fox');
   });
 
+  it('submits the latest typed query even before autocomplete debounce completes', () => {
+    vi.useFakeTimers();
+    const submittedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
+
+    component.queryControl.setValue('tag:fox');
+    component.submit();
+
+    expect(submittedSpy).toHaveBeenCalledWith('tag:fox');
+    expect(component.queryControl.getRawValue()).toBe('tag:fox');
+  });
+
   it('displays labels for suggestion objects', () => {
     expect(component.displaySuggestion(null)).toBe('');
     expect(component.displaySuggestion('fox')).toBe('fox');
@@ -68,7 +80,6 @@ describe('GallerySearchBarComponent', () => {
 
   it('replaces the active token when a suggestion is selected', () => {
     component.queryControl.setValue('tag:fo');
-    component['lastTextValue'] = 'tag:fo';
 
     component.selectSuggestion({
       kind: 'tag',
