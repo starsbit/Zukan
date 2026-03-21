@@ -11,7 +11,7 @@ import pandas as pd
 from huggingface_hub import hf_hub_download
 from PIL import Image
 
-from app.config import settings
+from backend.config import settings
 
 NSFW_RATING_TAGS = {"rating:questionable", "rating:explicit"}
 

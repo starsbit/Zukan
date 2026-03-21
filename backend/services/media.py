@@ -8,9 +8,9 @@ from sqlalchemy import and_, extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.config import settings
-from app.models import Media, MediaTag, MediaType, Tag, User, UserFavorite
-from app.schemas import (
+from backend.config import settings
+from backend.models import Media, MediaTag, MediaType, Tag, User, UserFavorite
+from backend.schemas import (
     BatchUploadResponse,
     BulkResult,
     CATEGORY_NAMES,
@@ -28,7 +28,7 @@ from app.schemas import (
     TagWithConfidence,
     UploadResult,
 )
-from app.services.storage import (
+from backend.services.storage import (
     cleanup_sampled_frames,
     delete_media_files,
     extract_media_metadata,
@@ -36,7 +36,7 @@ from app.services.storage import (
     sample_media_frames,
     save_upload,
 )
-from app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult, derive_character_name, tagger
+from backend.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult, derive_character_name, tagger
 
 _tag_queue: asyncio.Queue | None = None
 

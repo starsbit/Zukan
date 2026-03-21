@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import (
+from backend.schemas import (
     AlbumMediaBatchUpdate,
     AdminStatsResponse,
     AdminUserUpdate,

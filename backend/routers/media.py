@@ -7,10 +7,10 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.deps import current_user
-from app.models import User
-from app.schemas import (
+from backend.database import get_db
+from backend.deps import current_user
+from backend.models import User
+from backend.schemas import (
     BatchUploadResponse,
     BulkResult,
     DownloadRequest,
@@ -25,8 +25,8 @@ from app.schemas import (
     TagFilterMode,
     TaggingJobQueuedResponse,
 )
-from app.services import media as media_service
-from app.services.storage import zip_media
+from backend.services import media as media_service
+from backend.services.storage import zip_media
 
 router = APIRouter(prefix="/media", tags=["media"])
 

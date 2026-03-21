@@ -176,7 +176,7 @@ class ApiHarness:
         return run(_inner())
 
     def fetch_media_row(self, media_id: uuid.UUID):
-        from app.models import Media
+        from backend.models import Media
 
         async def _fetch(session: AsyncSession):
             return await session.get(Media, media_id)
@@ -184,7 +184,7 @@ class ApiHarness:
         return self.run_db(_fetch)
 
     def set_media_created_at(self, media_id: str, created_at: datetime):
-        from app.models import Media
+        from backend.models import Media
 
         async def _update(session: AsyncSession):
             media = await session.get(Media, uuid.UUID(media_id))
@@ -194,7 +194,7 @@ class ApiHarness:
         self.run_db(_update)
 
     def set_media_captured_at(self, media_id: str, captured_at: datetime):
-        from app.models import Media
+        from backend.models import Media
 
         async def _update(session: AsyncSession):
             media = await session.get(Media, uuid.UUID(media_id))
@@ -223,11 +223,11 @@ def api():
         pytest.skip("Docker daemon is required for API integration tests")
     database_url = container.get_connection_url().replace("localhost", "127.0.0.1")
 
-    from app.config import settings
-    import app.database as database_module
-    import app.main as main_module
-    import app.services.tagger as tagger_module
-    from app.services.tagger import TagPrediction, TaggingResult
+    from backend.config import settings
+    import backend.database as database_module
+    import backend.main as main_module
+    import backend.services.tagger as tagger_module
+    from backend.services.tagger import TagPrediction, TaggingResult
 
     original_database_url = settings.database_url
     original_storage_dir = settings.storage_dir
@@ -290,7 +290,7 @@ def api():
     tagger_module.tagger.predict = fake_predict
 
     try:
-        with TestClient(main_module.app) as client:
+        with TestClient(main_module.api) as client:
             yield ApiHarness(client=client, database_url=database_url)
     finally:
         run(test_engine.dispose())

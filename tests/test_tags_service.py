@@ -1,4 +1,4 @@
-from app.services import tags as tag_service
+from backend.services import tags as tag_service
 
 
 def test_to_tag_read_uses_category_name_mapping(api):
@@ -7,7 +7,7 @@ def test_to_tag_read_uses_category_name_mapping(api):
     api.wait_for_media_status(str(uploaded["id"]))
 
     async def _exercise(session):
-        from app.models import Tag
+        from backend.models import Tag
         from sqlalchemy import select
 
         tag = (await session.execute(select(Tag).where(Tag.name == "rating:general"))).scalar_one()

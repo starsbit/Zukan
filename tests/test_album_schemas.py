@@ -4,8 +4,8 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
-from app.routers.albums import album_access
-from app.schemas import AlbumCreate, AlbumMediaBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
+from backend.routers.albums import album_access
+from backend.schemas import AlbumCreate, AlbumMediaBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
 
 
 def _now():

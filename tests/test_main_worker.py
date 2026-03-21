@@ -1,4 +1,4 @@
-from app.services.tagger import TagPrediction, TaggingResult
+from backend.services.tagger import TagPrediction, TaggingResult
 
 
 def test_tagging_result_can_carry_character_name():

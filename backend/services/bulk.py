@@ -2,10 +2,10 @@ from typing import TypeAlias
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
-from app.schemas import BulkResult, MediaBatchDelete, MediaBatchUpdate
-from app.services import albums as album_service
-from app.services import media as media_service
+from backend.models import User
+from backend.schemas import BulkResult, MediaBatchDelete, MediaBatchUpdate
+from backend.services import albums as album_service
+from backend.services import media as media_service
 
 MediaIdList: TypeAlias = list
 

@@ -4,9 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Album, AlbumMedia, AlbumShare, Media, User
-from app.schemas import AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
-from app.services.media import _apply_tag_filters, enrich_media, favorited_ids
+from backend.models import Album, AlbumMedia, AlbumShare, Media, User
+from backend.schemas import AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
+from backend.services.media import _apply_tag_filters, enrich_media, favorited_ids
 
 
 async def get_album(db: AsyncSession, album_id: uuid.UUID) -> Album:

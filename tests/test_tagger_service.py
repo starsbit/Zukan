@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 
-from app.services import tagger as tagger_module
-from app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult
+from backend.services import tagger as tagger_module
+from backend.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult
 
 
 def test_questionable_is_nsfw():

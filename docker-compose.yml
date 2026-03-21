@@ -24,8 +24,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:zukan@db:5432/zukan
     volumes:
-      - storage_data:/app/storage
-      - model_cache:/app/model_cache
+      - storage_data:/backend/storage
+      - model_cache:/backend/model_cache
     depends_on:
       db:
         condition: service_healthy

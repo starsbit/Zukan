@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.deps import current_user
-from app.models import User
-from app.schemas import TagRead
-from app.services import tags as tag_service
+from backend.database import get_db
+from backend.deps import current_user
+from backend.models import User
+from backend.schemas import TagRead
+from backend.services import tags as tag_service
 
 router = APIRouter(prefix="/tags", tags=["tags"])
 

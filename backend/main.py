@@ -10,12 +10,12 @@ from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 
-from app.database import AsyncSessionLocal, init_db
-from app.models import Media, User
-from app.routers import admin, albums, auth, media, tags, users
-from app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
-from app.services.media import set_tag_queue, tag_media
-from app.services.tagger import tagger
+from backend.database import AsyncSessionLocal, init_db
+from backend.models import Media, User
+from backend.routers import admin, albums, auth, media, tags, users
+from backend.services.auth import authenticate_basic_user, get_user_by_username, hash_password
+from backend.services.media import set_tag_queue, tag_media
+from backend.services.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 docs_basic = HTTPBasic()
@@ -70,7 +70,7 @@ async def docs_user(credentials: HTTPBasicCredentials = Depends(docs_basic)) -> 
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_api: FastAPI):
     await init_db()
     await _ensure_admin_user()
     tagger.load()
@@ -84,9 +84,9 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="Zukan", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+api = FastAPI(title="Zukan", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
-app.add_middleware(
+api.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:4200"],
     allow_credentials=True,
@@ -94,36 +94,36 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router)
-app.include_router(users.router)
-app.include_router(media.router)
-app.include_router(tags.router)
-app.include_router(albums.router)
-app.include_router(admin.router)
+api.include_router(auth.router)
+api.include_router(users.router)
+api.include_router(media.router)
+api.include_router(tags.router)
+api.include_router(albums.router)
+api.include_router(admin.router)
 
 
-@app.get("/openapi.json", include_in_schema=False)
+@api.get("/openapi.json", include_in_schema=False)
 async def openapi_schema(_: User = Depends(docs_user)):
-    return JSONResponse(get_openapi(title=app.title, version="0.1.0", routes=app.routes))
+    return JSONResponse(get_openapi(title=api.title, version="0.1.0", routes=api.routes))
 
 
-@app.get("/docs", include_in_schema=False)
+@api.get("/docs", include_in_schema=False)
 async def swagger_ui(_: User = Depends(docs_user)):
     return get_swagger_ui_html(
         openapi_url="/openapi.json",
-        title=f"{app.title} - Swagger UI",
+        title=f"{api.title} - Swagger UI",
         oauth2_redirect_url="/docs/oauth2-redirect",
     )
 
 
-@app.get("/docs/oauth2-redirect", include_in_schema=False)
+@api.get("/docs/oauth2-redirect", include_in_schema=False)
 async def swagger_ui_redirect(_: User = Depends(docs_user)):
     return get_swagger_ui_oauth2_redirect_html()
 
 
-@app.get("/redoc", include_in_schema=False)
+@api.get("/redoc", include_in_schema=False)
 async def redoc_ui(_: User = Depends(docs_user)):
     return get_redoc_html(
         openapi_url="/openapi.json",
-        title=f"{app.title} - ReDoc",
+        title=f"{api.title} - ReDoc",
     )

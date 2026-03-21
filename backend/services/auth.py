@@ -9,9 +9,9 @@ from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.models import RefreshToken, User
-from app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
+from backend.config import settings
+from backend.models import RefreshToken, User
+from backend.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
 ALGORITHM = "HS256"
 

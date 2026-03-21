@@ -8,8 +8,8 @@ from PIL import Image as PILImage
 
 from tests.api_test_support import gif_bytes, mp4_bytes
 
-from app.models import MediaType
-from app.services.storage import (
+from backend.models import MediaType
+from backend.services.storage import (
     ALLOWED_MIME_TYPES,
     _shard_path,
     _thumbnail_path,
@@ -39,7 +39,7 @@ def test_allowed_mime_types_exclude_unsupported_types():
 
 
 def test_shard_path_uses_first_two_hex_chars(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.UUID("abcdef12-0000-0000-0000-000000000000")
         path = _shard_path(file_id, ".jpg")
@@ -49,7 +49,7 @@ def test_shard_path_uses_first_two_hex_chars(tmp_path):
 
 
 def test_shard_path_uses_correct_extension(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.uuid4()
         assert _shard_path(file_id, ".png").suffix == ".png"
@@ -74,7 +74,7 @@ def test_get_media_dimensions_returns_none_for_missing_file():
 
 
 def test_generate_thumbnail_creates_webp(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 128
         file_id = uuid.uuid4()
@@ -92,7 +92,7 @@ def test_generate_thumbnail_creates_webp(tmp_path):
 
 
 def test_generate_thumbnail_pads_to_square(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 64
         file_id = uuid.uuid4()
@@ -109,7 +109,7 @@ def test_generate_thumbnail_pads_to_square(tmp_path):
 
 
 def test_generate_thumbnail_returns_none_for_invalid_file(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 128
         file_id = uuid.uuid4()
@@ -121,7 +121,7 @@ def test_generate_thumbnail_returns_none_for_invalid_file(tmp_path):
 
 
 def test_generate_thumbnail_handles_rgba(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 64
         file_id = uuid.uuid4()
@@ -137,7 +137,7 @@ def test_generate_thumbnail_handles_rgba(tmp_path):
 
 
 def test_thumbnail_path_has_thumb_suffix(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.UUID("abcdef12-0000-0000-0000-000000000000")
         path = _thumbnail_path(file_id)
@@ -146,14 +146,14 @@ def test_thumbnail_path_has_thumb_suffix(tmp_path):
 
 
 def test_thumbnail_path_same_shard_dir_as_source(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.UUID("abcdef12-0000-0000-0000-000000000000")
         assert _shard_path(file_id, ".jpg").parent == _thumbnail_path(file_id).parent
 
 
 def test_delete_file_removes_thumbnail(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.uuid4()
         shard_dir = tmp_path / file_id.hex[:2]
@@ -170,7 +170,7 @@ def test_delete_file_removes_thumbnail(tmp_path):
 
 
 def test_delete_file_ok_when_no_thumbnail(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         file_id = uuid.uuid4()
         shard_dir = tmp_path / file_id.hex[:2]
@@ -210,7 +210,7 @@ def test_extract_media_metadata_for_mp4(tmp_path):
 
 
 def test_generate_poster_and_thumbnail_for_gif(tmp_path):
-    with patch("app.services.storage.settings") as mock_settings:
+    with patch("backend.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 64
         file_id = uuid.uuid4()

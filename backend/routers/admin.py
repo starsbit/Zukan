@@ -3,9 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.deps import admin_user
-from app.schemas import (
+from backend.database import get_db
+from backend.deps import admin_user
+from backend.schemas import (
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserUpdate,
@@ -13,7 +13,7 @@ from app.schemas import (
     UserListResponse,
     UserRead,
 )
-from app.services import admin as admin_service
+from backend.services import admin as admin_service
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)])
 

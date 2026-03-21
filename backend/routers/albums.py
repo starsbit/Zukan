@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.deps import current_user
-from app.models import User
-from app.schemas import (
+from backend.database import get_db
+from backend.deps import current_user
+from backend.models import User
+from backend.schemas import (
     AlbumMediaBatchUpdate,
     AlbumCreate,
     AlbumRead,
@@ -18,8 +18,8 @@ from app.schemas import (
     MediaListResponse,
     TagFilterMode,
 )
-from app.services import albums as album_service
-from app.services.storage import zip_media
+from backend.services import albums as album_service
+from backend.services.storage import zip_media
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 album_access = album_service.album_access

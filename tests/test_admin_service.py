@@ -1,9 +1,9 @@
 import asyncio
 import uuid
 
-from app.models import Media, User
-from app.services import admin as admin_service
-from app.services import media as media_service
+from backend.models import Media, User
+from backend.services import admin as admin_service
+from backend.services import media as media_service
 
 
 def test_get_admin_stats_reports_totals(api):
@@ -86,7 +86,7 @@ def test_admin_service_lists_users_and_updates_user_settings(api):
     user_id = uuid.UUID(user["user"]["id"])
 
     async def _exercise(session):
-        from app.schemas import AdminUserUpdate
+        from backend.schemas import AdminUserUpdate
 
         users = await admin_service.list_users(session, page=1, page_size=20)
         assert any(item.id == user_id for item in users.items)

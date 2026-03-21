@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.security import HTTPBasicCredentials
 
-from app import deps
+from backend import deps
 
 
 def test_current_user_returns_loaded_user(monkeypatch):

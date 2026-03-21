@@ -1,7 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from app import database
+from backend import database
 
 
 def test_get_db_yields_session_and_closes_generator(monkeypatch):

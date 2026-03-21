@@ -4,9 +4,9 @@ from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Media, User
-from app.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
-from app.services.media import get_tag_queue, purge_media_record
+from backend.models import Media, User
+from backend.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
+from backend.services.media import get_tag_queue, purge_media_record
 
 
 async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:

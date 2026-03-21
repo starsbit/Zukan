@@ -6,8 +6,8 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import HTTPException, UploadFile
 
-from app.services import media as media_service
-from app.schemas import MediaListState, MediaUpdate
+from backend.services import media as media_service
+from backend.schemas import MediaListState, MediaUpdate
 from tests.api_test_support import jpeg_bytes, png_bytes
 
 
@@ -29,8 +29,8 @@ def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from app.models import Media, User
-        from app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+        from backend.models import Media, User
+        from backend.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         upload = UploadFile(
@@ -62,8 +62,8 @@ def test_build_upload_response_uses_embedded_capture_timestamp(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from app.models import Media, User
-        from app.schemas import NsfwFilter, TagFilterMode
+        from backend.models import Media, User
+        from backend.schemas import NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         upload = UploadFile(
@@ -86,7 +86,7 @@ def test_get_visible_media_blocks_hidden_nsfw_media(api):
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
     async def _exercise(session):
-        from app.models import User
+        from backend.models import User
 
         db_user = await session.get(User, user_id)
         await media_service.get_visible_media(session, uploaded_id, db_user)
@@ -109,8 +109,8 @@ def test_retag_media_queues_media_id(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from app.models import Media, User
-        from app.schemas import NsfwFilter, TagFilterMode
+        from backend.models import Media, User
+        from backend.schemas import NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         await media_service.retag_media(session, uploaded_id, db_user)
@@ -140,8 +140,8 @@ def test_media_service_listing_detail_and_favorites_flow(api):
     assert enabled.status_code == 200
 
     async def _exercise(session):
-        from app.models import User
-        from app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+        from backend.models import User
+        from backend.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         listing = await media_service.list_media(
@@ -229,8 +229,8 @@ def test_media_service_trash_restore_on_this_day_and_purge_flow(api):
     purged_id = uuid.UUID(str(purged["id"]))
 
     async def _exercise(session):
-        from app.models import Media, User
-        from app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+        from backend.models import Media, User
+        from backend.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
 
@@ -282,8 +282,8 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
     async def _exercise(session):
-        from app.models import User
-        from app.schemas import MediaMetadataFilter, MediaMetadataUpdate, NsfwFilter, TagFilterMode
+        from backend.models import User
+        from backend.schemas import MediaMetadataFilter, MediaMetadataUpdate, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         db_user.show_nsfw = True

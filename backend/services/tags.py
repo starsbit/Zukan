@@ -1,8 +1,8 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Tag
-from app.schemas import CATEGORY_NAMES, TagRead
+from backend.models import Tag
+from backend.schemas import CATEGORY_NAMES, TagRead
 
 
 def _to_tag_read(tag: Tag) -> TagRead:

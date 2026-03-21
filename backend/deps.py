@@ -2,9 +2,9 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.models import User
-from app.services.auth import authenticate_basic_user, decode_access_token, get_user_by_id
+from backend.database import get_db
+from backend.models import User
+from backend.services.auth import authenticate_basic_user, decode_access_token, get_user_by_id
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login-form", auto_error=False)
 basic_scheme = HTTPBasic(auto_error=False)

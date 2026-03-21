@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from app.schemas import MediaDetail, MediaRead
+from backend.schemas import MediaDetail, MediaRead
 
 
 def _base_media_data(**overrides):
