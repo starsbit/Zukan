@@ -48,10 +48,10 @@ def test_get_album_for_user_raises_not_found_for_unshared_user(api):
 
 def test_bulk_add_and_remove_from_album_updates_cover_image(api):
     owner = api.register_and_login("album-service-editor")
-    first = api.upload_image(owner["access_token"], "album-service-first.png", (0, 0, 255))
-    second = api.upload_image(owner["access_token"], "album-service-second.png", (0, 255, 0))
-    api.wait_for_image_status(str(first["id"]))
-    api.wait_for_image_status(str(second["id"]))
+    first = api.upload_media(owner["access_token"], "album-service-first.png", (0, 0, 255))
+    second = api.upload_media(owner["access_token"], "album-service-second.png", (0, 255, 0))
+    api.wait_for_media_status(str(first["id"]))
+    api.wait_for_media_status(str(second["id"]))
 
     created = api.client.post(
         "/albums",
@@ -77,7 +77,7 @@ def test_bulk_add_and_remove_from_album_updates_cover_image(api):
         assert (processed, skipped) == (2, 0)
 
         album = await session.get(Album, album_id)
-        assert album.cover_image_id == first_id
+        assert album.cover_media_id == first_id
 
         processed, skipped = await album_service.bulk_remove_from_album(
             session,
@@ -88,7 +88,7 @@ def test_bulk_add_and_remove_from_album_updates_cover_image(api):
         assert (processed, skipped) == (1, 0)
 
         await session.refresh(album)
-        assert album.cover_image_id == second_id
+        assert album.cover_media_id == second_id
 
     api.run_db(_exercise)
 
@@ -149,12 +149,12 @@ def test_album_service_crud_and_sharing_flow(api):
     api.run_db(_exercise)
 
 
-def test_album_service_lists_images_and_downloads_in_album_order(api):
-    owner = api.register_and_login("album-service-images")
-    first = api.upload_image(owner["access_token"], "ordered-blue.png", (0, 0, 255))
-    second = api.upload_image(owner["access_token"], "ordered-green.png", (0, 255, 0))
-    api.wait_for_image_status(str(first["id"]))
-    api.wait_for_image_status(str(second["id"]))
+def test_album_service_lists_media_and_downloads_in_album_order(api):
+    owner = api.register_and_login("album-service-media")
+    first = api.upload_media(owner["access_token"], "ordered-blue.png", (0, 0, 255))
+    second = api.upload_media(owner["access_token"], "ordered-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(first["id"]))
+    api.wait_for_media_status(str(second["id"]))
 
     created = api.client.post(
         "/albums",
@@ -173,10 +173,10 @@ def test_album_service_lists_images_and_downloads_in_album_order(api):
         from app.schemas import TagFilterMode
 
         owner_user = await session.get(User, owner_id)
-        added = await album_service.add_images_to_album(session, album_id, [first_id, second_id], owner_user)
+        added = await album_service.add_media_to_album(session, album_id, [first_id, second_id], owner_user)
         assert added == 2
 
-        listing = await album_service.list_album_images(
+        listing = await album_service.list_album_media(
             session,
             album_id,
             owner_user,
@@ -188,13 +188,13 @@ def test_album_service_lists_images_and_downloads_in_album_order(api):
         )
         assert [item.id for item in listing.items] == [first_id, second_id]
 
-        album, rows = await album_service.get_album_download_images(session, album_id, owner_user)
+        album, rows = await album_service.get_album_download_media(session, album_id, owner_user)
         assert album.id == album_id
         assert [row.id for row in rows] == [first_id, second_id]
 
-        await album_service.remove_image_from_album(session, album_id, first_id, owner_user)
+        await album_service.remove_media_from_album(session, album_id, first_id, owner_user)
 
-        refreshed = await album_service.list_album_images(
+        refreshed = await album_service.list_album_media(
             session,
             album_id,
             owner_user,

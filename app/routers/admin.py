@@ -54,10 +54,10 @@ async def update_user(
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: uuid.UUID,
-    delete_images: bool = Query(default=False),
+    delete_media: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
-    await admin_service.delete_user(db, user_id, delete_images)
+    await admin_service.delete_user(db, user_id, delete_media)
 
 
 @router.post("/users/{user_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse)
@@ -65,5 +65,5 @@ async def retag_all(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ):
-    queued = await admin_service.retag_all_images(db, user_id)
+    queued = await admin_service.retag_all_media(db, user_id)
     return {"queued": queued}

@@ -31,35 +31,14 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_images_tags ON images USING GIN(tags)")
+            text("CREATE INDEX IF NOT EXISTS idx_media_tags ON media USING GIN(tags)")
         )
         await conn.execute(
-            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS character_name VARCHAR(255)")
+            text("CREATE INDEX IF NOT EXISTS idx_media_character_name_lower ON media (LOWER(character_name))")
         )
         await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_images_character_name_lower ON images (LOWER(character_name))")
+            text("CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media (deleted_at)")
         )
         await conn.execute(
-            text("ALTER TABLE refresh_tokens ADD COLUMN IF NOT EXISTS remember_me BOOLEAN NOT NULL DEFAULT FALSE")
-        )
-        await conn.execute(
-            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS thumbnail_path VARCHAR(1024)")
-        )
-        await conn.execute(
-            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS thumbnail_status VARCHAR(20) NOT NULL DEFAULT 'pending'")
-        )
-        await conn.execute(
-            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE")
-        )
-        await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_images_deleted_at ON images (deleted_at)")
-        )
-        await conn.execute(
-            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS captured_at TIMESTAMP WITH TIME ZONE")
-        )
-        await conn.execute(
-            text("UPDATE images SET captured_at = created_at WHERE captured_at IS NULL")
-        )
-        await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_images_captured_at ON images (captured_at)")
+            text("CREATE INDEX IF NOT EXISTS idx_media_captured_at ON media (captured_at)")
         )

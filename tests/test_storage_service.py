@@ -3,9 +3,24 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from PIL import Image as PILImage
 
-from app.services.storage import ALLOWED_MIME_TYPES, generate_thumbnail, get_image_dimensions, _shard_path, _thumbnail_path, delete_file
+from tests.api_test_support import gif_bytes, mp4_bytes
+
+from app.models import MediaType
+from app.services.storage import (
+    ALLOWED_MIME_TYPES,
+    _shard_path,
+    _thumbnail_path,
+    delete_file,
+    extract_media_metadata,
+    ffmpeg_available,
+    generate_poster_and_thumbnail,
+    generate_thumbnail,
+    get_media_dimensions,
+    sample_media_frames,
+)
 
 
 def test_allowed_mime_types_include_common_formats():
@@ -13,11 +28,13 @@ def test_allowed_mime_types_include_common_formats():
     assert "image/png" in ALLOWED_MIME_TYPES
     assert "image/webp" in ALLOWED_MIME_TYPES
     assert "image/gif" in ALLOWED_MIME_TYPES
+    assert "video/mp4" in ALLOWED_MIME_TYPES
+    assert "video/webm" in ALLOWED_MIME_TYPES
+    assert "video/quicktime" in ALLOWED_MIME_TYPES
 
 
-def test_allowed_mime_types_exclude_non_images():
+def test_allowed_mime_types_exclude_unsupported_types():
     assert "application/pdf" not in ALLOWED_MIME_TYPES
-    assert "video/mp4" not in ALLOWED_MIME_TYPES
     assert "text/plain" not in ALLOWED_MIME_TYPES
 
 
@@ -39,21 +56,21 @@ def test_shard_path_uses_correct_extension(tmp_path):
         assert _shard_path(file_id, ".webp").suffix == ".webp"
 
 
-def test_get_image_dimensions_returns_correct_size(tmp_path):
+def test_get_media_dimensions_returns_correct_size(tmp_path):
     img = PILImage.new("RGB", (320, 240))
     path = tmp_path / "test.jpg"
     img.save(path)
-    assert get_image_dimensions(str(path)) == (320, 240)
+    assert get_media_dimensions(str(path)) == (320, 240)
 
 
-def test_get_image_dimensions_returns_none_for_invalid_file(tmp_path):
+def test_get_media_dimensions_returns_none_for_invalid_file(tmp_path):
     path = tmp_path / "notanimage.jpg"
     path.write_bytes(b"not image data")
-    assert get_image_dimensions(str(path)) is None
+    assert get_media_dimensions(str(path)) is None
 
 
-def test_get_image_dimensions_returns_none_for_missing_file():
-    assert get_image_dimensions("/nonexistent/path.jpg") is None
+def test_get_media_dimensions_returns_none_for_missing_file():
+    assert get_media_dimensions("/nonexistent/path.jpg") is None
 
 
 def test_generate_thumbnail_creates_webp(tmp_path):
@@ -164,3 +181,55 @@ def test_delete_file_ok_when_no_thumbnail(tmp_path):
         delete_file(str(source))
 
         assert not source.exists()
+
+
+def test_extract_media_metadata_for_gif(tmp_path):
+    path = tmp_path / "animated.gif"
+    path.write_bytes(gif_bytes([(0, 0, 255), (0, 255, 0), (255, 0, 0)]))
+
+    metadata = extract_media_metadata(str(path), MediaType.GIF)
+
+    assert metadata.media_type == MediaType.GIF
+    assert metadata.width == 32
+    assert metadata.height == 24
+    assert metadata.frame_count == 3
+    assert metadata.duration_seconds is not None
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
+def test_extract_media_metadata_for_mp4(tmp_path):
+    path = tmp_path / "clip.mp4"
+    path.write_bytes(mp4_bytes([(0, 0, 255), (0, 255, 0), (255, 0, 0)]))
+
+    metadata = extract_media_metadata(str(path), MediaType.VIDEO)
+
+    assert metadata.media_type == MediaType.VIDEO
+    assert metadata.width == 32
+    assert metadata.height == 24
+    assert metadata.duration_seconds is not None
+
+
+def test_generate_poster_and_thumbnail_for_gif(tmp_path):
+    with patch("app.services.storage.settings") as mock_settings:
+        mock_settings.storage_dir = tmp_path
+        mock_settings.thumbnail_size = 64
+        file_id = uuid.uuid4()
+        source = tmp_path / file_id.hex[:2] / f"{file_id.hex}.gif"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(gif_bytes([(0, 0, 255), (0, 255, 0), (255, 0, 0)]))
+
+        poster, thumb = generate_poster_and_thumbnail(str(source), MediaType.GIF)
+
+        assert poster is not None and poster.exists()
+        assert thumb is not None and thumb.exists()
+
+
+@pytest.mark.skipif(not ffmpeg_available(), reason="ffmpeg not available")
+def test_sample_media_frames_for_mp4(tmp_path):
+    path = tmp_path / "sample.mp4"
+    path.write_bytes(mp4_bytes([(0, 0, 255), (0, 255, 0), (255, 0, 0), (255, 0, 0), (0, 0, 255)]))
+
+    frames = sample_media_frames(str(path), MediaType.VIDEO)
+
+    assert len(frames) >= 1
+    assert all(frame.exists() for frame in frames)

@@ -5,14 +5,14 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas import (
-    AlbumImageBatchUpdate,
+    AlbumMediaBatchUpdate,
     AdminStatsResponse,
     AdminUserUpdate,
     BulkResult,
     DownloadRequest,
-    ImageBatchDelete,
-    ImageBatchUpdate,
-    ImageMetadataFilter,
+    MediaBatchDelete,
+    MediaBatchUpdate,
+    MediaMetadataFilter,
 )
 
 
@@ -20,7 +20,7 @@ def _now():
     return datetime.now(timezone.utc)
 
 
-def _image_data(**overrides):
+def _media_data(**overrides):
     now = _now()
     data = dict(
         id=uuid.uuid4(),
@@ -45,49 +45,49 @@ def _image_data(**overrides):
     return data
 
 
-# --- ImageBatchUpdate ---
+# --- MediaBatchUpdate ---
 
 def test_image_batch_update_valid():
     ids = [uuid.uuid4(), uuid.uuid4()]
-    m = ImageBatchUpdate(image_ids=ids, deleted=True)
-    assert len(m.image_ids) == 2
+    m = MediaBatchUpdate(media_ids=ids, deleted=True)
+    assert len(m.media_ids) == 2
 
 
 def test_image_batch_update_empty_rejected():
     with pytest.raises(ValidationError):
-        ImageBatchUpdate(image_ids=[], deleted=True)
+        MediaBatchUpdate(media_ids=[], deleted=True)
 
 
 def test_image_batch_update_requires_mutation():
     with pytest.raises(ValidationError):
-        ImageBatchUpdate(image_ids=[uuid.uuid4()])
+        MediaBatchUpdate(media_ids=[uuid.uuid4()])
 
 
 def test_image_batch_update_max_500():
     with pytest.raises(ValidationError):
-        ImageBatchUpdate(image_ids=[uuid.uuid4() for _ in range(501)], favorited=True)
+        MediaBatchUpdate(media_ids=[uuid.uuid4() for _ in range(501)], favorited=True)
 
 
 def test_image_batch_update_exactly_500():
-    m = ImageBatchUpdate(image_ids=[uuid.uuid4() for _ in range(500)], favorited=False)
-    assert len(m.image_ids) == 500
+    m = MediaBatchUpdate(media_ids=[uuid.uuid4() for _ in range(500)], favorited=False)
+    assert len(m.media_ids) == 500
 
 
-# --- AlbumImageBatchUpdate / ImageBatchDelete ---
+# --- AlbumMediaBatchUpdate / MediaBatchDelete ---
 
 def test_album_image_batch_update_valid():
-    m = AlbumImageBatchUpdate(image_ids=[uuid.uuid4()])
-    assert len(m.image_ids) == 1
+    m = AlbumMediaBatchUpdate(media_ids=[uuid.uuid4()])
+    assert len(m.media_ids) == 1
 
 
-def test_album_image_batch_update_empty_images_rejected():
+def test_album_media_batch_update_empty_media_rejected():
     with pytest.raises(ValidationError):
-        AlbumImageBatchUpdate(image_ids=[])
+        AlbumMediaBatchUpdate(media_ids=[])
 
 
 def test_image_batch_delete_valid():
-    m = ImageBatchDelete(image_ids=[uuid.uuid4()])
-    assert len(m.image_ids) == 1
+    m = MediaBatchDelete(media_ids=[uuid.uuid4()])
+    assert len(m.media_ids) == 1
 
 
 # --- BulkResult ---
@@ -107,18 +107,18 @@ def test_bulk_result_zero_values():
 
 def test_download_request_valid():
     ids = [uuid.uuid4()]
-    m = DownloadRequest(image_ids=ids)
-    assert len(m.image_ids) == 1
+    m = DownloadRequest(media_ids=ids)
+    assert len(m.media_ids) == 1
 
 
 def test_download_request_empty_rejected():
     with pytest.raises(ValidationError):
-        DownloadRequest(image_ids=[])
+        DownloadRequest(media_ids=[])
 
 
 def test_download_request_max_500():
     with pytest.raises(ValidationError):
-        DownloadRequest(image_ids=[uuid.uuid4() for _ in range(501)])
+        DownloadRequest(media_ids=[uuid.uuid4() for _ in range(501)])
 
 
 # --- AdminUserUpdate ---
@@ -150,21 +150,21 @@ def test_admin_user_update_both_fields():
 def test_admin_stats_response():
     m = AdminStatsResponse(
         total_users=10,
-        total_images=500,
+        total_media=500,
         total_storage_bytes=1024 * 1024 * 200,
         pending_tagging=3,
         failed_tagging=1,
-        trashed_images=12,
+        trashed_media=12,
     )
     assert m.total_users == 10
-    assert m.trashed_images == 12
+    assert m.trashed_media == 12
 
 
 def test_image_metadata_filter_allows_partial_date_groups():
-    m = ImageMetadataFilter(captured_month=3)
+    m = MediaMetadataFilter(captured_month=3)
     assert m.captured_month == 3
 
 
 def test_image_metadata_filter_rejects_invalid_full_date():
     with pytest.raises(ValidationError):
-        ImageMetadataFilter(captured_month=2, captured_day=30)
+        MediaMetadataFilter(captured_month=2, captured_day=30)

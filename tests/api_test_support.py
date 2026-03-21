@@ -1,5 +1,6 @@
 import asyncio
 import io
+import shutil
 import sys
 import tempfile
 import time
@@ -7,12 +8,14 @@ import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+import subprocess
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image as PILImage
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from docker.errors import DockerException
 from testcontainers.postgres import PostgresContainer
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +47,55 @@ def jpeg_bytes(color: tuple[int, int, int], captured_at: datetime | None = None)
     else:
         image.save(body, format="JPEG")
     return body.getvalue()
+
+
+def gif_bytes(colors: list[tuple[int, int, int]]) -> bytes:
+    body = io.BytesIO()
+    frames = [PILImage.new("RGB", (32, 24), color=color) for color in colors]
+    frames[0].save(body, format="GIF", save_all=True, append_images=frames[1:], duration=100, loop=0)
+    return body.getvalue()
+
+
+def _video_bytes(colors: list[tuple[int, int, int]], container_ext: str, codec: str) -> bytes:
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is required for video fixture generation")
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        for idx, color in enumerate(colors):
+            PILImage.new("RGB", (32, 24), color=color).save(tmp / f"frame_{idx:03d}.png")
+        output = tmp / f"clip.{container_ext}"
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",
+                "-framerate",
+                "5",
+                "-i",
+                str(tmp / "frame_%03d.png"),
+                "-pix_fmt",
+                "yuv420p",
+                "-c:v",
+                codec,
+                str(output),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            pytest.skip(f"ffmpeg failed to generate {container_ext} fixture")
+        return output.read_bytes()
+
+
+def mp4_bytes(colors: list[tuple[int, int, int]]) -> bytes:
+    return _video_bytes(colors, "mp4", "libx264")
+
+
+def webm_bytes(colors: list[tuple[int, int, int]]) -> bytes:
+    return _video_bytes(colors, "webm", "libvpx-vp9")
+
+
+def mov_bytes(colors: list[tuple[int, int, int]]) -> bytes:
+    return _video_bytes(colors, "mov", "mpeg4")
 
 
 @dataclass
@@ -88,12 +140,12 @@ class ApiHarness:
             "remember_me": remember_me,
         }
 
-    def upload_image(self, token: str, filename: str, color: tuple[int, int, int]) -> dict:
-        return self.upload_image_bytes(token, filename, png_bytes(color), "image/png")
+    def upload_media(self, token: str, filename: str, color: tuple[int, int, int]) -> dict:
+        return self.upload_media_bytes(token, filename, png_bytes(color), "image/png")
 
-    def upload_image_bytes(self, token: str, filename: str, content: bytes, content_type: str) -> dict:
+    def upload_media_bytes(self, token: str, filename: str, content: bytes, content_type: str) -> dict:
         response = self.client.post(
-            "/images",
+            "/media",
             headers=self.auth_headers(token),
             files=[("files", (filename, content, content_type))],
         )
@@ -102,14 +154,14 @@ class ApiHarness:
         assert payload["accepted"] == 1
         return payload["results"][0]
 
-    def wait_for_image_status(self, image_id: str, expected: str = "done", timeout: float = 5.0):
+    def wait_for_media_status(self, media_id: str, expected: str = "done", timeout: float = 5.0):
         deadline = time.time() + timeout
         while time.time() < deadline:
-            image = self.fetch_image_row(uuid.UUID(image_id))
-            if image is not None and image.tagging_status == expected:
-                return image
+            media = self.fetch_media_row(uuid.UUID(media_id))
+            if media is not None and media.tagging_status == expected:
+                return media
             time.sleep(0.05)
-        raise AssertionError(f"Timed out waiting for image {image_id} to reach status {expected}")
+        raise AssertionError(f"Timed out waiting for media {media_id} to reach status {expected}")
 
     def run_db(self, fn):
         async def _inner():
@@ -123,30 +175,30 @@ class ApiHarness:
 
         return run(_inner())
 
-    def fetch_image_row(self, image_id: uuid.UUID):
-        from app.models import Image
+    def fetch_media_row(self, media_id: uuid.UUID):
+        from app.models import Media
 
         async def _fetch(session: AsyncSession):
-            return await session.get(Image, image_id)
+            return await session.get(Media, media_id)
 
         return self.run_db(_fetch)
 
-    def set_image_created_at(self, image_id: str, created_at: datetime):
-        from app.models import Image
+    def set_media_created_at(self, media_id: str, created_at: datetime):
+        from app.models import Media
 
         async def _update(session: AsyncSession):
-            image = await session.get(Image, uuid.UUID(image_id))
-            image.created_at = created_at
+            media = await session.get(Media, uuid.UUID(media_id))
+            media.created_at = created_at
             await session.commit()
 
         self.run_db(_update)
 
-    def set_image_captured_at(self, image_id: str, captured_at: datetime):
-        from app.models import Image
+    def set_media_captured_at(self, media_id: str, captured_at: datetime):
+        from app.models import Media
 
         async def _update(session: AsyncSession):
-            image = await session.get(Image, uuid.UUID(image_id))
-            image.captured_at = captured_at
+            media = await session.get(Media, uuid.UUID(media_id))
+            media.captured_at = captured_at
             await session.commit()
 
         self.run_db(_update)
@@ -157,14 +209,18 @@ def api():
     tmpdir = tempfile.TemporaryDirectory()
     storage_dir = Path(tmpdir.name) / "storage"
     storage_dir.mkdir(parents=True, exist_ok=True)
-    container = PostgresContainer(
-        image="postgres:16-alpine",
-        username="zukan",
-        password="zukan",
-        dbname="zukan",
-        driver="asyncpg",
-    )
-    container.start()
+    try:
+        container = PostgresContainer(
+            image="postgres:16-alpine",
+            username="zukan",
+            password="zukan",
+            dbname="zukan",
+            driver="asyncpg",
+        )
+        container.start()
+    except DockerException:
+        tmpdir.cleanup()
+        pytest.skip("Docker daemon is required for API integration tests")
     database_url = container.get_connection_url().replace("localhost", "127.0.0.1")
 
     from app.config import settings

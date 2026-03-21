@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.routers.albums import album_access
-from app.schemas import AlbumCreate, AlbumImageBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
+from app.schemas import AlbumCreate, AlbumMediaBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
 
 
 def _now():
@@ -19,8 +19,8 @@ def _base_album_data(**overrides):
         owner_id=uuid.uuid4(),
         name="My Album",
         description=None,
-        cover_image_id=None,
-        image_count=0,
+        cover_media_id=None,
+        media_count=0,
         created_at=now,
         updated_at=now,
     )
@@ -53,21 +53,21 @@ def test_album_create_name_too_long():
 
 # --- AlbumRead ---
 
-def test_album_read_image_count_defaults_zero():
+def test_album_read_media_count_defaults_zero():
     m = AlbumRead(**_base_album_data())
-    assert m.image_count == 0
+    assert m.media_count == 0
 
 
-def test_album_read_model_copy_sets_image_count():
+def test_album_read_model_copy_sets_media_count():
     m = AlbumRead(**_base_album_data())
-    enriched = m.model_copy(update={"image_count": 42})
-    assert enriched.image_count == 42
-    assert m.image_count == 0
+    enriched = m.model_copy(update={"media_count": 42})
+    assert enriched.media_count == 42
+    assert m.media_count == 0
 
 
 def test_album_read_cover_image_nullable():
-    m = AlbumRead(**_base_album_data(cover_image_id=None))
-    assert m.cover_image_id is None
+    m = AlbumRead(**_base_album_data(cover_media_id=None))
+    assert m.cover_media_id is None
 
 
 def test_album_read_description_nullable():
@@ -86,7 +86,7 @@ def test_album_update_only_name():
     body = AlbumUpdate(name="New Name")
     assert "name" in body.model_fields_set
     assert "description" not in body.model_fields_set
-    assert "cover_image_id" not in body.model_fields_set
+    assert "cover_media_id" not in body.model_fields_set
 
 
 def test_album_update_null_description_in_fields_set():
@@ -96,9 +96,9 @@ def test_album_update_null_description_in_fields_set():
 
 
 def test_album_update_null_cover_image_in_fields_set():
-    body = AlbumUpdate.model_validate({"cover_image_id": None})
-    assert "cover_image_id" in body.model_fields_set
-    assert body.cover_image_id is None
+    body = AlbumUpdate.model_validate({"cover_media_id": None})
+    assert "cover_media_id" in body.model_fields_set
+    assert body.cover_media_id is None
 
 
 # --- AlbumShareCreate ---
@@ -113,17 +113,17 @@ def test_album_share_create_can_edit_true():
     assert m.can_edit is True
 
 
-# --- AlbumImageBatchUpdate ---
+# --- AlbumMediaBatchUpdate ---
 
-def test_add_images_requires_at_least_one():
+def test_add_media_requires_at_least_one():
     with pytest.raises(ValidationError):
-        AlbumImageBatchUpdate(image_ids=[])
+        AlbumMediaBatchUpdate(media_ids=[])
 
 
-def test_add_images_valid():
+def test_add_media_valid():
     ids = [uuid.uuid4(), uuid.uuid4()]
-    m = AlbumImageBatchUpdate(image_ids=ids)
-    assert len(m.image_ids) == 2
+    m = AlbumMediaBatchUpdate(media_ids=ids)
+    assert len(m.media_ids) == 2
 
 
 # --- album_access pure function ---

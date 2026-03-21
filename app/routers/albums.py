@@ -8,18 +8,18 @@ from app.database import get_db
 from app.deps import current_user
 from app.models import User
 from app.schemas import (
-    AlbumImageBatchUpdate,
+    AlbumMediaBatchUpdate,
     AlbumCreate,
     AlbumRead,
     AlbumShareCreate,
     AlbumShareRead,
     AlbumUpdate,
     BulkResult,
-    ImageListResponse,
+    MediaListResponse,
     TagFilterMode,
 )
 from app.services import albums as album_service
-from app.services.storage import zip_images
+from app.services.storage import zip_media
 
 router = APIRouter(prefix="/albums", tags=["albums"])
 album_access = album_service.album_access
@@ -71,8 +71,8 @@ async def delete_album(
     await album_service.delete_album(db, album_id, user)
 
 
-@router.get("/{album_id}/images", response_model=ImageListResponse)
-async def list_album_images(
+@router.get("/{album_id}/media", response_model=MediaListResponse)
+async def list_album_media(
     album_id: uuid.UUID,
     tags: str | None = Query(default=None),
     exclude_tags: str | None = Query(default=None),
@@ -82,28 +82,28 @@ async def list_album_images(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.list_album_images(db, album_id, user, tags, exclude_tags, mode, page, page_size)
+    return await album_service.list_album_media(db, album_id, user, tags, exclude_tags, mode, page, page_size)
 
 
-@router.put("/{album_id}/images", response_model=BulkResult)
-async def add_images_to_album(
+@router.put("/{album_id}/media", response_model=BulkResult)
+async def add_media_to_album(
     album_id: uuid.UUID,
-    body: AlbumImageBatchUpdate,
+    body: AlbumMediaBatchUpdate,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    processed, skipped = await album_service.bulk_add_to_album(db, album_id, body.image_ids, user)
+    processed, skipped = await album_service.bulk_add_to_album(db, album_id, body.media_ids, user)
     return BulkResult(processed=processed, skipped=skipped)
 
 
-@router.delete("/{album_id}/images", response_model=BulkResult)
-async def remove_images_from_album(
+@router.delete("/{album_id}/media", response_model=BulkResult)
+async def remove_media_from_album(
     album_id: uuid.UUID,
-    body: AlbumImageBatchUpdate,
+    body: AlbumMediaBatchUpdate,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    processed, skipped = await album_service.bulk_remove_from_album(db, album_id, body.image_ids, user)
+    processed, skipped = await album_service.bulk_remove_from_album(db, album_id, body.media_ids, user)
     return BulkResult(processed=processed, skipped=skipped)
 
 
@@ -123,8 +123,8 @@ async def download_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    album, rows = await album_service.get_album_download_images(db, album_id, user)
-    buf = zip_images(rows)
+    album, rows = await album_service.get_album_download_media(db, album_id, user)
+    buf = zip_media(rows)
     safe_name = album.name.replace('"', "").replace("/", "-")
     return StreamingResponse(
         content=iter([buf.read()]),

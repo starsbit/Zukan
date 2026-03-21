@@ -8,13 +8,13 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.database import AsyncSessionLocal, init_db
-from app.models import Image, ImageTag, Tag, User
-from app.routers import admin, albums, auth, images, tags, users
+from app.models import Media, User
+from app.routers import admin, albums, auth, media, tags, users
 from app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
-from app.services.images import set_tag_queue
+from app.services.media import set_tag_queue, tag_media
 from app.services.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
@@ -23,59 +23,24 @@ docs_basic = HTTPBasic()
 
 async def tagging_worker():
     while True:
-        image_id: uuid.UUID = await tag_queue.get()
+        media_id: uuid.UUID = await tag_queue.get()
         async with AsyncSessionLocal() as db:
             try:
-                result = await db.execute(select(Image).where(Image.id == image_id))
-                image = result.scalar_one_or_none()
-                if image is None:
+                result = await db.execute(select(Media).where(Media.id == media_id))
+                media_item = result.scalar_one_or_none()
+                if media_item is None:
                     continue
-
-                image.tagging_status = "processing"
-                await db.commit()
-
-                tagging_result = await tagger.predict(image.filepath)
-                image.character_name = tagging_result.character_name
-
-                existing_its = await db.execute(
-                    select(ImageTag).where(ImageTag.image_id == image_id)
-                )
-                old_tag_ids = [it.tag_id for it in existing_its.scalars().all()]
-
-                if old_tag_ids:
-                    old_tags = await db.execute(select(Tag).where(Tag.id.in_(old_tag_ids)))
-                    for t in old_tags.scalars().all():
-                        t.image_count = max(0, t.image_count - 1)
-                    await db.execute(
-                        delete(ImageTag).where(ImageTag.image_id == image_id)
-                    )
-
-                tag_names = []
-                for prediction in tagging_result.predictions:
-                    tag_result = await db.execute(select(Tag).where(Tag.name == prediction.name))
-                    tag = tag_result.scalar_one_or_none()
-                    if tag is None:
-                        tag = Tag(name=prediction.name, category=prediction.category, image_count=0)
-                        db.add(tag)
-                        await db.flush()
-                    tag.image_count += 1
-                    db.add(ImageTag(image_id=image_id, tag_id=tag.id, confidence=prediction.confidence))
-                    tag_names.append(prediction.name)
-
-                image.tags = tag_names
-                image.is_nsfw = tagging_result.is_nsfw
-                image.tagging_status = "done"
-                await db.commit()
+                await tag_media(db, media_id)
 
             except Exception as exc:
                 await db.rollback()
                 async with AsyncSessionLocal() as err_db:
-                    err_result = await err_db.execute(select(Image).where(Image.id == image_id))
-                    err_image = err_result.scalar_one_or_none()
-                    if err_image:
-                        err_image.tagging_status = "failed"
+                    err_result = await err_db.execute(select(Media).where(Media.id == media_id))
+                    err_media = err_result.scalar_one_or_none()
+                    if err_media:
+                        err_media.tagging_status = "failed"
                         await err_db.commit()
-                print(f"Tagging failed for {image_id}: {exc}")
+                print(f"Tagging failed for {media_id}: {exc}")
             finally:
                 tag_queue.task_done()
 
@@ -131,7 +96,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(images.router)
+app.include_router(media.router)
 app.include_router(tags.router)
 app.include_router(albums.router)
 app.include_router(admin.router)

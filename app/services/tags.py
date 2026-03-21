@@ -11,7 +11,7 @@ def _to_tag_read(tag: Tag) -> TagRead:
         name=tag.name,
         category=tag.category,
         category_name=CATEGORY_NAMES.get(tag.category, "unknown"),
-        image_count=tag.image_count,
+        media_count=tag.media_count,
     )
 
 
@@ -23,7 +23,7 @@ async def list_tags(
     category: int | None,
     query: str | None = None,
 ) -> list[TagRead]:
-    stmt = select(Tag).order_by(Tag.image_count.desc()).offset(offset).limit(limit)
+    stmt = select(Tag).order_by(Tag.media_count.desc()).offset(offset).limit(limit)
     if category is not None:
         stmt = stmt.where(Tag.category == category)
     if query:

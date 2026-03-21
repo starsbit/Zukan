@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
+from app.models import MediaType
+
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 
 
@@ -61,10 +63,9 @@ class TagRead(BaseModel):
     name: str = Field(description="Canonical tag name.")
     category: int = Field(description="Numeric tag category from the tagging backend.")
     category_name: str = Field(description="Human-readable tag category name.")
-    image_count: int = Field(description="Number of images currently associated with this tag.")
+    media_count: int = Field(description="Number of media items currently associated with this tag.")
 
     model_config = {"from_attributes": True}
-
 
 class TagWithConfidence(BaseModel):
     name: str = Field(description="Canonical tag name.")
@@ -73,28 +74,30 @@ class TagWithConfidence(BaseModel):
     confidence: float = Field(description="Model confidence score for this tag.")
 
 
-class ImageMetadata(BaseModel):
+class MediaMetadata(BaseModel):
     file_size: int | None = Field(description="Original file size in bytes.")
-    width: int | None = Field(description="Image width in pixels.")
-    height: int | None = Field(description="Image height in pixels.")
-    mime_type: str | None = Field(description="Detected MIME type for the image.")
-    captured_at: datetime = Field(description="Best-known timestamp for when the image was captured or created.")
+    width: int | None = Field(description="Display width in pixels.")
+    height: int | None = Field(description="Display height in pixels.")
+    duration_seconds: float | None = Field(default=None, description="Duration in seconds for animated media.")
+    frame_count: int | None = Field(default=None, description="Frame count for animated media when known.")
+    mime_type: str | None = Field(description="Detected MIME type for the media.")
+    captured_at: datetime = Field(description="Best-known timestamp for when the media was captured or created.")
 
 
-class ImageMetadataUpdate(BaseModel):
+class MediaMetadataUpdate(BaseModel):
     captured_at: datetime | None = Field(
         default=None,
         description="Manual capture timestamp override. Send null to reset it to the upload timestamp.",
     )
 
 
-class ImageMetadataFilter(BaseModel):
-    captured_year: int | None = Field(default=None, description="Filter images by the captured year metadata.")
-    captured_month: int | None = Field(default=None, ge=1, le=12, description="Filter images by captured month metadata.")
-    captured_day: int | None = Field(default=None, ge=1, le=31, description="Filter images by captured day metadata.")
+class MediaMetadataFilter(BaseModel):
+    captured_year: int | None = Field(default=None, description="Filter media by the captured year metadata.")
+    captured_month: int | None = Field(default=None, ge=1, le=12, description="Filter media by captured month metadata.")
+    captured_day: int | None = Field(default=None, ge=1, le=31, description="Filter media by captured day metadata.")
     captured_before_year: int | None = Field(
         default=None,
-        description="Filter images captured before the given year. Useful for on-this-day style lookups.",
+        description="Filter media captured before the given year. Useful for on-this-day style lookups.",
     )
 
     @model_validator(mode="after")
@@ -107,38 +110,40 @@ class ImageMetadataFilter(BaseModel):
         return self
 
 
-class ImageRead(BaseModel):
+class MediaRead(BaseModel):
     id: uuid.UUID
     uploader_id: uuid.UUID | None
     filename: str
     original_filename: str | None
-    metadata: ImageMetadata
-    tags: list[str] = Field(description="All tags currently stored for the image, including rating and character tags.")
+    media_type: MediaType = MediaType.IMAGE
+    metadata: MediaMetadata
+    tags: list[str] = Field(description="All tags currently stored for the media.")
     character_name: str | None = Field(
         default=None,
         description="Highest-confidence character tag selected by the active tagging backend, if any.",
     )
-    is_nsfw: bool = Field(description="Whether the image is classified as NSFW by the active tagging backend.")
+    is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
     tagging_status: str = Field(description="Current AI tagging lifecycle state.")
     thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
+    poster_status: str = Field(default="done", description="Current poster generation lifecycle state for animated media.")
     created_at: datetime
     deleted_at: datetime | None
-    is_favorited: bool = Field(default=False, description="Whether the current user has favorited this image.")
+    is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
 
 
-class ImageDetail(ImageRead):
+class MediaDetail(MediaRead):
     tag_details: list[TagWithConfidence] = Field(
         default_factory=list,
         description="Detailed tag payload including category metadata and confidence scores.",
     )
 
 
-class ImageListState(str, Enum):
+class MediaListState(str, Enum):
     ACTIVE = "active"
     TRASHED = "trashed"
 
 
-class ImageUpdate(BaseModel):
+class MediaUpdate(BaseModel):
     tags: list[str] | None = Field(
         default=None,
         description="Complete replacement tag list. Omit to keep tags unchanged.",
@@ -147,14 +152,14 @@ class ImageUpdate(BaseModel):
         default=None,
         description="Manual character name override. Send null or an empty string to clear it.",
     )
-    metadata: ImageMetadataUpdate | None = None
+    metadata: MediaMetadataUpdate | None = None
     deleted: bool | None = Field(
         default=None,
-        description="Whether the image should be in the trash. Omit to keep deletion state unchanged.",
+        description="Whether the media should be in the trash. Omit to keep deletion state unchanged.",
     )
     favorited: bool | None = Field(
         default=None,
-        description="Whether the current user has favorited the image. Omit to keep favorite state unchanged.",
+        description="Whether the media should be favorited for the current user. Omit to keep favorite state unchanged.",
     )
 
     @model_validator(mode="after")
@@ -167,11 +172,11 @@ class ImageUpdate(BaseModel):
         return self
 
 
-class ImageListResponse(BaseModel):
-    total: int = Field(description="Total number of images matching the current filters.")
+class MediaListResponse(BaseModel):
+    total: int = Field(description="Total number of media items matching the current filters.")
     page: int = Field(description="Current page number.")
     page_size: int = Field(description="Number of items returned per page.")
-    items: list[ImageRead] = Field(description="Images returned for the current page.")
+    items: list[MediaRead] = Field(description="Media returned for the current page.")
 
 
 class TagFilterMode(str, Enum):
@@ -193,7 +198,7 @@ class AlbumCreate(BaseModel):
 class AlbumUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
-    cover_image_id: uuid.UUID | None = None
+    cover_media_id: uuid.UUID | None = None
 
 
 class AlbumRead(BaseModel):
@@ -201,13 +206,12 @@ class AlbumRead(BaseModel):
     owner_id: uuid.UUID
     name: str
     description: str | None
-    cover_image_id: uuid.UUID | None
-    image_count: int = 0
+    cover_media_id: uuid.UUID | None
+    media_count: int = 0
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
-
 
 class AlbumShareCreate(BaseModel):
     user_id: uuid.UUID
@@ -221,8 +225,8 @@ class AlbumShareRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ImageBatchUpdate(BaseModel):
-    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+class MediaBatchUpdate(BaseModel):
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
     deleted: bool | None = None
     favorited: bool | None = None
 
@@ -233,12 +237,12 @@ class ImageBatchUpdate(BaseModel):
         return self
 
 
-class ImageBatchDelete(BaseModel):
-    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+class MediaBatchDelete(BaseModel):
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 
-class AlbumImageBatchUpdate(BaseModel):
-    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+class AlbumMediaBatchUpdate(BaseModel):
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 
 class BulkResult(BaseModel):
@@ -247,7 +251,7 @@ class BulkResult(BaseModel):
 
 
 class DownloadRequest(BaseModel):
-    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 
 class TaggingJobQueuedResponse(BaseModel):
@@ -260,18 +264,17 @@ class AdminUserUpdate(BaseModel):
 
 
 class AdminUserDetail(UserRead):
-    image_count: int
+    media_count: int
     storage_used_bytes: int
 
 
 class AdminStatsResponse(BaseModel):
     total_users: int
-    total_images: int
+    total_media: int
     total_storage_bytes: int
     pending_tagging: int
     failed_tagging: int
-    trashed_images: int
-
+    trashed_media: int
 
 class UserListResponse(BaseModel):
     total: int
