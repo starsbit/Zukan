@@ -180,6 +180,123 @@ def test_user_journey_upload_and_discover_mixed_media(api):
     assert api.client.get(f"/media/{mp4_item['id']}/thumbnail", headers=headers).status_code == 200
 
 
+def test_user_journey_query_trash_and_purge_uploaded_media(api):
+    logged_in = _login(api, api.register_and_login("journey-trash-purge")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    enable_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    assert enable_nsfw.status_code == 200
+
+    blue_image = api.upload_media(logged_in["access_token"], "journey-blue-image.png", (0, 0, 255))
+    green_image = api.upload_media(logged_in["access_token"], "journey-green-image.png", (0, 255, 0))
+    red_video = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-red-video.mp4",
+        mp4_bytes([(255, 0, 0)] * 5),
+        "video/mp4",
+    )
+    blue_video = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-blue-video.mov",
+        mov_bytes([(0, 0, 255)] * 5),
+        "video/quicktime",
+    )
+
+    for item in (blue_image, green_image, red_video, blue_video):
+        api.wait_for_media_status(str(item["id"]))
+
+    library = api.client.get("/media", headers=headers, params={"nsfw": "include", "status": "done"})
+    assert library.status_code == 200
+    assert {item["id"] for item in library.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    sky_search = api.client.get("/media", headers=headers, params={"tags": "sky"})
+    assert sky_search.status_code == 200
+    assert {item["id"] for item in sky_search.json()["items"]} == {str(blue_image["id"]), str(blue_video["id"])}
+
+    character_search = api.client.get("/media", headers=headers, params={"character_name": "rei"})
+    assert character_search.status_code == 200
+    assert {item["id"] for item in character_search.json()["items"]} == {str(blue_image["id"]), str(blue_video["id"])}
+
+    mixed_search = api.client.get(
+        "/media",
+        headers=headers,
+        params={"tags": "sky,rose", "mode": "or", "exclude_tags": "forest", "nsfw": "include"},
+    )
+    assert mixed_search.status_code == 200
+    assert {item["id"] for item in mixed_search.json()["items"]} == {
+        str(blue_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    red_video_detail = api.client.get(f"/media/{red_video['id']}", headers=headers)
+    assert red_video_detail.status_code == 200
+    assert red_video_detail.json()["media_type"] == "video"
+    assert "rose" in red_video_detail.json()["tags"]
+    assert red_video_detail.json()["metadata"]["duration_seconds"] is not None
+
+    blue_image_detail = api.client.get(f"/media/{blue_image['id']}", headers=headers)
+    assert blue_image_detail.status_code == 200
+    assert blue_image_detail.json()["media_type"] == "image"
+    assert blue_image_detail.json()["character_name"] == "ayanami_rei"
+
+    move_to_trash = api.client.patch(
+        "/media",
+        headers=headers,
+        json={"media_ids": [str(green_image["id"]), str(red_video["id"])], "deleted": True},
+    )
+    assert move_to_trash.status_code == 200
+    assert move_to_trash.json() == {"processed": 2, "skipped": 0}
+
+    active_after_delete = api.client.get("/media", headers=headers, params={"nsfw": "include"})
+    assert active_after_delete.status_code == 200
+    assert {item["id"] for item in active_after_delete.json()["items"]} == {str(blue_image["id"]), str(blue_video["id"])}
+
+    trash = api.client.get("/media", headers=headers, params={"state": "trashed"})
+    assert trash.status_code == 200
+    assert {item["id"] for item in trash.json()["items"]} == {str(green_image["id"]), str(red_video["id"])}
+
+    trash_query = api.client.get(
+        "/media",
+        headers=headers,
+        params={"state": "trashed", "tags": "rose", "nsfw": "include"},
+    )
+    assert trash_query.status_code == 200
+    assert [item["id"] for item in trash_query.json()["items"]] == [str(red_video["id"])]
+
+    empty_trash = api.client.delete("/media/trash", headers=headers)
+    assert empty_trash.status_code == 204
+
+    trash_after_purge = api.client.get("/media", headers=headers, params={"state": "trashed"})
+    assert trash_after_purge.status_code == 200
+    assert trash_after_purge.json()["items"] == []
+
+    missing_red_detail = api.client.get(f"/media/{red_video['id']}", headers=headers)
+    assert missing_red_detail.status_code == 404
+    missing_green_detail = api.client.get(f"/media/{green_image['id']}", headers=headers)
+    assert missing_green_detail.status_code == 404
+    missing_red_file = api.client.get(f"/media/{red_video['id']}/file", headers=headers)
+    assert missing_red_file.status_code == 404
+    missing_red_thumbnail = api.client.get(f"/media/{red_video['id']}/thumbnail", headers=headers)
+    assert missing_red_thumbnail.status_code == 404
+
+    rose_after_purge = api.client.get("/media", headers=headers, params={"tags": "rose", "nsfw": "include"})
+    assert rose_after_purge.status_code == 200
+    assert rose_after_purge.json()["items"] == []
+
+    sky_after_purge = api.client.get("/media", headers=headers, params={"tags": "sky"})
+    assert sky_after_purge.status_code == 200
+    assert {item["id"] for item in sky_after_purge.json()["items"]} == {str(blue_image["id"]), str(blue_video["id"])}
+
+    assert api.fetch_media_row(uuid.UUID(str(green_image["id"]))) is None
+    assert api.fetch_media_row(uuid.UUID(str(red_video["id"]))) is None
+
+
 def test_user_journey_full_personal_library_workflow(api):
     registered = api.register_and_login("journey-library")
     _logout(api, registered["refresh_token"])
