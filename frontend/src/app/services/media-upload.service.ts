@@ -1,5 +1,5 @@
 import { HttpEventType } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import {
   BehaviorSubject,
@@ -77,6 +77,7 @@ export class MediaUploadService {
 
   private readonly sessionSubject = new BehaviorSubject<UploadSession>(createIdleSession());
   private readonly refreshSubject = new Subject<void>();
+  private readonly taggingStatusByMediaId = signal<Partial<Record<Uuid, string>>>({});
 
   private pollSubscription: Subscription | null = null;
   private autoMinimizeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -86,6 +87,14 @@ export class MediaUploadService {
 
   get snapshot(): UploadSession {
     return this.sessionSubject.value;
+  }
+
+  getMediaTaggingStatus(mediaId: Uuid | null | undefined): string | null {
+    if (!mediaId) {
+      return null;
+    }
+
+    return this.taggingStatusByMediaId()[mediaId] ?? null;
   }
 
   startUpload(files: File[]): void {
@@ -102,6 +111,7 @@ export class MediaUploadService {
     }
 
     this.clearTimers();
+    this.clearTaggingStatuses();
 
     this.sessionSubject.next({
       phase: 'uploading',
@@ -168,6 +178,7 @@ export class MediaUploadService {
 
   dismissSession(): void {
     this.clearTimers();
+    this.clearTaggingStatuses();
     this.sessionSubject.next(createIdleSession());
   }
 
@@ -245,6 +256,12 @@ export class MediaUploadService {
       errorMessage: null
     });
 
+    this.patchTaggingStatuses(
+      items
+        .filter((item) => item.status === 'processing' && item.mediaId)
+        .map((item) => ({ mediaId: item.mediaId as Uuid, taggingStatus: 'pending' }))
+    );
+
     this.refreshSubject.next();
 
     if (acceptedIds.length === 0) {
@@ -319,6 +336,9 @@ export class MediaUploadService {
       completed: normalizedCompleted,
       items
     });
+    this.patchTaggingStatuses(
+      mediaItems.map((media) => ({ mediaId: media.id, taggingStatus: media.tagging_status }))
+    );
   }
 
   private completeSession(): void {
@@ -377,6 +397,28 @@ export class MediaUploadService {
       duration: 3000
     });
   }
+
+  private patchTaggingStatuses(items: Array<{ mediaId: Uuid; taggingStatus: string }>): void {
+    if (items.length === 0) {
+      return;
+    }
+
+    const nextStatuses = { ...this.taggingStatusByMediaId() };
+
+    for (const item of items) {
+      if (item.taggingStatus === 'pending' || item.taggingStatus === 'processing') {
+        nextStatuses[item.mediaId] = item.taggingStatus;
+      } else {
+        delete nextStatuses[item.mediaId];
+      }
+    }
+
+    this.taggingStatusByMediaId.set(nextStatuses);
+  }
+
+  private clearTaggingStatuses(): void {
+    this.taggingStatusByMediaId.set({});
+  }
 }
 
 function hasProcessingFailed(media: MediaDetail): boolean {
@@ -390,7 +432,7 @@ function isProcessingSettled(media: MediaDetail): boolean {
 }
 
 function getUploadProcessingStatuses(media: MediaDetail): string[] {
-  const statuses = [media.thumbnail_status];
+  const statuses = [media.tagging_status, media.thumbnail_status];
 
   if (media.media_type !== 'image') {
     statuses.push(media.poster_status ?? 'pending');
@@ -399,4 +441,16 @@ function getUploadProcessingStatuses(media: MediaDetail): string[] {
   }
 
   return statuses.filter((value): value is string => Boolean(value));
+}
+
+function detailsToQueueStatus(media: MediaDetail): UploadQueueItemState {
+  if (hasProcessingFailed(media)) {
+    return 'failed';
+  }
+
+  if (isProcessingSettled(media)) {
+    return 'done';
+  }
+
+  return 'processing';
 }

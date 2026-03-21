@@ -1,7 +1,9 @@
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, Subject, throwError } from 'rxjs';
 
 import { GalleryMediaCardComponent } from './gallery-media-card.component';
+import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 import { createMediaRead } from '../../testing/media-test.utils';
 
@@ -9,12 +11,26 @@ describe('GalleryMediaCardComponent', () => {
   let fixture: ComponentFixture<GalleryMediaCardComponent>;
   let component: GalleryMediaCardComponent;
   let mediaClient: { getMediaThumbnail: ReturnType<typeof vi.fn> };
+  let mediaUploadService: {
+    getMediaTaggingStatus: ReturnType<typeof vi.fn>;
+    taggingStatusByMediaId: ReturnType<typeof signal<Record<string, string>>>;
+  };
   let createObjectUrlSpy: ReturnType<typeof vi.spyOn>;
   let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     mediaClient = {
       getMediaThumbnail: vi.fn()
+    };
+    mediaUploadService = {
+      taggingStatusByMediaId: signal<Record<string, string>>({}),
+      getMediaTaggingStatus: vi.fn((mediaId: string | null | undefined) => {
+        if (!mediaId) {
+          return null;
+        }
+
+        return mediaUploadService.taggingStatusByMediaId()[mediaId] ?? null;
+      })
     };
 
     createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumb-url');
@@ -23,7 +39,8 @@ describe('GalleryMediaCardComponent', () => {
     await TestBed.configureTestingModule({
       imports: [GalleryMediaCardComponent],
       providers: [
-        { provide: MediaClientService, useValue: mediaClient }
+        { provide: MediaClientService, useValue: mediaClient },
+        { provide: MediaUploadService, useValue: mediaUploadService }
       ]
     }).compileComponents();
 
@@ -62,7 +79,7 @@ describe('GalleryMediaCardComponent', () => {
 
     expect(mediaClient.getMediaThumbnail).not.toHaveBeenCalled();
     expect(component.thumbnailFailed).toBe(true);
-    expect(fixture.nativeElement.textContent).toContain('Image');
+    expect(fixture.nativeElement.textContent).toContain('image');
   });
 
   it('shows a compact spinner badge while tagging is pending', async () => {
@@ -88,6 +105,20 @@ describe('GalleryMediaCardComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.status-badge mat-spinner')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Processing');
+  });
+
+  it('prefers the live upload tagging status without replacing the media input', async () => {
+    const media = createMediaRead({ tagging_status: 'done' });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    mediaUploadService.taggingStatusByMediaId.set({ [media.id]: 'processing' });
+    fixture.detectChanges();
+
     expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Processing');
   });
 
@@ -123,6 +154,23 @@ describe('GalleryMediaCardComponent', () => {
     expect(component.thumbnailUrl).toBe('blob:thumb-url');
     expect(mediaClient.getMediaThumbnail).toHaveBeenNthCalledWith(2, secondMedia.id);
     expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the current thumbnail when the same media refreshes with a new object reference', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    fixture.componentRef.setInput('media', { ...media, tags: ['fox', 'wolf'] });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(mediaClient.getMediaThumbnail).toHaveBeenCalledTimes(1);
+    expect(component.thumbnailUrl).toBe('blob:thumb-url');
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalled();
   });
 
   it('emits the selected media when opened', async () => {
@@ -194,7 +242,7 @@ describe('GalleryMediaCardComponent', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  it('computes the aspect ratio from metadata and revokes object URLs on destroy', async () => {
+  it('computes layout spans from metadata and revokes object URLs on destroy', async () => {
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
 
     fixture.componentRef.setInput('media', createMediaRead({
@@ -210,6 +258,9 @@ describe('GalleryMediaCardComponent', () => {
     await fixture.whenStable();
 
     expect(component.aspectRatio).toBeCloseTo(1920 / 1080);
+    expect(component.columnSpan).toBe(4);
+    expect(component.gridColumn).toBe('span 4');
+    expect(component.gridRow).toBe('span 2');
 
     fixture.destroy();
 

@@ -48,14 +48,20 @@ describe('MediaUploadService', () => {
     expect(service.snapshot.visible).toBe(false);
   });
 
-  it('tracks upload progress, polls processing, and auto-minimizes after success', async () => {
+  it('tracks upload progress, refreshes queue state changes, polls processing, and auto-minimizes after success', async () => {
     vi.useFakeTimers();
 
     try {
       const events$ = new Subject<any>();
       const refreshSpy = vi.fn();
       mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
-      mediaClient.getMedia.mockReturnValue(of(createMediaRead({ id: 'media-1' })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
+        id: 'media-1',
+        tagging_status: 'processing',
+        thumbnail_status: 'done',
+        poster_status: 'done'
+      })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({ id: 'media-1' })));
       service.refreshRequested$.subscribe(refreshSpy);
 
       service.startUpload([new File(['a'], 'a.png', { type: 'image/png' })]);
@@ -77,9 +83,16 @@ describe('MediaUploadService', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(mediaClient.getMedia).toHaveBeenCalledWith('media-1');
+      expect(service.snapshot.phase).toBe('processing');
+      expect(service.snapshot.processingProgress).toBe(0);
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(service.getMediaTaggingStatus('media-1')).toBe('processing');
+
+      await vi.advanceTimersByTimeAsync(2000);
       expect(service.snapshot.phase).toBe('completed');
       expect(service.snapshot.processingProgress).toBe(100);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(service.getMediaTaggingStatus('media-1')).toBeNull();
 
       await vi.advanceTimersByTimeAsync(4000);
       expect(service.snapshot.expanded).toBe(false);
@@ -88,19 +101,28 @@ describe('MediaUploadService', () => {
     }
   });
 
-  it('completes upload processing when image assets are ready even if tagging is still pending', async () => {
+  it('keeps polling while tagging is pending even if image assets are ready', async () => {
     vi.useFakeTimers();
 
     try {
       const events$ = new Subject<any>();
+      const refreshSpy = vi.fn();
       mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
-      mediaClient.getMedia.mockReturnValue(of(createMediaRead({
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
         id: 'media-1',
         media_type: 'image',
         tagging_status: 'pending',
         thumbnail_status: 'done',
         poster_status: 'done'
       })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
+        id: 'media-1',
+        media_type: 'image',
+        tagging_status: 'done',
+        thumbnail_status: 'done',
+        poster_status: 'done'
+      })));
+      service.refreshRequested$.subscribe(refreshSpy);
 
       service.startUpload([new File(['a'], 'a.png', { type: 'image/png' })]);
 
@@ -117,10 +139,21 @@ describe('MediaUploadService', () => {
       await vi.advanceTimersByTimeAsync(0);
 
       expect(mediaClient.getMedia).toHaveBeenCalledWith('media-1');
+      expect(service.snapshot.phase).toBe('processing');
+      expect(service.snapshot.active).toBe(true);
+      expect(service.snapshot.processingProgress).toBe(0);
+      expect(service.snapshot.items[0]?.status).toBe('processing');
+      expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(service.getMediaTaggingStatus('media-1')).toBe('pending');
+
+      await vi.advanceTimersByTimeAsync(2000);
+
       expect(service.snapshot.phase).toBe('completed');
       expect(service.snapshot.active).toBe(false);
       expect(service.snapshot.processingProgress).toBe(100);
       expect(service.snapshot.items[0]?.status).toBe('done');
+      expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(service.getMediaTaggingStatus('media-1')).toBeNull();
     } finally {
       vi.useRealTimers();
     }

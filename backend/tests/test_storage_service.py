@@ -91,14 +91,18 @@ def test_generate_thumbnail_creates_webp(tmp_path):
             assert img.size == (128, 128)
 
 
-def test_generate_thumbnail_pads_to_square(tmp_path):
+def test_generate_thumbnail_crops_to_square_without_padding(tmp_path):
     with patch("backend.app.services.storage.settings") as mock_settings:
         mock_settings.storage_dir = tmp_path
         mock_settings.thumbnail_size = 64
         file_id = uuid.uuid4()
         source = tmp_path / file_id.hex[:2] / f"{file_id.hex}.png"
         source.parent.mkdir(parents=True)
-        PILImage.new("RGB", (200, 100)).save(source)
+        source_image = PILImage.new("RGB", (200, 100), color=(255, 255, 255))
+        for x in range(50, 150):
+            for y in range(0, 100):
+                source_image.putpixel((x, y), (255, 0, 0))
+        source_image.save(source)
 
         thumb = generate_thumbnail(str(source))
 
@@ -106,6 +110,10 @@ def test_generate_thumbnail_pads_to_square(tmp_path):
         with PILImage.open(thumb) as img:
             w, h = img.size
             assert w == h
+            center_pixel = img.getpixel((w // 2, h // 2))
+            assert center_pixel[0] > 200
+            assert center_pixel[1] < 80
+            assert center_pixel[2] < 80
 
 
 def test_generate_thumbnail_returns_none_for_invalid_file(tmp_path):

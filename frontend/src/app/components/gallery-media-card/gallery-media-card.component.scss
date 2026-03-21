@@ -1,11 +1,16 @@
 :host {
   display: block;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .media-card {
   position: relative;
   display: block;
   width: 100%;
+  height: 100%;
+  min-height: 0;
   overflow: hidden;
   padding: 0;
   border: 0;
@@ -28,7 +33,9 @@
 }
 
 .media-card-selected {
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 58%, transparent);
+  box-shadow:
+    inset 0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 82%, white 8%),
+    0 18px 38px color-mix(in srgb, black 18%, transparent);
 }
 
 .media-card-selected::after {
@@ -41,12 +48,14 @@
 
 .media-thumb,
 .media-fallback {
-  display: block;
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
 }
 
 .media-thumb {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import aiofiles
 from fastapi import UploadFile
-from PIL import Image as PILImage, ImageSequence
+from PIL import Image as PILImage, ImageOps, ImageSequence
 
 from backend.app.config import settings
 from backend.app.models import Media, MediaType
@@ -274,11 +274,8 @@ def _generate_square_thumbnail(source_path: Path, thumb_path: Path) -> Path | No
         with PILImage.open(source_path) as img:
             if img.mode != "RGB":
                 img = img.convert("RGB")
-            max_dim = max(img.size)
-            canvas = PILImage.new("RGB", (max_dim, max_dim), (255, 255, 255))
-            canvas.paste(img, ((max_dim - img.width) // 2, (max_dim - img.height) // 2))
             size = settings.thumbnail_size
-            canvas = canvas.resize((size, size), PILImage.LANCZOS)
+            canvas = ImageOps.fit(img, (size, size), method=PILImage.LANCZOS, centering=(0.5, 0.5))
             thumb_path.parent.mkdir(parents=True, exist_ok=True)
             canvas.save(thumb_path, "WEBP", quality=85)
         return thumb_path

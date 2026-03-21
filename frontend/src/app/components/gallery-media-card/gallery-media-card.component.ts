@@ -5,6 +5,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 import { MediaRead } from '../../models/api';
+import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 
 @Component({
@@ -12,12 +13,19 @@ import { MediaClientService } from '../../services/web/media-client.service';
   imports: [CommonModule, DatePipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   templateUrl: './gallery-media-card.component.html',
   styleUrl: './gallery-media-card.component.scss',
+  host: {
+    '[style.grid-column]': 'gridColumn',
+    '[style.grid-row]': 'gridRow'
+  },
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly mediaClient = inject(MediaClientService);
+  private readonly mediaUploadService = inject(MediaUploadService);
   private thumbnailRequestId = 0;
+  private previousMediaId: string | null = null;
+  private previousThumbnailStatus: string | null = null;
 
   @Input({ required: true }) media!: MediaRead;
   @Input() selectionMode = false;
@@ -31,7 +39,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['media'] && this.media) {
-      this.loadThumbnail();
+      this.syncThumbnail();
     }
   }
 
@@ -67,17 +75,49 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     return width / height;
   }
 
+  get gridColumn(): string {
+    return `span ${this.columnSpan}`;
+  }
+
+  get gridRow(): string {
+    return 'span 2';
+  }
+
+  get columnSpan(): number {
+    return Math.min(6, Math.max(2, Math.round(this.aspectRatio * 2)));
+  }
+
   get showStatusBadge(): boolean {
-    return this.media.tagging_status === 'pending' || this.media.tagging_status === 'processing';
+    return this.currentTaggingStatus === 'pending' || this.currentTaggingStatus === 'processing';
   }
 
   get statusBadgeLabel(): string {
-    return this.media.tagging_status === 'processing' ? 'Processing' : 'Pending';
+    return this.currentTaggingStatus === 'processing' ? 'Processing' : 'Pending';
   }
 
   get selectionLabel(): string {
     const name = this.media.original_filename || this.media.filename;
     return `${this.selected ? 'Unselect' : 'Select'} ${name}`;
+  }
+
+  private get currentTaggingStatus(): string {
+    return this.mediaUploadService.getMediaTaggingStatus(this.media.id) ?? this.media.tagging_status;
+  }
+
+  private syncThumbnail(): void {
+    const mediaId = this.media.id;
+    const thumbnailStatus = this.media.thumbnail_status;
+    const mediaChanged = this.previousMediaId !== mediaId;
+    const thumbnailStatusChanged = this.previousThumbnailStatus !== thumbnailStatus;
+
+    this.previousMediaId = mediaId;
+    this.previousThumbnailStatus = thumbnailStatus;
+
+    if (!mediaChanged && !thumbnailStatusChanged) {
+      return;
+    }
+
+    this.loadThumbnail();
   }
 
   private loadThumbnail(): void {

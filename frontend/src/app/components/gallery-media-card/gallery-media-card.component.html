@@ -2,7 +2,6 @@
   class="media-card"
   [class.media-card-selection-mode]="selectionMode"
   [class.media-card-selected]="selected"
-  [style.aspect-ratio]="aspectRatio"
   [attr.aria-label]="selectionMode ? selectionLabel : 'Open ' + (media.original_filename || media.filename)"
   [attr.aria-pressed]="selectionMode ? selected : null"
   tabindex="0"

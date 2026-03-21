@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from backend.app.services.auth import verify_password
-from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, webm_bytes
+from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, png_bytes, webm_bytes
 
 
 def _login(api, username: str, password: str = "password123") -> dict:
@@ -454,6 +454,73 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
 
     assert api.fetch_media_row(uuid.UUID(str(green_image["id"]))) is None
     assert api.fetch_media_row(uuid.UUID(str(red_video["id"]))) is None
+
+
+def test_reupload_after_emptying_trash_clears_duplicate_detection(api):
+    logged_in = _login(api, api.register_and_login("journey-reupload-after-purge")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    initial_upload = api.client.post(
+        "/media",
+        headers=headers,
+        files=[
+            ("files", ("reupload-a.png", png_bytes((0, 0, 255)), "image/png")),
+            ("files", ("reupload-b.png", png_bytes((0, 255, 0)), "image/png")),
+            ("files", ("reupload-c.png", png_bytes((255, 0, 0)), "image/png")),
+        ],
+    )
+    assert initial_upload.status_code == 202
+    initial_payload = initial_upload.json()
+    assert initial_payload["accepted"] == 3
+    assert initial_payload["duplicates"] == 0
+    assert initial_payload["errors"] == 0
+
+    media_ids = [result["id"] for result in initial_payload["results"]]
+    for media_id in media_ids:
+        api.wait_for_media_status(str(media_id))
+
+    duplicate_upload = api.client.post(
+        "/media",
+        headers=headers,
+        files=[
+            ("files", ("reupload-a-copy.png", png_bytes((0, 0, 255)), "image/png")),
+            ("files", ("reupload-b-copy.png", png_bytes((0, 255, 0)), "image/png")),
+            ("files", ("reupload-c-copy.png", png_bytes((255, 0, 0)), "image/png")),
+        ],
+    )
+    assert duplicate_upload.status_code == 202
+    duplicate_payload = duplicate_upload.json()
+    assert duplicate_payload["accepted"] == 0
+    assert duplicate_payload["duplicates"] == 3
+    assert duplicate_payload["errors"] == 0
+    assert [result["status"] for result in duplicate_payload["results"]] == ["duplicate", "duplicate", "duplicate"]
+
+    move_to_trash = api.client.patch(
+        "/media",
+        headers=headers,
+        json={"media_ids": media_ids, "deleted": True},
+    )
+    assert move_to_trash.status_code == 200
+    assert move_to_trash.json() == {"processed": 3, "skipped": 0}
+
+    empty_trash = api.client.delete("/media/trash", headers=headers)
+    assert empty_trash.status_code == 204
+
+    reupload = api.client.post(
+        "/media",
+        headers=headers,
+        files=[
+            ("files", ("reupload-a-again.png", png_bytes((0, 0, 255)), "image/png")),
+            ("files", ("reupload-b-again.png", png_bytes((0, 255, 0)), "image/png")),
+            ("files", ("reupload-c-again.png", png_bytes((255, 0, 0)), "image/png")),
+        ],
+    )
+    assert reupload.status_code == 202
+    reupload_payload = reupload.json()
+    assert reupload_payload["accepted"] == 3
+    assert reupload_payload["duplicates"] == 0
+    assert reupload_payload["errors"] == 0
+    assert [result["status"] for result in reupload_payload["results"]] == ["accepted", "accepted", "accepted"]
 
 
 def test_user_journey_full_personal_library_workflow(api):

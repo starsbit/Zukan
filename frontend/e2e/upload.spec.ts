@@ -33,6 +33,37 @@ test('uploads an image through the UI, renders it in the gallery, and applies ta
   expect(tagged.thumbnail_status).toBe('done');
 });
 
+test('auto refreshes uploaded image state in the gallery when tagging finishes', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles([bluePngFile('auto-refresh-blue.png')]);
+  await page.getByRole('button', { name: 'Start upload' }).click();
+
+  const uploadedCard = page.locator('app-gallery-media-card').filter({
+    has: page.locator('img[alt="auto-refresh-blue.png"]')
+  }).first();
+  const statusBadge = uploadedCard.locator('.status-badge');
+
+  await expect(uploadedCard).toBeVisible();
+  await expect(statusBadge).toContainText(/Pending|Processing/);
+
+  const mediaItems = await listMedia(request, session.accessToken);
+  const uploaded = mediaItems.find((item) => item.original_filename === 'auto-refresh-blue.png');
+  expect(uploaded).toBeTruthy();
+
+  await waitForMedia(
+    request,
+    session.accessToken,
+    uploaded!.id,
+    (media) => media.tagging_status === 'done'
+  );
+
+  await expect(statusBadge).toHaveCount(0);
+});
+
 test('processes uploaded media through the API and persists derived tags', async ({ request }) => {
   const session = await createSession(request);
   const upload = await request.post('http://127.0.0.1:8000/media', {
@@ -123,17 +154,30 @@ test('selects multiple images from the gallery and moves them to trash', async (
 
   const firstCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-a.png"]') }).first();
   const secondCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-b.png"]') }).first();
+  const firstCardButton = firstCard.locator('.media-card');
+  const secondCardButton = secondCard.locator('.media-card');
 
   await firstCard.hover();
   await firstCard.getByRole('button', { name: 'Select multi-select-a.png' }).click();
   await expect(page.getByText('1 selected')).toBeVisible();
+  await expect(firstCardButton).toHaveClass(/media-card-selected/);
 
-  await secondCard.click();
+  await secondCardButton.click();
   await expect(page.getByText('2 selected')).toBeVisible();
+  await expect(secondCardButton).toHaveClass(/media-card-selected/);
+
+  await secondCardButton.click();
+  await expect(page.getByText('1 selected')).toBeVisible();
+  await expect(secondCardButton).not.toHaveClass(/media-card-selected/);
+
+  await secondCardButton.click();
+  await expect(page.getByText('2 selected')).toBeVisible();
+  await expect(secondCardButton).toHaveClass(/media-card-selected/);
 
   await page.getByRole('button', { name: 'Delete' }).click();
   await expect(page.locator('img[alt="multi-select-a.png"]')).toHaveCount(0);
   await expect(page.locator('img[alt="multi-select-b.png"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Upload media' })).toBeVisible();
 
   const activeItems = await listMedia(request, session.accessToken);
   expect(activeItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(false);
@@ -142,4 +186,66 @@ test('selects multiple images from the gallery and moves them to trash', async (
   const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
   expect(trashedItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
   expect(trashedItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+});
+
+test('allows reuploading the same files after trash is emptied through the API', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  const originalFiles = [
+    bluePngFile('reupload-after-purge-a.png', 'primary'),
+    bluePngFile('reupload-after-purge-b.png', 'secondary')
+  ];
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles(originalFiles);
+  await page.getByRole('button', { name: 'Start upload' }).click();
+
+  await expect(page.getByText('Upload status')).toBeVisible();
+  await expect(page.locator('mat-dialog-container').getByText('2 accepted')).toBeVisible();
+  await expect(page.locator('mat-dialog-container').getByText('0 duplicates')).toBeVisible();
+  await expect(page.locator('img[alt="reupload-after-purge-a.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="reupload-after-purge-b.png"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles(originalFiles);
+  await page.getByRole('button', { name: 'Start upload' }).click();
+
+  await expect(page.locator('mat-dialog-container').getByText('0 accepted')).toBeVisible();
+  await expect(page.locator('mat-dialog-container').getByText('2 duplicates')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  const activeItems = await listMedia(request, session.accessToken);
+  const mediaIds = activeItems
+    .filter((item) => item.original_filename === 'reupload-after-purge-a.png' || item.original_filename === 'reupload-after-purge-b.png')
+    .map((item) => item.id);
+
+  expect(mediaIds).toHaveLength(2);
+
+  const trashResponse = await request.patch('http://127.0.0.1:8000/media', {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    data: {
+      media_ids: mediaIds,
+      deleted: true
+    }
+  });
+  await expect(trashResponse).toBeOK();
+
+  const emptyTrashResponse = await request.delete('http://127.0.0.1:8000/media/trash', {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    }
+  });
+  expect(emptyTrashResponse.status()).toBe(204);
+
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles(originalFiles);
+  await page.getByRole('button', { name: 'Start upload' }).click();
+
+  await expect(page.locator('mat-dialog-container').getByText('2 accepted')).toBeVisible();
+  await expect(page.locator('mat-dialog-container').getByText('0 duplicates')).toBeVisible();
 });

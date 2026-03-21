@@ -19,7 +19,7 @@ import backend.app.services.tagger as tagger_module
 
 
 async def fake_predict(image_path: str) -> TaggingResult:
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(1.0)
 
     with PILImage.open(image_path) as image:
         r, g, b = image.convert("RGB").getpixel((0, 0))
