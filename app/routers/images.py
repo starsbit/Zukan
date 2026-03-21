@@ -63,24 +63,6 @@ async def empty_trash(
 
 
 @router.get(
-    "/favorites",
-    response_model=ImageListResponse,
-    summary="List Favorite Images",
-    response_description="Paginated list of the current user's favorited images.",
-)
-async def list_favorites(
-    tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
-    exclude_tags: Annotated[str | None, Query(description="Comma-separated tags that must not be present.")] = None,
-    mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
-    page: int = Query(default=1, ge=1, description="1-based page number."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of images to return."),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await image_service.list_favorites(db, user, tags, exclude_tags, mode, page, page_size)
-
-
-@router.get(
     "/on-this-day",
     response_model=OnThisDayResponse,
     summary="List On-This-Day Images",
@@ -163,9 +145,9 @@ async def get_image(
 
 
 @router.patch(
-    "/{image_id}/metadata",
+    "/{image_id}",
     response_model=ImageDetail,
-    summary="Manually Edit Image Metadata",
+    summary="Update Image Metadata",
     response_description="Updated image metadata after applying manual tag and character name changes.",
 )
 async def update_image_metadata(

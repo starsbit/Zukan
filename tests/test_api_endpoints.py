@@ -53,7 +53,7 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert combined_miss.json()["items"] == []
 
     manual_edit = api.client.patch(
-        f"/images/{blue['id']}/metadata",
+        f"/images/{blue['id']}",
         headers=headers,
         json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
     )
@@ -93,7 +93,7 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert [item["id"] for item in nsfw_search.json()["items"]] == [str(red["id"])]
 
     clear_character_name = api.client.patch(
-        f"/images/{blue['id']}/metadata",
+        f"/images/{blue['id']}",
         headers=headers,
         json={"character_name": ""},
     )
@@ -136,7 +136,7 @@ def test_user_journey_full_personal_library_workflow(api):
     favorite = api.client.post(f"/images/{first['id']}/favorite", headers=headers)
     assert favorite.status_code == 204
 
-    favorite_view = api.client.get("/images/favorites", headers=headers)
+    favorite_view = api.client.get("/images", headers=headers, params={"favorited": "true"})
     assert favorite_view.status_code == 200
     assert [item["id"] for item in favorite_view.json()["items"]] == [str(first["id"])]
 

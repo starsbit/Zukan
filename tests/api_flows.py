@@ -164,14 +164,18 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     favorite = api.client.post(f"/images/{blue['id']}/favorite", headers=api.auth_headers(owner["access_token"]))
     assert favorite.status_code == 204
 
-    favorites = api.client.get("/images/favorites", headers=api.auth_headers(owner["access_token"]))
+    favorites = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"favorited": "true"},
+    )
     assert favorites.status_code == 200
     assert favorites.json()["items"][0]["id"] == str(blue["id"])
 
     favorites_by_tag = api.client.get(
-        "/images/favorites",
+        "/images",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "sky"},
+        params={"favorited": "true", "tags": "sky"},
     )
     assert favorites_by_tag.status_code == 200
     assert favorites_by_tag.json()["total"] == 1
@@ -199,7 +203,7 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert [tag["name"] for tag in tag_search.json()] == ["sky"]
 
     manual_edit = api.client.patch(
-        f"/images/{blue['id']}/metadata",
+        f"/images/{blue['id']}",
         headers=api.auth_headers(owner["access_token"]),
         json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
     )
