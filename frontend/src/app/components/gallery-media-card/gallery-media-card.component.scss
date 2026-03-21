@@ -1,0 +1,90 @@
+:host {
+  display: block;
+}
+
+.media-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background-color: var(--mat-sys-surface-container);
+  cursor: pointer;
+  text-align: left;
+}
+
+.media-card:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 3px;
+}
+
+.media-thumb,
+.media-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.media-thumb {
+  object-fit: cover;
+}
+
+.media-fallback {
+  display: grid;
+  place-items: center;
+  background-color: var(--mat-sys-surface-container-high);
+}
+
+.media-fallback mat-icon {
+  width: 2rem;
+  height: 2rem;
+  font-size: 2rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.media-badge {
+  position: absolute;
+  top: 0.8rem;
+  padding: 0.32rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.type-badge {
+  left: 0.8rem;
+  background-color: var(--mat-sys-surface);
+}
+
+.nsfw-badge {
+  right: 0.8rem;
+  background-color: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
+}
+
+.media-meta {
+  position: absolute;
+  inset: auto 0 0;
+  display: grid;
+  gap: 0.15rem;
+  padding: 1rem 0.95rem 0.85rem;
+  background-color: rgba(0, 0, 0, 0.56);
+  color: white;
+}
+
+.media-meta p,
+.media-meta span {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.media-meta p {
+  font-weight: 600;
+}
+
+.media-meta span {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}

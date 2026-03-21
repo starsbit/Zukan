@@ -1,0 +1,56 @@
+<section class="gallery-shell">
+  <header class="gallery-header">
+    <div>
+      <p class="eyebrow">Newest Uploads</p>
+      <h1>Gallery</h1>
+      <p class="gallery-copy">A fast, visual grid inspired by image search and self-hosted photo libraries.</p>
+    </div>
+
+    <button mat-stroked-button type="button" (click)="reload()">
+      <mat-icon>refresh</mat-icon>
+      Refresh
+    </button>
+  </header>
+
+  @if (loading$ | async) {
+    <section class="gallery-state loading-state">
+      <mat-spinner diameter="42"></mat-spinner>
+      <p>Loading the latest media...</p>
+    </section>
+  } @else if (error$ | async) {
+    <section class="gallery-state error-state">
+      <mat-icon>error</mat-icon>
+      <div>
+        <h2>Gallery unavailable</h2>
+        <p>We could not fetch your latest media from the API.</p>
+      </div>
+      <button mat-flat-button type="button" (click)="reload()">Try again</button>
+    </section>
+  } @else {
+    @let items = (items$ | async) ?? [];
+
+    @if (items.length === 0) {
+      <section class="gallery-state empty-state">
+        <mat-icon>imagesmode</mat-icon>
+        <div>
+          <h2>No media yet</h2>
+          <p>Upload a few images or videos and they will appear here newest first.</p>
+        </div>
+      </section>
+    } @else {
+      <section class="gallery-grid" aria-label="Newest media">
+        @for (item of items; track item.id) {
+          <app-gallery-media-card
+            [media]="item"
+            (open)="openMedia($event)"
+          />
+        }
+      </section>
+    }
+  }
+</section>
+
+<app-gallery-viewer
+  [media]="selectedMedia"
+  (closed)="closeMedia()"
+/>

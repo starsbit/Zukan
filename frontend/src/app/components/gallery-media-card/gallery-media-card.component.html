@@ -1,0 +1,35 @@
+<button
+  class="media-card"
+  type="button"
+  [style.aspect-ratio]="aspectRatio"
+  [attr.aria-label]="'Open ' + (media.original_filename || media.filename)"
+  (click)="openMedia()"
+>
+  @if (thumbnailUrl) {
+    <img
+      class="media-thumb"
+      [src]="thumbnailUrl"
+      [alt]="media.original_filename || media.filename"
+      loading="lazy"
+    >
+  } @else {
+    <div class="media-fallback">
+      @if (loadingThumbnail) {
+        <mat-spinner diameter="28"></mat-spinner>
+      } @else {
+        <mat-icon>{{ media.media_type === 'video' ? 'videocam' : 'image' }}</mat-icon>
+      }
+    </div>
+  }
+
+  <span class="media-badge type-badge">{{ media.media_type === 'video' ? 'Video' : 'Image' }}</span>
+
+  @if (media.is_nsfw) {
+    <span class="media-badge nsfw-badge">NSFW</span>
+  }
+
+  <div class="media-meta">
+    <p>{{ media.original_filename || media.filename }}</p>
+    <span>{{ media.metadata.captured_at | date:'mediumDate' }}</span>
+  </div>
+</button>

@@ -14,6 +14,19 @@ def _logout(api, refresh_token: str):
     assert response.status_code == 204, response.text
 
 
+def test_login_preflight_allows_loopback_frontend_origin(api):
+    response = api.client.options(
+        "/auth/login",
+        headers={
+            "Origin": "http://127.0.0.1:4200",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:4200"
+
+
 def test_user_journey_upload_auto_tag_and_discover_media(api):
     registered = api.register_and_login("journey-discovery")
     _logout(api, registered["refresh_token"])

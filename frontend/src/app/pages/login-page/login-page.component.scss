@@ -1,0 +1,23 @@
+:host {
+  display: block;
+  min-height: 100dvh;
+}
+
+.login-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background-color: var(--mat-sys-surface);
+}
+
+app-auth-form {
+  width: min(100%, 440px);
+}
+
+@media (max-width: 900px) {
+  .login-page {
+    padding: 1rem;
+  }
+}

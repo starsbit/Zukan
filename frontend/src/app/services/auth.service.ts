@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, switchMap, tap, throwError } from 'rxjs';
 
-import { LogoutRequestDto, RefreshRequestDto, UserLoginDto, UserRead } from '../models/api';
+import { LogoutRequestDto, RefreshRequestDto, UserLoginDto, UserRead, UserRegisterDto } from '../models/api';
 import { AuthClientService } from './web/auth-client.service';
 import { UsersClientService } from './web/users-client.service';
 
@@ -65,6 +65,31 @@ export class AuthService {
       catchError((error) => {
         this.clearSessionState(error);
         return throwError(() => error);
+      })
+    );
+  }
+
+  register(body: UserRegisterDto): Observable<UserRead> {
+    this.patchState({
+      loginPending: true,
+      error: null
+    });
+
+    return this.authClient.register(body).pipe(
+      switchMap(() => this.login({
+        username: body.username,
+        password: body.password
+      })),
+      catchError((error) => {
+        this.patchState({
+          error
+        });
+        return throwError(() => error);
+      }),
+      finalize(() => {
+        this.patchState({
+          loginPending: false
+        });
       })
     );
   }

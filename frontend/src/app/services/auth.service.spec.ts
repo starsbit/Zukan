@@ -69,6 +69,52 @@ describe('AuthService', () => {
     expect(authStore.getAccessToken()).toBe('access-1');
   });
 
+  it('registers a user, then logs in and publishes authenticated state', async () => {
+    const registerPromise = firstValueFrom(service.register({
+      username: 'new-user',
+      email: 'new-user@example.test',
+      password: 'password123'
+    }));
+
+    expect(service.snapshot.loginPending).toBe(true);
+
+    const registerRequest = httpTesting.expectOne('http://api.example.test/auth/register');
+    registerRequest.flush({
+      id: 'user-2',
+      username: 'new-user',
+      email: 'new-user@example.test',
+      is_admin: false,
+      show_nsfw: false,
+      created_at: '2026-03-21T00:00:00Z'
+    });
+
+    const loginRequest = httpTesting.expectOne('http://api.example.test/auth/login');
+    expect(loginRequest.request.body).toEqual({
+      username: 'new-user',
+      password: 'password123'
+    });
+    loginRequest.flush({
+      access_token: 'access-2',
+      refresh_token: 'refresh-2',
+      token_type: 'bearer'
+    });
+
+    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    meRequest.flush({
+      id: 'user-2',
+      username: 'new-user',
+      email: 'new-user@example.test',
+      is_admin: false,
+      show_nsfw: false,
+      created_at: '2026-03-21T00:00:00Z'
+    });
+
+    await expect(registerPromise).resolves.toMatchObject({ id: 'user-2', username: 'new-user' });
+    expect(service.snapshot.user?.id).toBe('user-2');
+    expect(service.snapshot.status).toBe('authenticated');
+    expect(authStore.getAccessToken()).toBe('access-2');
+  });
+
   it('logs out and clears authenticated state', async () => {
     authStore.setTokens({
       accessToken: 'access-1',

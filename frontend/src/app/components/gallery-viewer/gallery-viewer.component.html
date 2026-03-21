@@ -1,0 +1,70 @@
+@if (media) {
+  <section class="viewer-backdrop" (click)="close()">
+    <article class="viewer-panel" (click)="$event.stopPropagation()">
+      <button class="close-button" mat-icon-button type="button" aria-label="Close viewer" (click)="close()">
+        <mat-icon>close</mat-icon>
+      </button>
+
+      <div class="viewer-media">
+        @if (loading) {
+          <div class="viewer-state">
+            <mat-spinner diameter="44"></mat-spinner>
+            <p>Loading full media...</p>
+          </div>
+        } @else if (failed) {
+          <div class="viewer-state">
+            <mat-icon>broken_image</mat-icon>
+            <p>We could not load this item.</p>
+          </div>
+        } @else if (mediaUrl) {
+          @if (media.media_type === 'video') {
+            <video class="viewer-asset" [src]="mediaUrl" controls autoplay playsinline></video>
+          } @else {
+            <img class="viewer-asset" [src]="mediaUrl" [alt]="media.original_filename || media.filename">
+          }
+        }
+      </div>
+
+      <aside class="viewer-sidebar">
+        <p class="viewer-kicker">{{ media.media_type === 'video' ? 'Video' : 'Image' }}</p>
+        <h2>{{ media.original_filename || media.filename }}</h2>
+        <p class="viewer-date">{{ media.metadata.captured_at | date:'fullDate' }}</p>
+
+        <dl class="viewer-details">
+          <div>
+            <dt>Resolution</dt>
+            <dd>{{ media.metadata.width || '?' }} x {{ media.metadata.height || '?' }}</dd>
+          </div>
+          <div>
+            <dt>Type</dt>
+            <dd>{{ media.metadata.mime_type || 'Unknown' }}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{{ media.tagging_status }}</dd>
+          </div>
+          @if (media.media_type === 'video' && media.metadata.duration_seconds) {
+            <div>
+              <dt>Duration</dt>
+              <dd>{{ media.metadata.duration_seconds }}s</dd>
+            </div>
+          }
+          @if (media.character_name) {
+            <div>
+              <dt>Character</dt>
+              <dd>{{ media.character_name }}</dd>
+            </div>
+          }
+        </dl>
+
+        @if (media.tags.length > 0) {
+          <div class="viewer-tags">
+            @for (tag of media.tags; track tag) {
+              <span>{{ tag }}</span>
+            }
+          </div>
+        }
+      </aside>
+    </article>
+  </section>
+}
