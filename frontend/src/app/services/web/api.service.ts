@@ -1,4 +1,4 @@
-import { HttpClient, HttpContext, HttpHeaders, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpContext, HttpEvent, HttpHeaders, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -31,6 +31,14 @@ export class ClientApiService {
 
   post<T>(path: string, body: unknown, options?: ClientRequestOptions): Observable<T> {
     return this.http.post<T>(this.buildUrl(path), body, this.buildJsonOptions(options));
+  }
+
+  postEvents<T>(path: string, body: unknown, options?: ClientRequestOptions): Observable<HttpEvent<T>> {
+    return this.http.post<T>(this.buildUrl(path), body, {
+      ...this.buildJsonOptions(options),
+      observe: 'events',
+      reportProgress: true
+    });
   }
 
   postBlob(path: string, body: unknown, options?: ClientRequestOptions): Observable<Blob> {

@@ -126,4 +126,13 @@ describe('GalleryNavbarComponent', () => {
 
     expect(refreshSpy).toHaveBeenCalled();
   });
+
+  it('emits uploadRequested from the upload button', () => {
+    const uploadSpy = vi.fn();
+    component.uploadRequested.subscribe(uploadSpy);
+
+    (fixture.nativeElement.querySelector('button[aria-label="Upload media"]') as HTMLButtonElement).click();
+
+    expect(uploadSpy).toHaveBeenCalled();
+  });
 });

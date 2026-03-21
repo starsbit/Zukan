@@ -1,0 +1,173 @@
+:host {
+  display: block;
+}
+
+mat-dialog-content {
+  display: grid;
+  gap: 1rem;
+  min-width: min(38rem, calc(100vw - 4rem));
+  max-height: min(78vh, 52rem);
+  padding-right: 0.35rem;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mat-sys-outline) 80%, transparent) transparent;
+}
+
+mat-dialog-content::-webkit-scrollbar {
+  width: 0.7rem;
+}
+
+mat-dialog-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+mat-dialog-content::-webkit-scrollbar-thumb {
+  border: 0.16rem solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--mat-sys-outline) 72%, transparent);
+}
+
+mat-dialog-content::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--mat-sys-primary) 48%, var(--mat-sys-outline));
+}
+
+.drop-zone {
+  display: grid;
+  justify-items: center;
+  gap: 0.85rem;
+  padding: 2rem 1.5rem;
+  border: 1px dashed color-mix(in srgb, var(--mat-sys-primary) 50%, transparent);
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--mat-sys-primary-container) 75%, transparent), transparent 65%),
+    var(--mat-sys-surface-container-low);
+  text-align: center;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.drop-zone h3,
+.drop-zone p {
+  margin: 0;
+}
+
+.drop-zone mat-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 2.5rem;
+  color: var(--mat-sys-primary);
+}
+
+.drop-zone-active {
+  transform: translateY(-2px);
+  border-color: var(--mat-sys-primary);
+  box-shadow: 0 20px 40px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+}
+
+.selection-card,
+.result-card {
+  border-radius: 1.25rem;
+}
+
+.selection-card mat-card-content,
+.result-card mat-card-content {
+  padding-top: 0.25rem;
+}
+
+.file-list {
+  display: grid;
+  gap: 0.35rem;
+  max-height: min(40vh, 26rem);
+  overflow: auto;
+  padding-right: 0.2rem;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--mat-sys-outline) 70%, transparent) transparent;
+}
+
+.file-list::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.file-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.file-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--mat-sys-outline) 65%, transparent);
+}
+
+.file-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-lowest) 68%, transparent);
+}
+
+.file-copy {
+  min-width: 0;
+}
+
+.file-name,
+.file-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name {
+  font-weight: 600;
+}
+
+.file-meta {
+  margin-top: 0.18rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.file-remove {
+  flex-shrink: 0;
+}
+
+.summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.progress-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.9rem;
+}
+
+.progress-row p {
+  margin: 0.2rem 0 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.error-copy {
+  margin: 0.9rem 0 0;
+  color: var(--mat-sys-error);
+}
+
+@media (max-width: 720px) {
+  mat-dialog-content {
+    min-width: 0;
+    max-height: min(72vh, 44rem);
+  }
+
+  .drop-zone {
+    padding: 1.5rem 1rem;
+  }
+
+  .file-row {
+    padding-inline: 0.65rem;
+  }
+}

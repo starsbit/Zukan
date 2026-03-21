@@ -1,0 +1,117 @@
+<h2 mat-dialog-title>Upload Media</h2>
+
+<mat-dialog-content>
+  <section
+    class="drop-zone"
+    [class.drop-zone-active]="dragActive"
+    (dragover)="onDragOver($event)"
+    (dragleave)="onDragLeave($event)"
+    (drop)="onDrop($event)"
+  >
+    <mat-icon>cloud_upload</mat-icon>
+    <div>
+      <h3>Drop files here</h3>
+      <p>Drag files into the gallery or browse from your device.</p>
+    </div>
+
+    <input #fileInput type="file" multiple hidden (change)="addSelectedFiles($event)" />
+
+    <button mat-flat-button type="button" (click)="openFilePicker()">
+      <mat-icon>attach_file</mat-icon>
+      Select files
+    </button>
+  </section>
+
+  @if (selectedFiles.length > 0) {
+    <mat-card appearance="outlined" class="selection-card">
+      <mat-card-header>
+        <mat-card-title>{{ selectedFiles.length }} file{{ selectedFiles.length === 1 ? '' : 's' }} selected</mat-card-title>
+      </mat-card-header>
+      <mat-card-content>
+        <div class="file-list" role="list" aria-label="Selected files">
+          @for (file of selectedFiles; track trackByFileName($index, file)) {
+            <div class="file-row" role="listitem">
+              <div class="file-copy">
+                <div class="file-name">{{ file.name }}</div>
+                <div class="file-meta">{{ formatFileSize(file.size) }}</div>
+              </div>
+              <button
+                class="file-remove"
+                mat-icon-button
+                type="button"
+                aria-label="Remove selected file"
+                (click)="removeSelectedFile($index)"
+              >
+                <mat-icon>close</mat-icon>
+              </button>
+            </div>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+  }
+
+  @if ((session$ | async); as session) {
+    @if (session.visible && session.totalFiles > 0) {
+      <mat-card appearance="outlined" class="result-card">
+        <mat-card-header>
+          <mat-card-title>Upload status</mat-card-title>
+          <mat-card-subtitle>{{ session.phase | titlecase }}</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          @if (session.phase === 'uploading' || session.phase === 'processing') {
+            <div class="progress-row">
+              <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+              <div>
+                <strong>
+                  {{ session.phase === 'uploading' ? 'Uploading files' : 'Processing media' }}
+                </strong>
+                <p>
+                  {{ session.phase === 'uploading'
+                    ? ((session.uploadProgress ?? 0) + '% uploaded')
+                    : (session.completed + ' of ' + session.accepted + ' finished') }}
+                </p>
+              </div>
+            </div>
+          }
+
+          <mat-progress-bar
+            [mode]="session.phase === 'uploading' && session.uploadProgress === null ? 'indeterminate' : 'determinate'"
+            [value]="session.phase === 'uploading' ? (session.uploadProgress ?? 100) : (session.processingProgress ?? 100)"
+          />
+
+          <div class="summary-row">
+            <span>{{ session.accepted }} accepted</span>
+            <span>{{ session.duplicates }} duplicates</span>
+            <span>{{ session.errors }} errors</span>
+          </div>
+
+          @if (session.errorMessage) {
+            <p class="error-copy">{{ session.errorMessage }}</p>
+          }
+
+          @if (session.items.length > 0) {
+            <mat-list>
+              @for (item of session.items; track item.fileName) {
+                <mat-list-item>
+                  <div matListItemTitle>{{ item.fileName }}</div>
+                  <div matListItemLine>{{ item.status | titlecase }}{{ item.message ? ' - ' + item.message : '' }}</div>
+                </mat-list-item>
+              }
+            </mat-list>
+          }
+        </mat-card-content>
+      </mat-card>
+    }
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Close</button>
+  @if ((session$ | async); as session) {
+    <button mat-flat-button type="button" [disabled]="selectedFiles.length === 0 || session.active" (click)="startUpload()">
+      Start upload
+    </button>
+  }
+</mat-dialog-actions>

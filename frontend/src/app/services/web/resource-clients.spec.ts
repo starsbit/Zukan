@@ -1,3 +1,4 @@
+import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
@@ -73,6 +74,12 @@ describe('resource clients', () => {
       new File(['a'], 'a.png', { type: 'image/png' }),
       new File(['b'], 'b.png', { type: 'image/png' })
     ]));
+    const progressEvents: number[] = [];
+    mediaClient.uploadMediaWithProgress([
+      new File(['c'], 'c.png', { type: 'image/png' })
+    ]).subscribe((event) => {
+      progressEvents.push(event.type);
+    });
     const listPromise = firstValueFrom(mediaClient.listMedia({
       page: 3,
       page_size: 25,
@@ -84,11 +91,19 @@ describe('resource clients', () => {
     }));
     const suggestionsPromise = firstValueFrom(mediaClient.listCharacterSuggestions({ q: 'aya', limit: 5 }));
 
-    const uploadRequest = expectRequest('POST', 'http://api.example.test/media');
+    const uploadRequests = httpTesting.match((request) => request.method === 'POST' && request.urlWithParams === 'http://api.example.test/media');
+    expect(uploadRequests).toHaveLength(2);
+
+    const uploadRequest = uploadRequests[0];
     expect(uploadRequest.request.body instanceof FormData).toBe(true);
     const files = uploadRequest.request.body.getAll('files') as File[];
     expect(files.map((file) => file.name)).toEqual(['a.png', 'b.png']);
     uploadRequest.flush({ accepted: 2, duplicates: 0, errors: 0, results: [] });
+
+    const progressUploadRequest = uploadRequests[1];
+    expect(progressUploadRequest.request.reportProgress).toBe(true);
+    progressUploadRequest.event({ type: HttpEventType.UploadProgress, loaded: 1, total: 2 });
+    progressUploadRequest.flush({ accepted: 1, duplicates: 0, errors: 0, results: [] });
 
     const listRequest = expectRequest('GET', 'http://api.example.test/media?page=3&page_size=25&favorited=true&character_name=rin&media_type=image,video&status=done,failed&captured_after=2026-03-21T00:00:00.000Z');
     listRequest.flush({ total: 0, page: 3, page_size: 25, items: [] });
@@ -99,6 +114,7 @@ describe('resource clients', () => {
     await expect(uploadPromise).resolves.toMatchObject({ accepted: 2 });
     await expect(listPromise).resolves.toMatchObject({ total: 0, items: [] });
     await expect(suggestionsPromise).resolves.toEqual([{ name: 'ayanami_rei', media_count: 2 }]);
+    expect(progressEvents).toContain(HttpEventType.UploadProgress);
   });
 
   it('maps the rest of the media client methods to the correct endpoints', async () => {

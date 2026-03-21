@@ -13,8 +13,28 @@
   min-width: 0;
 }
 
+.navbar-actions {
+  display: inline-flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.upload-button {
+  border-radius: 999px;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+}
+
 @media (max-width: 720px) {
   .gallery-navbar {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .upload-label {
+    display: none;
+  }
+
+  .upload-button {
+    min-width: 0;
+    padding-inline: 0.8rem;
   }
 }

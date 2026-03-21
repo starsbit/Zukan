@@ -28,6 +28,7 @@ export class GalleryNavbarComponent {
   @Input({ required: true }) searchState!: GallerySearchState;
   @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
   @Output() readonly refreshRequested = new EventEmitter<void>();
+  @Output() readonly uploadRequested = new EventEmitter<void>();
 
   get activeFilterCount(): number {
     return countActiveAdvancedFilters(this.searchState.filters);

@@ -1,9 +1,27 @@
-<section class="gallery-shell">
+<section
+  class="gallery-shell"
+  [class.gallery-shell-drag-active]="dragActive"
+  (dragenter)="onDragEnter($event)"
+  (dragover)="onDragOver($event)"
+  (dragleave)="onDragLeave($event)"
+  (drop)="onDrop($event)"
+>
   <app-gallery-navbar
     [searchState]="searchState"
     (searchApplied)="applySearch($event)"
     (refreshRequested)="reload()"
+    (uploadRequested)="openUploadDialog()"
   />
+
+  @if (dragActive) {
+    <div class="drop-overlay" aria-hidden="true">
+      <mat-icon>cloud_upload</mat-icon>
+      <div>
+        <h2>Drop files to upload</h2>
+        <p>Your batch will be sent to the gallery right away.</p>
+      </div>
+    </div>
+  }
 
   @if (loading$ | async) {
     <section class="gallery-state loading-state">
@@ -47,3 +65,5 @@
   [media]="selectedMedia"
   (closed)="closeMedia()"
 />
+
+<app-gallery-upload-status-island />

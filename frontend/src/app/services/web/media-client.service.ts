@@ -1,3 +1,4 @@
+import { HttpEvent } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
@@ -24,13 +25,21 @@ export class MediaClientService {
   private readonly api = inject(ClientApiService);
 
   uploadMedia(files: File[]): Observable<BatchUploadResponse> {
+    return this.api.post<BatchUploadResponse>('/media', this.buildUploadPayload(files));
+  }
+
+  uploadMediaWithProgress(files: File[]): Observable<HttpEvent<BatchUploadResponse>> {
+    return this.api.postEvents<BatchUploadResponse>('/media', this.buildUploadPayload(files));
+  }
+
+  private buildUploadPayload(files: File[]): FormData {
     const formData = new FormData();
 
     for (const file of files) {
       formData.append('files', file, file.name);
     }
 
-    return this.api.post<BatchUploadResponse>('/media', formData);
+    return formData;
   }
 
   listMedia(query?: ListMediaQuery): Observable<MediaListResponse> {

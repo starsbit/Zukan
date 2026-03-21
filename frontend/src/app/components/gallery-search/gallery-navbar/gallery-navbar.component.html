@@ -9,7 +9,14 @@
     />
   </div>
 
-  <button mat-icon-button type="button" aria-label="Refresh gallery" (click)="refreshRequested.emit()">
-    <mat-icon>refresh</mat-icon>
-  </button>
+  <div class="navbar-actions">
+    <button mat-flat-button type="button" class="upload-button" aria-label="Upload media" (click)="uploadRequested.emit()">
+      <mat-icon>cloud_upload</mat-icon>
+      <span class="upload-label">Upload</span>
+    </button>
+
+    <button mat-icon-button type="button" aria-label="Refresh gallery" (click)="refreshRequested.emit()">
+      <mat-icon>refresh</mat-icon>
+    </button>
+  </div>
 </mat-toolbar>
