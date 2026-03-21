@@ -73,15 +73,46 @@ class TagWithConfidence(BaseModel):
     confidence: float = Field(description="Model confidence score for this tag.")
 
 
+class ImageMetadata(BaseModel):
+    file_size: int | None = Field(description="Original file size in bytes.")
+    width: int | None = Field(description="Image width in pixels.")
+    height: int | None = Field(description="Image height in pixels.")
+    mime_type: str | None = Field(description="Detected MIME type for the image.")
+    captured_at: datetime = Field(description="Best-known timestamp for when the image was captured or created.")
+
+
+class ImageMetadataUpdate(BaseModel):
+    captured_at: datetime | None = Field(
+        default=None,
+        description="Manual capture timestamp override. Send null to reset it to the upload timestamp.",
+    )
+
+
+class ImageMetadataFilter(BaseModel):
+    captured_year: int | None = Field(default=None, description="Filter images by the captured year metadata.")
+    captured_month: int | None = Field(default=None, ge=1, le=12, description="Filter images by captured month metadata.")
+    captured_day: int | None = Field(default=None, ge=1, le=31, description="Filter images by captured day metadata.")
+    captured_before_year: int | None = Field(
+        default=None,
+        description="Filter images captured before the given year. Useful for on-this-day style lookups.",
+    )
+
+    @model_validator(mode="after")
+    def validate_date_filters(self):
+        if self.captured_month is not None and self.captured_day is not None:
+            try:
+                datetime(2000, self.captured_month, self.captured_day)
+            except ValueError as exc:
+                raise ValueError("Invalid captured month/day combination") from exc
+        return self
+
+
 class ImageRead(BaseModel):
     id: uuid.UUID
     uploader_id: uuid.UUID | None
     filename: str
     original_filename: str | None
-    file_size: int | None
-    width: int | None
-    height: int | None
-    mime_type: str | None
+    metadata: ImageMetadata
     tags: list[str] = Field(description="All tags currently stored for the image, including rating and character tags.")
     character_name: str | None = Field(
         default=None,
@@ -93,8 +124,6 @@ class ImageRead(BaseModel):
     created_at: datetime
     deleted_at: datetime | None
     is_favorited: bool = Field(default=False, description="Whether the current user has favorited this image.")
-
-    model_config = {"from_attributes": True}
 
 
 class ImageDetail(ImageRead):
@@ -118,6 +147,7 @@ class ImageUpdate(BaseModel):
         default=None,
         description="Manual character name override. Send null or an empty string to clear it.",
     )
+    metadata: ImageMetadataUpdate | None = None
     deleted: bool | None = Field(
         default=None,
         description="Whether the image should be in the trash. Omit to keep deletion state unchanged.",
@@ -129,7 +159,10 @@ class ImageUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_non_empty(self):
-        if not self.model_fields_set:
+        mutable_fields = set(self.model_fields_set)
+        if "metadata" in mutable_fields and self.metadata is not None and not self.metadata.model_fields_set:
+            raise ValueError("metadata must include at least one mutable field")
+        if not mutable_fields:
             raise ValueError("At least one mutable field must be provided")
         return self
 

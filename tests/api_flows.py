@@ -3,7 +3,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 
-from tests.api_test_support import png_bytes
+from tests.api_test_support import jpeg_bytes, png_bytes
 
 
 def assert_auth_endpoints(api):
@@ -108,6 +108,13 @@ def assert_image_tag_search_and_favorite_endpoints(api):
     assert by_tag.status_code == 200
     assert by_tag.json()["total"] == 1
     assert by_tag.json()["items"][0]["character_name"] == "ayanami_rei"
+
+    by_metadata_group = api.client.get(
+        "/images",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"captured_month": 3},
+    )
+    assert by_metadata_group.status_code == 200
 
     by_character_name = api.client.get(
         "/images",
@@ -253,7 +260,8 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     user = api.register_and_login("collector")
     headers = api.auth_headers(user["access_token"])
 
-    first = api.upload_image(user["access_token"], "first.png", (0, 0, 255))
+    captured_at = datetime(2021, 3, 21, 7, 45, tzinfo=timezone.utc)
+    first = api.upload_image_bytes(user["access_token"], "first.jpg", jpeg_bytes((0, 0, 255), captured_at), "image/jpeg")
     second = api.upload_image(user["access_token"], "second.png", (0, 255, 0))
     api.wait_for_image_status(str(first["id"]))
     api.wait_for_image_status(str(second["id"]))
@@ -261,7 +269,11 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
     download = api.client.post("/images/download", headers=headers, json={"image_ids": [str(first["id"]), str(second["id"])]})
     assert download.status_code == 200
     with zipfile.ZipFile(io.BytesIO(download.content)) as zf:
-        assert set(zf.namelist()) == {"first.png", "second.png"}
+        assert set(zf.namelist()) == {"first.jpg", "second.png"}
+
+    first_detail = api.client.get(f"/images/{first['id']}", headers=headers)
+    assert first_detail.status_code == 200
+    assert first_detail.json()["metadata"]["captured_at"].startswith("2021-03-21T07:45:00")
 
     assert api.client.patch(f"/images/{first['id']}", headers=headers, json={"deleted": True}).status_code == 200
     trash = api.client.get("/images", headers=headers, params={"state": "trashed"})
@@ -270,12 +282,14 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
 
     assert api.client.patch(f"/images/{first['id']}", headers=headers, json={"deleted": False}).status_code == 200
 
-    now = datetime.now(timezone.utc)
-    old_date = now.replace(year=now.year - 1)
-    api.set_image_created_at(str(first["id"]), old_date)
-    on_this_day = api.client.get("/images/on-this-day", headers=headers)
+    api.set_image_captured_at(str(first["id"]), captured_at.replace(year=captured_at.year - 1))
+    on_this_day = api.client.get(
+        "/images/on-this-day",
+        headers=headers,
+        params={"captured_month": 3, "captured_day": 21, "captured_before_year": datetime.now(timezone.utc).year},
+    )
     assert on_this_day.status_code == 200
-    assert on_this_day.json()["years"][0]["year"] == old_date.year
+    assert [item["id"] for year in on_this_day.json()["years"] for item in year["images"]] == [str(first["id"])]
 
     assert api.client.patch(f"/images/{second['id']}", headers=headers, json={"deleted": True}).status_code == 200
     restored_upload = api.client.post(
@@ -337,6 +351,163 @@ def assert_image_upload_edge_cases(api):
         json={"image_ids": [str(uuid.uuid4())]},
     )
     assert download_missing.status_code == 404
+
+    partial_metadata_filter = api.client.get("/images", headers=headers, params={"captured_month": 3})
+    assert partial_metadata_filter.status_code == 200
+
+    invalid_on_this_day = api.client.get("/images/on-this-day", headers=headers, params={"captured_month": 2, "captured_day": 30})
+    assert invalid_on_this_day.status_code == 422
+
+
+def assert_image_complex_query_regression(api):
+    user = api.register_and_login("query-torture")
+    headers = api.auth_headers(user["access_token"])
+
+    blue = api.upload_image(user["access_token"], "query-blue.png", (0, 0, 255))
+    green = api.upload_image(user["access_token"], "query-green.png", (0, 255, 0))
+    red = api.upload_image(user["access_token"], "query-red.png", (255, 0, 0))
+    blue_two = api.upload_image(user["access_token"], "query-blue-two.png", (0, 0, 254))
+
+    api.wait_for_image_status(str(blue["id"]))
+    api.wait_for_image_status(str(green["id"]))
+    api.wait_for_image_status(str(red["id"]))
+    api.wait_for_image_status(str(blue_two["id"]))
+
+    api.set_image_captured_at(str(blue["id"]), datetime(2022, 3, 21, 9, 0, tzinfo=timezone.utc))
+    api.set_image_captured_at(str(green["id"]), datetime(2021, 3, 14, 8, 30, tzinfo=timezone.utc))
+    api.set_image_captured_at(str(red["id"]), datetime(2020, 3, 21, 23, 45, tzinfo=timezone.utc))
+    api.set_image_captured_at(str(blue_two["id"]), datetime(2019, 7, 4, 12, 15, tzinfo=timezone.utc))
+
+    blue_update = api.client.patch(
+        f"/images/{blue['id']}",
+        headers=headers,
+        json={
+            "tags": ["pilot", "eva", "tokyo3", "rating:general"],
+            "character_name": "ikari_shinji",
+        },
+    )
+    assert blue_update.status_code == 200
+
+    green_update = api.client.patch(
+        f"/images/{green['id']}",
+        headers=headers,
+        json={
+            "tags": ["forest", "mecha", "support", "rating:general"],
+            "character_name": "soryu_asuka_langley",
+        },
+    )
+    assert green_update.status_code == 200
+
+    blue_two_update = api.client.patch(
+        f"/images/{blue_two['id']}",
+        headers=headers,
+        json={
+            "tags": ["pilot", "eva", "moon", "rating:general"],
+            "character_name": "nagisa_kaworu",
+        },
+    )
+    assert blue_two_update.status_code == 200
+
+    favorite = api.client.patch(
+        f"/images/{blue_two['id']}",
+        headers=headers,
+        json={"favorited": True},
+    )
+    assert favorite.status_code == 200
+
+    trashed = api.client.patch(
+        f"/images/{green['id']}",
+        headers=headers,
+        json={"deleted": True},
+    )
+    assert trashed.status_code == 200
+
+    default_list = api.client.get("/images", headers=headers)
+    assert default_list.status_code == 200
+    assert {item["id"] for item in default_list.json()["items"]} == {str(blue["id"]), str(blue_two["id"])}
+
+    trash_list = api.client.get("/images", headers=headers, params={"state": "trashed"})
+    assert trash_list.status_code == 200
+    assert [item["id"] for item in trash_list.json()["items"]] == [str(green["id"])]
+
+    year_filter = api.client.get("/images", headers=headers, params={"captured_year": 2022})
+    assert year_filter.status_code == 200
+    assert [item["id"] for item in year_filter.json()["items"]] == [str(blue["id"])]
+
+    month_filter = api.client.get("/images", headers=headers, params={"captured_month": 3})
+    assert month_filter.status_code == 200
+    assert {item["id"] for item in month_filter.json()["items"]} == {str(blue["id"])}
+
+    day_filter = api.client.get("/images", headers=headers, params={"captured_day": 4})
+    assert day_filter.status_code == 200
+    assert [item["id"] for item in day_filter.json()["items"]] == [str(blue_two["id"])]
+
+    combined_and_filter = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "pilot,eva", "mode": "and", "captured_before_year": 2021},
+    )
+    assert combined_and_filter.status_code == 200
+    assert [item["id"] for item in combined_and_filter.json()["items"]] == [str(blue_two["id"])]
+
+    combined_or_excluding_filter = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "pilot,forest", "mode": "or", "exclude_tags": "moon", "nsfw": "include"},
+    )
+    assert combined_or_excluding_filter.status_code == 200
+    assert [item["id"] for item in combined_or_excluding_filter.json()["items"]] == [str(blue["id"])]
+
+    character_with_year = api.client.get(
+        "/images",
+        headers=headers,
+        params={"character_name": "shinji", "captured_year": 2022},
+    )
+    assert character_with_year.status_code == 200
+    assert [item["id"] for item in character_with_year.json()["items"]] == [str(blue["id"])]
+
+    favorited_metadata_filter = api.client.get(
+        "/images",
+        headers=headers,
+        params={"favorited": "true", "captured_month": 7, "tags": "pilot"},
+    )
+    assert favorited_metadata_filter.status_code == 200
+    assert [item["id"] for item in favorited_metadata_filter.json()["items"]] == [str(blue_two["id"])]
+
+    hidden_nsfw = api.client.get("/images", headers=headers, params={"nsfw": "include"})
+    assert hidden_nsfw.status_code == 200
+    assert {item["id"] for item in hidden_nsfw.json()["items"]} == {str(blue["id"]), str(blue_two["id"]), str(red["id"])}
+
+    show_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    assert show_nsfw.status_code == 200
+
+    nsfw_metadata_filter = api.client.get(
+        "/images",
+        headers=headers,
+        params={"nsfw": "only", "captured_month": 3, "captured_day": 21},
+    )
+    assert nsfw_metadata_filter.status_code == 200
+    assert [item["id"] for item in nsfw_metadata_filter.json()["items"]] == [str(red["id"])]
+
+    on_this_day = api.client.get(
+        "/images/on-this-day",
+        headers=headers,
+        params={"captured_month": 3, "captured_day": 21, "captured_before_year": 2023},
+    )
+    assert on_this_day.status_code == 200
+    assert [year["year"] for year in on_this_day.json()["years"]] == [2022, 2020]
+    assert [item["id"] for year in on_this_day.json()["years"] for item in year["images"]] == [
+        str(blue["id"]),
+        str(red["id"]),
+    ]
+
+    impossible_combo = api.client.get(
+        "/images",
+        headers=headers,
+        params={"tags": "pilot", "captured_year": 2021, "character_name": "shinji"},
+    )
+    assert impossible_combo.status_code == 200
+    assert impossible_combo.json()["items"] == []
 
 
 def assert_album_endpoints(api):

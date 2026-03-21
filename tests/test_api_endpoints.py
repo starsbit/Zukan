@@ -60,6 +60,15 @@ def test_user_journey_upload_auto_tag_and_discover_images(api):
     assert manual_edit.status_code == 200
     assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
     assert manual_edit.json()["character_name"] == "ikari_shinji"
+    assert manual_edit.json()["metadata"]["captured_at"]
+
+    manual_timestamp = api.client.patch(
+        f"/images/{blue['id']}",
+        headers=headers,
+        json={"metadata": {"captured_at": "2020-03-21T10:30:00Z"}},
+    )
+    assert manual_timestamp.status_code == 200
+    assert manual_timestamp.json()["metadata"]["captured_at"] == "2020-03-21T10:30:00Z"
 
     corrected_search = api.client.get(
         "/images",
@@ -188,9 +197,13 @@ def test_user_journey_full_personal_library_workflow(api):
     assert retag.status_code == 202
     api.wait_for_image_status(str(first["id"]))
 
-    now = api.fetch_image_row(first["id"]).created_at
-    api.set_image_created_at(str(first["id"]), now.replace(year=now.year - 1))
-    on_this_day = api.client.get("/images/on-this-day", headers=headers)
+    now = api.fetch_image_row(first["id"]).captured_at
+    api.set_image_captured_at(str(first["id"]), now.replace(year=now.year - 1))
+    on_this_day = api.client.get(
+        "/images/on-this-day",
+        headers=headers,
+        params={"captured_month": now.month, "captured_day": now.day, "captured_before_year": now.year + 1},
+    )
     assert on_this_day.status_code == 200
     assert on_this_day.json()["years"]
 

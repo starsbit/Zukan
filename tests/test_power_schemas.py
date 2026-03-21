@@ -12,6 +12,7 @@ from app.schemas import (
     DownloadRequest,
     ImageBatchDelete,
     ImageBatchUpdate,
+    ImageMetadataFilter,
     OnThisDayResponse,
     OnThisDayYear,
 )
@@ -28,10 +29,13 @@ def _image_data(**overrides):
         uploader_id=uuid.uuid4(),
         filename="a.jpg",
         original_filename="a.jpg",
-        file_size=100,
-        width=10,
-        height=10,
-        mime_type="image/jpeg",
+        metadata={
+            "file_size": 100,
+            "width": 10,
+            "height": 10,
+            "mime_type": "image/jpeg",
+            "captured_at": now,
+        },
         tags=[],
         is_nsfw=False,
         tagging_status="done",
@@ -178,3 +182,13 @@ def test_on_this_day_response_multiple_years():
 def test_on_this_day_response_empty():
     m = OnThisDayResponse(years=[])
     assert m.years == []
+
+
+def test_image_metadata_filter_allows_partial_date_groups():
+    m = ImageMetadataFilter(captured_month=3)
+    assert m.captured_month == 3
+
+
+def test_image_metadata_filter_rejects_invalid_full_date():
+    with pytest.raises(ValidationError):
+        ImageMetadataFilter(captured_month=2, captured_day=30)

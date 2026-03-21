@@ -54,3 +54,12 @@ async def init_db():
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_images_deleted_at ON images (deleted_at)")
         )
+        await conn.execute(
+            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS captured_at TIMESTAMP WITH TIME ZONE")
+        )
+        await conn.execute(
+            text("UPDATE images SET captured_at = created_at WHERE captured_at IS NULL")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_images_captured_at ON images (captured_at)")
+        )

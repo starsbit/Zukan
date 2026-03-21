@@ -2,7 +2,9 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -17,6 +19,7 @@ from app.schemas import (
     ImageDetail,
     ImageListResponse,
     ImageListState,
+    ImageMetadataFilter,
     ImageUpdate,
     NsfwFilter,
     OnThisDayResponse,
@@ -27,6 +30,26 @@ from app.services import images as image_service
 from app.services.storage import zip_images
 
 router = APIRouter(prefix="/images", tags=["images"])
+
+
+def image_metadata_filter_query(
+    captured_year: int | None = Query(default=None, description="Filter images by the captured year metadata."),
+    captured_month: int | None = Query(default=None, ge=1, le=12, description="Filter images by captured month metadata."),
+    captured_day: int | None = Query(default=None, ge=1, le=31, description="Filter images by captured day metadata."),
+    captured_before_year: int | None = Query(
+        default=None,
+        description="Filter images captured before the given year. Useful for on-this-day style lookups.",
+    ),
+) -> ImageMetadataFilter:
+    try:
+        return ImageMetadataFilter(
+            captured_year=captured_year,
+            captured_month=captured_month,
+            captured_day=captured_day,
+            captured_before_year=captured_before_year,
+        )
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
 
 
 @router.post(
@@ -51,6 +74,7 @@ async def upload(
     response_description="Paginated list of images matching the provided filters.",
 )
 async def list_images(
+    metadata: Annotated[ImageMetadataFilter, Depends(image_metadata_filter_query)],
     state: ImageListState = Query(default=ImageListState.ACTIVE, description="Whether to list active or trashed images."),
     tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
     character_name: Annotated[
@@ -80,6 +104,7 @@ async def list_images(
         mode,
         nsfw,
         status_filter,
+        metadata,
         favorited,
         page,
         page_size,
@@ -119,10 +144,11 @@ async def empty_trash(
     response_description="Images captured on the same month and day in previous years.",
 )
 async def on_this_day(
+    metadata: Annotated[ImageMetadataFilter, Depends(image_metadata_filter_query)],
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await image_service.on_this_day(db, user)
+    return await image_service.on_this_day(db, user, metadata)
 
 
 @router.post("/download", summary="Download Images", response_description="ZIP archive of the requested images.")

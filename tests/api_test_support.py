@@ -5,7 +5,7 @@ import tempfile
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -27,6 +27,22 @@ def run(coro):
 def png_bytes(color: tuple[int, int, int]) -> bytes:
     body = io.BytesIO()
     PILImage.new("RGB", (32, 24), color=color).save(body, format="PNG")
+    return body.getvalue()
+
+
+def jpeg_bytes(color: tuple[int, int, int], captured_at: datetime | None = None) -> bytes:
+    body = io.BytesIO()
+    image = PILImage.new("RGB", (32, 24), color=color)
+    if captured_at is not None:
+        exif = image.getexif()
+        timestamp = captured_at.astimezone(timezone.utc).strftime("%Y:%m:%d %H:%M:%S")
+        exif[36867] = timestamp
+        exif[36868] = timestamp
+        exif[36881] = "+00:00"
+        exif[36882] = "+00:00"
+        image.save(body, format="JPEG", exif=exif)
+    else:
+        image.save(body, format="JPEG")
     return body.getvalue()
 
 
@@ -70,10 +86,13 @@ class ApiHarness:
         }
 
     def upload_image(self, token: str, filename: str, color: tuple[int, int, int]) -> dict:
+        return self.upload_image_bytes(token, filename, png_bytes(color), "image/png")
+
+    def upload_image_bytes(self, token: str, filename: str, content: bytes, content_type: str) -> dict:
         response = self.client.post(
             "/images",
             headers=self.auth_headers(token),
-            files=[("files", (filename, png_bytes(color), "image/png"))],
+            files=[("files", (filename, content, content_type))],
         )
         assert response.status_code == 202, response.text
         payload = response.json()
@@ -115,6 +134,16 @@ class ApiHarness:
         async def _update(session: AsyncSession):
             image = await session.get(Image, uuid.UUID(image_id))
             image.created_at = created_at
+            await session.commit()
+
+        self.run_db(_update)
+
+    def set_image_captured_at(self, image_id: str, captured_at: datetime):
+        from app.models import Image
+
+        async def _update(session: AsyncSession):
+            image = await session.get(Image, uuid.UUID(image_id))
+            image.captured_at = captured_at
             await session.commit()
 
         self.run_db(_update)

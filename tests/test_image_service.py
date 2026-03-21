@@ -1,13 +1,14 @@
 import asyncio
 import io
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException, UploadFile
 
 from app.services import images as image_service
 from app.schemas import ImageListState, ImageUpdate
-from tests.api_test_support import png_bytes
+from tests.api_test_support import jpeg_bytes, png_bytes
 
 
 def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
@@ -29,6 +30,7 @@ def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
 
     async def _exercise(session):
         from app.models import Image, User
+        from app.schemas import ImageMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         upload = UploadFile(
@@ -49,6 +51,31 @@ def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
 
     api.run_db(_exercise)
     assert queue.get_nowait() == uploaded_id
+
+
+def test_build_upload_response_uses_embedded_capture_timestamp(api):
+    user = api.register_and_login("image-service-capture-time")
+    user_id = uuid.UUID(user["user"]["id"])
+    embedded_time = datetime(2018, 3, 21, 8, 15, tzinfo=timezone.utc)
+
+    queue = asyncio.Queue()
+    image_service.set_tag_queue(queue)
+
+    async def _exercise(session):
+        from app.models import Image, User
+        from app.schemas import NsfwFilter, TagFilterMode
+
+        db_user = await session.get(User, user_id)
+        upload = UploadFile(
+            filename="captured.jpg",
+            file=io.BytesIO(jpeg_bytes((0, 0, 255), captured_at=embedded_time)),
+            headers={"content-type": "image/jpeg"},
+        )
+        response = await image_service.build_upload_response(session, db_user, [upload])
+        image = await session.get(Image, response.results[0].id)
+        assert image.captured_at == embedded_time
+
+    api.run_db(_exercise)
 
 
 def test_get_visible_image_blocks_hidden_nsfw_image(api):
@@ -83,6 +110,7 @@ def test_retag_image_queues_image_id(api):
 
     async def _exercise(session):
         from app.models import Image, User
+        from app.schemas import NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         await image_service.retag_image(session, uploaded_id, db_user)
@@ -113,7 +141,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
 
     async def _exercise(session):
         from app.models import User
-        from app.schemas import NsfwFilter, TagFilterMode
+        from app.schemas import ImageMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         listing = await image_service.list_images(
@@ -126,6 +154,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.INCLUDE,
             status_filter="done",
+            metadata=ImageMetadataFilter(),
             favorited=None,
             page=1,
             page_size=20,
@@ -143,6 +172,7 @@ def test_image_service_listing_detail_and_favorites_flow(api):
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.INCLUDE,
             status_filter="done",
+            metadata=ImageMetadataFilter(),
             favorited=None,
             page=1,
             page_size=20,
@@ -199,9 +229,8 @@ def test_image_service_trash_restore_on_this_day_and_purge_flow(api):
     purged_id = uuid.UUID(str(purged["id"]))
 
     async def _exercise(session):
-        from datetime import datetime, timezone
-
         from app.models import Image, User
+        from app.schemas import ImageMetadataFilter, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
 
@@ -211,11 +240,19 @@ def test_image_service_trash_restore_on_this_day_and_purge_flow(api):
 
         await image_service.restore_image(session, kept_id, db_user)
         restored = await session.get(Image, kept_id)
-        restored.created_at = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - 1)
+        restored.captured_at = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - 1)
         await session.commit()
 
-        on_this_day = await image_service.on_this_day(session, db_user)
-        assert any(image.id == kept_id for year in on_this_day.years for image in year.images)
+        on_this_day = await image_service.on_this_day(
+            session,
+            db_user,
+            ImageMetadataFilter(
+                captured_month=restored.captured_at.month,
+                captured_day=restored.captured_at.day,
+                captured_before_year=datetime.now(timezone.utc).year,
+            ),
+        )
+        assert [item.id for year in on_this_day.years for item in year.images] == [kept_id]
 
         await image_service.soft_delete_image(session, kept_id, db_user)
         await image_service.empty_trash(session, db_user)
@@ -236,7 +273,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
 
     async def _exercise(session):
         from app.models import User
-        from app.schemas import NsfwFilter, TagFilterMode
+        from app.schemas import ImageMetadataFilter, ImageMetadataUpdate, NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         db_user.show_nsfw = True
@@ -245,10 +282,15 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             session,
             uploaded_id,
             db_user,
-            ImageUpdate(tags=["custom_tag", "rating:questionable"], character_name="ikari_shinji"),
+            ImageUpdate(
+                tags=["custom_tag", "rating:questionable"],
+                character_name="ikari_shinji",
+                metadata=ImageMetadataUpdate(captured_at=datetime(2020, 3, 21, 9, 30, tzinfo=timezone.utc)),
+            ),
         )
         assert updated.tags == ["custom_tag", "rating:questionable"]
         assert updated.character_name == "ikari_shinji"
+        assert updated.metadata.captured_at == datetime(2020, 3, 21, 9, 30, tzinfo=timezone.utc)
         assert updated.is_nsfw is True
         assert {tag.name for tag in updated.tag_details} == {"custom_tag", "rating:questionable"}
 
@@ -262,6 +304,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.INCLUDE,
             status_filter="done",
+            metadata=ImageMetadataFilter(),
             favorited=None,
             page=1,
             page_size=20,
@@ -278,6 +321,7 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.INCLUDE,
             status_filter="done",
+            metadata=ImageMetadataFilter(),
             favorited=None,
             page=1,
             page_size=20,
@@ -288,8 +332,9 @@ def test_update_image_metadata_replaces_tags_and_character_name(api):
             session,
             uploaded_id,
             db_user,
-            ImageUpdate(character_name=""),
+            ImageUpdate(character_name="", metadata=ImageMetadataUpdate(captured_at=None)),
         )
         assert cleared.character_name is None
+        assert cleared.metadata.captured_at == cleared.created_at
 
     api.run_db(_exercise)

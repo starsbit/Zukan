@@ -1,6 +1,5 @@
 import asyncio
 import uuid
-from collections import defaultdict
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile
@@ -17,6 +16,8 @@ from app.schemas import (
     ImageDetail,
     ImageBatchDelete,
     ImageBatchUpdate,
+    ImageMetadataFilter,
+    ImageMetadata,
     ImageListResponse,
     ImageListState,
     ImageRead,
@@ -28,7 +29,7 @@ from app.schemas import (
     TagWithConfidence,
     UploadResult,
 )
-from app.services.storage import delete_file, generate_thumbnail, get_image_dimensions, save_upload
+from app.services.storage import delete_file, extract_image_timestamp, generate_thumbnail, get_image_dimensions, save_upload
 from app.services.tagger import NSFW_RATING_TAGS
 
 _tag_queue: asyncio.Queue | None = None
@@ -44,7 +45,7 @@ def get_tag_queue() -> asyncio.Queue | None:
 
 
 def enrich_images(rows: list[Image], favorited: set[uuid.UUID]) -> list[ImageRead]:
-    return [ImageRead.model_validate(row).model_copy(update={"is_favorited": row.id in favorited}) for row in rows]
+    return [_build_image_read(row, row.id in favorited) for row in rows]
 
 
 async def favorited_ids(db: AsyncSession, user_id: uuid.UUID, image_ids: list[uuid.UUID]) -> set[uuid.UUID]:
@@ -96,6 +97,42 @@ def _normalize_manual_tags(tags: list[str]) -> list[str]:
     return normalized
 
 
+def _captured_timestamp_expr():
+    return func.coalesce(Image.captured_at, Image.created_at)
+
+
+def _image_captured_at(image: Image) -> datetime:
+    return image.captured_at or image.created_at
+
+
+def _build_image_metadata(image: Image) -> ImageMetadata:
+    return ImageMetadata(
+        file_size=image.file_size,
+        width=image.width,
+        height=image.height,
+        mime_type=image.mime_type,
+        captured_at=_image_captured_at(image),
+    )
+
+
+def _build_image_read(image: Image, is_favorited: bool) -> ImageRead:
+    return ImageRead(
+        id=image.id,
+        uploader_id=image.uploader_id,
+        filename=image.filename,
+        original_filename=image.original_filename,
+        metadata=_build_image_metadata(image),
+        tags=image.tags,
+        character_name=image.character_name,
+        is_nsfw=image.is_nsfw,
+        tagging_status=image.tagging_status,
+        thumbnail_status=image.thumbnail_status,
+        created_at=image.created_at,
+        deleted_at=image.deleted_at,
+        is_favorited=is_favorited,
+    )
+
+
 def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     if nsfw == NsfwFilter.DEFAULT:
         if not user.show_nsfw:
@@ -110,6 +147,24 @@ def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     return stmt
 
 
+def _apply_captured_at_filters(
+    stmt,
+    metadata: ImageMetadataFilter,
+):
+    captured_at = _captured_timestamp_expr()
+
+    if metadata.captured_year is not None:
+        stmt = stmt.where(extract("year", captured_at) == metadata.captured_year)
+    if metadata.captured_month is not None:
+        stmt = stmt.where(extract("month", captured_at) == metadata.captured_month)
+    if metadata.captured_day is not None:
+        stmt = stmt.where(extract("day", captured_at) == metadata.captured_day)
+    if metadata.captured_before_year is not None:
+        stmt = stmt.where(extract("year", captured_at) < metadata.captured_before_year)
+
+    return stmt
+
+
 async def list_images(
     db: AsyncSession,
     user: User,
@@ -120,6 +175,7 @@ async def list_images(
     mode: TagFilterMode,
     nsfw: NsfwFilter,
     status_filter: str | None,
+    metadata: ImageMetadataFilter,
     favorited: bool | None,
     page: int,
     page_size: int,
@@ -141,10 +197,11 @@ async def list_images(
 
     stmt = _apply_tag_filters(stmt, tags, exclude_tags, mode)
     stmt = _apply_character_name_filter(stmt, character_name)
+    stmt = _apply_captured_at_filters(stmt, metadata)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
-        await db.execute(stmt.order_by(Image.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
+        await db.execute(stmt.order_by(_captured_timestamp_expr().desc()).offset((page - 1) * page_size).limit(page_size))
     ).scalars().all()
     favs = await favorited_ids(db, user.id, [row.id for row in rows])
     return ImageListResponse(total=total, page=page, page_size=page_size, items=enrich_images(rows, favs))
@@ -161,6 +218,7 @@ async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) ->
         mode=TagFilterMode.AND,
         nsfw=NsfwFilter.DEFAULT,
         status_filter=None,
+        metadata=ImageMetadataFilter(),
         favorited=None,
         page=page,
         page_size=page_size,
@@ -199,34 +257,45 @@ async def list_favorites(
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
     rows = (
-        await db.execute(stmt.order_by(Image.created_at.desc()).offset((page - 1) * page_size).limit(page_size))
+        await db.execute(stmt.order_by(_captured_timestamp_expr().desc()).offset((page - 1) * page_size).limit(page_size))
     ).scalars().all()
     return ImageListResponse(
         total=total,
         page=page,
         page_size=page_size,
-        items=[ImageRead.model_validate(row).model_copy(update={"is_favorited": True}) for row in rows],
+        items=[_build_image_read(row, True) for row in rows],
     )
 
 
-async def on_this_day(db: AsyncSession, user: User) -> OnThisDayResponse:
+async def on_this_day(db: AsyncSession, user: User, metadata: ImageMetadataFilter) -> OnThisDayResponse:
     now = datetime.now(timezone.utc)
-    stmt = select(Image).where(
-        extract("month", Image.created_at) == now.month,
-        extract("day", Image.created_at) == now.day,
-        extract("year", Image.created_at) < now.year,
-        Image.deleted_at.is_(None),
+    effective_metadata = ImageMetadataFilter(
+        captured_year=metadata.captured_year,
+        captured_month=metadata.captured_month or now.month,
+        captured_day=metadata.captured_day or now.day,
+        captured_before_year=metadata.captured_before_year or now.year,
     )
-    if not user.show_nsfw:
-        stmt = stmt.where(Image.is_nsfw == False)
 
-    rows = (await db.execute(stmt.order_by(Image.created_at.desc()))).scalars().all()
-    favs = await favorited_ids(db, user.id, [row.id for row in rows])
-    enriched = enrich_images(rows, favs)
+    listing = await list_images(
+        db,
+        user,
+        ImageListState.ACTIVE,
+        tags=None,
+        character_name=None,
+        exclude_tags=None,
+        mode=TagFilterMode.AND,
+        nsfw=NsfwFilter.DEFAULT,
+        status_filter=None,
+        metadata=effective_metadata,
+        favorited=None,
+        page=1,
+        page_size=500,
+    )
 
-    by_year: dict[int, list[ImageRead]] = defaultdict(list)
-    for row, item in zip(rows, enriched):
-        by_year[row.created_at.year].append(item)
+    by_year: dict[int, list[ImageRead]] = {}
+    for item in listing.items:
+        year = item.metadata.captured_at.year
+        by_year.setdefault(year, []).append(item)
 
     return OnThisDayResponse(years=[OnThisDayYear(year=year, images=items) for year, items in sorted(by_year.items(), reverse=True)])
 
@@ -255,6 +324,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             continue
 
         path, sha256, file_size = saved
+        captured_at = extract_image_timestamp(str(path)) or datetime.now(timezone.utc)
         existing = (await db.execute(select(Image).where(Image.sha256 == sha256))).scalar_one_or_none()
         if existing is not None:
             delete_file(str(path))
@@ -273,6 +343,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             existing.deleted_at = None
             existing.original_filename = original_name
             existing.tagging_status = "pending"
+            existing.captured_at = existing.captured_at or captured_at
             await db.flush()
             if queue:
                 await queue.put(existing.id)
@@ -297,6 +368,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             tagging_status="pending",
             thumbnail_path=str(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
+            captured_at=captured_at,
         )
         db.add(image)
         await db.flush()
@@ -350,7 +422,8 @@ async def update_image_metadata(
     user: User,
     payload: ImageUpdate,
 ) -> ImageDetail:
-    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "deleted"})
+    metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
+    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "metadata", "deleted"})
     if needs_owner_access:
         image = await get_owned_or_admin_image(db, image_id, user, trashed=None)
     else:
@@ -396,6 +469,9 @@ async def update_image_metadata(
 
     if "character_name" in payload.model_fields_set:
         image.character_name = payload.character_name.strip() if payload.character_name and payload.character_name.strip() else None
+
+    if "metadata" in payload.model_fields_set and "captured_at" in metadata_fields:
+        image.captured_at = payload.metadata.captured_at or image.created_at
 
     if "deleted" in payload.model_fields_set:
         image.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
@@ -552,7 +628,7 @@ async def build_image_detail(db: AsyncSession, image: Image, user_id: uuid.UUID)
         )
         for item in sorted(image.image_tags, key=lambda item: item.confidence, reverse=True)
     ]
-    base = ImageRead.model_validate(image).model_copy(update={"is_favorited": is_favorited})
+    base = _build_image_read(image, is_favorited)
     return ImageDetail(**base.model_dump(), tag_details=tag_details)
 
 

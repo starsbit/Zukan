@@ -1,5 +1,6 @@
 import hashlib
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiofiles
@@ -66,6 +67,33 @@ def generate_thumbnail(source_filepath: str) -> Path | None:
         return None
 
 
+def extract_image_timestamp(filepath: str) -> datetime | None:
+    try:
+        from PIL import Image
+
+        with Image.open(filepath) as img:
+            exif = img.getexif()
+            for tag_id, offset_tag_id in ((36867, 36881), (36868, 36882), (306, 36880)):
+                raw_value = exif.get(tag_id)
+                if not raw_value:
+                    continue
+                parsed = _parse_image_timestamp(str(raw_value), exif.get(offset_tag_id))
+                if parsed is not None:
+                    return parsed
+
+            for key in ("creation_time", "timestamp", "date:create", "date:modify"):
+                raw_value = img.info.get(key)
+                if not raw_value:
+                    continue
+                parsed = _parse_image_timestamp(str(raw_value))
+                if parsed is not None:
+                    return parsed
+    except Exception:
+        return None
+
+    return None
+
+
 def delete_file(filepath: str) -> None:
     path = Path(filepath)
     if path.exists():
@@ -112,3 +140,32 @@ def get_image_dimensions(filepath: str) -> tuple[int, int] | None:
             return img.size
     except Exception:
         return None
+
+
+def _parse_image_timestamp(value: str, offset: str | None = None) -> datetime | None:
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    for candidate in (
+        lambda raw: datetime.strptime(raw, "%Y:%m:%d %H:%M:%S"),
+        lambda raw: datetime.fromisoformat(raw.replace("Z", "+00:00")),
+    ):
+        try:
+            parsed = candidate(cleaned)
+            break
+        except ValueError:
+            parsed = None
+    else:
+        return None
+
+    if parsed.tzinfo is not None:
+        return parsed.astimezone(UTC)
+
+    if offset:
+        try:
+            return datetime.fromisoformat(f"{parsed:%Y-%m-%dT%H:%M:%S}{offset}").astimezone(UTC)
+        except ValueError:
+            pass
+
+    return parsed.replace(tzinfo=UTC)

@@ -55,6 +55,7 @@ class Image(Base):
     tagging_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
     thumbnail_path: Mapped[str] = mapped_column(String(1024), nullable=True)
     thumbnail_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)

@@ -11,10 +11,13 @@ def _base_image_data(**overrides):
         uploader_id=uuid.uuid4(),
         filename="test.jpg",
         original_filename="test.jpg",
-        file_size=1000,
-        width=100,
-        height=100,
-        mime_type="image/jpeg",
+        metadata={
+            "file_size": 1000,
+            "width": 100,
+            "height": 100,
+            "mime_type": "image/jpeg",
+            "captured_at": now,
+        },
         tags=[],
         character_name=None,
         is_nsfw=False,
@@ -46,6 +49,12 @@ def test_image_read_uploader_id_nullable():
 def test_image_read_tags_list():
     m = ImageRead(**_base_image_data(tags=["1girl", "solo"]))
     assert m.tags == ["1girl", "solo"]
+
+
+def test_image_read_metadata_nested():
+    m = ImageRead(**_base_image_data())
+    assert m.metadata.captured_at
+    assert m.metadata.mime_type == "image/jpeg"
 
 
 def test_image_read_character_name_nullable():
