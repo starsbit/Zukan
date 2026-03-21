@@ -56,6 +56,8 @@ interface GalleryTimelineMetric {
 }
 
 const TIMELINE_EDGE_PERCENT = 1.5;
+const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
+const REGROUP_ANIMATION_MS = 280;
 
 @Component({
   selector: 'app-gallery-page',
@@ -107,11 +109,16 @@ export class GalleryPageComponent implements OnDestroy {
   activeTimelineYear: string | null = null;
   activeTimelineLabel = '';
   activeTimelineTopPercent = 0;
+  timelineCurrentLabelVisible = false;
   hoverTimelineLabel = '';
   hoverTimelineTopPercent: number | null = null;
+  regroupAnimating = false;
   private currentItems: MediaRead[] = [];
   groupedItems: GalleryDayGroup[] = [];
   private dragDepth = 0;
+  private hasRenderedItems = false;
+  private timelineLabelHideTimeoutId: number | null = null;
+  private regroupAnimationTimeoutId: number | null = null;
   private timelineDragging = false;
   private timelineMetrics: GalleryTimelineMetric[] = [];
   private maxTimelineScroll = 1;
@@ -144,14 +151,21 @@ export class GalleryPageComponent implements OnDestroy {
     this.items$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((items) => {
+        const shouldAnimateRegroup = shouldAnimateGalleryRegroup(this.currentItems, items, this.hasRenderedItems);
         this.currentItems = items;
         this.groupedItems = buildGalleryDayGroups(items);
+        this.hasRenderedItems = this.hasRenderedItems || items.length > 0;
+        if (shouldAnimateRegroup) {
+          this.triggerRegroupAnimation();
+        }
         this.scheduleTimelineRefresh();
       });
   }
 
   ngOnDestroy(): void {
     this.timelineDragging = false;
+    this.clearTimelineLabelHideTimeout();
+    this.clearRegroupAnimationTimeout();
     this.setCustomScrollbarMode(false);
   }
 
@@ -279,6 +293,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   onGalleryScroll(): void {
+    this.showTimelineCurrentLabelTemporarily();
     this.scheduleTimelineRefresh();
   }
 
@@ -449,6 +464,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   onTimelinePointerMove(event: PointerEvent): void {
+    this.showTimelineCurrentLabelTemporarily();
     this.updateTimelineHover(event.clientY);
   }
 
@@ -467,6 +483,7 @@ export class GalleryPageComponent implements OnDestroy {
 
     event.preventDefault();
     this.timelineDragging = true;
+    this.showTimelineCurrentLabelTemporarily();
     this.scrubTimelineToClientY(event.clientY);
   }
 
@@ -478,6 +495,7 @@ export class GalleryPageComponent implements OnDestroy {
     }
 
     if (!scroller) {
+      this.showTimelineCurrentLabelTemporarily();
       section.scrollIntoView({
         behavior: 'smooth',
         block: 'start'
@@ -489,6 +507,7 @@ export class GalleryPageComponent implements OnDestroy {
       behavior: 'smooth',
       top: Math.max(0, section.offsetTop - getTimelineScrollOffset() - getGroupScrollTopAdjustment(section))
     });
+    this.showTimelineCurrentLabelTemporarily();
   }
 
   scrollToYear(year: string): void {
@@ -543,6 +562,7 @@ export class GalleryPageComponent implements OnDestroy {
       this.activeTimelineYear = null;
       this.activeTimelineLabel = '';
       this.activeTimelineTopPercent = 0;
+      this.timelineCurrentLabelVisible = false;
       this.timelineMetrics = [];
       this.maxTimelineScroll = 1;
       this.clearTimelineHover();
@@ -632,6 +652,7 @@ export class GalleryPageComponent implements OnDestroy {
     scroller.scrollTop = target.scrollTop;
     this.hoverTimelineTopPercent = target.topPercent;
     this.hoverTimelineLabel = target.label;
+    this.showTimelineCurrentLabelTemporarily();
     this.scheduleTimelineRefresh();
     this.cdr.markForCheck();
   }
@@ -655,6 +676,60 @@ export class GalleryPageComponent implements OnDestroy {
     this.hoverTimelineLabel = '';
     this.hoverTimelineTopPercent = null;
     this.cdr.markForCheck();
+  }
+
+  private showTimelineCurrentLabelTemporarily(): void {
+    this.timelineCurrentLabelVisible = true;
+    this.clearTimelineLabelHideTimeout();
+
+    if (typeof window !== 'undefined') {
+      this.timelineLabelHideTimeoutId = window.setTimeout(() => {
+        this.timelineCurrentLabelVisible = false;
+        this.cdr.markForCheck();
+      }, TIMELINE_LABEL_HIDE_DELAY_MS);
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  private clearTimelineLabelHideTimeout(): void {
+    if (this.timelineLabelHideTimeoutId === null || typeof window === 'undefined') {
+      return;
+    }
+
+    window.clearTimeout(this.timelineLabelHideTimeoutId);
+    this.timelineLabelHideTimeoutId = null;
+  }
+
+  private triggerRegroupAnimation(): void {
+    this.regroupAnimating = false;
+    this.clearRegroupAnimationTimeout();
+
+    this.ngZone.runOutsideAngular(() => {
+      requestAnimationFrame(() => {
+        this.ngZone.run(() => {
+          this.regroupAnimating = true;
+          this.cdr.markForCheck();
+
+          if (typeof window !== 'undefined') {
+            this.regroupAnimationTimeoutId = window.setTimeout(() => {
+              this.regroupAnimating = false;
+              this.regroupAnimationTimeoutId = null;
+              this.cdr.markForCheck();
+            }, REGROUP_ANIMATION_MS);
+          }
+        });
+      });
+    });
+  }
+
+  private clearRegroupAnimationTimeout(): void {
+    if (this.regroupAnimationTimeoutId === null || typeof window === 'undefined') {
+      return;
+    }
+
+    window.clearTimeout(this.regroupAnimationTimeoutId);
+    this.regroupAnimationTimeoutId = null;
   }
 
   private getTimelinePointerTarget(clientY: number): { topPercent: number; scrollTop: number; label: string } | null {
@@ -684,6 +759,30 @@ export class GalleryPageComponent implements OnDestroy {
 
 function containsFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function shouldAnimateGalleryRegroup(previousItems: MediaRead[], nextItems: MediaRead[], hasRenderedItems: boolean): boolean {
+  if (!hasRenderedItems || previousItems.length === 0 || nextItems.length === 0) {
+    return false;
+  }
+
+  if (previousItems.length !== nextItems.length) {
+    return true;
+  }
+
+  for (let index = 0; index < previousItems.length; index += 1) {
+    const previous = previousItems[index];
+    const next = nextItems[index];
+    if (!previous || !next) {
+      return true;
+    }
+
+    if (previous.id !== next.id || previous.metadata.captured_at !== next.metadata.captured_at) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function buildGalleryDayGroups(items: MediaRead[]): GalleryDayGroup[] {

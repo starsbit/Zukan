@@ -22,12 +22,19 @@
       </button>
     }
 
-    <button mat-icon-button type="button" aria-label="Open settings" (click)="openSettings()">
-      <mat-icon>settings</mat-icon>
+    <button
+      mat-icon-button
+      type="button"
+      class="theme-toggle-button"
+      [attr.aria-label]="themeService.isDarkMode() ? 'Switch to light mode' : 'Switch to dark mode'"
+      [attr.aria-pressed]="themeService.isDarkMode()"
+      (click)="toggleTheme()"
+    >
+      <mat-icon>{{ themeService.isDarkMode() ? 'light_mode' : 'dark_mode' }}</mat-icon>
     </button>
 
-    <button mat-icon-button type="button" [attr.aria-label]="refreshLabel" (click)="refreshRequested.emit()">
-      <mat-icon>refresh</mat-icon>
+    <button mat-icon-button type="button" aria-label="Open settings" (click)="openSettings()">
+      <mat-icon>settings</mat-icon>
     </button>
   </div>
 </mat-toolbar>

@@ -24,6 +24,10 @@
   box-shadow: 0 12px 24px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
 }
 
+.theme-toggle-button {
+  color: var(--mat-sys-on-surface-variant);
+}
+
 .trash-action-button {
   border-radius: 999px;
 }

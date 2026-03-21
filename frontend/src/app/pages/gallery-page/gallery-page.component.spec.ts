@@ -2,6 +2,7 @@ import '@angular/compiler';
 import { AsyncPipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
@@ -27,7 +28,7 @@ class StubGalleryNavbarComponent {
   @Input({ required: true }) searchState!: GallerySearchState;
   @Input() isTrashView = false;
   @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
-  @Output() readonly refreshRequested = new EventEmitter<void>();
+  @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
   @Output() readonly emptyTrashRequested = new EventEmitter<void>();
 }
@@ -156,6 +157,16 @@ describe('GalleryPageComponent', () => {
   it('reloads the current query', () => {
     mediaService.loadPage.mockClear();
     component.reload();
+
+    expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
+    expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+  });
+
+  it('reloads when settings are saved from the navbar', () => {
+    mediaService.loadPage.mockClear();
+
+    const navbar = fixture.debugElement.query(By.directive(StubGalleryNavbarComponent));
+    (navbar.componentInstance as StubGalleryNavbarComponent).settingsSaved.emit();
 
     expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
     expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));

@@ -6,6 +6,7 @@ import { MatSnackBarModule } from '@angular/material/snack-bar';
 
 import { routes } from './app.routes';
 import { AuthService } from './services/auth.service';
+import { ThemeService } from './services/theme.service';
 import { authInterceptor } from './services/web/auth.interceptor';
 
 export const appConfig: ApplicationConfig = {
@@ -24,6 +25,14 @@ export const appConfig: ApplicationConfig = {
           error: () => resolve()
         });
       })
+    },
+    {
+      provide: APP_INITIALIZER,
+      multi: true,
+      deps: [ThemeService],
+      useFactory: (themeService: ThemeService) => () => {
+        themeService.initialize();
+      }
     }
   ]
 };

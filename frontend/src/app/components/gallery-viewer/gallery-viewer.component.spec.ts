@@ -200,6 +200,8 @@ describe('GalleryViewerComponent', () => {
 
     expect(component.tagsPanelOpen).toBe(true);
     expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('mat-card.viewer-sidebar-card')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('mat-chip-set.viewer-tags')).toBeTruthy();
     expect(fixture.nativeElement.textContent).toContain('fox');
     expect(fixture.nativeElement.textContent).toContain('tail');
   });

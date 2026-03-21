@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from backend.app.services.auth import verify_password
 from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, png_bytes, webm_bytes
@@ -542,6 +542,47 @@ def test_reupload_after_emptying_trash_clears_duplicate_detection(api):
     assert reupload_payload["duplicates"] == 0
     assert reupload_payload["errors"] == 0
     assert [result["status"] for result in reupload_payload["results"]] == ["accepted", "accepted", "accepted"]
+
+
+def test_expired_trash_is_auto_purged_before_listing_and_reupload(api):
+    logged_in = _login(api, api.register_and_login("journey-expired-trash")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    uploaded = api.upload_media(logged_in["access_token"], "expired-trash.png", (0, 0, 255))
+    api.wait_for_media_status(str(uploaded["id"]))
+
+    trashed = api.client.patch(
+        f"/media/{uploaded['id']}",
+        headers=headers,
+        json={"deleted": True},
+    )
+    assert trashed.status_code == 200
+
+    async def _age_trash(session):
+        from backend.app.models import Media
+
+        media = await session.get(Media, uuid.UUID(str(uploaded["id"])))
+        media.deleted_at = datetime.now(timezone.utc) - timedelta(days=31)
+        await session.commit()
+
+    api.run_db(_age_trash)
+
+    trash = api.client.get("/media", headers=headers, params={"state": "trashed"})
+    assert trash.status_code == 200
+    assert trash.json()["items"] == []
+    assert api.fetch_media_row(uuid.UUID(str(uploaded["id"]))) is None
+
+    reupload = api.client.post(
+        "/media",
+        headers=headers,
+        files=[("files", ("expired-trash-reupload.png", png_bytes((0, 0, 255)), "image/png"))],
+    )
+    assert reupload.status_code == 202
+    reupload_payload = reupload.json()
+    assert reupload_payload["accepted"] == 1
+    assert reupload_payload["duplicates"] == 0
+    assert reupload_payload["errors"] == 0
+    assert reupload_payload["results"][0]["status"] == "accepted"
 
 
 def test_user_journey_full_personal_library_workflow(api):

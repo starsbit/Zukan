@@ -79,7 +79,7 @@
           [searchState]="searchState"
           [isTrashView]="isTrashView"
           (searchApplied)="applySearch($event)"
-          (refreshRequested)="reload()"
+          (settingsSaved)="reload()"
           (uploadRequested)="openUploadPicker()"
           (emptyTrashRequested)="emptyTrash()"
         />
@@ -96,12 +96,16 @@
           </div>
         }
 
-        @if (loading$ | async) {
+        @let items = (items$ | async) ?? [];
+        @let loading = (loading$ | async);
+        @let error = (error$ | async);
+
+        @if (loading && items.length === 0) {
           <section class="gallery-state loading-state">
             <mat-spinner diameter="42"></mat-spinner>
             <p>Loading media...</p>
           </section>
-        } @else if (error$ | async) {
+        } @else if (error && items.length === 0) {
           <section class="gallery-state error-state">
             <mat-icon>error</mat-icon>
             <div>
@@ -111,7 +115,13 @@
             <button mat-flat-button type="button" (click)="reload()">Try again</button>
           </section>
         } @else {
-          @let items = (items$ | async) ?? [];
+          @if (error && items.length > 0) {
+            <section class="gallery-inline-status error-state" aria-live="polite">
+              <mat-icon>error</mat-icon>
+              <p>Refresh failed. Showing the last loaded gallery state.</p>
+              <button mat-stroked-button type="button" (click)="reload()">Try again</button>
+            </section>
+          }
 
           @if (items.length === 0) {
             <section class="gallery-state empty-state">
@@ -122,7 +132,12 @@
               </div>
             </section>
           } @else {
-            <section class="gallery-groups" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
+            <section
+              class="gallery-groups"
+              [class.gallery-groups-refreshing]="loading"
+              [class.gallery-groups-regrouping]="regroupAnimating"
+              [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'"
+            >
               @for (group of groupedItems; track group.key) {
                 <section #groupSection class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
                   <header class="gallery-group-header">
@@ -201,8 +216,9 @@
             [style.top.%]="activeTimelineTopPercent"
             aria-hidden="true"
           >
-            <span class="gallery-timeline-readout-label">{{ activeTimelineLabel }}</span>
-            <span class="gallery-timeline-readout-line"></span>
+            @if (timelineCurrentLabelVisible) {
+              <span class="gallery-timeline-readout-label">{{ activeTimelineLabel }}</span>
+            }
             <span class="gallery-timeline-readout-dot"></span>
           </div>
         }

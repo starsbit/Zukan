@@ -7,6 +7,7 @@ import { GalleryNavbarComponent } from './gallery-navbar.component';
 import { GallerySearchState } from '../gallery-search.models';
 import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
 import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-bar.component';
+import { ThemeService } from '../../../services/theme.service';
 
 @Component({
   selector: 'app-gallery-search-bar',
@@ -25,6 +26,10 @@ describe('GalleryNavbarComponent', () => {
   let fixture: ComponentFixture<GalleryNavbarComponent>;
   let component: GalleryNavbarComponent;
   let dialog: { open: ReturnType<typeof vi.fn> };
+  let themeService: {
+    isDarkMode: ReturnType<typeof vi.fn>;
+    toggleMode: ReturnType<typeof vi.fn>;
+  };
   const searchState: GallerySearchState = {
     searchText: 'fox',
     filters: {
@@ -38,14 +43,20 @@ describe('GalleryNavbarComponent', () => {
     dialog = {
       open: vi.fn()
     };
+    themeService = {
+      isDarkMode: vi.fn(() => false),
+      toggleMode: vi.fn()
+    };
 
     await TestBed.configureTestingModule({
       imports: [GalleryNavbarComponent],
       providers: [
-        { provide: MatDialog, useValue: dialog }
+        { provide: MatDialog, useValue: dialog },
+        { provide: ThemeService, useValue: themeService }
       ]
     })
       .overrideProvider(MatDialog, { useValue: dialog })
+      .overrideProvider(ThemeService, { useValue: themeService })
       .overrideComponent(GalleryNavbarComponent, {
         remove: { imports: [GallerySearchBarComponent] },
         add: { imports: [StubGallerySearchBarComponent] }
@@ -118,19 +129,32 @@ describe('GalleryNavbarComponent', () => {
     expect(searchAppliedSpy).not.toHaveBeenCalled();
   });
 
-  it('emits refreshRequested from the toolbar button', () => {
-    const refreshSpy = vi.fn();
-    component.refreshRequested.subscribe(refreshSpy);
-
-    (fixture.nativeElement.querySelector('button[aria-label="Refresh gallery"]') as HTMLButtonElement).click();
-
-    expect(refreshSpy).toHaveBeenCalled();
-  });
-
   it('opens the settings dialog from the toolbar button', () => {
+    dialog.open.mockReturnValue({
+      afterClosed: () => of(undefined)
+    });
+
     (fixture.nativeElement.querySelector('button[aria-label="Open settings"]') as HTMLButtonElement).click();
 
     expect(dialog.open).toHaveBeenCalled();
+  });
+
+  it('toggles the theme from the toolbar button', () => {
+    (fixture.nativeElement.querySelector('button[aria-label="Switch to dark mode"]') as HTMLButtonElement).click();
+
+    expect(themeService.toggleMode).toHaveBeenCalledTimes(1);
+  });
+
+  it('emits settingsSaved when the settings dialog reports a successful save', () => {
+    const settingsSavedSpy = vi.fn();
+    component.settingsSaved.subscribe(settingsSavedSpy);
+    dialog.open.mockReturnValue({
+      afterClosed: () => of(true)
+    });
+
+    component.openSettings();
+
+    expect(settingsSavedSpy).toHaveBeenCalledTimes(1);
   });
 
   it('emits uploadRequested from the upload button', () => {
@@ -153,6 +177,6 @@ describe('GalleryNavbarComponent', () => {
 
     expect(fixture.nativeElement.querySelector('button[aria-label="Upload media"]')).toBeNull();
     expect(emptyTrashSpy).toHaveBeenCalled();
-    expect((fixture.nativeElement.querySelector('button[aria-label="Refresh trash"]') as HTMLButtonElement)).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('button[aria-label="Open settings"]')).toBeTruthy();
   });
 });

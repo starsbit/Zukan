@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
@@ -39,6 +39,7 @@ from backend.app.services.storage import (
 from backend.app.services.tagger import NSFW_RATING_TAGS, TagPrediction, TaggingResult, derive_character_name, tag_names_mark_nsfw, tagger
 
 _tag_queue: asyncio.Queue | None = None
+TRASH_RETENTION_DAYS = 30
 
 
 def set_tag_queue(queue: asyncio.Queue) -> None:
@@ -48,6 +49,27 @@ def set_tag_queue(queue: asyncio.Queue) -> None:
 
 def get_tag_queue() -> asyncio.Queue | None:
     return _tag_queue
+
+
+def _trash_expiration_cutoff(now: datetime | None = None) -> datetime:
+    reference = now or datetime.now(timezone.utc)
+    return reference - timedelta(days=TRASH_RETENTION_DAYS)
+
+
+async def purge_expired_trash(db: AsyncSession, now: datetime | None = None) -> int:
+    expired = (
+        await db.execute(
+            select(Media).where(
+                Media.deleted_at.is_not(None),
+                Media.deleted_at < _trash_expiration_cutoff(now),
+            )
+        )
+    ).scalars().all()
+    for media in expired:
+        await purge_media_record(media, db)
+    if expired:
+        await db.commit()
+    return len(expired)
 
 
 def enrich_media(rows: list[Media], favorited: set[uuid.UUID]) -> list[MediaRead]:
@@ -216,6 +238,7 @@ async def list_media(
     page: int = 1,
     page_size: int = 20,
 ) -> MediaListResponse:
+    await purge_expired_trash(db)
     stmt = select(Media)
     if state == MediaListState.TRASHED:
         stmt = stmt.where(Media.deleted_at.is_not(None))
@@ -250,6 +273,7 @@ async def list_character_suggestions(
     q: str,
     limit: int,
 ) -> list[dict[str, int | str]]:
+    await purge_expired_trash(db)
     query = q.strip()
     if not query:
         return []
@@ -296,6 +320,7 @@ async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) ->
 
 
 async def empty_trash(db: AsyncSession, user: User) -> None:
+    await purge_expired_trash(db)
     stmt = select(Media).where(Media.deleted_at.is_not(None))
     if not user.is_admin:
         stmt = stmt.where(Media.uploader_id == user.id)
@@ -313,6 +338,7 @@ async def list_favorites(
     page: int,
     page_size: int,
 ) -> MediaListResponse:
+    await purge_expired_trash(db)
     stmt = (
         select(Media)
         .join(UserFavorite, and_(UserFavorite.media_id == Media.id, UserFavorite.user_id == user.id))
@@ -329,6 +355,7 @@ async def list_favorites(
 
 
 async def build_upload_response(db: AsyncSession, user: User, files: list[UploadFile]) -> BatchUploadResponse:
+    await purge_expired_trash(db)
     if len(files) > settings.max_batch_size:
         raise HTTPException(status_code=400, detail=f"Max {settings.max_batch_size} files per request")
 
@@ -408,6 +435,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
 
 
 async def get_downloadable_media(db: AsyncSession, user: User, media_ids: list[uuid.UUID]) -> list[Media]:
+    await purge_expired_trash(db)
     rows = (
         await db.execute(
             select(Media).where(
@@ -425,6 +453,7 @@ async def get_downloadable_media(db: AsyncSession, user: User, media_ids: list[u
 
 
 async def get_visible_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> Media:
+    await purge_expired_trash(db)
     media = (await db.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
     if media is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -436,6 +465,7 @@ async def get_visible_media(db: AsyncSession, media_id: uuid.UUID, user: User) -
 
 
 async def get_media_detail(db: AsyncSession, media_id: uuid.UUID, user: User) -> MediaDetail:
+    await purge_expired_trash(db)
     media = await _get_media_with_tags(db, media_id, deleted=False)
     if media is None:
         raise HTTPException(status_code=404, detail="Not found")
@@ -445,6 +475,7 @@ async def get_media_detail(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 
 
 async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
+    await purge_expired_trash(db)
     metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
     needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "metadata", "deleted"})
     if needs_owner_access:
@@ -492,6 +523,7 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
 
 
 async def soft_delete_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> None:
+    await purge_expired_trash(db)
     media = await get_owned_or_admin_media(db, media_id, user, trashed=False)
     media.deleted_at = datetime.now(timezone.utc)
     await db.commit()
@@ -502,23 +534,27 @@ async def delete_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> Non
 
 
 async def restore_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> None:
+    await purge_expired_trash(db)
     media = await get_owned_or_admin_media(db, media_id, user, trashed=True)
     media.deleted_at = None
     await db.commit()
 
 
 async def purge_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> None:
+    await purge_expired_trash(db)
     media = await get_owned_or_admin_media(db, media_id, user, trashed=None)
     await purge_media_record(media, db)
     await db.commit()
 
 
 async def favorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> None:
+    await purge_expired_trash(db)
     await set_favorite_state(db, media_id, user, True)
     await db.commit()
 
 
 async def unfavorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> None:
+    await purge_expired_trash(db)
     favorite = await get_favorite(db, media_id, user.id)
     if favorite is None:
         raise HTTPException(status_code=404, detail="Not in favorites")
@@ -527,6 +563,7 @@ async def unfavorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 
 
 async def retag_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> int:
+    await purge_expired_trash(db)
     media = await get_owned_or_admin_media(db, media_id, user, trashed=False)
     media.tagging_status = "pending"
     media.tagging_error = None
@@ -538,6 +575,7 @@ async def retag_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> int:
 
 
 async def batch_update_media(db: AsyncSession, payload: MediaBatchUpdate, user: User) -> BulkResult:
+    await purge_expired_trash(db)
     processed = skipped = 0
     if payload.deleted is not None:
         processed, skipped = await _batch_update_deleted_state(db, payload.media_ids, payload.deleted, user)
@@ -547,11 +585,13 @@ async def batch_update_media(db: AsyncSession, payload: MediaBatchUpdate, user: 
 
 
 async def batch_delete_media(db: AsyncSession, payload: MediaBatchDelete, user: User) -> BulkResult:
+    await purge_expired_trash(db)
     processed, skipped = await _batch_update_deleted_state(db, payload.media_ids, True, user)
     return BulkResult(processed=processed, skipped=skipped)
 
 
 async def batch_purge_media(db: AsyncSession, payload: MediaBatchDelete, user: User) -> BulkResult:
+    await purge_expired_trash(db)
     rows = (await db.execute(select(Media).where(Media.id.in_(payload.media_ids)))).scalars().all()
     found_ids = {row.id for row in rows}
     skipped = len(payload.media_ids) - len(found_ids)

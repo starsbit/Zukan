@@ -1,7 +1,7 @@
 import asyncio
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi import HTTPException, UploadFile
@@ -437,6 +437,39 @@ def test_media_service_trash_restore_on_this_day_and_purge_flow(api):
 
         await media_service.purge_media(session, purged_id, db_user)
         assert await session.get(Media, purged_id) is None
+
+    api.run_db(_exercise)
+
+
+def test_list_trash_auto_purges_items_older_than_thirty_days(api):
+    user = api.register_and_login("image-service-trash-retention")
+    fresh = api.upload_media(user["access_token"], "fresh-trash.png", (0, 255, 0))
+    expired = api.upload_media(user["access_token"], "expired-trash.png", (0, 0, 255))
+    api.wait_for_media_status(str(fresh["id"]))
+    api.wait_for_media_status(str(expired["id"]))
+
+    user_id = uuid.UUID(user["user"]["id"])
+    fresh_id = uuid.UUID(str(fresh["id"]))
+    expired_id = uuid.UUID(str(expired["id"]))
+
+    async def _exercise(session):
+        from backend.app.models import Media, User
+
+        db_user = await session.get(User, user_id)
+        await media_service.soft_delete_media(session, fresh_id, db_user)
+        await media_service.soft_delete_media(session, expired_id, db_user)
+
+        fresh_media = await session.get(Media, fresh_id)
+        expired_media = await session.get(Media, expired_id)
+        now = datetime.now(timezone.utc)
+        fresh_media.deleted_at = now - timedelta(days=29)
+        expired_media.deleted_at = now - timedelta(days=31)
+        await session.commit()
+
+        trashed = await media_service.list_trash(session, db_user, page=1, page_size=20)
+        assert [item.id for item in trashed.items] == [fresh_id]
+        assert await session.get(Media, fresh_id) is not None
+        assert await session.get(Media, expired_id) is None
 
     api.run_db(_exercise)
 

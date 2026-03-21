@@ -9,6 +9,7 @@ import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-
 import { GallerySearchOptionsDialogComponent } from '../gallery-search-options-dialog/gallery-search-options-dialog.component';
 import { GallerySettingsDialogComponent } from '../gallery-settings-dialog/gallery-settings-dialog.component';
 import { countActiveAdvancedFilters, createDefaultGallerySearchFilters } from '../gallery-search.utils';
+import { ThemeService } from '../../../services/theme.service';
 
 @Component({
   selector: 'app-gallery-navbar',
@@ -25,11 +26,12 @@ import { countActiveAdvancedFilters, createDefaultGallerySearchFilters } from '.
 })
 export class GalleryNavbarComponent {
   private readonly dialog = inject(MatDialog);
+  readonly themeService = inject(ThemeService);
 
   @Input({ required: true }) searchState!: GallerySearchState;
   @Input() isTrashView = false;
   @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
-  @Output() readonly refreshRequested = new EventEmitter<void>();
+  @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
   @Output() readonly emptyTrashRequested = new EventEmitter<void>();
 
@@ -71,13 +73,19 @@ export class GalleryNavbarComponent {
   }
 
   openSettings(): void {
-    this.dialog.open(GallerySettingsDialogComponent, {
+    const dialogRef = this.dialog.open(GallerySettingsDialogComponent, {
       width: '420px',
       maxWidth: 'calc(100vw - 2rem)'
     });
+
+    dialogRef.afterClosed().subscribe((saved) => {
+      if (saved) {
+        this.settingsSaved.emit();
+      }
+    });
   }
 
-  get refreshLabel(): string {
-    return this.isTrashView ? 'Refresh trash' : 'Refresh gallery';
+  toggleTheme(): void {
+    this.themeService.toggleMode();
   }
 }

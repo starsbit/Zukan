@@ -77,67 +77,77 @@
         </div>
 
         <aside class="viewer-sidebar" [class.viewer-sidebar-open]="tagsPanelOpen">
-          <p class="viewer-date">{{ media.metadata.captured_at | date:'fullDate' }}</p>
+          <mat-card class="viewer-sidebar-card" appearance="outlined">
+            <mat-card-content class="viewer-sidebar-content">
+              <section class="viewer-summary">
+                <p class="viewer-summary-label">Captured</p>
+                <p class="viewer-date">{{ media.metadata.captured_at | date:'fullDate' }}</p>
+              </section>
 
-          <dl class="viewer-details">
-            <div>
-              <dt>Resolution</dt>
-              <dd>{{ media.metadata.width || '?' }} x {{ media.metadata.height || '?' }}</dd>
-            </div>
-            <div>
-              <dt>Type</dt>
-              <dd>{{ media.metadata.mime_type || 'Unknown' }}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd class="viewer-status">
-                @if (showTaggingSpinner) {
-                  <mat-spinner diameter="18"></mat-spinner>
-                  <span>{{ statusLabel }}</span>
+              <section class="viewer-details-panel">
+                <p class="viewer-section-label">Details</p>
+                <dl class="viewer-details">
+                  <div>
+                    <dt>Resolution</dt>
+                    <dd>{{ media.metadata.width || '?' }} x {{ media.metadata.height || '?' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Type</dt>
+                    <dd>{{ media.metadata.mime_type || 'Unknown' }}</dd>
+                  </div>
+                  <div>
+                    <dt>Status</dt>
+                    <dd class="viewer-status">
+                      @if (showTaggingSpinner) {
+                        <mat-spinner diameter="18"></mat-spinner>
+                        <span>{{ statusLabel }}</span>
+                      } @else {
+                        {{ statusLabel }}
+                      }
+                    </dd>
+                  </div>
+                  @if (media.media_type === 'video' && media.metadata.duration_seconds) {
+                    <div>
+                      <dt>Duration</dt>
+                      <dd>{{ media.metadata.duration_seconds }}s</dd>
+                    </div>
+                  }
+                  @if (media.character_name) {
+                    <div>
+                      <dt>Character</dt>
+                      <dd>{{ media.character_name }}</dd>
+                    </div>
+                  }
+                </dl>
+              </section>
+
+              <section class="viewer-tags-panel">
+                <div class="viewer-tags-header">
+                  <h3>Tags</h3>
+                  <span>{{ media.tags.length }}</span>
+                </div>
+
+                @if (media.tags.length > 0) {
+                  <mat-chip-set class="viewer-tags" role="list" aria-label="Media tags">
+                    @for (tag of media.tags; track tag) {
+                      <mat-chip role="listitem">{{ tag }}</mat-chip>
+                    }
+                  </mat-chip-set>
                 } @else {
-                  {{ statusLabel }}
+                  <p class="viewer-tags-empty">No tags available for this item yet.</p>
                 }
-              </dd>
-            </div>
-            @if (media.media_type === 'video' && media.metadata.duration_seconds) {
-              <div>
-                <dt>Duration</dt>
-                <dd>{{ media.metadata.duration_seconds }}s</dd>
-              </div>
-            }
-            @if (media.character_name) {
-              <div>
-                <dt>Character</dt>
-                <dd>{{ media.character_name }}</dd>
-              </div>
-            }
-          </dl>
+              </section>
 
-          <section class="viewer-tags-panel">
-            <div class="viewer-tags-header">
-              <h3>Tags</h3>
-              <span>{{ media.tags.length }}</span>
-            </div>
-
-            @if (media.tags.length > 0) {
-              <div class="viewer-tags" role="list" aria-label="Media tags">
-                @for (tag of media.tags; track tag) {
-                  <span role="listitem">{{ tag }}</span>
-                }
-              </div>
-            } @else {
-              <p class="viewer-tags-empty">No tags available for this item yet.</p>
-            }
-          </section>
-
-          @if (canRestore) {
-            <div class="viewer-actions">
-              <button mat-flat-button type="button" aria-label="Restore media" (click)="restore()">
-                <mat-icon>restore_from_trash</mat-icon>
-                <span>Restore</span>
-              </button>
-            </div>
-          }
+              @if (canRestore) {
+                <div class="viewer-actions">
+                  <button mat-flat-button type="button" aria-label="Restore media" (click)="restore()">
+                    <mat-icon>restore_from_trash</mat-icon>
+                    <span>Restore</span>
+                  </button>
+                </div>
+              }
+            </mat-card-content>
+          </mat-card>
         </aside>
       </div>
     </article>

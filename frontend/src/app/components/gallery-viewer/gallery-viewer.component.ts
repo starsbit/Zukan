@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, HostListener, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { CommonModule, DatePipe, DOCUMENT } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
@@ -10,7 +12,7 @@ import { MediaClientService } from '../../services/web/media-client.service';
 
 @Component({
   selector: 'app-gallery-viewer',
-  imports: [CommonModule, DatePipe, MatButtonModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [CommonModule, DatePipe, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule],
   templateUrl: './gallery-viewer.component.html',
   styleUrl: './gallery-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
