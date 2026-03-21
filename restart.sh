@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-docker compose stop api
-docker compose build api
-docker compose up -d api
+services=(api frontend)
+
+docker compose stop "${services[@]}"
+docker compose build "${services[@]}"
+docker compose up -d "${services[@]}"

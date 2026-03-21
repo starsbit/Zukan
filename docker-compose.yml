@@ -1,4 +1,14 @@
 services:
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      api:
+        condition: service_started
+
   db:
     image: postgres:16-alpine
     environment:
