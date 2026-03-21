@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     tagger_threshold_general: float = 0.35
     tagger_threshold_character: float = 0.85
     model_cache_dir: Path = Path("model_cache")
+    tagging_retry_attempts: int = 3
+    tagging_retry_backoff_seconds: float = 0.25
 
     max_upload_size_mb: int = 50
     max_batch_size: int = 100

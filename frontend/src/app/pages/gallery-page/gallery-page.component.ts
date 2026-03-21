@@ -2,9 +2,13 @@ import { AsyncPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
+import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSidenavModule } from '@angular/material/sidenav';
+import { ActivatedRoute, RouterLink, RouterLinkActive } from '@angular/router';
 
 import { MediaRead } from '../../models/api';
 import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
@@ -22,8 +26,13 @@ import { MediaUploadService } from '../../services/media-upload.service';
   imports: [
     AsyncPipe,
     MatButtonModule,
+    MatCardModule,
     MatIconModule,
+    MatListModule,
     MatProgressSpinnerModule,
+    MatSidenavModule,
+    RouterLink,
+    RouterLinkActive,
     GalleryMediaCardComponent,
     GalleryNavbarComponent,
     GalleryViewerComponent,
@@ -36,6 +45,7 @@ import { MediaUploadService } from '../../services/media-upload.service';
 export class GalleryPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
+  private readonly route = inject(ActivatedRoute);
   private readonly mediaService = inject(MediaService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
@@ -47,6 +57,7 @@ export class GalleryPageComponent {
 
   selectedMedia: MediaRead | null = null;
   dragActive = false;
+  isTrashView = false;
   selectedMediaIds = new Set<string>();
   private dragDepth = 0;
   searchState: GallerySearchState = {
@@ -56,7 +67,16 @@ export class GalleryPageComponent {
   private activeQuery = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
 
   constructor() {
-    this.loadMedia(this.activeQuery);
+    this.route.data
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((data) => {
+        this.isTrashView = data['state'] === 'trashed';
+        this.selectedMedia = null;
+        this.clearSelection();
+        this.activeQuery = this.buildQueryForCurrentView();
+        this.loadMedia(this.activeQuery);
+      });
+
     this.mediaUploadService.refreshRequested$
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
@@ -70,7 +90,7 @@ export class GalleryPageComponent {
 
   applySearch(searchState: GallerySearchState): void {
     this.searchState = searchState;
-    this.activeQuery = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
+    this.activeQuery = this.buildQueryForCurrentView();
     this.clearSelection();
     this.loadMedia(this.activeQuery);
   }
@@ -184,6 +204,57 @@ export class GalleryPageComponent {
       });
   }
 
+  restoreSelected(): void {
+    if (this.selectedMediaIds.size === 0) {
+      return;
+    }
+
+    this.selectedMedia = null;
+    this.mediaService.restoreMediaBatch(Array.from(this.selectedMediaIds))
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.clearSelection();
+        },
+        error: () => {
+          // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
+  restoreMedia(media: MediaRead): void {
+    this.mediaService.restoreMedia(media.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          if (this.selectedMedia?.id === media.id) {
+            this.selectedMedia = null;
+          }
+
+          if (this.isSelected(media.id)) {
+            this.toggleSelection(media);
+          }
+        },
+        error: () => {
+          // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
+  emptyTrash(): void {
+    this.selectedMedia = null;
+    this.mediaService.emptyTrash()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.clearSelection();
+        },
+        error: () => {
+          // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
   get selectionMode(): boolean {
     return this.selectedMediaIds.size > 0;
   }
@@ -200,6 +271,12 @@ export class GalleryPageComponent {
           // The template already renders the error state from MediaService.
         }
       });
+  }
+
+  private buildQueryForCurrentView() {
+    const query = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
+
+    return this.isTrashView ? { ...query, state: 'trashed' as const } : query;
   }
 }
 

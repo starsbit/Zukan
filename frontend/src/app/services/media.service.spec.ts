@@ -100,6 +100,32 @@ describe('MediaService', () => {
     expect(service.snapshot.page?.items[0]?.is_favorited).toBe(true);
   });
 
+  it('removes restored media from the current trash page', async () => {
+    service['stateSubject'].next({
+      ...service.snapshot,
+      pageQuery: { state: 'trashed' },
+      page: {
+        total: 1,
+        page: 1,
+        page_size: 20,
+        items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })]
+      },
+      details: {
+        'media-1': createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })
+      }
+    });
+
+    const restorePromise = firstValueFrom(service.restoreMedia('media-1'));
+    const request = httpTesting.expectOne('http://api.example.test/media/media-1');
+    expect(request.request.method).toBe('PATCH');
+    expect(request.request.body).toEqual({ deleted: false });
+    request.flush(createMedia('media-1', { deleted_at: null }));
+
+    await expect(restorePromise).resolves.toMatchObject({ deleted_at: null });
+    expect(service.snapshot.page?.items).toEqual([]);
+    expect(service.snapshot.page?.total).toBe(0);
+  });
+
   it('selects cached media without making a request and loads uncached detail', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
@@ -227,6 +253,15 @@ describe('MediaService', () => {
     batchUpdateRequest.flush({ processed: 1, skipped: 0 });
     await expect(batchUpdatePromise).resolves.toEqual({ processed: 1, skipped: 0 });
     expect(service.snapshot.page?.items[0]?.is_favorited).toBe(true);
+
+    const restoreBatchPromise = firstValueFrom(service.restoreMediaBatch(['media-1']));
+    const restoreBatchRequest = httpTesting.expectOne('http://api.example.test/media');
+    expect(restoreBatchRequest.request.method).toBe('PATCH');
+    expect(restoreBatchRequest.request.body).toEqual({ media_ids: ['media-1'], deleted: false });
+    restoreBatchRequest.flush({ processed: 1, skipped: 0 });
+    await expect(restoreBatchPromise).resolves.toEqual({ processed: 1, skipped: 0 });
+    expect(service.snapshot.page?.items).toEqual([]);
+    expect(service.snapshot.page?.total).toBe(0);
 
     const emptyTrashPromise = firstValueFrom(service.emptyTrash());
     const emptyTrashRequest = httpTesting.expectOne('http://api.example.test/media/trash');

@@ -10,12 +10,19 @@
   </div>
 
   <div class="navbar-actions">
-    <button mat-flat-button type="button" class="upload-button" aria-label="Upload media" (click)="uploadRequested.emit()">
-      <mat-icon>cloud_upload</mat-icon>
-      <span class="upload-label">Upload</span>
-    </button>
+    @if (isTrashView) {
+      <button mat-stroked-button type="button" class="trash-action-button" aria-label="Empty trash" (click)="emptyTrashRequested.emit()">
+        <mat-icon>delete_sweep</mat-icon>
+        <span>Empty Trash</span>
+      </button>
+    } @else {
+      <button mat-flat-button type="button" class="upload-button" aria-label="Upload media" (click)="uploadRequested.emit()">
+        <mat-icon>cloud_upload</mat-icon>
+        <span class="upload-label">Upload</span>
+      </button>
+    }
 
-    <button mat-icon-button type="button" aria-label="Refresh gallery" (click)="refreshRequested.emit()">
+    <button mat-icon-button type="button" [attr.aria-label]="refreshLabel" (click)="refreshRequested.emit()">
       <mat-icon>refresh</mat-icon>
     </button>
   </div>

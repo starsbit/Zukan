@@ -135,4 +135,18 @@ describe('GalleryNavbarComponent', () => {
 
     expect(uploadSpy).toHaveBeenCalled();
   });
+
+  it('switches to trash actions when trash mode is active', () => {
+    const emptyTrashSpy = vi.fn();
+    component.emptyTrashRequested.subscribe(emptyTrashSpy);
+
+    fixture.componentRef.setInput('isTrashView', true);
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('button[aria-label="Empty trash"]') as HTMLButtonElement).click();
+
+    expect(fixture.nativeElement.querySelector('button[aria-label="Upload media"]')).toBeNull();
+    expect(emptyTrashSpy).toHaveBeenCalled();
+    expect((fixture.nativeElement.querySelector('button[aria-label="Refresh trash"]') as HTMLButtonElement)).toBeTruthy();
+  });
 });

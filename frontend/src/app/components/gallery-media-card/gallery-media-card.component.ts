@@ -30,8 +30,10 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   @Input({ required: true }) media!: MediaRead;
   @Input() selectionMode = false;
   @Input() selected = false;
+  @Input() trashMode = false;
   @Output() readonly open = new EventEmitter<MediaRead>();
   @Output() readonly selectionToggled = new EventEmitter<MediaRead>();
+  @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
 
   thumbnailUrl: string | null = null;
   loadingThumbnail = false;
@@ -67,6 +69,11 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   toggleSelection(event: Event): void {
     event.stopPropagation();
     this.selectionToggled.emit(this.media);
+  }
+
+  restoreMedia(event: Event): void {
+    event.stopPropagation();
+    this.restoreRequested.emit(this.media);
   }
 
   get aspectRatio(): number {

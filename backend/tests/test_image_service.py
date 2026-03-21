@@ -166,6 +166,85 @@ def test_retag_media_queues_media_id(api):
     assert queue.get_nowait() == uploaded_id
 
 
+def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
+    user = api.register_and_login("image-service-retry")
+    user_id = uuid.UUID(user["user"]["id"])
+
+    queue = asyncio.Queue()
+    media_service.set_tag_queue(queue)
+    attempts = {"count": 0}
+
+    async def flaky_predict(_image_path: str):
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise RuntimeError("temporary inference error")
+        from backend.app.services.tagger import TagPrediction, TaggingResult
+
+        return TaggingResult(
+            predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
+            character_name=None,
+            is_nsfw=False,
+        )
+
+    monkeypatch.setattr(media_service.tagger, "predict", flaky_predict)
+    monkeypatch.setattr(media_service.settings, "tagging_retry_attempts", 3)
+    monkeypatch.setattr(media_service.settings, "tagging_retry_backoff_seconds", 0.0)
+
+    async def _exercise(session):
+        from backend.app.models import Media, User
+
+        db_user = await session.get(User, user_id)
+        upload = UploadFile(
+            filename="retry-me.png",
+            file=io.BytesIO(png_bytes((0, 0, 255))),
+            headers={"content-type": "image/png"},
+        )
+        response = await media_service.build_upload_response(session, db_user, [upload])
+        media_id = response.results[0].id
+
+        await media_service.tag_media(session, media_id)
+
+        media = await session.get(Media, media_id)
+        assert media.tagging_status == "done"
+        assert media.tagging_error is None
+        assert media.tags == ["sky"]
+
+    api.run_db(_exercise)
+    assert attempts["count"] == 3
+
+
+def test_mark_tagging_failure_persists_error_and_retag_clears_it(api):
+    user = api.register_and_login("image-service-tagging-error")
+    uploaded = api.upload_media(user["access_token"], "tagging-error.png", (0, 0, 255))
+    api.wait_for_media_status(str(uploaded["id"]))
+    user_id = uuid.UUID(user["user"]["id"])
+    uploaded_id = uuid.UUID(str(uploaded["id"]))
+
+    queue = asyncio.Queue()
+    media_service.set_tag_queue(queue)
+
+    async def _exercise(session):
+        from backend.app.models import Media, User
+
+        db_user = await session.get(User, user_id)
+        await media_service.mark_tagging_failure(session, uploaded_id, RuntimeError("model offline"))
+
+        failed_media = await session.get(Media, uploaded_id)
+        assert failed_media.tagging_status == "failed"
+        assert failed_media.tagging_error == "RuntimeError: model offline"
+
+        failed_detail = await media_service.get_media_detail(session, uploaded_id, db_user)
+        assert failed_detail.tagging_error == "RuntimeError: model offline"
+
+        await media_service.retag_media(session, uploaded_id, db_user)
+        retried_media = await session.get(Media, uploaded_id)
+        assert retried_media.tagging_status == "pending"
+        assert retried_media.tagging_error is None
+
+    api.run_db(_exercise)
+    assert queue.get_nowait() == uploaded_id
+
+
 def test_media_service_listing_detail_and_favorites_flow(api):
     user = api.register_and_login("image-service-library")
     blue = api.upload_media(user["access_token"], "library-blue.png", (0, 0, 255))

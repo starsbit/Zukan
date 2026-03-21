@@ -183,7 +183,7 @@ export class MediaService {
             [mediaId]: media
           }
         });
-        this.applyMediaToPage(media);
+        this.applyMediaUpdateToPage(media, body);
         this.finishMutation();
       }),
       catchError((error) => this.failMutation(error)),
@@ -307,6 +307,14 @@ export class MediaService {
     return this.mediaClient.getMediaThumbnail(mediaId);
   }
 
+  restoreMedia(mediaId: Uuid): Observable<MediaDetail> {
+    return this.updateMedia(mediaId, { deleted: false });
+  }
+
+  restoreMediaBatch(mediaIds: Uuid[]): Observable<BulkResult> {
+    return this.batchUpdateMedia({ media_ids: mediaIds, deleted: false });
+  }
+
   private patchBatchMedia(body: MediaBatchUpdateDto): void {
     const page = this.stateSubject.value.page;
     const ids = new Set(body.media_ids);
@@ -327,19 +335,47 @@ export class MediaService {
       }
 
       const patched = patchMediaRead(item, body);
-      const shouldRemoveFromActive = (body.deleted === true) && this.stateSubject.value.pageQuery?.state !== 'trashed';
+      const shouldRemoveFromCurrentView = shouldRemoveFromCurrentViewForDeletedState(
+        this.stateSubject.value.pageQuery?.state,
+        body.deleted
+      );
 
-      return shouldRemoveFromActive ? [] : [patched];
+      return shouldRemoveFromCurrentView ? [] : [patched];
     });
+
+    const removedCount = page.items.length - nextItems.length;
 
     this.patchState({
       details,
       page: {
         ...page,
         items: nextItems,
-        total: body.deleted === true && this.stateSubject.value.pageQuery?.state !== 'trashed'
-          ? Math.max(0, page.total - body.media_ids.length)
-          : page.total
+        total: removedCount > 0 ? Math.max(0, page.total - removedCount) : page.total
+      }
+    });
+  }
+
+  private applyMediaUpdateToPage(media: MediaRead, body: MediaUpdateDto): void {
+    const page = this.stateSubject.value.page;
+    if (!page || !page.items.some((item) => item.id === media.id)) {
+      return;
+    }
+
+    if (shouldRemoveFromCurrentViewForDeletedState(this.stateSubject.value.pageQuery?.state, body.deleted)) {
+      this.patchState({
+        page: {
+          ...page,
+          items: removeItemById(page.items, media.id),
+          total: Math.max(0, page.total - 1)
+        }
+      });
+      return;
+    }
+
+    this.patchState({
+      page: {
+        ...page,
+        items: replaceItemById(page.items, media)
       }
     });
   }
@@ -424,6 +460,21 @@ function patchMediaRead(media: MediaRead, body: MediaBatchUpdateDto): MediaRead 
   return {
     ...media,
     is_favorited: body.favorited ?? media.is_favorited,
-    deleted_at: body.deleted === true ? media.deleted_at ?? new Date().toISOString() : media.deleted_at
+    deleted_at: body.deleted === true ? media.deleted_at ?? new Date().toISOString() : body.deleted === false ? null : media.deleted_at
   };
+}
+
+function shouldRemoveFromCurrentViewForDeletedState(
+  viewState: ListMediaQuery['state'],
+  deleted: boolean | null | undefined
+): boolean {
+  if (deleted === true) {
+    return viewState !== 'trashed';
+  }
+
+  if (deleted === false) {
+    return viewState === 'trashed';
+  }
+
+  return false;
 }

@@ -134,6 +134,7 @@ class MediaRead(BaseModel):
     )
     is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
     tagging_status: str = Field(description="Current AI tagging lifecycle state.")
+    tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
     thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
     poster_status: str = Field(default="done", description="Current poster generation lifecycle state for animated media.")
     created_at: datetime

@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AbstractControl, FormBuilder, ReactiveFormsModule, ValidationErrors, ValidatorFn, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -38,6 +38,7 @@ import { AuthService } from '../../services/auth.service';
 export class AuthFormComponent {
   private readonly formBuilder = inject(FormBuilder);
   private readonly authService = inject(AuthService);
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
 
@@ -84,6 +85,7 @@ export class AuthFormComponent {
     }).pipe(
       finalize(() => {
         this.submittingLogin = false;
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: () => {
@@ -112,6 +114,7 @@ export class AuthFormComponent {
     }).pipe(
       finalize(() => {
         this.submittingRegister = false;
+        this.cdr.markForCheck();
       })
     ).subscribe({
       next: () => {

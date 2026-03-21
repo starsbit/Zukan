@@ -74,6 +74,14 @@ export class MediaClientService {
     return this.api.patch<MediaDetail>(`/media/${mediaId}`, body);
   }
 
+  restoreMedia(mediaId: Uuid): Observable<MediaDetail> {
+    return this.updateMedia(mediaId, { deleted: false });
+  }
+
+  restoreMediaBatch(mediaIds: Uuid[]): Observable<BulkResult> {
+    return this.batchUpdateMedia({ media_ids: mediaIds, deleted: false });
+  }
+
   deleteMedia(mediaId: Uuid): Observable<void> {
     return this.api.deleteVoid(`/media/${mediaId}`);
   }

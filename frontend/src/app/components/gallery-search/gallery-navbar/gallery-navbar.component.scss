@@ -24,6 +24,10 @@
   box-shadow: 0 12px 24px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
 }
 
+.trash-action-button {
+  border-radius: 999px;
+}
+
 @media (max-width: 720px) {
   .gallery-navbar {
     grid-template-columns: minmax(0, 1fr) auto;

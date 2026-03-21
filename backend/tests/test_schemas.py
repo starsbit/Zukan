@@ -84,6 +84,16 @@ def test_image_read_tagging_status_values():
         assert m.tagging_status == s
 
 
+def test_image_read_tagging_error_defaults_none():
+    m = MediaRead(**_base_media_data())
+    assert m.tagging_error is None
+
+
+def test_image_read_tagging_error_can_be_set():
+    m = MediaRead(**_base_media_data(tagging_error="RuntimeError: model offline"))
+    assert m.tagging_error == "RuntimeError: model offline"
+
+
 def test_image_read_is_favorited_defaults_false():
     m = MediaRead(**_base_media_data())
     assert m.is_favorited is False

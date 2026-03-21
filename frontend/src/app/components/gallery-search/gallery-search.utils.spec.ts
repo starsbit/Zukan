@@ -31,8 +31,14 @@ describe('gallery search utils', () => {
     });
   });
 
-  it('includes in-flight uploads in the default status filter', () => {
-    expect(createDefaultGallerySearchFilters().status).toEqual(['pending', 'processing', 'done']);
+  it('keeps completed uploads visible in the default status filter, including failures', () => {
+    expect(createDefaultGallerySearchFilters().status).toEqual(['pending', 'processing', 'done', 'failed']);
+  });
+
+  it('includes failed media in the default gallery query', () => {
+    expect(buildGalleryListQuery('', createDefaultGallerySearchFilters())).toMatchObject({
+      status: ['pending', 'processing', 'done', 'failed']
+    });
   });
 
   it('counts active advanced filters relative to defaults', () => {

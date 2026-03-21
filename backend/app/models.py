@@ -77,6 +77,7 @@ class Media(Base):
     character_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     tagging_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    tagging_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     thumbnail_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     poster_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)

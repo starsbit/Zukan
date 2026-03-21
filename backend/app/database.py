@@ -42,3 +42,6 @@ async def init_db():
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_media_captured_at ON media (captured_at)")
         )
+        await conn.execute(
+            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS tagging_error VARCHAR(1024)")
+        )

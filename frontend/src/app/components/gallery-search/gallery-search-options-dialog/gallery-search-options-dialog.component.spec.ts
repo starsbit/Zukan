@@ -1,3 +1,4 @@
+import '@angular/compiler';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -54,7 +55,7 @@ describe('GallerySearchOptionsDialogComponent', () => {
     expect(component.form.getRawValue()).toEqual({
       favorited: 'any',
       nsfw: 'default',
-      status: ['pending', 'processing', 'done'],
+      status: ['pending', 'processing', 'done', 'failed'],
       media_type: [],
       captured_after: '',
       captured_before: ''

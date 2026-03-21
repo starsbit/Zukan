@@ -20,7 +20,9 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   private mediaRequestId = 0;
 
   @Input() media: MediaRead | null = null;
+  @Input() canRestore = false;
   @Output() readonly closed = new EventEmitter<void>();
+  @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
 
   mediaUrl: string | null = null;
   loading = false;
@@ -49,6 +51,14 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
 
   close(): void {
     this.closed.emit();
+  }
+
+  restore(): void {
+    if (!this.media) {
+      return;
+    }
+
+    this.restoreRequested.emit(this.media);
   }
 
   get showTaggingSpinner(): boolean {

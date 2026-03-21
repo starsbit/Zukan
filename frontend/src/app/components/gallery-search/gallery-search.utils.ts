@@ -19,7 +19,7 @@ export function createDefaultGallerySearchFilters(): GallerySearchFilters {
   return {
     favorited: 'any',
     nsfw: 'default',
-    status: ['pending', 'processing', 'done'],
+    status: ['pending', 'processing', 'done', 'failed'],
     media_type: [],
     captured_after: null,
     captured_before: null

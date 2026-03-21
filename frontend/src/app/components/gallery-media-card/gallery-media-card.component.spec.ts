@@ -223,6 +223,25 @@ describe('GalleryMediaCardComponent', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
+  it('emits restore requests from the trash action without opening the media', async () => {
+    const media = createMediaRead({ deleted_at: '2026-03-21T00:00:00Z' });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+    const restoreSpy = vi.fn();
+    const openSpy = vi.fn();
+    component.restoreRequested.subscribe(restoreSpy);
+    component.open.subscribe(openSpy);
+
+    fixture.componentRef.setInput('media', media);
+    fixture.componentRef.setInput('trashMode', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    (fixture.nativeElement.querySelector('.restore-button') as HTMLButtonElement).click();
+
+    expect(restoreSpy).toHaveBeenCalledWith(media);
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
   it('toggles selection from the card surface while selection mode is active', async () => {
     const media = createMediaRead();
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));

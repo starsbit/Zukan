@@ -26,9 +26,11 @@ export class GalleryNavbarComponent {
   private readonly dialog = inject(MatDialog);
 
   @Input({ required: true }) searchState!: GallerySearchState;
+  @Input() isTrashView = false;
   @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
   @Output() readonly refreshRequested = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
+  @Output() readonly emptyTrashRequested = new EventEmitter<void>();
 
   get activeFilterCount(): number {
     return countActiveAdvancedFilters(this.searchState.filters);
@@ -65,5 +67,9 @@ export class GalleryNavbarComponent {
         filters
       });
     });
+  }
+
+  get refreshLabel(): string {
+    return this.isTrashView ? 'Refresh trash' : 'Refresh gallery';
   }
 }

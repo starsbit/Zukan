@@ -71,6 +71,15 @@
             }
           </div>
         }
+
+        @if (canRestore) {
+          <div class="viewer-actions">
+            <button mat-flat-button type="button" aria-label="Restore media" (click)="restore()">
+              <mat-icon>restore_from_trash</mat-icon>
+              <span>Restore</span>
+            </button>
+          </div>
+        }
       </aside>
     </article>
   </section>

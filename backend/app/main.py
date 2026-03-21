@@ -15,7 +15,7 @@ from backend.app.config import settings
 from backend.app.models import Media, User
 from backend.app.routers import admin, albums, auth, media, tags, users
 from backend.app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
-from backend.app.services.media import set_tag_queue, tag_media
+from backend.app.services.media import mark_tagging_failure, set_tag_queue, tag_media
 from backend.app.services.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
@@ -36,11 +36,7 @@ async def tagging_worker():
             except Exception as exc:
                 await db.rollback()
                 async with AsyncSessionLocal() as err_db:
-                    err_result = await err_db.execute(select(Media).where(Media.id == media_id))
-                    err_media = err_result.scalar_one_or_none()
-                    if err_media:
-                        err_media.tagging_status = "failed"
-                        await err_db.commit()
+                    await mark_tagging_failure(err_db, media_id, exc)
                 print(f"Tagging failed for {media_id}: {exc}")
             finally:
                 tag_queue.task_done()

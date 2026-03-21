@@ -124,7 +124,7 @@ test('marks red uploads as tagged and leaves them hidden from the default galler
   await expect(page.locator('img[alt="red-upload.png"]')).toHaveCount(0);
 });
 
-test('selects multiple images from the gallery and moves them to trash', async ({ page, request }) => {
+test('moves media to trash, restores one item from trash, and empties the remainder', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
 
@@ -133,7 +133,7 @@ test('selects multiple images from the gallery and moves them to trash', async (
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-a.png', 'a')
+      files: bluePngFile('multi-select-a.png', 'primary')
     }
   });
   await expect(firstUpload).toBeOK();
@@ -143,7 +143,7 @@ test('selects multiple images from the gallery and moves them to trash', async (
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-b.png', 'b')
+      files: bluePngFile('multi-select-b.png', 'secondary')
     }
   });
   await expect(secondUpload).toBeOK();
@@ -186,6 +186,41 @@ test('selects multiple images from the gallery and moves them to trash', async (
   const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
   expect(trashedItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
   expect(trashedItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+
+  await page.getByRole('link', { name: 'Trash' }).click();
+  await expect(page).toHaveURL(/\/gallery\/trash$/);
+  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+
+  const trashedFirstCard = page.locator('app-gallery-media-card').filter({
+    has: page.locator('img[alt="multi-select-a.png"]')
+  }).first();
+  await trashedFirstCard.hover();
+  await trashedFirstCard.getByRole('button', { name: 'Select multi-select-a.png' }).click();
+  await page.locator('.selection-toolbar').getByRole('button', { name: 'Restore' }).click();
+
+  await expect(page.locator('img[alt="multi-select-a.png"]')).toHaveCount(0);
+  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+
+  const activeAfterRestore = await listMedia(request, session.accessToken);
+  expect(activeAfterRestore.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
+  expect(activeAfterRestore.some((item) => item.original_filename === 'multi-select-b.png')).toBe(false);
+
+  const trashAfterRestore = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  expect(trashAfterRestore.some((item) => item.original_filename === 'multi-select-a.png')).toBe(false);
+  expect(trashAfterRestore.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+
+  await page.getByRole('link', { name: 'Gallery' }).click();
+  await expect(page).toHaveURL(/\/gallery$/);
+  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="multi-select-b.png"]')).toHaveCount(0);
+
+  await page.getByRole('link', { name: 'Trash' }).click();
+  await page.getByRole('button', { name: 'Empty trash' }).click();
+  await expect(page.getByText('Trash is empty')).toBeVisible();
+
+  const trashAfterEmpty = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  expect(trashAfterEmpty).toEqual([]);
 });
 
 test('allows reuploading the same files after trash is emptied through the API', async ({ page, request }) => {

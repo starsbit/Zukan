@@ -420,6 +420,11 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     assert trash.status_code == 200
     assert {item["id"] for item in trash.json()["items"]} == {str(green_image["id"]), str(red_video["id"])}
 
+    trashed_green_file = api.client.get(f"/media/{green_image['id']}/file", headers=headers)
+    assert trashed_green_file.status_code == 200
+    trashed_green_thumbnail = api.client.get(f"/media/{green_image['id']}/thumbnail", headers=headers)
+    assert trashed_green_thumbnail.status_code == 200
+
     trash_query = api.client.get(
         "/media",
         headers=headers,
@@ -427,6 +432,22 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     )
     assert trash_query.status_code == 200
     assert [item["id"] for item in trash_query.json()["items"]] == [str(red_video["id"])]
+
+    restore_green = api.client.patch(f"/media/{green_image['id']}", headers=headers, json={"deleted": False})
+    assert restore_green.status_code == 200
+    assert restore_green.json()["deleted_at"] is None
+
+    active_after_restore = api.client.get("/media", headers=headers, params={"nsfw": "include"})
+    assert active_after_restore.status_code == 200
+    assert {item["id"] for item in active_after_restore.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(blue_video["id"]),
+    }
+
+    trash_after_restore = api.client.get("/media", headers=headers, params={"state": "trashed", "nsfw": "include"})
+    assert trash_after_restore.status_code == 200
+    assert [item["id"] for item in trash_after_restore.json()["items"]] == [str(red_video["id"])]
 
     empty_trash = api.client.delete("/media/trash", headers=headers)
     assert empty_trash.status_code == 204
@@ -437,8 +458,8 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
 
     missing_red_detail = api.client.get(f"/media/{red_video['id']}", headers=headers)
     assert missing_red_detail.status_code == 404
-    missing_green_detail = api.client.get(f"/media/{green_image['id']}", headers=headers)
-    assert missing_green_detail.status_code == 404
+    restored_green_detail = api.client.get(f"/media/{green_image['id']}", headers=headers)
+    assert restored_green_detail.status_code == 200
     missing_red_file = api.client.get(f"/media/{red_video['id']}/file", headers=headers)
     assert missing_red_file.status_code == 404
     missing_red_thumbnail = api.client.get(f"/media/{red_video['id']}/thumbnail", headers=headers)
@@ -452,7 +473,7 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     assert sky_after_purge.status_code == 200
     assert {item["id"] for item in sky_after_purge.json()["items"]} == {str(blue_image["id"]), str(blue_video["id"])}
 
-    assert api.fetch_media_row(uuid.UUID(str(green_image["id"]))) is None
+    assert api.fetch_media_row(uuid.UUID(str(green_image["id"]))) is not None
     assert api.fetch_media_row(uuid.UUID(str(red_video["id"]))) is None
 
 

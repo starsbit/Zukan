@@ -152,6 +152,23 @@ describe('GalleryViewerComponent', () => {
     expect(closedSpy).toHaveBeenCalledTimes(3);
   });
 
+  it('emits restore when the trash action is used', async () => {
+    const media = createMediaRead({ deleted_at: '2026-03-21T00:00:00Z' });
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+    const restoreSpy = vi.fn();
+    component.restoreRequested.subscribe(restoreSpy);
+
+    fixture.componentRef.setInput('media', media);
+    fixture.componentRef.setInput('canRestore', true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('button[aria-label="Restore media"]') as HTMLButtonElement).click();
+
+    expect(restoreSpy).toHaveBeenCalledWith(media);
+  });
+
   it('revokes the object URL on destroy', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 

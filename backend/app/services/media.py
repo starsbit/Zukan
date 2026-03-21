@@ -120,6 +120,20 @@ def _captured_timestamp_expr():
     return func.coalesce(Media.captured_at, Media.created_at)
 
 
+def _format_tagging_error(exc: Exception) -> str:
+    message = str(exc).strip() or exc.__class__.__name__
+    return f"{exc.__class__.__name__}: {message}"[:1024]
+
+
+async def mark_tagging_failure(db: AsyncSession, media_id: uuid.UUID, exc: Exception) -> None:
+    media = (await db.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
+    if media is None:
+        return
+    media.tagging_status = "failed"
+    media.tagging_error = _format_tagging_error(exc)
+    await db.commit()
+
+
 def _media_captured_at(media: Media) -> datetime:
     return media.captured_at or media.created_at
 
@@ -148,6 +162,7 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         character_name=media.character_name,
         is_nsfw=media.is_nsfw,
         tagging_status=media.tagging_status,
+        tagging_error=media.tagging_error,
         thumbnail_status=media.thumbnail_status,
         poster_status=media.poster_status,
         created_at=media.created_at,
@@ -347,6 +362,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             existing.deleted_at = None
             existing.original_filename = original_name
             existing.tagging_status = "pending"
+            existing.tagging_error = None
             existing.captured_at = existing.captured_at or captured_at
             await db.flush()
             queued_media_ids.append(existing.id)
@@ -371,6 +387,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             tags=[],
             character_name=None,
             tagging_status="pending",
+            tagging_error=None,
             thumbnail_path=str(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
             poster_path=str(poster) if poster else None,
@@ -408,8 +425,10 @@ async def get_downloadable_media(db: AsyncSession, user: User, media_ids: list[u
 
 
 async def get_visible_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> Media:
-    media = (await db.execute(select(Media).where(Media.id == media_id, Media.deleted_at.is_(None)))).scalar_one_or_none()
+    media = (await db.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
     if media is None:
+        raise HTTPException(status_code=404, detail="Not found")
+    if media.deleted_at is not None and media.uploader_id != user.id and not user.is_admin:
         raise HTTPException(status_code=404, detail="Not found")
     if media.is_nsfw and not user.show_nsfw and not user.is_admin:
         raise HTTPException(status_code=403, detail="NSFW content hidden")
@@ -510,6 +529,7 @@ async def unfavorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 async def retag_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> int:
     media = await get_owned_or_admin_media(db, media_id, user, trashed=False)
     media.tagging_status = "pending"
+    media.tagging_error = None
     await db.commit()
     queue = get_tag_queue()
     if queue:
@@ -669,17 +689,35 @@ async def tag_media(db: AsyncSession, media_id: uuid.UUID) -> None:
     if media is None:
         return
     media.tagging_status = "processing"
+    media.tagging_error = None
     await db.commit()
 
     frames = sample_media_frames(media.filepath, media.media_type)
     try:
         results: list[TaggingResult] = []
         for frame_path in frames or [Path(media.filepath)]:
-            results.append(await tagger.predict(str(frame_path)))
+            results.append(await _predict_with_retries(str(frame_path)))
         aggregated = aggregate_tagging_results(results)
         await _store_tagging_result(db, media, aggregated)
     finally:
         cleanup_sampled_frames([frame for frame in frames if frame != Path(media.filepath)])
+
+
+async def _predict_with_retries(image_path: str) -> TaggingResult:
+    attempts = max(1, settings.tagging_retry_attempts)
+    last_error: Exception | None = None
+
+    for attempt in range(1, attempts + 1):
+        try:
+            return await tagger.predict(image_path)
+        except Exception as exc:
+            last_error = exc
+            if attempt >= attempts:
+                break
+            await asyncio.sleep(settings.tagging_retry_backoff_seconds * attempt)
+
+    assert last_error is not None
+    raise last_error
 
 
 def aggregate_tagging_results(results: list[TaggingResult]) -> TaggingResult:
@@ -722,4 +760,5 @@ async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: 
     media.character_name = tagging_result.character_name
     media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(tag_names)
     media.tagging_status = "done"
+    media.tagging_error = None
     await db.commit()

@@ -89,7 +89,7 @@ def start_postgres_container() -> str:
     port = os.environ.get("E2E_DB_PORT", "55432")
 
     subprocess.run(
-        ["docker", "rm", "--force", container_name],
+        ["docker", "rm", "--force", "--volumes", container_name],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,
@@ -110,6 +110,8 @@ def start_postgres_container() -> str:
             "POSTGRES_PASSWORD=zukan",
             "--env",
             "POSTGRES_DB=zukan",
+            "--tmpfs",
+            "/var/lib/postgresql/data",
             "postgres:16-alpine",
         ],
         check=True,
@@ -135,7 +137,7 @@ def start_postgres_container() -> str:
 
 def stop_postgres_container(container_name: str) -> None:
     subprocess.run(
-        ["docker", "rm", "--force", container_name],
+        ["docker", "rm", "--force", "--volumes", container_name],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         check=False,

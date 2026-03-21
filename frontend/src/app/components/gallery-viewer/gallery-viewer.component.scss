@@ -101,6 +101,15 @@
   font-size: 0.85rem;
 }
 
+.viewer-actions {
+  margin-top: 1.5rem;
+}
+
+.viewer-actions button {
+  width: 100%;
+  border-radius: 999px;
+}
+
 .viewer-state {
   display: grid;
   justify-items: center;

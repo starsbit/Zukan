@@ -86,6 +86,38 @@ describe('AuthFormComponent', () => {
     expect(component.submittingLogin).toBe(false);
   });
 
+  it('returns the login button to its neutral state immediately after a failed login request', async () => {
+    const loginRequest = new Subject<unknown>();
+    authService.login.mockReturnValue(loginRequest.asObservable());
+    component.loginForm.setValue({
+      username: 'fox',
+      password: 'wrong-password',
+      rememberMe: false
+    });
+
+    fixture.autoDetectChanges();
+    fixture.detectChanges();
+
+    const loginForm = fixture.nativeElement.querySelector('form.auth-form') as HTMLFormElement;
+    const submitButton = loginForm.querySelector('button[type="submit"]') as HTMLButtonElement;
+    submitButton.click();
+    await fixture.whenStable();
+
+    expect(component.submittingLogin).toBe(true);
+
+    const submitContent = loginForm.querySelector('.submit-content') as HTMLSpanElement;
+    expect(submitContent.textContent).toContain('Signing in...');
+    expect(submitContent.querySelector('mat-spinner')).toBeTruthy();
+
+    loginRequest.error(new Error('bad credentials'));
+    await fixture.whenStable();
+
+    expect(component.submittingLogin).toBe(false);
+    expect(submitContent.textContent).toContain('Login');
+    expect(submitContent.textContent).not.toContain('Signing in...');
+    expect(submitContent.querySelector('mat-spinner')).toBeNull();
+  });
+
   it('keeps the confirm password validator in sync with the password field', () => {
     component.registerForm.controls.password.setValue('password-1');
     component.registerForm.controls.confirmPassword.setValue('password-2');

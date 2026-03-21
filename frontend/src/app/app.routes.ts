@@ -19,7 +19,14 @@ export const routes: Routes = [
   {
     path: 'gallery',
     component: GalleryPageComponent,
-    canActivate: [authGuard]
+    canActivate: [authGuard],
+    data: { state: 'active' }
+  },
+  {
+    path: 'gallery/trash',
+    component: GalleryPageComponent,
+    canActivate: [authGuard],
+    data: { state: 'trashed' }
   },
   {
     path: '**',

@@ -1,94 +1,150 @@
-<section
-  class="gallery-shell"
-  [class.gallery-shell-drag-active]="dragActive"
+<mat-drawer-container
+  class="gallery-layout"
+  autosize
+  [class.gallery-layout-drag-active]="dragActive"
   (dragenter)="onDragEnter($event)"
   (dragover)="onDragOver($event)"
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
 >
-  @if (selectionMode) {
-    <section class="selection-toolbar" aria-label="Selection toolbar">
-      <div class="selection-toolbar-start">
-        <button mat-icon-button type="button" aria-label="Unselect all items" (click)="clearSelection()">
-          <mat-icon>close</mat-icon>
-        </button>
-        <p>{{ selectedCount }} selected</p>
-      </div>
+  <mat-drawer class="gallery-sidebar" mode="side" opened aria-label="Gallery navigation">
+    <mat-card appearance="outlined">
+      <mat-card-header>
+        <mat-card-title>Media</mat-card-title>
+        <mat-card-subtitle>Library</mat-card-subtitle>
+      </mat-card-header>
+      <mat-nav-list>
+        <a
+          mat-list-item
+          routerLink="/gallery"
+          routerLinkActive="mdc-list-item--activated"
+          [routerLinkActiveOptions]="{ exact: true }"
+        >
+          <mat-icon matListItemIcon>photo_library</mat-icon>
+          <span matListItemTitle>Gallery</span>
+        </a>
 
-      <button
-        mat-flat-button
-        type="button"
-        class="selection-delete-button"
-        [disabled]="(mutationPending$ | async) || selectedCount === 0"
-        (click)="deleteSelected()"
-      >
-        <mat-icon>delete</mat-icon>
-        <span>Delete</span>
-      </button>
-    </section>
-  } @else {
-    <app-gallery-navbar
-      [searchState]="searchState"
-      (searchApplied)="applySearch($event)"
-      (refreshRequested)="reload()"
-      (uploadRequested)="openUploadDialog()"
-    />
-  }
+        <a
+          mat-list-item
+          routerLink="/gallery/trash"
+          routerLinkActive="mdc-list-item--activated"
+          [routerLinkActiveOptions]="{ exact: true }"
+        >
+          <mat-icon matListItemIcon>delete</mat-icon>
+          <span matListItemTitle>Trash</span>
+        </a>
+      </mat-nav-list>
+    </mat-card>
+  </mat-drawer>
 
-  @if (dragActive) {
-    <div class="drop-overlay" aria-hidden="true">
-      <mat-icon>cloud_upload</mat-icon>
-      <div>
-        <h2>Drop files to upload</h2>
-        <p>Your batch will be sent to the gallery right away.</p>
-      </div>
-    </div>
-  }
+  <mat-drawer-content class="gallery-shell">
+    <section class="gallery-main">
+      @if (selectionMode) {
+        <section class="selection-toolbar" aria-label="Selection toolbar">
+          <div class="selection-toolbar-start">
+            <button mat-icon-button type="button" aria-label="Unselect all items" (click)="clearSelection()">
+              <mat-icon>close</mat-icon>
+            </button>
+            <p>{{ selectedCount }} selected</p>
+          </div>
 
-  @if (loading$ | async) {
-    <section class="gallery-state loading-state">
-      <mat-spinner diameter="42"></mat-spinner>
-      <p>Loading media...</p>
-    </section>
-  } @else if (error$ | async) {
-    <section class="gallery-state error-state">
-      <mat-icon>error</mat-icon>
-      <div>
-        <h2>Gallery unavailable</h2>
-        <p>We could not fetch your latest media from the API.</p>
-      </div>
-      <button mat-flat-button type="button" (click)="reload()">Try again</button>
-    </section>
-  } @else {
-    @let items = (items$ | async) ?? [];
+          <div class="selection-toolbar-actions">
+            @if (isTrashView) {
+              <button
+                mat-flat-button
+                type="button"
+                class="selection-restore-button"
+                [disabled]="(mutationPending$ | async) || selectedCount === 0"
+                (click)="restoreSelected()"
+              >
+                <mat-icon>restore_from_trash</mat-icon>
+                <span>Restore</span>
+              </button>
+            } @else {
+              <button
+                mat-flat-button
+                type="button"
+                class="selection-delete-button"
+                [disabled]="(mutationPending$ | async) || selectedCount === 0"
+                (click)="deleteSelected()"
+              >
+                <mat-icon>delete</mat-icon>
+                <span>Delete</span>
+              </button>
+            }
+          </div>
+        </section>
+      } @else {
+        <app-gallery-navbar
+          [searchState]="searchState"
+          [isTrashView]="isTrashView"
+          (searchApplied)="applySearch($event)"
+          (refreshRequested)="reload()"
+          (uploadRequested)="openUploadDialog()"
+          (emptyTrashRequested)="emptyTrash()"
+        />
+      }
 
-    @if (items.length === 0) {
-      <section class="gallery-state empty-state">
-        <mat-icon>imagesmode</mat-icon>
-        <div>
-          <h2>No matching media</h2>
-          <p>Try adjusting your search or filters.</p>
+      @if (dragActive && !isTrashView) {
+        <div class="drop-overlay" aria-hidden="true">
+          <mat-icon>cloud_upload</mat-icon>
+          <div>
+            <h2>Drop files to upload</h2>
+            <p>Your batch will be sent to the gallery right away.</p>
+          </div>
         </div>
-      </section>
-    } @else {
-      <section class="gallery-grid" aria-label="Newest media">
-        @for (item of items; track item.id) {
-          <app-gallery-media-card
-            [media]="item"
-            [selectionMode]="selectionMode"
-            [selected]="isSelected(item.id)"
-            (open)="openMedia($event)"
-            (selectionToggled)="toggleSelection($event)"
-          />
+      }
+
+      @if (loading$ | async) {
+        <section class="gallery-state loading-state">
+          <mat-spinner diameter="42"></mat-spinner>
+          <p>Loading media...</p>
+        </section>
+      } @else if (error$ | async) {
+        <section class="gallery-state error-state">
+          <mat-icon>error</mat-icon>
+          <div>
+            <h2>{{ isTrashView ? 'Trash unavailable' : 'Gallery unavailable' }}</h2>
+            <p>We could not fetch your latest media from the API.</p>
+          </div>
+          <button mat-flat-button type="button" (click)="reload()">Try again</button>
+        </section>
+      } @else {
+        @let items = (items$ | async) ?? [];
+
+        @if (items.length === 0) {
+          <section class="gallery-state empty-state">
+            <mat-icon>{{ isTrashView ? 'delete_outline' : 'imagesmode' }}</mat-icon>
+            <div>
+              <h2>{{ isTrashView ? 'Trash is empty' : 'No matching media' }}</h2>
+              <p>{{ isTrashView ? 'Deleted items will show up here until you restore or purge them.' : 'Try adjusting your search or filters.' }}</p>
+            </div>
+          </section>
+        } @else {
+          <section class="gallery-grid" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
+            @for (item of items; track item.id) {
+              <app-gallery-media-card
+                [media]="item"
+                [selectionMode]="selectionMode"
+                [selected]="isSelected(item.id)"
+                [trashMode]="isTrashView"
+                (open)="openMedia($event)"
+                (selectionToggled)="toggleSelection($event)"
+                (restoreRequested)="restoreMedia($event)"
+              />
+            }
+          </section>
         }
-      </section>
-    }
-  }
-</section>
+      }
+    </section>
+  </mat-drawer-content>
+</mat-drawer-container>
 
 <app-gallery-viewer
   [media]="selectedMedia"
+  [canRestore]="isTrashView"
   (closed)="closeMedia()"
+  (restoreRequested)="restoreMedia($event)"
 />
 
 <app-gallery-upload-status-island />

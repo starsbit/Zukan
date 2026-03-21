@@ -122,6 +122,8 @@ describe('resource clients', () => {
       media_ids: ['m1', 'm2'],
       favorited: true
     }));
+    const restoreMediaPromise = firstValueFrom(mediaClient.restoreMedia('media-restore'));
+    const restoreBatchPromise = firstValueFrom(mediaClient.restoreMediaBatch(['m3', 'm4']));
     const emptyTrashPromise = firstValueFrom(mediaClient.emptyTrash());
     const getMediaPromise = firstValueFrom(mediaClient.getMedia('media-1'));
     const updateMediaPromise = firstValueFrom(mediaClient.updateMedia('media-1', { favorited: true }));
@@ -130,12 +132,21 @@ describe('resource clients', () => {
     const mediaFilePromise = firstValueFrom(mediaClient.getMediaFile('media-1'));
     const thumbnailPromise = firstValueFrom(mediaClient.getMediaThumbnail('media-1'));
 
-    const batchUpdateRequest = expectRequest('PATCH', 'http://api.example.test/media');
-    expect(batchUpdateRequest.request.body).toEqual({
+    const restoreMediaRequest = expectRequest('PATCH', 'http://api.example.test/media/media-restore');
+    expect(restoreMediaRequest.request.body).toEqual({ deleted: false });
+    restoreMediaRequest.flush({ id: 'media-restore', deleted_at: null });
+
+    const patchRequests = httpTesting.match(
+      (request) => request.method === 'PATCH' && request.urlWithParams === 'http://api.example.test/media'
+    );
+    expect(patchRequests).toHaveLength(2);
+    expect(patchRequests[0].request.body).toEqual({
       media_ids: ['m1', 'm2'],
       favorited: true
     });
-    batchUpdateRequest.flush({ processed: 2, skipped: 0 });
+    patchRequests[0].flush({ processed: 2, skipped: 0 });
+    expect(patchRequests[1].request.body).toEqual({ media_ids: ['m3', 'm4'], deleted: false });
+    patchRequests[1].flush({ processed: 2, skipped: 0 });
 
     const emptyTrashRequest = expectRequest('DELETE', 'http://api.example.test/media/trash');
     emptyTrashRequest.flush(null, { status: 204, statusText: 'No Content' });
@@ -163,6 +174,8 @@ describe('resource clients', () => {
     thumbnailRequest.flush(new Blob(['thumb']));
 
     await expect(batchUpdatePromise).resolves.toEqual({ processed: 2, skipped: 0 });
+    await expect(restoreMediaPromise).resolves.toEqual({ id: 'media-restore', deleted_at: null });
+    await expect(restoreBatchPromise).resolves.toEqual({ processed: 2, skipped: 0 });
     await expect(emptyTrashPromise).resolves.toBeNull();
     await expect(getMediaPromise).resolves.toEqual({ id: 'media-1' });
     await expect(updateMediaPromise).resolves.toEqual({ id: 'media-1', favorited: true });
