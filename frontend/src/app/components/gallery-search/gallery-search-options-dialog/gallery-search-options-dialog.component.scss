@@ -1,0 +1,41 @@
+:host {
+  display: block;
+}
+
+mat-dialog-content {
+  overflow-x: hidden;
+}
+
+.options-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  width: min(640px, 100%);
+  max-width: 100%;
+  padding-top: 0.5rem;
+  box-sizing: border-box;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.chip-field {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+mat-chip-listbox {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 720px) {
+  .options-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

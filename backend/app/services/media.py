@@ -89,6 +89,21 @@ def _apply_character_name_filter(stmt, character_name: str | None):
     return stmt
 
 
+def _parse_csv_values(value: str | None) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _apply_media_type_filters(stmt, media_type_filter: str | None):
+    values = _parse_csv_values(media_type_filter)
+    if not values:
+        return stmt
+
+    valid_values = [MediaType(value) for value in values]
+    return stmt.where(Media.media_type.in_(valid_values))
+
+
 def _normalize_manual_tags(tags: list[str]) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
@@ -161,6 +176,10 @@ def _apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
         stmt = stmt.where(extract("month", captured_at) == metadata.captured_month)
     if metadata.captured_day is not None:
         stmt = stmt.where(extract("day", captured_at) == metadata.captured_day)
+    if metadata.captured_after is not None:
+        stmt = stmt.where(captured_at >= metadata.captured_after)
+    if metadata.captured_before is not None:
+        stmt = stmt.where(captured_at <= metadata.captured_before)
     if metadata.captured_before_year is not None:
         stmt = stmt.where(extract("year", captured_at) < metadata.captured_before_year)
     return stmt
@@ -178,8 +197,9 @@ async def list_media(
     status_filter: str | None,
     metadata: MediaMetadataFilter,
     favorited: bool | None,
-    page: int,
-    page_size: int,
+    media_type: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
 ) -> MediaListResponse:
     stmt = select(Media)
     if state == MediaListState.TRASHED:
@@ -189,13 +209,15 @@ async def list_media(
     else:
         stmt = stmt.where(Media.deleted_at.is_(None))
         stmt = _apply_nsfw_list_filter(stmt, user, nsfw)
-    if status_filter and status_filter != "any":
-        stmt = stmt.where(Media.tagging_status == status_filter)
+    status_values = [value for value in _parse_csv_values(status_filter) if value != "any"]
+    if status_values:
+        stmt = stmt.where(Media.tagging_status.in_(status_values))
     if favorited is True:
         stmt = stmt.join(UserFavorite, and_(UserFavorite.media_id == Media.id, UserFavorite.user_id == user.id))
 
     stmt = _apply_tag_filters(stmt, tags, exclude_tags, mode)
     stmt = _apply_character_name_filter(stmt, character_name)
+    stmt = _apply_media_type_filters(stmt, media_type)
     stmt = _apply_captured_at_filters(stmt, metadata)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
@@ -204,6 +226,39 @@ async def list_media(
     ).scalars().all()
     favs = await favorited_ids(db, user.id, [row.id for row in rows])
     return MediaListResponse(total=total, page=page, page_size=page_size, items=enrich_media(rows, favs))
+
+
+async def list_character_suggestions(
+    db: AsyncSession,
+    user: User,
+    *,
+    q: str,
+    limit: int,
+) -> list[dict[str, int | str]]:
+    query = q.strip()
+    if not query:
+        return []
+
+    stmt = (
+        select(
+            Media.character_name.label("name"),
+            func.count(Media.id).label("media_count"),
+        )
+        .where(
+            Media.deleted_at.is_(None),
+            Media.character_name.is_not(None),
+            Media.character_name != "",
+            Media.character_name.ilike(f"{query}%"),
+        )
+        .group_by(Media.character_name)
+        .order_by(func.count(Media.id).desc(), Media.character_name.asc())
+        .limit(limit)
+    )
+    if not user.show_nsfw and not user.is_admin:
+        stmt = stmt.where(Media.is_nsfw == False)
+
+    rows = (await db.execute(stmt)).all()
+    return [{"name": row.name, "media_count": row.media_count} for row in rows]
 
 
 async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) -> MediaListResponse:
@@ -219,6 +274,7 @@ async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) ->
         status_filter=None,
         metadata=MediaMetadataFilter(),
         favorited=None,
+        media_type=None,
         page=page,
         page_size=page_size,
     )

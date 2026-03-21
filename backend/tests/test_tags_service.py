@@ -1,3 +1,7 @@
+from sqlalchemy import select
+
+from backend.app.models import User
+from backend.app.services import media as media_service
 from backend.app.services import tags as tag_service
 
 
@@ -53,5 +57,25 @@ def test_search_tags_returns_prefix_matches_in_popularity_order(api):
         names = [tag.name for tag in results]
         assert "rose" in names
         assert all(name.startswith("r") for name in names)
+
+    api.run_db(_exercise)
+
+
+def test_list_character_suggestions_returns_prefix_matches(api):
+    user = api.register_and_login("character-suggestion-service")
+    first = api.upload_media(user["access_token"], "char-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(first["id"]))
+
+    async def _exercise(session):
+        owner = (await session.execute(select(User).where(User.username == "character-suggestion-service"))).scalar_one()
+        results = await media_service.list_character_suggestions(
+            session,
+            owner,
+            q="aya",
+            limit=10,
+        )
+        assert results
+        assert results[0]["name"] == "ayanami_rei"
+        assert results[0]["media_count"] == 1
 
     api.run_db(_exercise)

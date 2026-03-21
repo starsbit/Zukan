@@ -67,6 +67,12 @@ class TagRead(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+class CharacterSuggestion(BaseModel):
+    name: str = Field(description="Persisted character name suggestion.")
+    media_count: int = Field(description="Number of visible media items using this character name.")
+
+
 class TagWithConfidence(BaseModel):
     name: str = Field(description="Canonical tag name.")
     category: int = Field(description="Numeric tag category from the tagging backend.")
@@ -95,6 +101,8 @@ class MediaMetadataFilter(BaseModel):
     captured_year: int | None = Field(default=None, description="Filter media by the captured year metadata.")
     captured_month: int | None = Field(default=None, ge=1, le=12, description="Filter media by captured month metadata.")
     captured_day: int | None = Field(default=None, ge=1, le=31, description="Filter media by captured day metadata.")
+    captured_after: datetime | None = Field(default=None, description="Filter media captured on or after this timestamp.")
+    captured_before: datetime | None = Field(default=None, description="Filter media captured on or before this timestamp.")
     captured_before_year: int | None = Field(
         default=None,
         description="Filter media captured before the given year. Useful for on-this-day style lookups.",
@@ -107,6 +115,8 @@ class MediaMetadataFilter(BaseModel):
                 datetime(2000, self.captured_month, self.captured_day)
             except ValueError as exc:
                 raise ValueError("Invalid captured month/day combination") from exc
+        if self.captured_after is not None and self.captured_before is not None and self.captured_after > self.captured_before:
+            raise ValueError("captured_after must be before or equal to captured_before")
         return self
 
 

@@ -4,6 +4,7 @@ import { Observable } from 'rxjs';
 import {
   BatchUploadResponse,
   BulkResult,
+  CharacterSuggestion,
   DownloadRequestDto,
   ListMediaQuery,
   MediaBatchDeleteDto,
@@ -34,6 +35,10 @@ export class MediaClientService {
 
   listMedia(query?: ListMediaQuery): Observable<MediaListResponse> {
     return this.api.get<MediaListResponse>('/media', { query });
+  }
+
+  listCharacterSuggestions(query: { q: string; limit?: number }): Observable<CharacterSuggestion[]> {
+    return this.api.get<CharacterSuggestion[]>('/media/character-suggestions', { query });
   }
 
   batchUpdateMedia(body: MediaBatchUpdateDto): Observable<BulkResult> {

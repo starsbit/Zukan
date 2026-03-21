@@ -1,0 +1,66 @@
+<h2 mat-dialog-title>Search options</h2>
+
+<mat-dialog-content>
+  <form class="options-form" [formGroup]="form">
+    <mat-form-field appearance="outline">
+      <mat-label>Favorites</mat-label>
+      <mat-select formControlName="favorited">
+        <mat-option value="any">All media</mat-option>
+        <mat-option value="only">Favorites only</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>NSFW</mat-label>
+      <mat-select formControlName="nsfw">
+        <mat-option value="default">Default visibility</mat-option>
+        <mat-option value="include">Include NSFW</mat-option>
+        <mat-option value="only">NSFW only</mat-option>
+      </mat-select>
+    </mat-form-field>
+
+    <fieldset class="chip-field">
+      <legend>Status</legend>
+      <mat-chip-listbox multiple aria-label="Status filters">
+        @for (status of statusOptions; track status) {
+          <mat-chip-option
+            [selected]="form.controls.status.value.includes(status)"
+            (click)="toggleStatus(status)"
+          >
+            {{ status }}
+          </mat-chip-option>
+        }
+      </mat-chip-listbox>
+    </fieldset>
+
+    <fieldset class="chip-field">
+      <legend>Media type</legend>
+      <mat-chip-listbox multiple aria-label="Media type filters">
+        @for (mediaType of mediaTypeOptions; track mediaType) {
+          <mat-chip-option
+            [selected]="form.controls.media_type.value.includes(mediaType)"
+            (click)="toggleMediaType(mediaType)"
+          >
+            {{ mediaType }}
+          </mat-chip-option>
+        }
+      </mat-chip-listbox>
+    </fieldset>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Captured after</mat-label>
+      <input matInput type="datetime-local" formControlName="captured_after">
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Captured before</mat-label>
+      <input matInput type="datetime-local" formControlName="captured_before">
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="clearAll()">Clear all</button>
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-flat-button type="button" (click)="apply()">Search</button>
+</mat-dialog-actions>

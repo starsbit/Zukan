@@ -1,21 +1,14 @@
 <section class="gallery-shell">
-  <header class="gallery-header">
-    <div>
-      <p class="eyebrow">Newest Uploads</p>
-      <h1>Gallery</h1>
-      <p class="gallery-copy">A fast, visual grid inspired by image search and self-hosted photo libraries.</p>
-    </div>
-
-    <button mat-stroked-button type="button" (click)="reload()">
-      <mat-icon>refresh</mat-icon>
-      Refresh
-    </button>
-  </header>
+  <app-gallery-navbar
+    [searchState]="searchState"
+    (searchApplied)="applySearch($event)"
+    (refreshRequested)="reload()"
+  />
 
   @if (loading$ | async) {
     <section class="gallery-state loading-state">
       <mat-spinner diameter="42"></mat-spinner>
-      <p>Loading the latest media...</p>
+      <p>Loading media...</p>
     </section>
   } @else if (error$ | async) {
     <section class="gallery-state error-state">
@@ -33,8 +26,8 @@
       <section class="gallery-state empty-state">
         <mat-icon>imagesmode</mat-icon>
         <div>
-          <h2>No media yet</h2>
-          <p>Upload a few images or videos and they will appear here newest first.</p>
+          <h2>No matching media</h2>
+          <p>Try adjusting your search or filters.</p>
         </div>
       </section>
     } @else {

@@ -1,0 +1,15 @@
+<mat-toolbar class="gallery-navbar">
+  <div class="navbar-search">
+    <app-gallery-search-bar
+      [searchText]="searchState.searchText"
+      [activeFilterCount]="activeFilterCount"
+      (searchSubmitted)="applySearch($event)"
+      (filtersRequested)="openFilters()"
+      (cleared)="clearSearch()"
+    />
+  </div>
+
+  <button mat-icon-button type="button" aria-label="Refresh gallery" (click)="refreshRequested.emit()">
+    <mat-icon>refresh</mat-icon>
+  </button>
+</mat-toolbar>

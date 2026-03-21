@@ -1,5 +1,7 @@
 import uuid
+from datetime import datetime, timezone
 
+from backend.app.services.auth import verify_password
 from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, webm_bytes
 
 
@@ -25,6 +27,101 @@ def test_login_preflight_allows_loopback_frontend_origin(api):
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:4200"
+
+
+def test_register_hashes_password_in_database(api):
+    password = "plain-password123"
+    response = api.client.post(
+        "/auth/register",
+        json={
+            "username": "hashed-api-user",
+            "email": "hashed-api-user@example.com",
+            "password": password,
+        },
+    )
+
+    assert response.status_code == 201, response.text
+
+    async def _fetch_user(session):
+        from backend.app.models import User
+
+        return await session.get(User, uuid.UUID(response.json()["id"]))
+
+    stored_user = api.run_db(_fetch_user)
+    assert stored_user is not None
+    assert stored_user.hashed_password != password
+    assert verify_password(password, stored_user.hashed_password) is True
+
+
+def test_register_rejects_duplicate_username_and_email_via_api(api):
+    first = api.client.post(
+        "/auth/register",
+        json={
+            "username": "unique-guard-user",
+            "email": "unique-guard-user@example.com",
+            "password": "password123",
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    duplicate_username = api.client.post(
+        "/auth/register",
+        json={
+            "username": "unique-guard-user",
+            "email": "another@example.com",
+            "password": "password123",
+        },
+    )
+    assert duplicate_username.status_code == 400
+    assert duplicate_username.json()["detail"] == "Username already taken"
+
+    duplicate_email = api.client.post(
+        "/auth/register",
+        json={
+            "username": "different-unique-guard-user",
+            "email": "unique-guard-user@example.com",
+            "password": "password123",
+        },
+    )
+    assert duplicate_email.status_code == 400
+    assert duplicate_email.json()["detail"] == "Email already registered"
+
+
+def test_password_update_rehashes_password_and_invalidates_old_login(api):
+    created = api.register_and_login("password-update-user")
+    user_id = uuid.UUID(created["user"]["id"])
+
+    async def _fetch_hash(session):
+        from backend.app.models import User
+
+        user = await session.get(User, user_id)
+        return user.hashed_password
+
+    old_hash = api.run_db(_fetch_hash)
+
+    update = api.client.patch(
+        "/users/me",
+        headers=api.auth_headers(created["access_token"]),
+        json={"password": "new-password123"},
+    )
+    assert update.status_code == 200, update.text
+
+    new_hash = api.run_db(_fetch_hash)
+    assert new_hash != old_hash
+    assert new_hash != "new-password123"
+    assert verify_password("new-password123", new_hash) is True
+
+    old_login = api.client.post(
+        "/auth/login",
+        json={"username": "password-update-user", "password": "password123"},
+    )
+    assert old_login.status_code == 401
+
+    new_login = api.client.post(
+        "/auth/login",
+        json={"username": "password-update-user", "password": "new-password123"},
+    )
+    assert new_login.status_code == 200, new_login.text
 
 
 def test_user_journey_upload_auto_tag_and_discover_media(api):
@@ -218,6 +315,10 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     for item in (blue_image, green_image, red_video, blue_video):
         api.wait_for_media_status(str(item["id"]))
 
+    captured_at = datetime(2026, 3, 21, 12, 0, tzinfo=timezone.utc)
+    for item in (blue_image, green_image, red_video, blue_video):
+        api.set_media_captured_at(str(item["id"]), captured_at)
+
     library = api.client.get("/media", headers=headers, params={"nsfw": "include", "status": "done"})
     assert library.status_code == 200
     assert {item["id"] for item in library.json()["items"]} == {
@@ -257,6 +358,51 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     assert blue_image_detail.status_code == 200
     assert blue_image_detail.json()["media_type"] == "image"
     assert blue_image_detail.json()["character_name"] == "ayanami_rei"
+
+    video_only = api.client.get("/media", headers=headers, params={"media_type": "video", "nsfw": "include"})
+    assert video_only.status_code == 200
+    assert {item["id"] for item in video_only.json()["items"]} == {str(red_video["id"]), str(blue_video["id"])}
+
+    image_and_video = api.client.get("/media", headers=headers, params={"media_type": "image,video", "nsfw": "include"})
+    assert image_and_video.status_code == 200
+    assert {item["id"] for item in image_and_video.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    done_and_failed = api.client.get("/media", headers=headers, params={"status": "done,failed", "nsfw": "include"})
+    assert done_and_failed.status_code == 200
+    assert {item["id"] for item in done_and_failed.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    after_cutoff = api.client.get("/media", headers=headers, params={"captured_after": "2026-03-21T00:00:00Z", "nsfw": "include"})
+    assert after_cutoff.status_code == 200
+    assert {item["id"] for item in after_cutoff.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    before_cutoff = api.client.get("/media", headers=headers, params={"captured_before": "2026-03-21T23:59:59Z", "nsfw": "include"})
+    assert before_cutoff.status_code == 200
+    assert {item["id"] for item in before_cutoff.json()["items"]} == {
+        str(blue_image["id"]),
+        str(green_image["id"]),
+        str(red_video["id"]),
+        str(blue_video["id"]),
+    }
+
+    character_suggestions = api.client.get("/media/character-suggestions", headers=headers, params={"q": "aya"})
+    assert character_suggestions.status_code == 200
+    assert character_suggestions.json()[0]["name"] == "ayanami_rei"
+    assert character_suggestions.json()[0]["media_count"] == 2
 
     move_to_trash = api.client.patch(
         "/media",

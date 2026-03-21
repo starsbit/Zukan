@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
@@ -13,6 +14,7 @@ from backend.app.models import User
 from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
+    CharacterSuggestion,
     DownloadRequest,
     MediaBatchDelete,
     MediaBatchUpdate,
@@ -35,6 +37,8 @@ def media_metadata_filter_query(
     captured_year: int | None = Query(default=None, description="Filter media by the captured year metadata."),
     captured_month: int | None = Query(default=None, ge=1, le=12, description="Filter media by captured month metadata."),
     captured_day: int | None = Query(default=None, ge=1, le=31, description="Filter media by captured day metadata."),
+    captured_after: datetime | None = Query(default=None, description="Filter media captured on or after the given timestamp."),
+    captured_before: datetime | None = Query(default=None, description="Filter media captured on or before the given timestamp."),
     captured_before_year: int | None = Query(default=None, description="Filter media captured before the given year."),
 ) -> MediaMetadataFilter:
     try:
@@ -42,6 +46,8 @@ def media_metadata_filter_query(
             captured_year=captured_year,
             captured_month=captured_month,
             captured_day=captured_day,
+            captured_after=captured_after,
+            captured_before=captured_before,
             captured_before_year=captured_before_year,
         )
     except ValidationError as exc:
@@ -64,6 +70,7 @@ async def list_media(
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."),
     status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
     favorited: bool | None = Query(default=None, description="If true, return only media favorited by the current user."),
+    media_type: str | None = Query(default=None, description="Optional comma-separated media type filter."),
     page: int = Query(default=1, ge=1, description="1-based page number."),
     page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of items to return."),
     user: User = Depends(current_user),
@@ -81,9 +88,20 @@ async def list_media(
         status_filter,
         metadata,
         favorited,
+        media_type,
         page,
         page_size,
     )
+
+
+@router.get("/character-suggestions", response_model=list[CharacterSuggestion], summary="List Character Suggestions")
+async def list_character_suggestions(
+    q: str = Query(min_length=1, description="Prefix query for persisted character names."),
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await media_service.list_character_suggestions(db, user, q=q, limit=limit)
 
 
 @router.patch("", response_model=BulkResult, summary="Batch Update Media")

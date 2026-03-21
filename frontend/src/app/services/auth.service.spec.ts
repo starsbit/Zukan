@@ -195,6 +195,44 @@ describe('AuthService', () => {
     expect(authStore.getRefreshToken()).toBe('refresh-2');
   });
 
+  it('initializes the session from a stored refresh token on app startup', async () => {
+    authStore.setTokens({
+      accessToken: 'stale-access',
+      refreshToken: 'refresh-1'
+    });
+
+    const initializePromise = firstValueFrom(service.initializeSession());
+
+    const refreshRequest = httpTesting.expectOne('http://api.example.test/auth/refresh');
+    expect(refreshRequest.request.body).toEqual({ refresh_token: 'refresh-1' });
+    refreshRequest.flush({
+      access_token: 'fresh-access',
+      refresh_token: 'refresh-2',
+      token_type: 'bearer'
+    });
+
+    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    meRequest.flush({
+      id: 'user-3',
+      username: 'remembered',
+      email: 'remembered@example.test',
+      is_admin: false,
+      show_nsfw: false,
+      created_at: '2026-03-21T00:00:00Z'
+    });
+
+    await expect(initializePromise).resolves.toMatchObject({ id: 'user-3' });
+    expect(service.snapshot.status).toBe('authenticated');
+    expect(service.snapshot.initialized).toBe(true);
+    expect(authStore.getRefreshToken()).toBe('refresh-2');
+  });
+
+  it('marks startup initialization complete when there is no stored refresh token', async () => {
+    await expect(firstValueFrom(service.initializeSession())).resolves.toBeNull();
+    expect(service.snapshot.status).toBe('anonymous');
+    expect(service.snapshot.initialized).toBe(true);
+  });
+
   it('retains the current user and records an error when logout fails', async () => {
     authStore.setTokens({
       accessToken: 'access-1',

@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, switchMap, tap, throwError } from 'rxjs';
+import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, of, switchMap, tap, throwError } from 'rxjs';
 
 import { LogoutRequestDto, RefreshRequestDto, UserLoginDto, UserRead, UserRegisterDto } from '../models/api';
 import { AuthClientService } from './web/auth-client.service';
+import { ClientAuthStore } from './web/auth.store';
 import { UsersClientService } from './web/users-client.service';
 
 export interface AuthState {
@@ -30,6 +31,7 @@ const initialAuthState = (): AuthState => ({
 })
 export class AuthService {
   private readonly authClient = inject(AuthClientService);
+  private readonly authStore = inject(ClientAuthStore);
   private readonly usersClient = inject(UsersClientService);
   private readonly stateSubject = new BehaviorSubject<AuthState>(initialAuthState());
 
@@ -53,6 +55,18 @@ export class AuthService {
 
   get snapshot(): AuthState {
     return this.stateSubject.value;
+  }
+
+  initializeSession(): Observable<UserRead | null> {
+    const refreshToken = this.authStore.getRefreshToken();
+    if (!refreshToken) {
+      this.clearSessionState();
+      return of(null);
+    }
+
+    return this.refreshSession({ refresh_token: refreshToken }).pipe(
+      catchError(() => of(null))
+    );
   }
 
   loadCurrentUser(): Observable<UserRead> {

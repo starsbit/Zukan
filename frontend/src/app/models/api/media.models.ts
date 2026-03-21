@@ -91,6 +91,11 @@ export interface MediaListResponse {
   items: MediaRead[];
 }
 
+export interface CharacterSuggestion {
+  name: string;
+  media_count: number;
+}
+
 export interface ListMediaQuery {
   state?: MediaListState;
   tags?: string | null;
@@ -98,13 +103,16 @@ export interface ListMediaQuery {
   exclude_tags?: string | null;
   mode?: TagFilterMode;
   nsfw?: NsfwFilter;
-  status?: string | null;
+  status?: string[] | string | null;
   favorited?: boolean | null;
+  media_type?: MediaType[] | MediaType | null;
   page?: number;
   page_size?: number;
   captured_year?: number | null;
   captured_month?: number | null;
   captured_day?: number | null;
+  captured_after?: string | null;
+  captured_before?: string | null;
   captured_before_year?: number | null;
 }
 
