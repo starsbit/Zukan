@@ -2,11 +2,15 @@
   display: block;
 }
 
-.gallery-navbar {
+.gallery-navbar,
+.gallery-navbar.mat-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
   align-items: center;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
 }
 
 .navbar-search {
