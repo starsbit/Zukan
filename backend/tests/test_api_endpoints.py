@@ -1,0 +1,466 @@
+import uuid
+
+from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, webm_bytes
+
+
+def _login(api, username: str, password: str = "password123") -> dict:
+    response = api.client.post("/auth/login", json={"username": username, "password": password})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _logout(api, refresh_token: str):
+    response = api.client.post("/auth/logout", json={"refresh_token": refresh_token})
+    assert response.status_code == 204, response.text
+
+
+def test_user_journey_upload_auto_tag_and_discover_media(api):
+    registered = api.register_and_login("journey-discovery")
+    _logout(api, registered["refresh_token"])
+
+    logged_in = _login(api, "journey-discovery")
+    headers = api.auth_headers(logged_in["access_token"])
+
+    blue = api.upload_media(logged_in["access_token"], "journey-blue.png", (0, 0, 255))
+    green = api.upload_media(logged_in["access_token"], "journey-green.png", (0, 255, 0))
+    red = api.upload_media(logged_in["access_token"], "journey-red.png", (255, 0, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+    api.wait_for_media_status(str(red["id"]))
+
+    visible_library = api.client.get("/media", headers=headers)
+    assert visible_library.status_code == 200
+    assert visible_library.json()["total"] == 2
+
+    sky_search = api.client.get("/media", headers=headers, params={"tags": "sky"})
+    assert sky_search.status_code == 200
+    assert [item["id"] for item in sky_search.json()["items"]] == [str(blue["id"])]
+    assert sky_search.json()["items"][0]["character_name"] == "ayanami_rei"
+
+    character_search = api.client.get("/media", headers=headers, params={"character_name": "rei"})
+    assert character_search.status_code == 200
+    assert [item["id"] for item in character_search.json()["items"]] == [str(blue["id"])]
+
+    combined_search = api.client.get(
+        "/media",
+        headers=headers,
+        params={"tags": "sky", "character_name": "ayanami"},
+    )
+    assert combined_search.status_code == 200
+    assert [item["id"] for item in combined_search.json()["items"]] == [str(blue["id"])]
+
+    combined_miss = api.client.get(
+        "/media",
+        headers=headers,
+        params={"tags": "forest", "character_name": "ayanami"},
+    )
+    assert combined_miss.status_code == 200
+    assert combined_miss.json()["items"] == []
+
+    manual_edit = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
+    )
+    assert manual_edit.status_code == 200
+    assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
+    assert manual_edit.json()["character_name"] == "ikari_shinji"
+    assert manual_edit.json()["metadata"]["captured_at"]
+
+    manual_timestamp = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"metadata": {"captured_at": "2020-03-21T10:30:00Z"}},
+    )
+    assert manual_timestamp.status_code == 200
+    assert manual_timestamp.json()["metadata"]["captured_at"] == "2020-03-21T10:30:00Z"
+
+    corrected_search = api.client.get(
+        "/media",
+        headers=headers,
+        params={"tags": "pilot", "character_name": "shinji"},
+    )
+    assert corrected_search.status_code == 200
+    assert [item["id"] for item in corrected_search.json()["items"]] == [str(blue["id"])]
+
+    stale_search = api.client.get("/media", headers=headers, params={"tags": "sky"})
+    assert stale_search.status_code == 200
+    assert stale_search.json()["items"] == []
+
+    forest_search = api.client.get("/media", headers=headers, params={"tags": "forest"})
+    assert forest_search.status_code == 200
+    assert [item["id"] for item in forest_search.json()["items"]] == [str(green["id"])]
+
+    tag_prefix = api.client.get("/tags", headers=headers, params={"q": "bl"})
+    assert tag_prefix.status_code == 200
+    assert [item["name"] for item in tag_prefix.json()] == ["blue"]
+
+    rating_tags = api.client.get("/tags", headers=headers, params={"category": 9})
+    assert rating_tags.status_code == 200
+    assert {item["name"] for item in rating_tags.json()} == {"rating:general", "rating:questionable"}
+
+    show_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    assert show_nsfw.status_code == 200
+
+    nsfw_search = api.client.get("/media", headers=headers, params={"tags": "rose", "nsfw": "include"})
+    assert nsfw_search.status_code == 200
+    assert [item["id"] for item in nsfw_search.json()["items"]] == [str(red["id"])]
+
+    clear_character_name = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"character_name": ""},
+    )
+    assert clear_character_name.status_code == 200
+    assert clear_character_name.json()["character_name"] is None
+
+    refreshed = api.client.post("/auth/refresh", json={"refresh_token": logged_in["refresh_token"]})
+    assert refreshed.status_code == 200
+
+    _logout(api, logged_in["refresh_token"])
+    refresh_after_logout = api.client.post("/auth/refresh", json={"refresh_token": logged_in["refresh_token"]})
+    assert refresh_after_logout.status_code == 401
+
+
+def test_user_journey_upload_and_discover_mixed_media(api):
+    logged_in = _login(api, api.register_and_login("journey-mixed")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    gif_item = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-animated.gif",
+        gif_bytes([(0, 0, 255), (255, 0, 0), (0, 255, 0)]),
+        "image/gif",
+    )
+    mp4_item = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-video.mp4",
+        mp4_bytes([(0, 0, 255), (255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 0, 0)]),
+        "video/mp4",
+    )
+    webm_item = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-video.webm",
+        webm_bytes([(0, 255, 0), (0, 0, 255), (0, 255, 0), (0, 0, 255), (0, 255, 0)]),
+        "video/webm",
+    )
+    mov_item = api.upload_media_bytes(
+        logged_in["access_token"],
+        "journey-video.mov",
+        mov_bytes([(255, 0, 0), (0, 0, 255), (255, 0, 0), (0, 0, 255), (255, 0, 0)]),
+        "video/quicktime",
+    )
+
+    for item in (gif_item, mp4_item, webm_item, mov_item):
+        api.wait_for_media_status(str(item["id"]))
+
+    enabled = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    assert enabled.status_code == 200
+
+    library = api.client.get("/media", headers=headers, params={"nsfw": "include"})
+    assert library.status_code == 200
+    assert {item["id"] for item in library.json()["items"]} >= {
+        str(gif_item["id"]),
+        str(mp4_item["id"]),
+        str(webm_item["id"]),
+        str(mov_item["id"]),
+    }
+
+    gif_detail = api.client.get(f"/media/{gif_item['id']}", headers=headers)
+    mp4_detail = api.client.get(f"/media/{mp4_item['id']}", headers=headers)
+    assert gif_detail.status_code == 200
+    assert mp4_detail.status_code == 200
+    assert gif_detail.json()["media_type"] == "gif"
+    assert mp4_detail.json()["media_type"] == "video"
+    assert "sky" in gif_detail.json()["tags"]
+    assert "rose" in mp4_detail.json()["tags"]
+    assert mp4_detail.json()["metadata"]["duration_seconds"] is not None
+
+    assert api.client.get(f"/media/{gif_item['id']}/thumbnail", headers=headers).status_code == 200
+    assert api.client.get(f"/media/{mp4_item['id']}/thumbnail", headers=headers).status_code == 200
+
+
+def test_user_journey_full_personal_library_workflow(api):
+    registered = api.register_and_login("journey-library")
+    _logout(api, registered["refresh_token"])
+
+    logged_in = _login(api, "journey-library")
+    headers = api.auth_headers(logged_in["access_token"])
+
+    first = api.upload_media(logged_in["access_token"], "keep-blue.png", (0, 0, 255))
+    second = api.upload_media(logged_in["access_token"], "archive-green.png", (0, 255, 0))
+    third = api.upload_media(logged_in["access_token"], "discard-red.png", (255, 0, 0))
+    api.wait_for_media_status(str(first["id"]))
+    api.wait_for_media_status(str(second["id"]))
+    api.wait_for_media_status(str(third["id"]))
+
+    album = api.client.post("/albums", headers=headers, json={"name": "Reference Set"})
+    assert album.status_code == 201
+    album_id = album.json()["id"]
+
+    add_media = api.client.put(
+        f"/albums/{album_id}/media",
+        headers=headers,
+        json={"media_ids": [str(first["id"]), str(second["id"]), str(third["id"])]},
+    )
+    assert add_media.status_code == 200
+    assert add_media.json() == {"processed": 3, "skipped": 0}
+
+    favorite = api.client.patch(f"/media/{first['id']}", headers=headers, json={"favorited": True})
+    assert favorite.status_code == 200
+
+    favorite_view = api.client.get("/media", headers=headers, params={"favorited": "true"})
+    assert favorite_view.status_code == 200
+    assert [item["id"] for item in favorite_view.json()["items"]] == [str(first["id"])]
+
+    bulk_delete = api.client.patch(
+        "/media",
+        headers=headers,
+        json={"media_ids": [str(second["id"]), str(third["id"])], "deleted": True},
+    )
+    assert bulk_delete.status_code == 200
+    assert bulk_delete.json() == {"processed": 2, "skipped": 0}
+
+    album_after_delete = api.client.get(f"/albums/{album_id}/media", headers=headers)
+    assert album_after_delete.status_code == 200
+    assert [item["id"] for item in album_after_delete.json()["items"]] == [str(first["id"])]
+
+    trash = api.client.get("/media", headers=headers, params={"state": "trashed"})
+    assert trash.status_code == 200
+    assert {item["id"] for item in trash.json()["items"]} == {str(second["id"]), str(third["id"])}
+
+    bulk_restore = api.client.patch(
+        "/media",
+        headers=headers,
+        json={"media_ids": [str(second["id"]), str(third["id"])], "deleted": False},
+    )
+    assert bulk_restore.status_code == 200
+    assert bulk_restore.json() == {"processed": 2, "skipped": 0}
+
+    restored_album = api.client.get(f"/albums/{album_id}/media", headers=headers)
+    assert restored_album.status_code == 200
+    assert {item["id"] for item in restored_album.json()["items"]} == {
+        str(first["id"]),
+        str(second["id"]),
+    }
+
+    bulk_unfavorite = api.client.patch(
+        "/media",
+        headers=headers,
+        json={"media_ids": [str(first["id"])], "favorited": False},
+    )
+    assert bulk_unfavorite.status_code == 200
+    assert bulk_unfavorite.json() == {"processed": 1, "skipped": 0}
+
+    download = api.client.get(f"/albums/{album_id}/download", headers=headers)
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "application/zip"
+
+    retag = api.client.post(f"/media/{first['id']}/tagging-jobs", headers=headers)
+    assert retag.status_code == 202
+    api.wait_for_media_status(str(first["id"]))
+
+    now = api.fetch_media_row(first["id"]).captured_at
+    api.set_media_captured_at(str(first["id"]), now.replace(year=now.year - 1))
+    on_this_day = api.client.get(
+        "/media",
+        headers=headers,
+        params={"captured_month": now.month, "captured_day": now.day, "captured_before_year": now.year + 1},
+    )
+    assert on_this_day.status_code == 200
+    assert on_this_day.json()["items"]
+
+    delete = api.client.request(
+        "DELETE",
+        "/media",
+        headers=headers,
+        json={"media_ids": [str(third["id"])]},
+    )
+    assert delete.status_code == 200
+    assert delete.json() == {"processed": 1, "skipped": 0}
+
+    trash_after_delete = api.client.get("/media", headers=headers, params={"state": "trashed"})
+    assert trash_after_delete.status_code == 200
+    assert [item["id"] for item in trash_after_delete.json()["items"]] == [str(third["id"])]
+
+    empty_trash = api.client.delete("/media/trash", headers=headers)
+    assert empty_trash.status_code == 204
+    assert api.fetch_media_row(uuid.UUID(str(third["id"]))) is None
+
+    remove_from_album = api.client.request(
+        "DELETE",
+        f"/albums/{album_id}/media",
+        headers=headers,
+        json={"media_ids": [str(second["id"])]},
+    )
+    assert remove_from_album.status_code == 200
+    assert remove_from_album.json() == {"processed": 1, "skipped": 0}
+
+    delete_album = api.client.delete(f"/albums/{album_id}", headers=headers)
+    assert delete_album.status_code == 204
+
+    _logout(api, logged_in["refresh_token"])
+    refresh_after_logout = api.client.post("/auth/refresh", json={"refresh_token": logged_in["refresh_token"]})
+    assert refresh_after_logout.status_code == 401
+
+
+def test_user_journey_collaboration_workflow(api):
+    owner = api.register_and_login("journey-owner")
+    collaborator = api.register_and_login("journey-viewer")
+    _logout(api, owner["refresh_token"])
+    _logout(api, collaborator["refresh_token"])
+
+    owner_login = _login(api, "journey-owner")
+    collaborator_login = _login(api, "journey-viewer")
+    owner_headers = api.auth_headers(owner_login["access_token"])
+    viewer_headers = api.auth_headers(collaborator_login["access_token"])
+
+    first = api.upload_media(owner_login["access_token"], "shared-sky.png", (0, 0, 255))
+    second = api.upload_media(owner_login["access_token"], "shared-forest.png", (0, 255, 0))
+    api.wait_for_media_status(str(first["id"]))
+    api.wait_for_media_status(str(second["id"]))
+
+    album = api.client.post("/albums", headers=owner_headers, json={"name": "Shared Finds"})
+    assert album.status_code == 201
+    album_id = album.json()["id"]
+
+    add_image = api.client.put(
+        f"/albums/{album_id}/media",
+        headers=owner_headers,
+        json={"media_ids": [str(first["id"]), str(second["id"])]},
+    )
+    assert add_image.status_code == 200
+    assert add_image.json() == {"processed": 2, "skipped": 0}
+
+    share = api.client.post(
+        f"/albums/{album_id}/shares",
+        headers=owner_headers,
+        json={"user_id": collaborator["user"]["id"], "can_edit": False},
+    )
+    assert share.status_code == 200
+
+    viewer_album_list = api.client.get("/albums", headers=viewer_headers)
+    assert viewer_album_list.status_code == 200
+    assert [item["id"] for item in viewer_album_list.json()] == [album_id]
+
+    viewer_album_media = api.client.get(f"/albums/{album_id}/media", headers=viewer_headers)
+    assert viewer_album_media.status_code == 200
+    assert {item["id"] for item in viewer_album_media.json()["items"]} == {str(first["id"]), str(second["id"])}
+
+    no_edit_yet = api.client.request(
+        "DELETE",
+        f"/albums/{album_id}/media",
+        headers=viewer_headers,
+        json={"media_ids": [str(first["id"])]},
+    )
+    assert no_edit_yet.status_code == 403
+
+    upgrade_share = api.client.post(
+        f"/albums/{album_id}/shares",
+        headers=owner_headers,
+        json={"user_id": collaborator["user"]["id"], "can_edit": True},
+    )
+    assert upgrade_share.status_code == 200
+
+    bulk_remove = api.client.request(
+        "DELETE",
+        f"/albums/{album_id}/media",
+        headers=viewer_headers,
+        json={"media_ids": [str(second["id"])]},
+    )
+    assert bulk_remove.status_code == 200
+    assert bulk_remove.json() == {"processed": 1, "skipped": 0}
+
+    owner_favorite = api.client.patch(f"/media/{first['id']}", headers=owner_headers, json={"favorited": True})
+    assert owner_favorite.status_code == 200
+
+    collaborator_favorite = api.client.patch(
+        f"/media/{first['id']}",
+        headers=viewer_headers,
+        json={"favorited": True},
+    )
+    assert collaborator_favorite.status_code == 200
+
+    retag = api.client.post(f"/media/{first['id']}/tagging-jobs", headers=owner_headers)
+    assert retag.status_code == 202
+    api.wait_for_media_status(str(first["id"]))
+
+    rediscovered = api.client.get("/media", headers=owner_headers, params={"tags": "sky"})
+    assert rediscovered.status_code == 200
+    assert [item["id"] for item in rediscovered.json()["items"]] == [str(first["id"])]
+
+    revoke = api.client.delete(
+        f"/albums/{album_id}/shares/{collaborator['user']['id']}",
+        headers=owner_headers,
+    )
+    assert revoke.status_code == 204
+
+    viewer_after_revoke = api.client.get(f"/albums/{album_id}", headers=viewer_headers)
+    assert viewer_after_revoke.status_code == 404
+
+    _logout(api, collaborator_login["refresh_token"])
+    _logout(api, owner_login["refresh_token"])
+
+
+def test_user_journey_admin_moderation_workflow(api):
+    target = api.register_and_login("journey-target")
+    _logout(api, target["refresh_token"])
+
+    target_login = _login(api, "journey-target")
+    target_headers = api.auth_headers(target_login["access_token"])
+    uploaded = api.upload_media(target_login["access_token"], "admin-review.png", (0, 0, 255))
+    api.wait_for_media_status(str(uploaded["id"]))
+    _logout(api, target_login["refresh_token"])
+
+    admin_login = _login(api, "admin", "admin")
+    admin_headers = api.auth_headers(admin_login["access_token"])
+
+    stats = api.client.get("/admin/stats", headers=admin_headers)
+    assert stats.status_code == 200
+    assert stats.json()["total_users"] >= 2
+
+    users = api.client.get("/admin/users", headers=admin_headers, params={"page_size": 200})
+    assert users.status_code == 200
+    assert any(item["username"] == "journey-target" for item in users.json()["items"])
+
+    detail = api.client.get(f"/admin/users/{target['user']['id']}", headers=admin_headers)
+    assert detail.status_code == 200
+    assert detail.json()["media_count"] == 1
+
+    update = api.client.patch(
+        f"/admin/users/{target['user']['id']}",
+        headers=admin_headers,
+        json={"show_nsfw": True},
+    )
+    assert update.status_code == 200
+    assert update.json()["show_nsfw"] is True
+
+    retag_all = api.client.post(
+        f"/admin/users/{target['user']['id']}/tagging-jobs",
+        headers=admin_headers,
+    )
+    assert retag_all.status_code == 202
+    assert retag_all.json()["queued"] == 1
+    api.wait_for_media_status(str(uploaded["id"]))
+
+    trash_as_admin = api.client.patch(f"/media/{uploaded['id']}", headers=admin_headers, json={"deleted": True})
+    assert trash_as_admin.status_code == 200
+
+    trash_list = api.client.get("/media", headers=admin_headers, params={"state": "trashed"})
+    assert trash_list.status_code == 200
+    assert [item["id"] for item in trash_list.json()["items"]] == [str(uploaded["id"])]
+
+    restore = api.client.patch(f"/media/{uploaded['id']}", headers=admin_headers, json={"deleted": False})
+    assert restore.status_code == 200
+
+    delete_user = api.client.delete(
+        f"/admin/users/{target['user']['id']}",
+        headers=admin_headers,
+        params={"delete_media": "true"},
+    )
+    assert delete_user.status_code == 204
+
+    missing_after_delete = api.client.get(f"/admin/users/{target['user']['id']}", headers=admin_headers)
+    assert missing_after_delete.status_code == 404
+
+    _logout(api, admin_login["refresh_token"])
