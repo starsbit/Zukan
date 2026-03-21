@@ -41,7 +41,14 @@
           </div>
           <div>
             <dt>Status</dt>
-            <dd>{{ media.tagging_status }}</dd>
+            <dd class="viewer-status">
+              @if (showTaggingSpinner) {
+                <mat-spinner diameter="18"></mat-spinner>
+                <span>{{ statusLabel }}</span>
+              } @else {
+                {{ statusLabel }}
+              }
+            </dd>
           </div>
           @if (media.media_type === 'video' && media.metadata.duration_seconds) {
             <div>

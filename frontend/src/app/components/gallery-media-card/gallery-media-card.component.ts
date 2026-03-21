@@ -45,6 +45,14 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     return width / height;
   }
 
+  get showStatusBadge(): boolean {
+    return this.media.tagging_status === 'pending' || this.media.tagging_status === 'processing';
+  }
+
+  get statusBadgeLabel(): string {
+    return this.media.tagging_status === 'processing' ? 'Processing' : 'Pending';
+  }
+
   private loadThumbnail(): void {
     this.thumbnailRequestId += 1;
     const requestId = this.thumbnailRequestId;

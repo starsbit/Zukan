@@ -5,6 +5,9 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from backend.app.services import media as media_service
 from backend.app.schemas import MediaListState, MediaUpdate
@@ -76,6 +79,47 @@ def test_build_upload_response_uses_embedded_capture_timestamp(api):
         assert image.captured_at == embedded_time
 
     api.run_db(_exercise)
+
+
+def test_build_upload_response_commits_before_queueing_new_uploads(api):
+    user = api.register_and_login("image-service-queue-order")
+    user_id = uuid.UUID(user["user"]["id"])
+
+    class CommitAwareQueue:
+        def __init__(self, database_url: str):
+            self.database_url = database_url
+            self.seen_ids: list[uuid.UUID] = []
+
+        async def put(self, media_id: uuid.UUID):
+            engine = create_async_engine(self.database_url, poolclass=NullPool)
+            session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+            try:
+                async with session_maker() as session:
+                    from backend.app.models import Media
+
+                    media = (await session.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
+                    assert media is not None, "Media was queued before it was committed"
+                    self.seen_ids.append(media_id)
+            finally:
+                await engine.dispose()
+
+    queue = CommitAwareQueue(api.database_url)
+    media_service.set_tag_queue(queue)
+
+    async def _exercise(session):
+        from backend.app.models import User
+
+        db_user = await session.get(User, user_id)
+        upload = UploadFile(
+            filename="commit-before-queue.png",
+            file=io.BytesIO(png_bytes((0, 0, 255))),
+            headers={"content-type": "image/png"},
+        )
+        response = await media_service.build_upload_response(session, db_user, [upload])
+        assert response.accepted == 1
+
+    api.run_db(_exercise)
+    assert len(queue.seen_ids) == 1
 
 
 def test_get_visible_media_blocks_hidden_nsfw_media(api):

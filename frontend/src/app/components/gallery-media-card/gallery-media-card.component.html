@@ -22,7 +22,12 @@
     </div>
   }
 
-  <span class="media-badge type-badge">{{ media.media_type === 'video' ? 'Video' : 'Image' }}</span>
+  @if (showStatusBadge) {
+    <span class="media-badge status-badge">
+      <mat-spinner diameter="14" strokeWidth="3"></mat-spinner>
+      <span>{{ statusBadgeLabel }}</span>
+    </span>
+  }
 
   @if (media.is_nsfw) {
     <span class="media-badge nsfw-badge">NSFW</span>

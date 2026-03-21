@@ -65,6 +65,32 @@ describe('GalleryMediaCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Image');
   });
 
+  it('shows a compact spinner badge while tagging is pending', async () => {
+    const media = createMediaRead({ tagging_status: 'pending' });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.status-badge mat-spinner')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Pending');
+  });
+
+  it('shows a compact spinner badge while tagging is processing', async () => {
+    const media = createMediaRead({ tagging_status: 'processing' });
+    mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.status-badge mat-spinner')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.status-badge')?.textContent).toContain('Processing');
+  });
+
   it('marks thumbnail loading as failed when the request errors', async () => {
     mediaClient.getMediaThumbnail.mockReturnValue(throwError(() => new Error('broken')));
 

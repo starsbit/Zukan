@@ -46,14 +46,23 @@
 .media-badge {
   position: absolute;
   top: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   padding: 0.32rem 0.6rem;
   font-size: 0.72rem;
   font-weight: 700;
+  border-radius: 999px;
 }
 
-.type-badge {
+.status-badge {
   left: 0.8rem;
-  background-color: var(--mat-sys-surface);
+  background-color: rgba(15, 23, 42, 0.82);
+  color: white;
+}
+
+.status-badge mat-spinner {
+  --mdc-circular-progress-active-indicator-color: currentColor;
 }
 
 .nsfw-badge {

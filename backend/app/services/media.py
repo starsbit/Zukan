@@ -320,6 +320,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
     queue = get_tag_queue()
     results: list[UploadResult] = []
     accepted = duplicates = errors = 0
+    queued_media_ids: list[uuid.UUID] = []
 
     for upload in files:
         original_name = upload.filename or "unknown"
@@ -348,8 +349,7 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             existing.tagging_status = "pending"
             existing.captured_at = existing.captured_at or captured_at
             await db.flush()
-            if queue:
-                await queue.put(existing.id)
+            queued_media_ids.append(existing.id)
             results.append(UploadResult(id=existing.id, original_filename=original_name, status="accepted"))
             accepted += 1
             continue
@@ -379,12 +379,14 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
         )
         db.add(media)
         await db.flush()
-        if queue:
-            await queue.put(media.id)
+        queued_media_ids.append(media.id)
         results.append(UploadResult(id=media.id, original_filename=original_name, status="accepted"))
         accepted += 1
 
     await db.commit()
+    if queue:
+        for media_id in queued_media_ids:
+            await queue.put(media_id)
     return BatchUploadResponse(accepted=accepted, duplicates=duplicates, errors=errors, results=results)
 
 

@@ -72,6 +72,20 @@ describe('GalleryViewerComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Duration');
   });
 
+  it('shows a spinner instead of pending text while tagging is in progress', async () => {
+    const media = createMediaRead({ tagging_status: 'pending' });
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.viewer-status mat-spinner')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('Processing');
+    expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).not.toContain('pending');
+  });
+
   it('shows the failed state when loading the media file errors', async () => {
     mediaClient.getMediaFile.mockReturnValue(throwError(() => new Error('broken')));
 

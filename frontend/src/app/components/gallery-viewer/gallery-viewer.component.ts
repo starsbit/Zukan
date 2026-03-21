@@ -51,6 +51,22 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.closed.emit();
   }
 
+  get showTaggingSpinner(): boolean {
+    return this.media?.tagging_status === 'pending' || this.media?.tagging_status === 'processing';
+  }
+
+  get statusLabel(): string {
+    if (!this.media) {
+      return '';
+    }
+
+    if (this.showTaggingSpinner) {
+      return 'Processing';
+    }
+
+    return this.media.tagging_status;
+  }
+
   private loadMedia(): void {
     if (!this.media) {
       return;
