@@ -15,13 +15,11 @@ import { MediaClientService } from '../../services/web/media-client.service';
   templateUrl: './gallery-media-card.component.html',
   styleUrl: './gallery-media-card.component.scss',
   host: {
-    '[style.grid-column]': 'gridColumn',
-    '[style.grid-row]': 'gridRow'
+    '[style.--media-aspect-ratio]': 'aspectRatio'
   },
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
-  private static readonly TILE_PATTERN = [0, 3, 1, 4, 2, 5, 1, 3, 0, 2, 4, 1];
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly mediaClient = inject(MediaClientService);
   private readonly mediaUploadService = inject(MediaUploadService);
@@ -30,11 +28,18 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   private previousMediaId: string | null = null;
   private previousThumbnailStatus: string | null = null;
   private previewRequestSub: Subscription | null = null;
+  private previewVideoElement?: HTMLVideoElement;
 
-  @ViewChild('previewVideo') private previewVideo?: ElementRef<HTMLVideoElement>;
+  @ViewChild('previewVideo')
+  set previewVideo(value: ElementRef<HTMLVideoElement> | undefined) {
+    this.previewVideoElement = value?.nativeElement;
+
+    if (this.previewVideoElement && this.previewActive && this.previewUrl && this.isVideo) {
+      this.primeVideoPreview(this.previewVideoElement);
+    }
+  }
 
   @Input({ required: true }) media!: MediaRead;
-  @Input() tileIndex = 0;
   @Input() selectionMode = false;
   @Input() selected = false;
   @Input() trashMode = false;
@@ -47,6 +52,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   thumbnailFailed = false;
   previewUrl: string | null = null;
   previewActive = false;
+  previewReady = false;
   loadingPreview = false;
 
   ngOnChanges(changes: SimpleChanges): void {
@@ -115,6 +121,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     this.revokePreviewUrl();
     this.cancelPreviewRequest();
     this.loadingPreview = false;
+    this.previewReady = false;
     this.cdr.markForCheck();
   }
 
@@ -122,68 +129,6 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
     const width = this.media.metadata.width ?? 1;
     const height = this.media.metadata.height ?? 1;
     return width / height;
-  }
-
-  get gridColumn(): string {
-    return `span ${this.columnSpan}`;
-  }
-
-  get gridRow(): string {
-    return `span ${this.rowSpan}`;
-  }
-
-  get columnSpan(): number {
-    const aspectRatio = this.aspectRatio;
-    const pattern = this.tilePattern;
-
-    if (aspectRatio >= 2.4) {
-      return 5;
-    }
-
-    if (aspectRatio >= 1.75) {
-      return pattern === 0 ? 5 : 4;
-    }
-
-    if (aspectRatio >= 1.2) {
-      return pattern <= 1 ? 4 : 3;
-    }
-
-    if (aspectRatio >= 0.85) {
-      return pattern === 3 ? 4 : 3;
-    }
-
-    if (aspectRatio >= 0.62) {
-      return pattern === 4 ? 3 : 2;
-    }
-
-    return 2;
-  }
-
-  get rowSpan(): number {
-    const aspectRatio = this.aspectRatio;
-    const pattern = this.tilePattern;
-
-    if (aspectRatio >= 2.4) {
-      return 2;
-    }
-
-    if (aspectRatio >= 1.75) {
-      return pattern === 5 ? 3 : 2;
-    }
-
-    if (aspectRatio >= 1.2) {
-      return pattern === 2 ? 3 : 2;
-    }
-
-    if (aspectRatio >= 0.85) {
-      return pattern === 3 ? 3 : 2;
-    }
-
-    if (aspectRatio >= 0.62) {
-      return pattern >= 4 ? 5 : 4;
-    }
-
-    return pattern >= 3 ? 6 : 5;
   }
 
   get showStatusBadge(): boolean {
@@ -229,12 +174,6 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   get selectionLabel(): string {
     const name = this.media.original_filename || this.media.filename;
     return `${this.selected ? 'Unselect' : 'Select'} ${name}`;
-  }
-
-  private get tilePattern(): number {
-    return GalleryMediaCardComponent.TILE_PATTERN[
-      Math.abs(this.tileIndex) % GalleryMediaCardComponent.TILE_PATTERN.length
-    ] ?? 0;
   }
 
   private get currentTaggingStatus(): string {
@@ -307,9 +246,16 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
       return;
     }
 
-    video.muted = true;
-    video.currentTime = 0;
-    void video.play().catch(() => undefined);
+    this.primeVideoPreview(video);
+  }
+
+  onPreviewVideoPlaying(): void {
+    if (!this.previewActive || this.previewReady) {
+      return;
+    }
+
+    this.previewReady = true;
+    this.cdr.markForCheck();
   }
 
   private loadPreview(): void {
@@ -328,6 +274,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
         this.revokePreviewUrl();
         this.previewUrl = URL.createObjectURL(blob);
         this.loadingPreview = false;
+        this.previewReady = this.isGif;
         this.cdr.markForCheck();
         this.startPreviewPlayback();
       },
@@ -338,6 +285,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
 
         this.loadingPreview = false;
         this.previewActive = false;
+        this.previewReady = false;
         this.cdr.markForCheck();
       }
     });
@@ -348,32 +296,25 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
       return;
     }
 
-    queueMicrotask(() => {
-      const video = this.previewVideo?.nativeElement;
-      if (!video || !this.previewActive) {
-        return;
-      }
-
-      video.muted = true;
-      video.currentTime = 0;
-      void video.play().catch(() => undefined);
-    });
+    if (this.previewVideoElement) {
+      this.primeVideoPreview(this.previewVideoElement);
+    }
   }
 
   private resetVideoPlayback(): void {
-    const video = this.previewVideo?.nativeElement;
+    const video = this.previewVideoElement;
     if (!video) {
       return;
     }
 
     video.pause();
     video.currentTime = 0;
-    video.load();
   }
 
   private resetPreviewState(): void {
     this.previewActive = false;
     this.loadingPreview = false;
+    this.previewReady = false;
     this.cancelPreviewRequest();
     this.revokePreviewUrl();
   }
@@ -390,6 +331,21 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
 
     URL.revokeObjectURL(this.previewUrl);
     this.previewUrl = null;
+  }
+
+  private primeVideoPreview(video: HTMLVideoElement): void {
+    if (!this.previewActive) {
+      return;
+    }
+
+    video.muted = true;
+    video.defaultMuted = true;
+    video.loop = true;
+    video.playsInline = true;
+    if (video.currentTime !== 0) {
+      video.currentTime = 0;
+    }
+    void video.play().catch(() => undefined);
   }
 }
 

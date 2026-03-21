@@ -75,6 +75,21 @@ app-root {
   color: var(--mat-sys-on-surface);
 }
 
+@media (min-width: 721px) {
+  html.gallery-custom-scrollbar,
+  body.gallery-custom-scrollbar {
+    overflow: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  html.gallery-custom-scrollbar::-webkit-scrollbar,
+  body.gallery-custom-scrollbar::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
 button,
 input,
 textarea,

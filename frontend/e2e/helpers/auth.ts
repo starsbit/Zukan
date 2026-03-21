@@ -1,6 +1,6 @@
 import { APIRequestContext, expect, Page } from '@playwright/test';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
 
 export interface E2eSession {
   username: string;
@@ -41,9 +41,13 @@ export async function createSession(request: APIRequestContext): Promise<E2eSess
 }
 
 export async function seedLocalAuth(page: Page, session: E2eSession): Promise<void> {
-  await page.addInitScript((tokens) => {
+  await page.addInitScript(({ tokens, apiBaseUrl }) => {
     localStorage.setItem('zukan.web.access_token', tokens.accessToken);
     localStorage.setItem('zukan.web.refresh_token', tokens.refreshToken);
     localStorage.setItem('zukan.web.token_type', 'bearer');
-  }, session);
+    localStorage.setItem('zukan.web.api_base_url', apiBaseUrl);
+  }, {
+    tokens: session,
+    apiBaseUrl: API_BASE_URL
+  });
 }

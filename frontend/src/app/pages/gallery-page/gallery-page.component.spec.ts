@@ -136,6 +136,11 @@ describe('GalleryPageComponent', () => {
     expect(mediaService.loadPage).toHaveBeenCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
   });
 
+  it('enables the custom scrollbar mode while the gallery page is mounted', () => {
+    expect(document.documentElement.classList.contains('gallery-custom-scrollbar')).toBe(true);
+    expect(document.body.classList.contains('gallery-custom-scrollbar')).toBe(true);
+  });
+
   it('loads the trash query when the route switches to trash mode', () => {
     mediaService.loadPage.mockClear();
 
@@ -477,5 +482,12 @@ describe('GalleryPageComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Trash is empty');
     expect(fixture.nativeElement.textContent).toContain('Trash');
+  });
+
+  it('removes the custom scrollbar mode when the gallery page is destroyed', () => {
+    fixture.destroy();
+
+    expect(document.documentElement.classList.contains('gallery-custom-scrollbar')).toBe(false);
+    expect(document.body.classList.contains('gallery-custom-scrollbar')).toBe(false);
   });
 });

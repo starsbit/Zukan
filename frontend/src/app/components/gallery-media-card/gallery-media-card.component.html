@@ -75,15 +75,18 @@
     <video
       #previewVideo
       class="media-preview media-preview-video"
+      [class.media-preview-visible]="previewReady"
       [src]="previewUrl"
       [attr.aria-label]="media.original_filename || media.filename"
-      autoplay
-      muted
-      loop
+      [autoplay]="true"
+      [muted]="true"
+      [defaultMuted]="true"
+      [loop]="true"
       playsinline
-      preload="metadata"
+      preload="auto"
       (loadeddata)="onPreviewVideoLoaded(previewVideo)"
       (canplay)="onPreviewVideoLoaded(previewVideo)"
+      (playing)="onPreviewVideoPlaying()"
     ></video>
   }
 

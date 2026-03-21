@@ -1,6 +1,8 @@
+import '@angular/compiler';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, Subject, throwError } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GalleryMediaCardComponent } from './gallery-media-card.component';
 import { MediaUploadService } from '../../services/media-upload.service';
@@ -20,6 +22,8 @@ describe('GalleryMediaCardComponent', () => {
   };
   let createObjectUrlSpy: ReturnType<typeof vi.spyOn>;
   let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
+  let playSpy: ReturnType<typeof vi.spyOn>;
+  let pauseSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     mediaClient = {
@@ -39,6 +43,8 @@ describe('GalleryMediaCardComponent', () => {
 
     createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:thumb-url');
     revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    playSpy = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    pauseSpy = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
 
     await TestBed.configureTestingModule({
       imports: [GalleryMediaCardComponent],
@@ -55,6 +61,8 @@ describe('GalleryMediaCardComponent', () => {
   afterEach(() => {
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
+    playSpy.mockRestore();
+    pauseSpy.mockRestore();
   });
 
   it('loads and renders the thumbnail when it is available', async () => {
@@ -86,30 +94,28 @@ describe('GalleryMediaCardComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('image');
   });
 
-  it('uses a quilted span for landscape media tiles', () => {
+  it('uses the media aspect ratio on the card surface for landscape tiles', () => {
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
 
     fixture.componentRef.setInput('media', createMediaRead({
       metadata: { ...createMediaRead().metadata, width: 1600, height: 900 }
     }));
-    fixture.componentRef.setInput('tileIndex', 0);
     fixture.detectChanges();
 
-    expect(component.gridColumn).toBe('span 5');
-    expect(component.gridRow).toBe('span 2');
+    expect(component.aspectRatio).toBeCloseTo(1600 / 900);
+    expect(fixture.nativeElement.querySelector('.media-card')).toBeTruthy();
   });
 
-  it('uses a taller span for portrait media tiles', () => {
+  it('uses the media aspect ratio on the card surface for portrait tiles', () => {
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
 
     fixture.componentRef.setInput('media', createMediaRead({
       metadata: { ...createMediaRead().metadata, width: 700, height: 1200 }
     }));
-    fixture.componentRef.setInput('tileIndex', 4);
     fixture.detectChanges();
 
-    expect(component.gridColumn).toBe('span 2');
-    expect(component.gridRow).toBe('span 5');
+    expect(component.aspectRatio).toBeCloseTo(700 / 1200);
+    expect(fixture.nativeElement.querySelector('.media-card')).toBeTruthy();
   });
 
   it('shows a compact spinner badge while tagging is pending', async () => {
@@ -325,7 +331,7 @@ describe('GalleryMediaCardComponent', () => {
       metadata: { ...createMediaRead().metadata, mime_type: 'video/mp4', duration_seconds: 45 }
     });
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
-    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['video'])));
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['video'], { type: 'video/mp4' })));
 
     fixture.componentRef.setInput('media', media);
     fixture.detectChanges();
@@ -338,8 +344,18 @@ describe('GalleryMediaCardComponent', () => {
     expect(mediaClient.getMediaFile).toHaveBeenCalledWith(media.id);
     const video = fixture.nativeElement.querySelector('video') as HTMLVideoElement | null;
     expect(video).toBeTruthy();
+    video?.dispatchEvent(new Event('canplay'));
+    fixture.detectChanges();
+
+    expect(component.previewReady).toBe(false);
     expect(video?.muted).toBe(true);
     expect(video?.loop).toBe(true);
+    expect(playSpy).toHaveBeenCalled();
+
+    video?.dispatchEvent(new Event('playing'));
+    fixture.detectChanges();
+
+    expect(component.previewReady).toBe(true);
   });
 
   it('loads a gif preview on hover and removes it when hover ends', async () => {
@@ -386,7 +402,7 @@ describe('GalleryMediaCardComponent', () => {
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  it('computes layout spans from metadata and revokes object URLs on destroy', async () => {
+  it('uses metadata aspect ratio and revokes object URLs on destroy', async () => {
     mediaClient.getMediaThumbnail.mockReturnValue(of(new Blob(['thumb'])));
 
     fixture.componentRef.setInput('media', createMediaRead({
@@ -402,9 +418,7 @@ describe('GalleryMediaCardComponent', () => {
     await fixture.whenStable();
 
     expect(component.aspectRatio).toBeCloseTo(1920 / 1080);
-    expect(component.columnSpan).toBe(5);
-    expect(component.gridColumn).toBe('span 5');
-    expect(component.gridRow).toBe('span 2');
+    expect(fixture.nativeElement.querySelector('.media-card')).toBeTruthy();
 
     fixture.destroy();
 

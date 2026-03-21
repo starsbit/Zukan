@@ -11,8 +11,7 @@
   <aside class="gallery-sidebar" aria-label="Gallery navigation">
     <mat-card appearance="outlined">
       <mat-card-header>
-        <mat-card-title>Media</mat-card-title>
-        <mat-card-subtitle>Library</mat-card-subtitle>
+        <mat-card-title>Zukan</mat-card-title>
       </mat-card-header>
       <mat-nav-list>
         <a
@@ -86,78 +85,79 @@
         />
       }
 
-      @if (dragActive && !isTrashView) {
-        <div class="drop-overlay" aria-hidden="true">
-          <mat-icon>cloud_upload</mat-icon>
-          <div>
-            <h2>Drop files to upload</h2>
-            <p>Your batch will be sent to the gallery right away.</p>
-          </div>
-        </div>
-      }
-
-      @if (loading$ | async) {
-        <section class="gallery-state loading-state">
-          <mat-spinner diameter="42"></mat-spinner>
-          <p>Loading media...</p>
-        </section>
-      } @else if (error$ | async) {
-        <section class="gallery-state error-state">
-          <mat-icon>error</mat-icon>
-          <div>
-            <h2>{{ isTrashView ? 'Trash unavailable' : 'Gallery unavailable' }}</h2>
-            <p>We could not fetch your latest media from the API.</p>
-          </div>
-          <button mat-flat-button type="button" (click)="reload()">Try again</button>
-        </section>
-      } @else {
-        @let items = (items$ | async) ?? [];
-
-        @if (items.length === 0) {
-          <section class="gallery-state empty-state">
-            <mat-icon>{{ isTrashView ? 'delete_outline' : 'imagesmode' }}</mat-icon>
+      <section #galleryScroller class="gallery-content-scroll" (scroll)="onGalleryScroll()">
+        @if (dragActive && !isTrashView) {
+          <div class="drop-overlay" aria-hidden="true">
+            <mat-icon>cloud_upload</mat-icon>
             <div>
-              <h2>{{ isTrashView ? 'Trash is empty' : 'No matching media' }}</h2>
-              <p>{{ isTrashView ? 'Deleted items will show up here until you restore or purge them.' : 'Try adjusting your search or filters.' }}</p>
+              <h2>Drop files to upload</h2>
+              <p>Your batch will be sent to the gallery right away.</p>
             </div>
+          </div>
+        }
+
+        @if (loading$ | async) {
+          <section class="gallery-state loading-state">
+            <mat-spinner diameter="42"></mat-spinner>
+            <p>Loading media...</p>
+          </section>
+        } @else if (error$ | async) {
+          <section class="gallery-state error-state">
+            <mat-icon>error</mat-icon>
+            <div>
+              <h2>{{ isTrashView ? 'Trash unavailable' : 'Gallery unavailable' }}</h2>
+              <p>We could not fetch your latest media from the API.</p>
+            </div>
+            <button mat-flat-button type="button" (click)="reload()">Try again</button>
           </section>
         } @else {
-          <section class="gallery-groups" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
-            @for (group of groupedItems; track group.key) {
-              <section #groupSection class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
-                <header class="gallery-group-header">
-                  <h2 class="gallery-group-title" [id]="'gallery-group-' + group.key">{{ group.label }}</h2>
-                  <button
-                    mat-button
-                    type="button"
-                    class="gallery-group-select"
-                    [attr.aria-pressed]="isGroupSelected(group)"
-                    (click)="selectGroup(group)"
-                  >
-                    <mat-icon>{{ isGroupSelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
-                    <span>Select all</span>
-                  </button>
-                </header>
+          @let items = (items$ | async) ?? [];
 
-                <section class="gallery-grid">
-                  @for (item of group.items; track item.id; let itemIndex = $index) {
-                    <app-gallery-media-card
-                      [media]="item"
-                      [tileIndex]="itemIndex"
-                      [selectionMode]="selectionMode"
-                      [selected]="isSelected(item.id)"
-                      [trashMode]="isTrashView"
-                      (open)="openMedia($event)"
-                      (selectionToggled)="toggleSelection($event)"
-                      (restoreRequested)="restoreMedia($event)"
-                    />
-                  }
+          @if (items.length === 0) {
+            <section class="gallery-state empty-state">
+              <mat-icon>{{ isTrashView ? 'delete_outline' : 'imagesmode' }}</mat-icon>
+              <div>
+                <h2>{{ isTrashView ? 'Trash is empty' : 'No matching media' }}</h2>
+                <p>{{ isTrashView ? 'Deleted items will show up here until you restore or purge them.' : 'Try adjusting your search or filters.' }}</p>
+              </div>
+            </section>
+          } @else {
+            <section class="gallery-groups" [attr.aria-label]="isTrashView ? 'Trashed media' : 'Newest media'">
+              @for (group of groupedItems; track group.key) {
+                <section #groupSection class="gallery-group" [attr.aria-labelledby]="'gallery-group-' + group.key">
+                  <header class="gallery-group-header">
+                    <h2 class="gallery-group-title" [id]="'gallery-group-' + group.key">{{ group.label }}</h2>
+                    <button
+                      mat-button
+                      type="button"
+                      class="gallery-group-select"
+                      [attr.aria-pressed]="isGroupSelected(group)"
+                      (click)="selectGroup(group)"
+                    >
+                      <mat-icon>{{ isGroupSelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      <span>Select all</span>
+                    </button>
+                  </header>
+
+                  <section class="gallery-grid" [class.gallery-grid-single]="group.items.length === 1">
+                    @for (item of group.items; track item.id) {
+                      <app-gallery-media-card
+                        [media]="item"
+                        [selectionMode]="selectionMode"
+                        [selected]="isSelected(item.id)"
+                        [trashMode]="isTrashView"
+                        (open)="openMedia($event)"
+                        (selectionToggled)="toggleSelection($event)"
+                        (restoreRequested)="restoreMedia($event)"
+                      />
+                    }
+                  </section>
                 </section>
-              </section>
-            }
-          </section>
+              }
+            </section>
+          }
         }
-      }
+      </section>
     </section>
 
     @if (timelineMarkers.length > 0) {
@@ -189,7 +189,12 @@
         }
 
         @if (activeTimelineLabel) {
-          <div class="gallery-timeline-current" [style.top.%]="activeTimelineTopPercent" aria-hidden="true">
+          <div
+            class="gallery-timeline-current"
+            [class.gallery-timeline-current-visible]="timelineCurrentVisible"
+            [style.top.%]="activeTimelineTopPercent"
+            aria-hidden="true"
+          >
             {{ activeTimelineLabel }}
           </div>
         }

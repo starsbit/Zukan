@@ -1,9 +1,10 @@
 :host {
   display: block;
+  flex: calc(var(--media-aspect-ratio, 1) * 100) 1 calc(var(--gallery-row-height, 12rem) * var(--media-aspect-ratio, 1));
+  width: auto;
   min-width: 0;
-  height: 100%;
-  overflow: hidden;
-  border-radius: 0.55rem;
+  max-width: 100%;
+  height: var(--gallery-row-height, 12rem);
 }
 
 .media-card {
@@ -15,7 +16,7 @@
   overflow: hidden;
   padding: 0;
   border: 0;
-  border-radius: inherit;
+  border-radius: 0.45rem;
   background-color: var(--mat-sys-surface-container);
   cursor: pointer;
   text-align: left;
@@ -71,8 +72,13 @@
   pointer-events: none;
 }
 
-.media-card-previewing .media-preview {
+.media-card-previewing .media-preview:not(.media-preview-video),
+.media-preview-visible {
   opacity: 1;
+}
+
+.media-preview-video {
+  background: transparent;
 }
 
 .media-fallback {

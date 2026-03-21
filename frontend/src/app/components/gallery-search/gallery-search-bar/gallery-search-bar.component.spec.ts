@@ -67,6 +67,23 @@ describe('GallerySearchBarComponent', () => {
     expect(component.queryControl.getRawValue()).toBe('tag:fox');
   });
 
+  it('submits the selected autocomplete token when enter is pressed on an active option', () => {
+    const submittedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
+    component.queryControl.setValue('aya');
+
+    component.queryControl.setValue({
+      kind: 'character',
+      label: 'Ayanami Rei',
+      token: 'character:ayanami_rei',
+      secondary: '1 match'
+    });
+    component.submit();
+
+    expect(submittedSpy).toHaveBeenCalledWith('character:ayanami_rei');
+    expect(component.queryControl.getRawValue()).toBe('character:ayanami_rei');
+  });
+
   it('displays labels for suggestion objects', () => {
     expect(component.displaySuggestion(null)).toBe('');
     expect(component.displaySuggestion('fox')).toBe('fox');
@@ -78,7 +95,9 @@ describe('GallerySearchBarComponent', () => {
     })).toBe('forest');
   });
 
-  it('replaces the active token when a suggestion is selected', () => {
+  it('replaces the active token and submits the search when a suggestion is selected', () => {
+    const submittedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
     component.queryControl.setValue('tag:fo');
 
     component.selectSuggestion({
@@ -89,6 +108,7 @@ describe('GallerySearchBarComponent', () => {
     });
 
     expect(component.queryControl.getRawValue()).toBe('tag:fox ');
+    expect(submittedSpy).toHaveBeenCalledWith('tag:fox');
   });
 
   it('clears the search text, suggestion lists, and emits a clear event', () => {

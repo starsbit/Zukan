@@ -1,6 +1,6 @@
 import { APIRequestContext, expect } from '@playwright/test';
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
 
 export interface MediaItem {
   id: string;

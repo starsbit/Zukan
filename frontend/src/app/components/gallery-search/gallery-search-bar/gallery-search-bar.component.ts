@@ -113,7 +113,7 @@ export class GallerySearchBarComponent implements OnChanges {
 
   submit(): void {
     const value = this.queryControl.getRawValue();
-    const submittedQuery = (typeof value === 'string' ? value : this.lastTextValue).trim();
+    const submittedQuery = this.resolveSubmittedQuery(value).trim();
 
     this.lastTextValue = submittedQuery;
     this.queryControl.setValue(submittedQuery, { emitEvent: false });
@@ -130,6 +130,7 @@ export class GallerySearchBarComponent implements OnChanges {
     this.lastTextValue = nextValue;
     this.queryControl.setValue(nextValue, { emitEvent: false });
     this.cdr.markForCheck();
+    this.searchSubmitted.emit(nextValue.trim());
   }
 
   clearAll(): void {
@@ -139,5 +140,17 @@ export class GallerySearchBarComponent implements OnChanges {
     this.characterSuggestions = [];
     this.cdr.markForCheck();
     this.cleared.emit();
+  }
+
+  private resolveSubmittedQuery(value: string | GallerySearchSuggestion): string {
+    if (typeof value === 'string') {
+      return value;
+    }
+
+    if (this.lastTextValue.trim()) {
+      return replaceActiveToken(this.lastTextValue, value.token).trim();
+    }
+
+    return value.token;
   }
 }

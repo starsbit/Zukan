@@ -4,6 +4,8 @@ import { createSession, seedLocalAuth } from './helpers/auth';
 import { listMedia, listMediaWithQuery, waitForMedia } from './helpers/media-api';
 import { bluePngFile, redPngFile } from './helpers/media-fixtures';
 
+const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
+
 test('uploads an image through the UI, renders it in the gallery, and applies tags in the backend', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
@@ -66,7 +68,7 @@ test('auto refreshes uploaded image state in the gallery when tagging finishes',
 
 test('processes uploaded media through the API and persists derived tags', async ({ request }) => {
   const session = await createSession(request);
-  const upload = await request.post('http://127.0.0.1:8000/media', {
+  const upload = await request.post(`${API_BASE_URL}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -128,7 +130,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
   const session = await createSession(request);
   await seedLocalAuth(page, session);
 
-  const firstUpload = await request.post('http://127.0.0.1:8000/media', {
+  const firstUpload = await request.post(`${API_BASE_URL}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -138,7 +140,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
   });
   await expect(firstUpload).toBeOK();
 
-  const secondUpload = await request.post('http://127.0.0.1:8000/media', {
+  const secondUpload = await request.post(`${API_BASE_URL}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -259,7 +261,7 @@ test('allows reuploading the same files after trash is emptied through the API',
 
   expect(mediaIds).toHaveLength(2);
 
-  const trashResponse = await request.patch('http://127.0.0.1:8000/media', {
+  const trashResponse = await request.patch(`${API_BASE_URL}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -270,7 +272,7 @@ test('allows reuploading the same files after trash is emptied through the API',
   });
   await expect(trashResponse).toBeOK();
 
-  const emptyTrashResponse = await request.delete('http://127.0.0.1:8000/media/trash', {
+  const emptyTrashResponse = await request.delete(`${API_BASE_URL}/media/trash`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     }

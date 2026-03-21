@@ -1,4 +1,4 @@
-import { AsyncPipe } from '@angular/common';
+import { AsyncPipe, DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
@@ -6,6 +6,7 @@ import {
   DestroyRef,
   ElementRef,
   HostListener,
+  OnDestroy,
   NgZone,
   QueryList,
   ViewChild,
@@ -48,6 +49,9 @@ interface GalleryTimelineYear {
   topPercent: number;
 }
 
+const TIMELINE_EDGE_PERCENT = 1.5;
+const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
+
 @Component({
   selector: 'app-gallery-page',
   imports: [
@@ -68,15 +72,17 @@ interface GalleryTimelineYear {
   styleUrl: './gallery-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GalleryPageComponent {
+export class GalleryPageComponent implements OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly document = inject(DOCUMENT);
   private readonly ngZone = inject(NgZone);
   private readonly route = inject(ActivatedRoute);
   private readonly mediaService = inject(MediaService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
   @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('galleryScroller') private galleryScroller?: ElementRef<HTMLElement>;
   @ViewChildren('groupSection') private groupSections?: QueryList<ElementRef<HTMLElement>>;
 
   readonly items$ = this.mediaService.items$;
@@ -95,9 +101,11 @@ export class GalleryPageComponent {
   activeTimelineYear: string | null = null;
   activeTimelineLabel = '';
   activeTimelineTopPercent = 0;
+  timelineCurrentVisible = false;
   private currentItems: MediaRead[] = [];
   groupedItems: GalleryDayGroup[] = [];
   private dragDepth = 0;
+  private timelineLabelHideTimeoutId: number | null = null;
   private timelineRefreshQueued = false;
   searchState: GallerySearchState = {
     searchText: '',
@@ -106,6 +114,8 @@ export class GalleryPageComponent {
   private activeQuery = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
 
   constructor() {
+    this.setCustomScrollbarMode(true);
+
     this.route.data
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((data) => {
@@ -129,6 +139,11 @@ export class GalleryPageComponent {
         this.groupedItems = buildGalleryDayGroups(items);
         this.scheduleTimelineRefresh();
       });
+  }
+
+  ngOnDestroy(): void {
+    this.clearTimelineLabelHideTimeout();
+    this.setCustomScrollbarMode(false);
   }
 
   ngAfterViewInit(): void {
@@ -242,8 +257,8 @@ export class GalleryPageComponent {
     this.selectedMedia = null;
   }
 
-  @HostListener('window:scroll')
-  onWindowScroll(): void {
+  onGalleryScroll(): void {
+    this.showTimelineCurrentTemporarily();
     this.scheduleTimelineRefresh();
   }
 
@@ -395,13 +410,24 @@ export class GalleryPageComponent {
 
   scrollToGroup(groupKey: string): void {
     const section = this.findGroupElement(groupKey);
+    const scroller = this.galleryScroller?.nativeElement;
     if (!section) {
       return;
     }
 
-    section.scrollIntoView({
+    this.showTimelineCurrentTemporarily();
+
+    if (!scroller) {
+      section.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start'
+      });
+      return;
+    }
+
+    scroller.scrollTo({
       behavior: 'smooth',
-      block: 'start'
+      top: Math.max(0, section.offsetTop - getTimelineScrollOffset() - getGroupScrollTopAdjustment(section))
     });
   }
 
@@ -449,26 +475,32 @@ export class GalleryPageComponent {
 
   private refreshTimeline(): void {
     const sections = this.groupSections?.toArray() ?? [];
-    if (sections.length === 0 || this.groupedItems.length === 0 || typeof window === 'undefined') {
+    const scroller = this.galleryScroller?.nativeElement;
+    if (sections.length === 0 || this.groupedItems.length === 0 || !scroller) {
       this.timelineMarkers = [];
       this.timelineYears = [];
       this.activeTimelineKey = null;
       this.activeTimelineYear = null;
       this.activeTimelineLabel = '';
       this.activeTimelineTopPercent = 0;
+      this.timelineCurrentVisible = false;
       this.cdr.markForCheck();
       return;
     }
 
+    const scrollerRect = scroller.getBoundingClientRect();
     const metrics = sections.map((sectionRef, index) => {
       const element = sectionRef.nativeElement;
       const header = element.querySelector('.gallery-group-header') as HTMLElement | null;
       const anchor = header ?? element;
       const rect = anchor.getBoundingClientRect();
+      const anchorTop = rect.top - scrollerRect.top + scroller.scrollTop;
+      const targetScrollTop = Math.max(0, anchorTop - getTimelineScrollOffset());
 
       return {
         key: this.groupedItems[index]?.key ?? '',
-        center: rect.top + window.scrollY + (rect.height / 2)
+        center: anchorTop + (rect.height / 2),
+        targetScrollTop
       };
     }).filter((metric) => metric.key.length > 0);
 
@@ -476,15 +508,17 @@ export class GalleryPageComponent {
       return;
     }
 
-    const firstCenter = metrics[0].center;
-    const lastCenter = metrics[metrics.length - 1].center;
-    const range = Math.max(lastCenter - firstCenter, 1);
+    const maxScroll = Math.max(
+      scroller.scrollHeight - scroller.clientHeight,
+      1
+    );
+    const currentScroll = Math.max(0, Math.min(scroller.scrollTop, maxScroll));
 
     this.timelineMarkers = metrics.map((metric) => ({
       key: metric.key,
       ariaLabel: formatTimelineMarkerLabel(metric.key),
       year: metric.key.slice(0, 4),
-      topPercent: clampPercent(((metric.center - firstCenter) / range) * 100)
+      topPercent: toTimelinePercent(metric.targetScrollTop / maxScroll)
     }));
 
     const years = new Map<string, GalleryTimelineYear>();
@@ -498,15 +532,15 @@ export class GalleryPageComponent {
     }
     this.timelineYears = Array.from(years.values());
 
-    const viewportCenter = window.scrollY + (window.innerHeight / 2);
+    const viewportTop = currentScroll + getTimelineScrollOffset();
     const activeMetric = metrics.reduce((closest, candidate) =>
-      Math.abs(candidate.center - viewportCenter) < Math.abs(closest.center - viewportCenter) ? candidate : closest
+      Math.abs(candidate.center - viewportTop) < Math.abs(closest.center - viewportTop) ? candidate : closest
     );
 
     this.activeTimelineKey = activeMetric.key;
     this.activeTimelineYear = activeMetric.key.slice(0, 4);
     this.activeTimelineLabel = formatTimelineCurrentLabel(activeMetric.key);
-    this.activeTimelineTopPercent = clampPercent(((activeMetric.center - firstCenter) / range) * 100);
+    this.activeTimelineTopPercent = toTimelinePercent(currentScroll / maxScroll);
     this.cdr.markForCheck();
   }
 
@@ -514,6 +548,37 @@ export class GalleryPageComponent {
     const sections = this.groupSections?.toArray() ?? [];
     const index = this.groupedItems.findIndex((group) => group.key === groupKey);
     return index >= 0 ? sections[index]?.nativeElement ?? null : null;
+  }
+
+  private setCustomScrollbarMode(enabled: boolean): void {
+    const html = this.document.documentElement;
+    const body = this.document.body;
+
+    html.classList.toggle('gallery-custom-scrollbar', enabled);
+    body.classList.toggle('gallery-custom-scrollbar', enabled);
+  }
+
+  private showTimelineCurrentTemporarily(): void {
+    this.timelineCurrentVisible = true;
+    this.clearTimelineLabelHideTimeout();
+
+    if (typeof window !== 'undefined') {
+      this.timelineLabelHideTimeoutId = window.setTimeout(() => {
+        this.timelineCurrentVisible = false;
+        this.cdr.markForCheck();
+      }, TIMELINE_LABEL_HIDE_DELAY_MS);
+    }
+
+    this.cdr.markForCheck();
+  }
+
+  private clearTimelineLabelHideTimeout(): void {
+    if (this.timelineLabelHideTimeoutId === null || typeof window === 'undefined') {
+      return;
+    }
+
+    window.clearTimeout(this.timelineLabelHideTimeoutId);
+    this.timelineLabelHideTimeoutId = null;
   }
 }
 
@@ -571,11 +636,19 @@ function getLocalDayKey(value: string): string {
 }
 
 function formatGroupLabel(value: string): string {
-  return new Intl.DateTimeFormat(undefined, {
+  const date = new Date(value);
+  const now = new Date();
+  const options: Intl.DateTimeFormatOptions = {
     weekday: 'short',
     month: 'short',
     day: 'numeric'
-  }).format(new Date(value));
+  };
+
+  if (date.getFullYear() !== now.getFullYear()) {
+    options.year = 'numeric';
+  }
+
+  return new Intl.DateTimeFormat(undefined, options).format(date);
 }
 
 function formatTimelineMarkerLabel(groupKey: string): string {
@@ -597,4 +670,19 @@ function formatTimelineCurrentLabel(groupKey: string): string {
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+function getTimelineScrollOffset(): number {
+  return 24;
+}
+
+function getGroupScrollTopAdjustment(section: HTMLElement): number {
+  const header = section.querySelector('.gallery-group-header') as HTMLElement | null;
+  return header ? Math.max(0, header.offsetTop) : 0;
+}
+
+function toTimelinePercent(progress: number): number {
+  const boundedProgress = clampPercent(progress * 100) / 100;
+  const safeRange = 100 - (TIMELINE_EDGE_PERCENT * 2);
+  return clampPercent(TIMELINE_EDGE_PERCENT + (boundedProgress * safeRange));
 }
