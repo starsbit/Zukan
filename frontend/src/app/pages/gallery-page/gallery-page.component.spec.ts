@@ -539,6 +539,7 @@ describe('GalleryPageComponent', () => {
 
     expect(fixture.nativeElement.textContent).toContain('Trash is empty');
     expect(fixture.nativeElement.textContent).toContain('Trash');
+    expect(fixture.nativeElement.textContent).toContain('Items in trash are deleted automatically after 30 days.');
   });
 
   it('removes the custom scrollbar mode when the gallery page is destroyed', () => {

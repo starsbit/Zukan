@@ -85,6 +85,13 @@
         />
       }
 
+      @if (isTrashView) {
+        <section class="trash-retention-notice" aria-label="Trash retention notice">
+          <mat-icon>warning_amber</mat-icon>
+          <p>Items in trash are deleted automatically after 30 days.</p>
+        </section>
+      }
+
       <section #galleryScroller class="gallery-content-scroll" (scroll)="onGalleryScroll()">
         @if (dragActive && !isTrashView) {
           <div class="drop-overlay" aria-hidden="true">
@@ -128,7 +135,7 @@
               <mat-icon>{{ isTrashView ? 'delete_outline' : 'imagesmode' }}</mat-icon>
               <div>
                 <h2>{{ isTrashView ? 'Trash is empty' : 'No matching media' }}</h2>
-                <p>{{ isTrashView ? 'Deleted items will show up here until you restore or purge them.' : 'Try adjusting your search or filters.' }}</p>
+                <p>{{ isTrashView ? 'Deleted items will show up here until you restore them, purge them, or they expire after 30 days.' : 'Try adjusting your search or filters.' }}</p>
               </div>
             </section>
           } @else {
