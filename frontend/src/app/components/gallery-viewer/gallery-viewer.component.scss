@@ -1,5 +1,6 @@
 :host {
   display: contents;
+  --viewer-media-surface: color-mix(in srgb, var(--mat-sys-surface-container-low) 88%, black 12%);
 }
 
 .viewer-backdrop {
@@ -31,11 +32,7 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 0.75rem 1rem;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--mat-sys-surface-container-highest) 90%, transparent),
-    color-mix(in srgb, var(--mat-sys-surface-container-high) 58%, transparent)
-  );
+  background: var(--viewer-media-surface);
   border-bottom: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 60%, transparent);
 }
 
@@ -93,11 +90,7 @@
   overflow: hidden;
   background:
     radial-gradient(circle at center, color-mix(in srgb, var(--mat-sys-primary) 10%, transparent), transparent 52%),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mat-sys-surface-container-highest) 94%, black 6%),
-      color-mix(in srgb, var(--mat-sys-surface-container-low) 88%, black 12%)
-    );
+    var(--viewer-media-surface);
 }
 
 .viewer-media-draggable {
