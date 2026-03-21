@@ -243,16 +243,26 @@ def test_image_service_trash_restore_on_this_day_and_purge_flow(api):
         restored.captured_at = datetime.now(timezone.utc).replace(year=datetime.now(timezone.utc).year - 1)
         await session.commit()
 
-        on_this_day = await image_service.on_this_day(
+        on_this_day = await image_service.list_images(
             session,
             db_user,
-            ImageMetadataFilter(
+            ImageListState.ACTIVE,
+            tags=None,
+            character_name=None,
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.DEFAULT,
+            status_filter=None,
+            metadata=ImageMetadataFilter(
                 captured_month=restored.captured_at.month,
                 captured_day=restored.captured_at.day,
                 captured_before_year=datetime.now(timezone.utc).year,
             ),
+            favorited=None,
+            page=1,
+            page_size=20,
         )
-        assert [item.id for year in on_this_day.years for item in year.images] == [kept_id]
+        assert [item.id for item in on_this_day.items] == [kept_id]
 
         await image_service.soft_delete_image(session, kept_id, db_user)
         await image_service.empty_trash(session, db_user)

@@ -280,15 +280,6 @@ class UserListResponse(BaseModel):
     items: list[UserRead]
 
 
-class OnThisDayYear(BaseModel):
-    year: int
-    images: list[ImageRead]
-
-
-class OnThisDayResponse(BaseModel):
-    years: list[OnThisDayYear]
-
-
 class UploadResult(BaseModel):
     id: uuid.UUID | None
     original_filename: str

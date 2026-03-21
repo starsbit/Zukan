@@ -200,12 +200,12 @@ def test_user_journey_full_personal_library_workflow(api):
     now = api.fetch_image_row(first["id"]).captured_at
     api.set_image_captured_at(str(first["id"]), now.replace(year=now.year - 1))
     on_this_day = api.client.get(
-        "/images/on-this-day",
+        "/images",
         headers=headers,
         params={"captured_month": now.month, "captured_day": now.day, "captured_before_year": now.year + 1},
     )
     assert on_this_day.status_code == 200
-    assert on_this_day.json()["years"]
+    assert on_this_day.json()["items"]
 
     purge = api.client.request(
         "DELETE",

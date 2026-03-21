@@ -22,7 +22,6 @@ from app.schemas import (
     ImageMetadataFilter,
     ImageUpdate,
     NsfwFilter,
-    OnThisDayResponse,
     TagFilterMode,
     TaggingJobQueuedResponse,
 )
@@ -135,20 +134,6 @@ async def empty_trash(
     db: AsyncSession = Depends(get_db),
 ):
     await image_service.empty_trash(db, user)
-
-
-@router.get(
-    "/on-this-day",
-    response_model=OnThisDayResponse,
-    summary="List On-This-Day Images",
-    response_description="Images captured on the same month and day in previous years.",
-)
-async def on_this_day(
-    metadata: Annotated[ImageMetadataFilter, Depends(image_metadata_filter_query)],
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await image_service.on_this_day(db, user, metadata)
 
 
 @router.post("/download", summary="Download Images", response_description="ZIP archive of the requested images.")

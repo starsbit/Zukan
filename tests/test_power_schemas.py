@@ -13,8 +13,6 @@ from app.schemas import (
     ImageBatchDelete,
     ImageBatchUpdate,
     ImageMetadataFilter,
-    OnThisDayResponse,
-    OnThisDayYear,
 )
 
 
@@ -160,28 +158,6 @@ def test_admin_stats_response():
     )
     assert m.total_users == 10
     assert m.trashed_images == 12
-
-
-# --- OnThisDayYear / OnThisDayResponse ---
-
-def test_on_this_day_year_empty_images():
-    m = OnThisDayYear(year=2023, images=[])
-    assert m.year == 2023
-    assert m.images == []
-
-
-def test_on_this_day_response_multiple_years():
-    m = OnThisDayResponse(years=[
-        OnThisDayYear(year=2024, images=[]),
-        OnThisDayYear(year=2023, images=[]),
-    ])
-    assert len(m.years) == 2
-    assert m.years[0].year == 2024
-
-
-def test_on_this_day_response_empty():
-    m = OnThisDayResponse(years=[])
-    assert m.years == []
 
 
 def test_image_metadata_filter_allows_partial_date_groups():

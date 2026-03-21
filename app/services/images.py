@@ -23,8 +23,6 @@ from app.schemas import (
     ImageRead,
     ImageUpdate,
     NsfwFilter,
-    OnThisDayResponse,
-    OnThisDayYear,
     TagFilterMode,
     TagWithConfidence,
     UploadResult,
@@ -265,39 +263,6 @@ async def list_favorites(
         page_size=page_size,
         items=[_build_image_read(row, True) for row in rows],
     )
-
-
-async def on_this_day(db: AsyncSession, user: User, metadata: ImageMetadataFilter) -> OnThisDayResponse:
-    now = datetime.now(timezone.utc)
-    effective_metadata = ImageMetadataFilter(
-        captured_year=metadata.captured_year,
-        captured_month=metadata.captured_month or now.month,
-        captured_day=metadata.captured_day or now.day,
-        captured_before_year=metadata.captured_before_year or now.year,
-    )
-
-    listing = await list_images(
-        db,
-        user,
-        ImageListState.ACTIVE,
-        tags=None,
-        character_name=None,
-        exclude_tags=None,
-        mode=TagFilterMode.AND,
-        nsfw=NsfwFilter.DEFAULT,
-        status_filter=None,
-        metadata=effective_metadata,
-        favorited=None,
-        page=1,
-        page_size=500,
-    )
-
-    by_year: dict[int, list[ImageRead]] = {}
-    for item in listing.items:
-        year = item.metadata.captured_at.year
-        by_year.setdefault(year, []).append(item)
-
-    return OnThisDayResponse(years=[OnThisDayYear(year=year, images=items) for year, items in sorted(by_year.items(), reverse=True)])
 
 
 async def build_upload_response(db: AsyncSession, user: User, files: list[UploadFile]) -> BatchUploadResponse:

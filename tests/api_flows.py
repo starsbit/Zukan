@@ -307,12 +307,12 @@ def assert_image_lifecycle_download_and_on_this_day_endpoints(api):
 
     api.set_image_captured_at(str(first["id"]), captured_at.replace(year=captured_at.year - 1))
     on_this_day = api.client.get(
-        "/images/on-this-day",
+        "/images",
         headers=headers,
         params={"captured_month": 3, "captured_day": 21, "captured_before_year": datetime.now(timezone.utc).year},
     )
     assert on_this_day.status_code == 200
-    assert [item["id"] for year in on_this_day.json()["years"] for item in year["images"]] == [str(first["id"])]
+    assert [item["id"] for item in on_this_day.json()["items"]] == [str(first["id"])]
 
     assert api.client.patch(f"/images/{second['id']}", headers=headers, json={"deleted": True}).status_code == 200
     restored_upload = api.client.post(
@@ -378,7 +378,7 @@ def assert_image_upload_edge_cases(api):
     partial_metadata_filter = api.client.get("/images", headers=headers, params={"captured_month": 3})
     assert partial_metadata_filter.status_code == 200
 
-    invalid_on_this_day = api.client.get("/images/on-this-day", headers=headers, params={"captured_month": 2, "captured_day": 30})
+    invalid_on_this_day = api.client.get("/images", headers=headers, params={"captured_month": 2, "captured_day": 30})
     assert invalid_on_this_day.status_code == 422
 
 
@@ -513,16 +513,12 @@ def assert_image_complex_query_regression(api):
     assert [item["id"] for item in nsfw_metadata_filter.json()["items"]] == [str(red["id"])]
 
     on_this_day = api.client.get(
-        "/images/on-this-day",
+        "/images",
         headers=headers,
         params={"captured_month": 3, "captured_day": 21, "captured_before_year": 2023},
     )
     assert on_this_day.status_code == 200
-    assert [year["year"] for year in on_this_day.json()["years"]] == [2022, 2020]
-    assert [item["id"] for year in on_this_day.json()["years"] for item in year["images"]] == [
-        str(blue["id"]),
-        str(red["id"]),
-    ]
+    assert [item["id"] for item in on_this_day.json()["items"]] == [str(blue["id"]), str(red["id"])]
 
     impossible_combo = api.client.get(
         "/images",
