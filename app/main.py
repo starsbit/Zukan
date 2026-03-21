@@ -1,5 +1,4 @@
 import asyncio
-import secrets
 import uuid
 from contextlib import asynccontextmanager
 
@@ -14,7 +13,7 @@ from sqlalchemy import delete, select
 from app.database import AsyncSessionLocal, init_db
 from app.models import Image, ImageTag, Tag, User
 from app.routers import admin, albums, auth, images, tags, users
-from app.services.auth import get_user_by_username, hash_password, verify_password
+from app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
 from app.services.images import set_tag_queue
 from app.services.tagger import tagger
 
@@ -95,10 +94,8 @@ async def _ensure_admin_user():
 
 async def docs_user(credentials: HTTPBasicCredentials = Depends(docs_basic)) -> User:
     async with AsyncSessionLocal() as db:
-        user = await get_user_by_username(db, credentials.username)
-        valid_user = user is not None and secrets.compare_digest(user.username, credentials.username)
-        valid_password = user is not None and verify_password(credentials.password, user.hashed_password)
-        if not valid_user or not valid_password:
+        user = await authenticate_basic_user(db, credentials.username, credentials.password)
+        if user is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unauthorized",

@@ -107,6 +107,15 @@ async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
     return result.scalar_one_or_none()
 
 
+async def authenticate_basic_user(db: AsyncSession, username: str, password: str) -> User | None:
+    user = await get_user_by_username(db, username)
+    valid_user = user is not None and secrets.compare_digest(user.username, username)
+    valid_password = user is not None and verify_password(password, user.hashed_password)
+    if not valid_user or not valid_password:
+        return None
+    return user
+
+
 async def register_user(db: AsyncSession, body: UserRegister) -> User:
     if await get_user_by_username(db, body.username):
         raise HTTPException(status_code=400, detail="Username already taken")

@@ -85,6 +85,27 @@ def assert_docs_require_authorization(api):
     wrong_docs = api.client.get("/docs", auth=api.basic_auth("docs-user", "wrongpass123"))
     assert wrong_docs.status_code == 401
 
+    redoc_without_auth = api.client.get("/redoc")
+    assert redoc_without_auth.status_code == 401
+    assert redoc_without_auth.headers["www-authenticate"] == "Basic"
+
+    wrong_redoc = api.client.get("/redoc", auth=api.basic_auth("docs-user", "wrongpass123"))
+    assert wrong_redoc.status_code == 401
+
+    redirect_without_auth = api.client.get("/docs/oauth2-redirect")
+    assert redirect_without_auth.status_code == 401
+    assert redirect_without_auth.headers["www-authenticate"] == "Basic"
+
+    wrong_redirect = api.client.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "wrongpass123"))
+    assert wrong_redirect.status_code == 401
+
+    openapi_without_auth = api.client.get("/openapi.json")
+    assert openapi_without_auth.status_code == 401
+    assert openapi_without_auth.headers["www-authenticate"] == "Basic"
+
+    wrong_openapi = api.client.get("/openapi.json", auth=api.basic_auth("docs-user", "wrongpass123"))
+    assert wrong_openapi.status_code == 401
+
     openapi = api.client.get("/openapi.json", auth=api.basic_auth("docs-user", "password123"))
     assert openapi.status_code == 200
     assert openapi.json()["info"]["title"] == "Zukan"
@@ -93,9 +114,17 @@ def assert_docs_require_authorization(api):
     assert swagger.status_code == 200
     assert "Swagger UI" in swagger.text
 
+    swagger_authenticated_me = api.client.get("/users/me", auth=api.basic_auth("docs-user", "password123"))
+    assert swagger_authenticated_me.status_code == 200
+    assert swagger_authenticated_me.json()["username"] == user["user"]["username"]
+
     redoc = api.client.get("/redoc", auth=api.basic_auth("docs-user", "password123"))
     assert redoc.status_code == 200
     assert "ReDoc" in redoc.text
+
+    redirect = api.client.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "password123"))
+    assert redirect.status_code == 200
+    assert "oauth2" in redirect.text.lower()
 
 
 def assert_image_tag_search_and_favorite_endpoints(api):
