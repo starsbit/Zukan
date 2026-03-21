@@ -93,6 +93,13 @@
   overflow-x: hidden;
   padding-right: 0.35rem;
   scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.gallery-content-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .drop-overlay {
@@ -263,6 +270,18 @@
   position: absolute;
   top: 0.75rem;
   bottom: 0.75rem;
+  right: 0;
+  width: 2.2rem;
+  pointer-events: auto;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.gallery-timeline-track::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
   right: 0.9rem;
   width: 2px;
   border-radius: 999px;
@@ -326,10 +345,25 @@
   outline: none;
 }
 
-.gallery-timeline-current {
+.gallery-timeline-readout {
   position: absolute;
-  right: 1.55rem;
   transform: translateY(-50%);
+  right: 0;
+  left: 0;
+  height: 1.2rem;
+  pointer-events: none;
+}
+
+.gallery-timeline-readout-label,
+.gallery-timeline-readout-line,
+.gallery-timeline-readout-dot {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.gallery-timeline-readout-label {
+  right: 1.7rem;
   padding: 0.42rem 0.7rem;
   border-radius: 0.85rem;
   background: rgba(20, 20, 20, 0.9);
@@ -340,12 +374,41 @@
   letter-spacing: 0.01em;
   white-space: nowrap;
   box-shadow: 0 16px 30px rgba(0, 0, 0, 0.18);
-  opacity: 0;
-  transition: opacity 180ms ease;
 }
 
-.gallery-timeline-current-visible {
-  opacity: 1;
+.gallery-timeline-readout-line {
+  right: 1rem;
+  width: 2.75rem;
+  height: 2px;
+  border-radius: 999px;
+}
+
+.gallery-timeline-readout-dot {
+  right: 0.56rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 999px;
+  box-shadow: 0 0 0 0.22rem color-mix(in srgb, var(--mat-sys-surface) 92%, transparent);
+}
+
+.gallery-timeline-readout-current .gallery-timeline-readout-label {
+  background: color-mix(in srgb, var(--mat-sys-primary) 22%, rgba(20, 20, 20, 0.94));
+  border: 1px solid color-mix(in srgb, var(--mat-sys-primary) 34%, transparent);
+}
+
+.gallery-timeline-readout-current .gallery-timeline-readout-line,
+.gallery-timeline-readout-current .gallery-timeline-readout-dot {
+  background: var(--mat-sys-primary);
+}
+
+.gallery-timeline-readout-hover .gallery-timeline-readout-label {
+  background: rgba(20, 20, 20, 0.94);
+  border: 1px solid color-mix(in srgb, white 12%, transparent);
+}
+
+.gallery-timeline-readout-hover .gallery-timeline-readout-line,
+.gallery-timeline-readout-hover .gallery-timeline-readout-dot {
+  background: color-mix(in srgb, var(--mat-sys-tertiary) 82%, white 12%);
 }
 
 @media (max-width: 1080px) {

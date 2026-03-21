@@ -49,8 +49,13 @@ interface GalleryTimelineYear {
   topPercent: number;
 }
 
+interface GalleryTimelineMetric {
+  key: string;
+  center: number;
+  targetScrollTop: number;
+}
+
 const TIMELINE_EDGE_PERCENT = 1.5;
-const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
 
 @Component({
   selector: 'app-gallery-page',
@@ -83,6 +88,7 @@ export class GalleryPageComponent implements OnDestroy {
 
   @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
   @ViewChild('galleryScroller') private galleryScroller?: ElementRef<HTMLElement>;
+  @ViewChild('timelineTrack') private timelineTrack?: ElementRef<HTMLElement>;
   @ViewChildren('groupSection') private groupSections?: QueryList<ElementRef<HTMLElement>>;
 
   readonly items$ = this.mediaService.items$;
@@ -101,11 +107,14 @@ export class GalleryPageComponent implements OnDestroy {
   activeTimelineYear: string | null = null;
   activeTimelineLabel = '';
   activeTimelineTopPercent = 0;
-  timelineCurrentVisible = false;
+  hoverTimelineLabel = '';
+  hoverTimelineTopPercent: number | null = null;
   private currentItems: MediaRead[] = [];
   groupedItems: GalleryDayGroup[] = [];
   private dragDepth = 0;
-  private timelineLabelHideTimeoutId: number | null = null;
+  private timelineDragging = false;
+  private timelineMetrics: GalleryTimelineMetric[] = [];
+  private maxTimelineScroll = 1;
   private timelineRefreshQueued = false;
   searchState: GallerySearchState = {
     searchText: '',
@@ -142,7 +151,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    this.clearTimelineLabelHideTimeout();
+    this.timelineDragging = false;
     this.setCustomScrollbarMode(false);
   }
 
@@ -238,6 +247,18 @@ export class GalleryPageComponent implements OnDestroy {
   @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent): void {
     if (!this.selectionMode) {
+      if (
+        event.key === 'Escape'
+        && this.selectedMedia === null
+        && !isEditableTarget(event.target)
+        && this.searchState.searchText.trim()
+      ) {
+        event.preventDefault();
+        this.applySearch({
+          ...this.searchState,
+          searchText: ''
+        });
+      }
       return;
     }
 
@@ -258,8 +279,27 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   onGalleryScroll(): void {
-    this.showTimelineCurrentTemporarily();
     this.scheduleTimelineRefresh();
+  }
+
+  @HostListener('document:pointermove', ['$event'])
+  onDocumentPointerMove(event: PointerEvent): void {
+    if (!this.timelineDragging) {
+      return;
+    }
+
+    event.preventDefault();
+    this.scrubTimelineToClientY(event.clientY);
+  }
+
+  @HostListener('document:pointerup')
+  @HostListener('document:pointercancel')
+  onDocumentPointerEnd(): void {
+    if (!this.timelineDragging) {
+      return;
+    }
+
+    this.timelineDragging = false;
   }
 
   @HostListener('window:resize')
@@ -408,14 +448,34 @@ export class GalleryPageComponent implements OnDestroy {
     return this.selectedMediaIds.size;
   }
 
+  onTimelinePointerMove(event: PointerEvent): void {
+    this.updateTimelineHover(event.clientY);
+  }
+
+  onTimelinePointerLeave(): void {
+    if (this.timelineDragging) {
+      return;
+    }
+
+    this.clearTimelineHover();
+  }
+
+  onTimelinePointerDown(event: PointerEvent): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    this.timelineDragging = true;
+    this.scrubTimelineToClientY(event.clientY);
+  }
+
   scrollToGroup(groupKey: string): void {
     const section = this.findGroupElement(groupKey);
     const scroller = this.galleryScroller?.nativeElement;
     if (!section) {
       return;
     }
-
-    this.showTimelineCurrentTemporarily();
 
     if (!scroller) {
       section.scrollIntoView({
@@ -483,13 +543,15 @@ export class GalleryPageComponent implements OnDestroy {
       this.activeTimelineYear = null;
       this.activeTimelineLabel = '';
       this.activeTimelineTopPercent = 0;
-      this.timelineCurrentVisible = false;
+      this.timelineMetrics = [];
+      this.maxTimelineScroll = 1;
+      this.clearTimelineHover();
       this.cdr.markForCheck();
       return;
     }
 
     const scrollerRect = scroller.getBoundingClientRect();
-    const metrics = sections.map((sectionRef, index) => {
+    const metrics: GalleryTimelineMetric[] = sections.map((sectionRef, index) => {
       const element = sectionRef.nativeElement;
       const header = element.querySelector('.gallery-group-header') as HTMLElement | null;
       const anchor = header ?? element;
@@ -513,6 +575,8 @@ export class GalleryPageComponent implements OnDestroy {
       1
     );
     const currentScroll = Math.max(0, Math.min(scroller.scrollTop, maxScroll));
+    this.timelineMetrics = metrics;
+    this.maxTimelineScroll = maxScroll;
 
     this.timelineMarkers = metrics.map((metric) => ({
       key: metric.key,
@@ -558,27 +622,63 @@ export class GalleryPageComponent implements OnDestroy {
     body.classList.toggle('gallery-custom-scrollbar', enabled);
   }
 
-  private showTimelineCurrentTemporarily(): void {
-    this.timelineCurrentVisible = true;
-    this.clearTimelineLabelHideTimeout();
-
-    if (typeof window !== 'undefined') {
-      this.timelineLabelHideTimeoutId = window.setTimeout(() => {
-        this.timelineCurrentVisible = false;
-        this.cdr.markForCheck();
-      }, TIMELINE_LABEL_HIDE_DELAY_MS);
-    }
-
-    this.cdr.markForCheck();
-  }
-
-  private clearTimelineLabelHideTimeout(): void {
-    if (this.timelineLabelHideTimeoutId === null || typeof window === 'undefined') {
+  private scrubTimelineToClientY(clientY: number): void {
+    const target = this.getTimelinePointerTarget(clientY);
+    const scroller = this.galleryScroller?.nativeElement;
+    if (!target || !scroller) {
       return;
     }
 
-    window.clearTimeout(this.timelineLabelHideTimeoutId);
-    this.timelineLabelHideTimeoutId = null;
+    scroller.scrollTop = target.scrollTop;
+    this.hoverTimelineTopPercent = target.topPercent;
+    this.hoverTimelineLabel = target.label;
+    this.scheduleTimelineRefresh();
+    this.cdr.markForCheck();
+  }
+
+  private updateTimelineHover(clientY: number): void {
+    const target = this.getTimelinePointerTarget(clientY);
+    if (!target) {
+      return;
+    }
+
+    this.hoverTimelineTopPercent = target.topPercent;
+    this.hoverTimelineLabel = target.label;
+    this.cdr.markForCheck();
+  }
+
+  private clearTimelineHover(): void {
+    if (!this.hoverTimelineLabel && this.hoverTimelineTopPercent === null) {
+      return;
+    }
+
+    this.hoverTimelineLabel = '';
+    this.hoverTimelineTopPercent = null;
+    this.cdr.markForCheck();
+  }
+
+  private getTimelinePointerTarget(clientY: number): { topPercent: number; scrollTop: number; label: string } | null {
+    const track = this.timelineTrack?.nativeElement;
+    if (!track || this.timelineMetrics.length === 0) {
+      return null;
+    }
+
+    const rect = track.getBoundingClientRect();
+    if (rect.height <= 0) {
+      return null;
+    }
+
+    const progress = clampUnit((clientY - rect.top) / rect.height);
+    const scrollTop = progress * this.maxTimelineScroll;
+    const closestMetric = this.timelineMetrics.reduce((closest, candidate) =>
+      Math.abs(candidate.targetScrollTop - scrollTop) < Math.abs(closest.targetScrollTop - scrollTop) ? candidate : closest
+    );
+
+    return {
+      topPercent: toTimelinePercent(progress),
+      scrollTop,
+      label: formatTimelineCurrentLabel(closestMetric.key)
+    };
   }
 }
 
@@ -670,6 +770,10 @@ function formatTimelineCurrentLabel(groupKey: string): string {
 
 function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+function clampUnit(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
 function getTimelineScrollOffset(): number {

@@ -319,6 +319,52 @@ describe('GalleryPageComponent', () => {
     expect(component.selectedCount).toBe(0);
   });
 
+  it('clears the current search text when escape is pressed in browse mode', () => {
+    const filters = {
+      ...createDefaultGallerySearchFilters(),
+      nsfw: 'include' as const
+    };
+    component.applySearch({
+      searchText: 'tag:fox',
+      filters
+    });
+    mediaService.loadPage.mockClear();
+
+    const preventDefault = vi.fn();
+    component.onDocumentKeydown({
+      key: 'Escape',
+      preventDefault,
+      target: document.body
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).toHaveBeenCalled();
+    expect(component.searchState).toEqual({
+      searchText: '',
+      filters
+    });
+    expect(mediaService.loadPage).toHaveBeenCalledWith(buildGalleryListQuery('', filters));
+  });
+
+  it('does not clear the current search text from an editable target', () => {
+    component.applySearch({
+      searchText: 'tag:fox',
+      filters: createDefaultGallerySearchFilters()
+    });
+    mediaService.loadPage.mockClear();
+
+    const input = document.createElement('input');
+    const preventDefault = vi.fn();
+    component.onDocumentKeydown({
+      key: 'Escape',
+      preventDefault,
+      target: input
+    } as unknown as KeyboardEvent);
+
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(component.searchState.searchText).toBe('tag:fox');
+    expect(mediaService.loadPage).not.toHaveBeenCalled();
+  });
+
   it('selects all items in a date group from the group action', () => {
     const dayOneA = createMediaRead({ metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T12:00:00.000Z' } });
     const dayOneB = createMediaRead({ id: 'media-2', metadata: { ...createMediaRead().metadata, captured_at: '2024-01-20T06:00:00.000Z' } });

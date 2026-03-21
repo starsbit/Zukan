@@ -162,7 +162,14 @@
 
     @if (timelineMarkers.length > 0) {
       <aside class="gallery-timeline" aria-label="Timeline navigation">
-        <div class="gallery-timeline-track"></div>
+        <div
+          #timelineTrack
+          class="gallery-timeline-track"
+          aria-hidden="true"
+          (pointermove)="onTimelinePointerMove($event)"
+          (pointerleave)="onTimelinePointerLeave()"
+          (pointerdown)="onTimelinePointerDown($event)"
+        ></div>
 
         @for (marker of timelineMarkers; track marker.key) {
           <button
@@ -190,12 +197,25 @@
 
         @if (activeTimelineLabel) {
           <div
-            class="gallery-timeline-current"
-            [class.gallery-timeline-current-visible]="timelineCurrentVisible"
+            class="gallery-timeline-readout gallery-timeline-readout-current"
             [style.top.%]="activeTimelineTopPercent"
             aria-hidden="true"
           >
-            {{ activeTimelineLabel }}
+            <span class="gallery-timeline-readout-label">{{ activeTimelineLabel }}</span>
+            <span class="gallery-timeline-readout-line"></span>
+            <span class="gallery-timeline-readout-dot"></span>
+          </div>
+        }
+
+        @if (hoverTimelineLabel && hoverTimelineTopPercent !== null) {
+          <div
+            class="gallery-timeline-readout gallery-timeline-readout-hover"
+            [style.top.%]="hoverTimelineTopPercent"
+            aria-hidden="true"
+          >
+            <span class="gallery-timeline-readout-label">{{ hoverTimelineLabel }}</span>
+            <span class="gallery-timeline-readout-line"></span>
+            <span class="gallery-timeline-readout-dot"></span>
           </div>
         }
       </aside>
