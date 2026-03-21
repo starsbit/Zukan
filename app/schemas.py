@@ -58,19 +58,19 @@ class LogoutRequest(BaseModel):
 
 class TagRead(BaseModel):
     id: int
-    name: str
-    category: int
-    category_name: str
-    image_count: int
+    name: str = Field(description="Canonical tag name.")
+    category: int = Field(description="Numeric tag category from the tagging backend.")
+    category_name: str = Field(description="Human-readable tag category name.")
+    image_count: int = Field(description="Number of images currently associated with this tag.")
 
     model_config = {"from_attributes": True}
 
 
 class TagWithConfidence(BaseModel):
-    name: str
-    category: int
-    category_name: str
-    confidence: float
+    name: str = Field(description="Canonical tag name.")
+    category: int = Field(description="Numeric tag category from the tagging backend.")
+    category_name: str = Field(description="Human-readable tag category name.")
+    confidence: float = Field(description="Model confidence score for this tag.")
 
 
 class ImageRead(BaseModel):
@@ -82,27 +82,33 @@ class ImageRead(BaseModel):
     width: int | None
     height: int | None
     mime_type: str | None
-    tags: list[str]
-    character_name: str | None = None
-    is_nsfw: bool
-    tagging_status: str
-    thumbnail_status: str
+    tags: list[str] = Field(description="All tags currently stored for the image, including rating and character tags.")
+    character_name: str | None = Field(
+        default=None,
+        description="Highest-confidence character tag selected by the active tagging backend, if any.",
+    )
+    is_nsfw: bool = Field(description="Whether the image is classified as NSFW by the active tagging backend.")
+    tagging_status: str = Field(description="Current AI tagging lifecycle state.")
+    thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
     created_at: datetime
     deleted_at: datetime | None
-    is_favorited: bool = False
+    is_favorited: bool = Field(default=False, description="Whether the current user has favorited this image.")
 
     model_config = {"from_attributes": True}
 
 
 class ImageDetail(ImageRead):
-    tag_details: list[TagWithConfidence] = []
+    tag_details: list[TagWithConfidence] = Field(
+        default_factory=list,
+        description="Detailed tag payload including category metadata and confidence scores.",
+    )
 
 
 class ImageListResponse(BaseModel):
-    total: int
-    page: int
-    page_size: int
-    items: list[ImageRead]
+    total: int = Field(description="Total number of images matching the current filters.")
+    page: int = Field(description="Current page number.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[ImageRead] = Field(description="Images returned for the current page.")
 
 
 class TagFilterMode(str, Enum):
