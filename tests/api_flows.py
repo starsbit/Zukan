@@ -75,6 +75,29 @@ def assert_auth_endpoints(api):
     assert invalid_logout.status_code == 204
 
 
+def assert_docs_require_authorization(api):
+    user = api.register_and_login("docs-user")
+
+    docs = api.client.get("/docs")
+    assert docs.status_code == 401
+    assert docs.headers["www-authenticate"] == "Basic"
+
+    wrong_docs = api.client.get("/docs", auth=api.basic_auth("docs-user", "wrongpass123"))
+    assert wrong_docs.status_code == 401
+
+    openapi = api.client.get("/openapi.json", auth=api.basic_auth("docs-user", "password123"))
+    assert openapi.status_code == 200
+    assert openapi.json()["info"]["title"] == "Zukan"
+
+    swagger = api.client.get("/docs", auth=api.basic_auth("docs-user", "password123"))
+    assert swagger.status_code == 200
+    assert "Swagger UI" in swagger.text
+
+    redoc = api.client.get("/redoc", auth=api.basic_auth("docs-user", "password123"))
+    assert redoc.status_code == 200
+    assert "ReDoc" in redoc.text
+
+
 def assert_image_tag_search_and_favorite_endpoints(api):
     owner = api.register_and_login("owner")
 

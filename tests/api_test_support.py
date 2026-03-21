@@ -54,6 +54,9 @@ class ApiHarness:
     def auth_headers(self, token: str) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
+    def basic_auth(self, username: str, password: str) -> tuple[str, str]:
+        return (username, password)
+
     def register_and_login(
         self,
         username: str,
