@@ -82,6 +82,29 @@ def delete_file(filepath: str) -> None:
         pass
 
 
+def zip_images(images) -> "io.BytesIO":
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        seen: dict[str, int] = {}
+        for img in images:
+            name = img.original_filename or img.filename
+            if name in seen:
+                seen[name] += 1
+                stem, _, ext = name.rpartition(".")
+                name = f"{stem}_{seen[name]}.{ext}" if ext else f"{name}_{seen[name]}"
+            else:
+                seen[name] = 0
+            try:
+                zf.write(img.filepath, arcname=name)
+            except OSError:
+                pass
+    buf.seek(0)
+    return buf
+
+
 def get_image_dimensions(filepath: str) -> tuple[int, int] | None:
     try:
         from PIL import Image

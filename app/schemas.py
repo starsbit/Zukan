@@ -86,6 +86,7 @@ class ImageRead(BaseModel):
     thumbnail_status: str
     created_at: datetime
     deleted_at: datetime | None
+    is_favorited: bool = False
 
     model_config = {"from_attributes": True}
 
@@ -110,6 +111,99 @@ class NsfwFilter(str, Enum):
     DEFAULT = "default"
     ONLY = "only"
     INCLUDE = "include"
+
+
+class AlbumCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+
+
+class AlbumUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    cover_image_id: uuid.UUID | None = None
+
+
+class AlbumRead(BaseModel):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    name: str
+    description: str | None
+    cover_image_id: uuid.UUID | None
+    image_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AlbumShareCreate(BaseModel):
+    user_id: uuid.UUID
+    can_edit: bool = False
+
+
+class AlbumShareRead(BaseModel):
+    user_id: uuid.UUID
+    can_edit: bool
+
+    model_config = {"from_attributes": True}
+
+
+class AddImagesToAlbum(BaseModel):
+    image_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class BulkImageRequest(BaseModel):
+    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class BulkAlbumRequest(BaseModel):
+    album_id: uuid.UUID
+    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class BulkResult(BaseModel):
+    processed: int
+    skipped: int
+
+
+class DownloadRequest(BaseModel):
+    image_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+
+
+class AdminUserUpdate(BaseModel):
+    is_admin: bool | None = None
+    show_nsfw: bool | None = None
+
+
+class AdminUserDetail(UserRead):
+    image_count: int
+    storage_used_bytes: int
+
+
+class AdminStatsResponse(BaseModel):
+    total_users: int
+    total_images: int
+    total_storage_bytes: int
+    pending_tagging: int
+    failed_tagging: int
+    trashed_images: int
+
+
+class UserListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[UserRead]
+
+
+class OnThisDayYear(BaseModel):
+    year: int
+    images: list[ImageRead]
+
+
+class OnThisDayResponse(BaseModel):
+    years: list[OnThisDayYear]
 
 
 class UploadResult(BaseModel):

@@ -7,3 +7,4 @@ venv/
 storage/
 model_cache/
 *.onnx
+.DS_Store

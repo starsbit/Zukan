@@ -3,12 +3,15 @@ import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import delete, select
 
 from app.database import AsyncSessionLocal, init_db
-from app.models import Image, ImageTag, Tag
+from app.models import Image, ImageTag, Tag, User
 from app.routers import auth, images, tags
+from app.routers import admin, albums, bulk
 from app.routers.images import set_tag_queue
+from app.services.auth import get_user_by_username, hash_password
 from app.services.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
@@ -72,9 +75,22 @@ async def tagging_worker():
                 tag_queue.task_done()
 
 
+async def _ensure_admin_user():
+    async with AsyncSessionLocal() as db:
+        if await get_user_by_username(db, "admin") is None:
+            db.add(User(
+                username="admin",
+                email="admin@localhost",
+                hashed_password=hash_password("admin"),
+                is_admin=True,
+            ))
+            await db.commit()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await _ensure_admin_user()
     tagger.load()
     set_tag_queue(tag_queue)
     worker = asyncio.create_task(tagging_worker())
@@ -88,6 +104,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Zukan", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 app.include_router(auth.router)
+app.include_router(bulk.router)
 app.include_router(images.router)
 app.include_router(tags.router)
+app.include_router(albums.router)
+app.include_router(admin.router)

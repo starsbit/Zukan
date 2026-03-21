@@ -34,6 +34,12 @@ async def init_db():
             text("CREATE INDEX IF NOT EXISTS idx_images_tags ON images USING GIN(tags)")
         )
         await conn.execute(
+            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS thumbnail_path VARCHAR(1024)")
+        )
+        await conn.execute(
+            text("ALTER TABLE images ADD COLUMN IF NOT EXISTS thumbnail_status VARCHAR(20) NOT NULL DEFAULT 'pending'")
+        )
+        await conn.execute(
             text("ALTER TABLE images ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP WITH TIME ZONE")
         )
         await conn.execute(
