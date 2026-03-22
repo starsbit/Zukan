@@ -6,7 +6,7 @@
 .gallery-layout {
   --gallery-page-padding-x: clamp(1rem, 2vw, 2rem);
   --gallery-page-padding-y: clamp(1rem, 1.8vw, 1.5rem);
-  --gallery-page-padding-bottom: 3rem;
+  --gallery-page-padding-bottom: 1.25rem;
   position: relative;
   display: grid;
   grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr);
@@ -216,7 +216,7 @@
 }
 
 .gallery-grid {
-  --gallery-row-height: clamp(11rem, 14vw, 14rem);
+  --gallery-row-height: clamp(12rem, 19vh, 15rem);
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
@@ -230,7 +230,7 @@
 }
 
 .gallery-grid-single {
-  --gallery-row-height: clamp(14rem, 24vw, 20rem);
+  --gallery-row-height: clamp(14rem, 24vh, 19rem);
 }
 
 .gallery-grid-single app-gallery-media-card {
@@ -269,18 +269,42 @@
 }
 
 .gallery-inline-status {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
+  width: 100%;
   margin-bottom: 1rem;
   padding: 0.85rem 1rem;
+  box-sizing: border-box;
   border: 1px solid color-mix(in srgb, var(--mat-sys-error) 22%, transparent);
   border-radius: 1rem;
   background: color-mix(in srgb, var(--mat-sys-error-container) 64%, transparent);
 }
 
+.gallery-inline-status mat-icon {
+  flex: 0 0 auto;
+}
+
 .gallery-inline-status p {
   margin: 0;
+  min-width: 0;
+}
+
+.gallery-inline-status button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 720px) {
+  .gallery-inline-status {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .gallery-inline-status button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
 }
 
 @keyframes gallery-group-settle {

@@ -53,6 +53,10 @@ describe('resource clients', () => {
     const mePromise = firstValueFrom(usersClient.getMe());
     const updateMePromise = firstValueFrom(usersClient.updateMe({ show_nsfw: true, tag_confidence_threshold: 0.7 }));
     const tagsPromise = firstValueFrom(tagsClient.list({ limit: 10, offset: 20, category: 4, q: 'fox' }));
+    const deleteTagPromise = firstValueFrom(tagsClient.deleteTag('rating:general'));
+    const trashTagPromise = firstValueFrom(tagsClient.trashMediaByTag('rating:general'));
+    const deleteCharacterPromise = firstValueFrom(tagsClient.deleteCharacterName('ayanami_rei'));
+    const trashCharacterPromise = firstValueFrom(tagsClient.trashMediaByCharacterName('ayanami_rei'));
 
     const meRequest = expectRequest('GET', 'http://api.example.test/users/me');
     meRequest.flush({ id: 'user-1' });
@@ -64,9 +68,27 @@ describe('resource clients', () => {
     const tagsRequest = expectRequest('GET', 'http://api.example.test/tags?limit=10&offset=20&category=4&q=fox');
     tagsRequest.flush([{ id: 1, name: 'fox' }]);
 
+    const deleteTagRequest = expectRequest('DELETE', 'http://api.example.test/tags/rating%3Ageneral');
+    deleteTagRequest.flush({ matched_media: 1, updated_media: 1, trashed_media: 0, already_trashed: 0, deleted_tag: true });
+
+    const trashTagRequest = expectRequest('POST', 'http://api.example.test/tags/rating%3Ageneral/trash-media');
+    expect(trashTagRequest.request.body).toEqual({});
+    trashTagRequest.flush({ matched_media: 2, updated_media: 0, trashed_media: 1, already_trashed: 1, deleted_tag: false });
+
+    const deleteCharacterRequest = expectRequest('DELETE', 'http://api.example.test/character-names/ayanami_rei');
+    deleteCharacterRequest.flush({ matched_media: 1, updated_media: 1, trashed_media: 0, already_trashed: 0, deleted_tag: false });
+
+    const trashCharacterRequest = expectRequest('POST', 'http://api.example.test/character-names/ayanami_rei/trash-media');
+    expect(trashCharacterRequest.request.body).toEqual({});
+    trashCharacterRequest.flush({ matched_media: 1, updated_media: 0, trashed_media: 1, already_trashed: 0, deleted_tag: false });
+
     await expect(mePromise).resolves.toEqual({ id: 'user-1' });
     await expect(updateMePromise).resolves.toEqual({ id: 'user-1', show_nsfw: true, tag_confidence_threshold: 0.7 });
     await expect(tagsPromise).resolves.toEqual([{ id: 1, name: 'fox' }]);
+    await expect(deleteTagPromise).resolves.toMatchObject({ deleted_tag: true });
+    await expect(trashTagPromise).resolves.toMatchObject({ trashed_media: 1, already_trashed: 1 });
+    await expect(deleteCharacterPromise).resolves.toMatchObject({ updated_media: 1 });
+    await expect(trashCharacterPromise).resolves.toMatchObject({ trashed_media: 1 });
   });
 
   it('builds media upload payloads and media query params correctly', async () => {

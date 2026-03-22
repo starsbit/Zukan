@@ -264,7 +264,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.revokeMediaUrl();
     this.loading = true;
     this.failed = false;
-    this.tagsPanelOpen = false;
+    this.tagsPanelOpen = this.media.media_type !== 'video';
     this.editingMetadata = false;
     this.savingMetadata = false;
     this.dragging = false;

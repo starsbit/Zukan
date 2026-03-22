@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, catchError, distinctUntilChanged, map, Observable, tap, throwError } from 'rxjs';
+import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, tap, throwError } from 'rxjs';
 
-import { ListTagsQuery, TagRead } from '../models/api';
+import { ListTagsQuery, TagManagementResult, TagRead } from '../models/api';
 import { beginRequest, completeRequest, createRequestStatus, failRequest, type RequestStatus } from './store.utils';
 import { TagsClientService } from './web/tags-client.service';
 
@@ -10,13 +10,17 @@ export interface TagsState {
   activeQuery: ListTagsQuery | null;
   resultsByKey: Record<string, TagRead[]>;
   request: RequestStatus;
+  mutationPending: boolean;
+  mutationError: unknown | null;
 }
 
 const initialTagsState = (): TagsState => ({
   tags: [],
   activeQuery: null,
   resultsByKey: {},
-  request: createRequestStatus()
+  request: createRequestStatus(),
+  mutationPending: false,
+  mutationError: null
 });
 
 @Injectable({
@@ -32,7 +36,7 @@ export class TagsService {
     distinctUntilChanged()
   );
   readonly loading$ = this.state$.pipe(
-    map((state) => state.request.loading),
+    map((state) => state.request.loading || state.mutationPending),
     distinctUntilChanged()
   );
   readonly loaded$ = this.state$.pipe(
@@ -40,7 +44,7 @@ export class TagsService {
     distinctUntilChanged()
   );
   readonly error$ = this.state$.pipe(
-    map((state) => state.request.error),
+    map((state) => state.mutationError ?? state.request.error),
     distinctUntilChanged()
   );
 
@@ -92,8 +96,98 @@ export class TagsService {
     );
   }
 
+  deleteTag(tagName: string): Observable<TagManagementResult> {
+    this.startMutation();
+
+    return this.tagsClient.deleteTag(tagName).pipe(
+      tap((result) => {
+        this.invalidateResults((tag) => tag.name !== tagName);
+        this.finishMutation();
+        return result;
+      }),
+      catchError((error) => this.failMutation(error)),
+      finalize(() => this.ensureMutationSettled())
+    );
+  }
+
+  trashMediaByTag(tagName: string): Observable<TagManagementResult> {
+    this.startMutation();
+
+    return this.tagsClient.trashMediaByTag(tagName).pipe(
+      tap(() => this.finishMutation()),
+      catchError((error) => this.failMutation(error)),
+      finalize(() => this.ensureMutationSettled())
+    );
+  }
+
+  deleteCharacterName(characterName: string): Observable<TagManagementResult> {
+    this.startMutation();
+
+    return this.tagsClient.deleteCharacterName(characterName).pipe(
+      tap(() => this.finishMutation()),
+      catchError((error) => this.failMutation(error)),
+      finalize(() => this.ensureMutationSettled())
+    );
+  }
+
+  trashMediaByCharacterName(characterName: string): Observable<TagManagementResult> {
+    this.startMutation();
+
+    return this.tagsClient.trashMediaByCharacterName(characterName).pipe(
+      tap(() => this.finishMutation()),
+      catchError((error) => this.failMutation(error)),
+      finalize(() => this.ensureMutationSettled())
+    );
+  }
+
   clear(): void {
     this.stateSubject.next(initialTagsState());
+  }
+
+  private startMutation(): void {
+    this.patchState({
+      mutationPending: true,
+      mutationError: null
+    });
+  }
+
+  private finishMutation(): void {
+    this.patchState({
+      mutationPending: false,
+      mutationError: null
+    });
+  }
+
+  private failMutation(error: unknown): Observable<never> {
+    this.patchState({
+      mutationPending: false,
+      mutationError: error
+    });
+
+    return throwError(() => error);
+  }
+
+  private ensureMutationSettled(): void {
+    if (!this.stateSubject.value.mutationPending) {
+      return;
+    }
+
+    this.patchState({
+      mutationPending: false
+    });
+  }
+
+  private invalidateResults(predicate?: (tag: TagRead) => boolean): void {
+    const resultsByKey = Object.fromEntries(
+      Object.entries(this.stateSubject.value.resultsByKey).map(([key, tags]) => [key, predicate ? tags.filter(predicate) : tags])
+    );
+    const activeKey = serializeQuery(this.stateSubject.value.activeQuery ?? undefined);
+    const activeResults = resultsByKey[activeKey] ?? [];
+
+    this.patchState({
+      resultsByKey,
+      tags: predicate ? activeResults : this.stateSubject.value.tags
+    });
   }
 
   private patchState(patch: Partial<TagsState>): void {

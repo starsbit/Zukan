@@ -216,8 +216,6 @@ describe('GalleryViewerComponent', () => {
 
     expect(closedSpy).toHaveBeenCalledTimes(1);
 
-    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
     (fixture.nativeElement.querySelector('.viewer-sidebar') as HTMLElement).click();
 
     expect(closedSpy).toHaveBeenCalledTimes(1);
@@ -284,18 +282,13 @@ describe('GalleryViewerComponent', () => {
       .map((styleElement) => styleElement.textContent ?? '')
       .join('\n');
 
-    expect(styleText).toContain('color-mix(in srgb,var(--mat-sys-scrim) 62%,transparent)');
+    expect(styleText).toContain('color-mix(in srgb, var(--mat-sys-scrim) 62%, transparent)');
   });
 
-  it('opens the tags sidebar from the toolbar', async () => {
+  it('shows the tags sidebar by default for images and toggles it from the toolbar', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
     await renderViewer(createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], character_name: 'ikari_shinji' }));
-
-    expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeNull();
-
-    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
 
     expect(component.tagsPanelOpen).toBe(true);
     expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeTruthy();
@@ -304,6 +297,12 @@ describe('GalleryViewerComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Fox');
     expect(fixture.nativeElement.textContent).toContain('Blue Eyes');
     expect(fixture.nativeElement.textContent).toContain('Ikari Shinji');
+
+    (fixture.nativeElement.querySelector('button[aria-label="Hide tags panel"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(component.tagsPanelOpen).toBe(false);
+    expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeNull();
   });
 
   it('emits delete when the delete action is used', async () => {
@@ -334,8 +333,6 @@ describe('GalleryViewerComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
     (fixture.nativeElement.querySelector('button[aria-label="Edit tags and character"]') as HTMLButtonElement).click();
     fixture.detectChanges();
 
@@ -373,8 +370,6 @@ describe('GalleryViewerComponent', () => {
       fixture.componentRef.setInput('media', createMediaRead({ tags: [] }));
       fixture.detectChanges();
       await fixture.whenStable();
-      (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
-      fixture.detectChanges();
       (fixture.nativeElement.querySelector('button[aria-label="Edit tags and character"]') as HTMLButtonElement).click();
       fixture.detectChanges();
 
