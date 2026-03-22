@@ -1,6 +1,7 @@
 import { APIRequestContext, expect } from '@playwright/test';
 
 const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
+const API_V1 = `${API_BASE_URL}/api/v1`;
 
 export interface MediaItem {
   id: string;
@@ -40,7 +41,7 @@ function authHeaders(token: string): Record<string, string> {
 }
 
 export async function listMedia(request: APIRequestContext, accessToken: string): Promise<MediaItem[]> {
-  const response = await request.get(`${API_BASE_URL}/media?page=1&page_size=50`, {
+  const response = await request.get(`${API_V1}/media?page_size=50`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -53,7 +54,7 @@ export async function listMediaWithQuery(
   accessToken: string,
   query: string
 ): Promise<MediaItem[]> {
-  const response = await request.get(`${API_BASE_URL}/media?${query}`, {
+  const response = await request.get(`${API_V1}/media?${query}`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -62,7 +63,7 @@ export async function listMediaWithQuery(
 }
 
 export async function getMedia(request: APIRequestContext, accessToken: string, mediaId: string): Promise<MediaItem> {
-  const response = await request.get(`${API_BASE_URL}/media/${mediaId}`, {
+  const response = await request.get(`${API_V1}/media/${mediaId}`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -94,11 +95,12 @@ export async function listTags(
   accessToken: string,
   query = ''
 ): Promise<TagListItem[]> {
-  const response = await request.get(`${API_BASE_URL}/tags${query ? `?${query}` : ''}`, {
+  const response = await request.get(`${API_V1}/tags${query ? `?${query}` : ''}`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
-  return await response.json() as TagListItem[];
+  const payload = await response.json();
+  return payload.items as TagListItem[];
 }
 
 export async function listCharacterSuggestions(
@@ -106,7 +108,7 @@ export async function listCharacterSuggestions(
   accessToken: string,
   query: string
 ): Promise<CharacterSuggestionItem[]> {
-  const response = await request.get(`${API_BASE_URL}/media/character-suggestions?${query}`, {
+  const response = await request.get(`${API_V1}/media/character-suggestions?${query}`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -118,7 +120,7 @@ export async function removeTag(
   accessToken: string,
   tagName: string
 ): Promise<TagManagementResult> {
-  const response = await request.delete(`${API_BASE_URL}/tags/${encodeURIComponent(tagName)}`, {
+  const response = await request.post(`${API_V1}/tags/${encodeURIComponent(tagName)}/actions/remove-from-media`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -130,7 +132,7 @@ export async function trashMediaByTag(
   accessToken: string,
   tagName: string
 ): Promise<TagManagementResult> {
-  const response = await request.post(`${API_BASE_URL}/tags/${encodeURIComponent(tagName)}/trash-media`, {
+  const response = await request.post(`${API_V1}/tags/${encodeURIComponent(tagName)}/actions/trash-media`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -142,7 +144,7 @@ export async function removeCharacterName(
   accessToken: string,
   characterName: string
 ): Promise<TagManagementResult> {
-  const response = await request.delete(`${API_BASE_URL}/character-names/${encodeURIComponent(characterName)}`, {
+  const response = await request.post(`${API_V1}/character-names/${encodeURIComponent(characterName)}/actions/remove-from-media`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -155,7 +157,7 @@ export async function trashMediaByCharacterName(
   characterName: string
 ): Promise<TagManagementResult> {
   const response = await request.post(
-    `${API_BASE_URL}/character-names/${encodeURIComponent(characterName)}/trash-media`,
+    `${API_V1}/character-names/${encodeURIComponent(characterName)}/actions/trash-media`,
     {
       headers: authHeaders(accessToken)
     }

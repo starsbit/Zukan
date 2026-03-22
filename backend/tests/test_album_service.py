@@ -43,7 +43,7 @@ def test_get_album_for_user_raises_not_found_for_unshared_user(api):
         api.run_db(_run)
 
     assert exc.value.status_code == 404
-    assert exc.value.detail == "Album not found"
+    assert exc.value.detail["code"] == "album_not_found"
 
 
 def test_bulk_add_and_remove_from_album_updates_cover_image(api):
@@ -198,7 +198,7 @@ def test_album_service_lists_media_and_downloads_in_album_order(api):
             session,
             album_id,
             owner_user,
-            tags="green",
+            tags=["green"],
             exclude_tags=None,
             mode=TagFilterMode.AND,
             page=1,

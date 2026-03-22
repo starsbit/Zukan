@@ -77,52 +77,53 @@ def assert_auth_endpoints(api):
 
 def assert_docs_require_authorization(api):
     user = api.register_and_login("docs-user")
+    rc = api.raw_client
 
-    docs = api.client.get("/docs")
+    docs = rc.get("/docs")
     assert docs.status_code == 401
     assert docs.headers["www-authenticate"] == "Basic"
 
-    wrong_docs = api.client.get("/docs", auth=api.basic_auth("docs-user", "wrongpass123"))
+    wrong_docs = rc.get("/docs", auth=api.basic_auth("docs-user", "wrongpass123"))
     assert wrong_docs.status_code == 401
 
-    redoc_without_auth = api.client.get("/redoc")
+    redoc_without_auth = rc.get("/redoc")
     assert redoc_without_auth.status_code == 401
     assert redoc_without_auth.headers["www-authenticate"] == "Basic"
 
-    wrong_redoc = api.client.get("/redoc", auth=api.basic_auth("docs-user", "wrongpass123"))
+    wrong_redoc = rc.get("/redoc", auth=api.basic_auth("docs-user", "wrongpass123"))
     assert wrong_redoc.status_code == 401
 
-    redirect_without_auth = api.client.get("/docs/oauth2-redirect")
+    redirect_without_auth = rc.get("/docs/oauth2-redirect")
     assert redirect_without_auth.status_code == 401
     assert redirect_without_auth.headers["www-authenticate"] == "Basic"
 
-    wrong_redirect = api.client.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "wrongpass123"))
+    wrong_redirect = rc.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "wrongpass123"))
     assert wrong_redirect.status_code == 401
 
-    openapi_without_auth = api.client.get("/openapi.json")
+    openapi_without_auth = rc.get("/openapi.json")
     assert openapi_without_auth.status_code == 401
     assert openapi_without_auth.headers["www-authenticate"] == "Basic"
 
-    wrong_openapi = api.client.get("/openapi.json", auth=api.basic_auth("docs-user", "wrongpass123"))
+    wrong_openapi = rc.get("/openapi.json", auth=api.basic_auth("docs-user", "wrongpass123"))
     assert wrong_openapi.status_code == 401
 
-    openapi = api.client.get("/openapi.json", auth=api.basic_auth("docs-user", "password123"))
+    openapi = rc.get("/openapi.json", auth=api.basic_auth("docs-user", "password123"))
     assert openapi.status_code == 200
     assert openapi.json()["info"]["title"] == "Zukan"
 
-    swagger = api.client.get("/docs", auth=api.basic_auth("docs-user", "password123"))
+    swagger = rc.get("/docs", auth=api.basic_auth("docs-user", "password123"))
     assert swagger.status_code == 200
     assert "Swagger UI" in swagger.text
 
-    swagger_authenticated_me = api.client.get("/users/me", auth=api.basic_auth("docs-user", "password123"))
+    swagger_authenticated_me = api.client.get("/users/me", headers=api.auth_headers(user["access_token"]))
     assert swagger_authenticated_me.status_code == 200
     assert swagger_authenticated_me.json()["username"] == user["user"]["username"]
 
-    redoc = api.client.get("/redoc", auth=api.basic_auth("docs-user", "password123"))
+    redoc = rc.get("/redoc", auth=api.basic_auth("docs-user", "password123"))
     assert redoc.status_code == 200
     assert "ReDoc" in redoc.text
 
-    redirect = api.client.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "password123"))
+    redirect = rc.get("/docs/oauth2-redirect", auth=api.basic_auth("docs-user", "password123"))
     assert redirect.status_code == 200
     assert "oauth2" in redirect.text.lower()
 
@@ -154,7 +155,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     assert [item["id"] for item in nsfw_only.json()["items"]] == [str(red["id"])]
 
     by_tag = api.client.get("/media", headers=api.auth_headers(owner["access_token"]), params={
-        "tags": "sky",
+        "tag": "sky",
         "status": "done",
     })
     assert by_tag.status_code == 200
@@ -179,7 +180,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     by_tag_and_character_name = api.client.get(
         "/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "sky", "character_name": "ayanami"},
+        params={"tag": "sky", "character_name": "ayanami"},
     )
     assert by_tag_and_character_name.status_code == 200
     assert by_tag_and_character_name.json()["total"] == 1
@@ -187,20 +188,20 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     no_tag_and_character_match = api.client.get(
         "/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "rose", "character_name": "ayanami"},
+        params={"tag": "rose", "character_name": "ayanami"},
     )
     assert no_tag_and_character_match.status_code == 200
     assert no_tag_and_character_match.json()["total"] == 0
 
     by_or_tag = api.client.get("/media", headers=api.auth_headers(owner["access_token"]), params={
-        "tags": "rose,sky",
+        "tag": ["rose", "sky"],
         "mode": "or",
     })
     assert by_or_tag.status_code == 200
     assert by_or_tag.json()["total"] == 2
 
     excluded = api.client.get("/media", headers=api.auth_headers(owner["access_token"]), params={
-        "exclude_tags": "rose",
+        "exclude_tag": "rose",
         "nsfw": "include",
     })
     assert excluded.status_code == 200
@@ -238,7 +239,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     favorites_by_tag = api.client.get(
         "/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"favorited": "true", "tags": "sky"},
+        params={"favorited": "true", "tag": "sky"},
     )
     assert favorites_by_tag.status_code == 200
     assert favorites_by_tag.json()["total"] == 1
@@ -263,15 +264,15 @@ def assert_media_tag_search_and_favorite_endpoints(api):
 
     tags = api.client.get("/tags", headers=api.auth_headers(owner["access_token"]))
     assert tags.status_code == 200
-    assert {tag["name"] for tag in tags.json()} >= {"sky", "rose"}
+    assert {tag["name"] for tag in tags.json()["items"]} >= {"sky", "rose"}
 
     rating_tags = api.client.get("/tags", headers=api.auth_headers(owner["access_token"]), params={"category": 9})
     assert rating_tags.status_code == 200
-    assert {tag["name"] for tag in rating_tags.json()} == {"rating:general", "rating:questionable"}
+    assert {tag["name"] for tag in rating_tags.json()["items"]} == {"rating:general", "rating:questionable"}
 
     tag_search = api.client.get("/tags", headers=api.auth_headers(owner["access_token"]), params={"q": "sk"})
     assert tag_search.status_code == 200
-    assert [tag["name"] for tag in tag_search.json()] == ["sky"]
+    assert [tag["name"] for tag in tag_search.json()["items"]] == ["sky"]
 
     manual_edit = api.client.patch(
         f"/media/{blue['id']}",
@@ -285,7 +286,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     corrected = api.client.get(
         "/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "pilot", "character_name": "shinji"},
+        params={"tag": "pilot", "character_name": "shinji"},
     )
     assert corrected.status_code == 200
     assert corrected.json()["total"] == 1
@@ -293,7 +294,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     old_search = api.client.get(
         "/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "sky"},
+        params={"tag": "sky"},
     )
     assert old_search.status_code == 200
     assert old_search.json()["total"] == 0
@@ -306,6 +307,47 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     retag = api.client.post(f"/media/{blue['id']}/tagging-jobs", headers=api.auth_headers(owner["access_token"]))
     assert retag.status_code == 202
     api.wait_for_media_status(str(blue["id"]))
+
+
+def assert_custom_tag_save_and_search_regression(api):
+    user = api.register_and_login("custom-tag-regression")
+    headers = api.auth_headers(user["access_token"])
+
+    media = api.upload_media(user["access_token"], "custom-tag-regression.png", (0, 100, 200))
+    api.wait_for_media_status(str(media["id"]))
+
+    saved = api.client.patch(
+        f"/media/{media['id']}",
+        headers=headers,
+        json={"tags": ["my_custom_label", "another_label"]},
+    )
+    assert saved.status_code == 200
+    assert set(saved.json()["tags"]) == {"my_custom_label", "another_label"}
+
+    single_tag = api.client.get("/media", headers=headers, params={"tag": "my_custom_label"})
+    assert single_tag.status_code == 200
+    assert single_tag.json()["total"] == 1
+    assert single_tag.json()["items"][0]["id"] == str(media["id"])
+
+    multi_tag = api.client.get("/media", headers=headers, params={"tag": ["my_custom_label", "another_label"]})
+    assert multi_tag.status_code == 200
+    assert multi_tag.json()["total"] == 1
+
+    and_miss = api.client.get("/media", headers=headers, params={"tag": ["my_custom_label", "not_present"]})
+    assert and_miss.status_code == 200
+    assert and_miss.json()["total"] == 0
+
+    or_hit = api.client.get("/media", headers=headers, params={"tag": ["my_custom_label", "not_present"], "mode": "or"})
+    assert or_hit.status_code == 200
+    assert or_hit.json()["total"] == 1
+
+    exclude_miss = api.client.get("/media", headers=headers, params={"exclude_tag": "my_custom_label"})
+    assert exclude_miss.status_code == 200
+    assert exclude_miss.json()["total"] == 0
+
+    stale = api.client.get("/media", headers=headers, params={"tag": "sky"})
+    assert stale.status_code == 200
+    assert stale.json()["total"] == 0
 
 
 def assert_media_lifecycle_download_and_on_this_day_endpoints(api):
@@ -355,7 +397,7 @@ def assert_media_lifecycle_download_and_on_this_day_endpoints(api):
     api.wait_for_media_status(str(second["id"]))
 
     assert api.client.patch(f"/media/{first['id']}", headers=headers, json={"deleted": True}).status_code == 200
-    assert api.client.delete("/media/trash", headers=headers).status_code == 204
+    assert api.client.post("/media/actions/empty-trash", headers=headers).status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(first["id"]))) is None
 
     assert api.client.delete(f"/media/{second['id']}", headers=headers).status_code == 204
@@ -363,7 +405,7 @@ def assert_media_lifecycle_download_and_on_this_day_endpoints(api):
     assert second_in_trash.status_code == 200
     assert [item["id"] for item in second_in_trash.json()["items"]] == [str(second["id"])]
 
-    assert api.client.delete("/media/trash", headers=headers).status_code == 204
+    assert api.client.post("/media/actions/empty-trash", headers=headers).status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(second["id"]))) is None
 
 
@@ -580,7 +622,7 @@ def assert_media_complex_query_regression(api):
     combined_and_filter = api.client.get(
         "/media",
         headers=headers,
-        params={"tags": "pilot,eva", "mode": "and", "captured_before_year": 2021},
+        params={"tag": ["pilot", "eva"], "mode": "and", "captured_before_year": 2021},
     )
     assert combined_and_filter.status_code == 200
     assert [item["id"] for item in combined_and_filter.json()["items"]] == [str(blue_two["id"])]
@@ -588,7 +630,7 @@ def assert_media_complex_query_regression(api):
     combined_or_excluding_filter = api.client.get(
         "/media",
         headers=headers,
-        params={"tags": "pilot,forest", "mode": "or", "exclude_tags": "moon", "nsfw": "include"},
+        params={"tag": ["pilot", "forest"], "mode": "or", "exclude_tag": "moon", "nsfw": "include"},
     )
     assert combined_or_excluding_filter.status_code == 200
     assert [item["id"] for item in combined_or_excluding_filter.json()["items"]] == [str(blue["id"])]
@@ -604,7 +646,7 @@ def assert_media_complex_query_regression(api):
     favorited_metadata_filter = api.client.get(
         "/media",
         headers=headers,
-        params={"favorited": "true", "captured_month": 7, "tags": "pilot"},
+        params={"favorited": "true", "captured_month": 7, "tag": "pilot"},
     )
     assert favorited_metadata_filter.status_code == 200
     assert [item["id"] for item in favorited_metadata_filter.json()["items"]] == [str(blue_two["id"])]
@@ -635,7 +677,7 @@ def assert_media_complex_query_regression(api):
     impossible_combo = api.client.get(
         "/media",
         headers=headers,
-        params={"tags": "pilot", "captured_year": 2021, "character_name": "shinji"},
+        params={"tag": "pilot", "captured_year": 2021, "character_name": "shinji"},
     )
     assert impossible_combo.status_code == 200
     assert impossible_combo.json()["items"] == []
@@ -655,7 +697,7 @@ def assert_media_complex_query_regression(api):
     album_filtered = api.client.get(
         "/media",
         headers=headers,
-        params={"album_id": album_id, "tags": "pilot", "status": "done"},
+        params={"album_id": album_id, "tag": "pilot", "status": "done"},
     )
     assert album_filtered.status_code == 200
     assert {item["id"] for item in album_filtered.json()["items"]} == {str(blue["id"]), str(blue_two["id"])}
@@ -677,7 +719,7 @@ def assert_tag_management_endpoints(api):
     for item in (owner_blue, owner_green, other_blue):
         api.wait_for_media_status(str(item["id"]))
 
-    trash_blue = api.client.post(f"/character-names/ayanami_rei/trash-media", headers=owner_headers)
+    trash_blue = api.client.post(f"/character-names/ayanami_rei/actions/trash-media", headers=owner_headers)
     assert trash_blue.status_code == 200
     assert trash_blue.json() == {
         "matched_media": 1,
@@ -687,7 +729,7 @@ def assert_tag_management_endpoints(api):
         "deleted_tag": False,
     }
 
-    repeat_trash_blue = api.client.post(f"/character-names/ayanami_rei/trash-media", headers=owner_headers)
+    repeat_trash_blue = api.client.post(f"/character-names/ayanami_rei/actions/trash-media", headers=owner_headers)
     assert repeat_trash_blue.status_code == 200
     assert repeat_trash_blue.json()["already_trashed"] == 1
 
@@ -695,11 +737,11 @@ def assert_tag_management_endpoints(api):
     assert owner_trash.status_code == 200
     assert [item["id"] for item in owner_trash.json()["items"]] == [str(owner_blue["id"])]
 
-    other_active_blue = api.client.get("/media", headers=other_headers, params={"tags": "sky"})
+    other_active_blue = api.client.get("/media", headers=other_headers, params={"tag": "sky"})
     assert other_active_blue.status_code == 200
     assert [item["id"] for item in other_active_blue.json()["items"]] == [str(other_blue["id"])]
 
-    delete_owner_character = api.client.delete("/character-names/ayanami_rei", headers=owner_headers)
+    delete_owner_character = api.client.post("/character-names/ayanami_rei/actions/remove-from-media", headers=owner_headers)
     assert delete_owner_character.status_code == 200
     assert delete_owner_character.json()["matched_media"] == 1
     assert delete_owner_character.json()["updated_media"] == 1
@@ -724,12 +766,12 @@ def assert_tag_management_endpoints(api):
     assert other_character_suggestions.status_code == 200
     assert other_character_suggestions.json()[0]["name"] == "ayanami_rei"
 
-    trash_forest = api.client.post("/tags/forest/trash-media", headers=owner_headers)
+    trash_forest = api.client.post("/tags/forest/actions/trash-media", headers=owner_headers)
     assert trash_forest.status_code == 200
     assert trash_forest.json()["matched_media"] == 1
     assert trash_forest.json()["trashed_media"] == 1
 
-    delete_forest = api.client.delete("/tags/forest", headers=owner_headers)
+    delete_forest = api.client.post("/tags/forest/actions/remove-from-media", headers=owner_headers)
     assert delete_forest.status_code == 200
     assert delete_forest.json()["matched_media"] == 1
     assert delete_forest.json()["updated_media"] == 1
@@ -738,16 +780,16 @@ def assert_tag_management_endpoints(api):
     owner_forest_search = api.client.get(
         "/media",
         headers=owner_headers,
-        params={"tags": "forest", "state": "trashed", "nsfw": "include"},
+        params={"tag": "forest", "state": "trashed", "nsfw": "include"},
     )
     assert owner_forest_search.status_code == 200
     assert owner_forest_search.json()["items"] == []
 
     tags_after_owner_delete = api.client.get("/tags", headers=owner_headers, params={"q": "fo"})
     assert tags_after_owner_delete.status_code == 200
-    assert tags_after_owner_delete.json() == []
+    assert tags_after_owner_delete.json()["items"] == []
 
-    admin_delete_sky = api.client.delete("/tags/sky", headers=admin_headers)
+    admin_delete_sky = api.client.post("/tags/sky/actions/remove-from-media", headers=admin_headers)
     assert admin_delete_sky.status_code == 200
     assert admin_delete_sky.json()["matched_media"] == 2
     assert admin_delete_sky.json()["updated_media"] == 2
@@ -755,13 +797,13 @@ def assert_tag_management_endpoints(api):
 
     sky_tags = api.client.get("/tags", headers=admin_headers, params={"q": "sk"})
     assert sky_tags.status_code == 200
-    assert sky_tags.json() == []
+    assert sky_tags.json()["items"] == []
 
-    owner_sky_search = api.client.get("/media", headers=owner_headers, params={"tags": "sky", "nsfw": "include", "state": "trashed"})
+    owner_sky_search = api.client.get("/media", headers=owner_headers, params={"tag": "sky", "nsfw": "include", "state": "trashed"})
     assert owner_sky_search.status_code == 200
     assert owner_sky_search.json()["items"] == []
 
-    other_sky_search = api.client.get("/media", headers=other_headers, params={"tags": "sky"})
+    other_sky_search = api.client.get("/media", headers=other_headers, params={"tag": "sky"})
     assert other_sky_search.status_code == 200
     assert other_sky_search.json()["items"] == []
 
@@ -800,7 +842,7 @@ def assert_album_endpoints(api):
     filtered_media = api.client.get(
         f"/albums/{album['id']}/media",
         headers=api.auth_headers(owner["access_token"]),
-        params={"tags": "sky"},
+        params={"tag": "sky"},
     )
     assert filtered_media.status_code == 200
     assert [item["id"] for item in filtered_media.json()["items"]] == [str(first["id"])]
@@ -1010,7 +1052,7 @@ def assert_bulk_endpoints(api):
     assert trashed.status_code == 200
     assert [item["id"] for item in trashed.json()["items"]] == [str(second["id"])]
 
-    assert api.client.delete("/media/trash", headers=api.auth_headers(owner["access_token"])).status_code == 204
+    assert api.client.post("/media/actions/empty-trash", headers=api.auth_headers(owner["access_token"])).status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(second["id"]))) is None
     assert api.fetch_media_row(uuid.UUID(str(third["id"]))) is not None
 

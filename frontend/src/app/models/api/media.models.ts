@@ -97,6 +97,13 @@ export interface MediaListResponse {
   items: MediaRead[];
 }
 
+export interface MediaCursorPage {
+  total: number;
+  next_cursor: string | null;
+  page_size: number;
+  items: MediaRead[];
+}
+
 export interface CharacterSuggestion {
   name: string;
   media_count: number;
@@ -105,16 +112,18 @@ export interface CharacterSuggestion {
 export interface ListMediaQuery {
   state?: MediaListState;
   album_id?: Uuid | null;
-  tags?: string | null;
+  tag?: string[] | null;
   character_name?: string | null;
-  exclude_tags?: string | null;
+  exclude_tag?: string[] | null;
   mode?: TagFilterMode;
   nsfw?: NsfwFilter;
-  status?: string[] | string | null;
+  status?: string | null;
   favorited?: boolean | null;
-  media_type?: MediaType[] | MediaType | null;
-  page?: number;
+  media_type?: MediaType[] | null;
+  after?: string | null;
   page_size?: number;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
   captured_year?: number | null;
   captured_month?: number | null;
   captured_day?: number | null;
@@ -123,6 +132,6 @@ export interface ListMediaQuery {
   captured_before_year?: number | null;
 }
 
-export type MediaListCache = MediaListResponse & { query?: ListMediaQuery };
+export type MediaListCache = MediaCursorPage & { query?: ListMediaQuery };
 
 export type MediaMutationResult = BulkResult;

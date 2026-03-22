@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, Form, Query, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
@@ -10,16 +10,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.deps import current_user
+from backend.app.errors import AppError, thumbnail_not_available
 from backend.app.models import User
 from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
     CharacterSuggestion,
     DownloadRequest,
+    ERROR_RESPONSES,
     MediaBatchDelete,
     MediaBatchUpdate,
+    MediaCursorPage,
     MediaDetail,
-    MediaListResponse,
     MediaListState,
     MediaMetadataFilter,
     MediaUpdate,
@@ -30,7 +32,7 @@ from backend.app.schemas import (
 from backend.app.services import media as media_service
 from backend.app.services.storage import zip_media
 
-router = APIRouter(prefix="/media", tags=["media"])
+router = APIRouter(prefix="/media", tags=["media"], responses=ERROR_RESPONSES)
 
 
 def media_metadata_filter_query(
@@ -55,24 +57,44 @@ def media_metadata_filter_query(
 
 
 @router.post("", response_model=BatchUploadResponse, status_code=status.HTTP_202_ACCEPTED, summary="Upload Media")
-async def upload(files: list[UploadFile], user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await media_service.build_upload_response(db, user, files)
+async def upload(
+    files: list[UploadFile],
+    album_id: uuid.UUID | None = Form(default=None),
+    tags: list[str] | None = Form(default=None),
+    source_url: str | None = Form(default=None),
+    captured_at: datetime | None = Form(default=None),
+    character_name: str | None = Form(default=None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await media_service.build_upload_response(
+        db,
+        user,
+        files,
+        album_id=album_id,
+        tags=tags,
+        source_url=source_url,
+        captured_at_override=captured_at,
+        character_name=character_name,
+    )
 
 
-@router.get("", response_model=MediaListResponse, summary="List Media")
+@router.get("", response_model=MediaCursorPage, summary="List Media")
 async def list_media(
     metadata: Annotated[MediaMetadataFilter, Depends(media_metadata_filter_query)],
     state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
     album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
-    tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
+    tag: Annotated[list[str] | None, Query(description="Tags that must be present. Repeat for multiple: ?tag=cat&tag=night")] = None,
     character_name: Annotated[str | None, Query(description="Case-insensitive partial match against derived character name.")] = None,
-    exclude_tags: Annotated[str | None, Query(description="Comma-separated tags that must not be present.")] = None,
+    exclude_tag: Annotated[list[str] | None, Query(description="Tags that must not be present. Repeat for multiple.")] = None,
     mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."),
     status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
     favorited: bool | None = Query(default=None, description="If true, return only media favorited by the current user."),
-    media_type: str | None = Query(default=None, description="Optional comma-separated media type filter."),
-    page: int = Query(default=1, ge=1, description="1-based page number."),
+    media_type: Annotated[list[str] | None, Query(description="Media type filter. Repeat for multiple: ?media_type=image&media_type=gif")] = None,
+    sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
     page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of items to return."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -81,9 +103,9 @@ async def list_media(
         db,
         user,
         state,
-        tags,
+        tag,
         character_name,
-        exclude_tags,
+        exclude_tag,
         mode,
         nsfw,
         status_filter,
@@ -91,8 +113,10 @@ async def list_media(
         favorited,
         media_type,
         album_id,
-        page,
+        after,
         page_size,
+        sort_by,
+        sort_order,
     )
 
 
@@ -116,12 +140,17 @@ async def batch_delete_media(body: MediaBatchDelete, user: User = Depends(curren
     return await media_service.batch_delete_media(db, body, user)
 
 
-@router.delete("/trash", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
+@router.post("/actions/empty-trash", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
 async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     await media_service.empty_trash(db, user)
 
 
-@router.post("/download", summary="Download Media", response_description="ZIP archive of the requested media.")
+@router.post(
+    "/download",
+    summary="Download Media",
+    response_description="ZIP archive of the requested media.",
+    responses={200: {"content": {"application/zip": {}}, "description": "ZIP archive of the requested media."}},
+)
 async def download_media(body: DownloadRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     rows = await media_service.get_downloadable_media(db, user, body.media_ids)
     buf = zip_media(rows)
@@ -142,17 +171,25 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
     return await media_service.update_media_metadata(db, media_id, user, body)
 
 
-@router.get("/{media_id}/file", summary="Download Original Media")
+@router.get(
+    "/{media_id}/file",
+    summary="Download Original Media",
+    responses={200: {"content": {"application/octet-stream": {}}, "description": "Original media file."}},
+)
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     media = await media_service.get_visible_media(db, media_id, user)
     return FileResponse(media.filepath, media_type=media.mime_type)
 
 
-@router.get("/{media_id}/thumbnail", summary="Download Media Thumbnail")
+@router.get(
+    "/{media_id}/thumbnail",
+    summary="Download Media Thumbnail",
+    responses={200: {"content": {"image/webp": {}}, "description": "WebP thumbnail image."}},
+)
 async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     media = await media_service.get_visible_media(db, media_id, user)
     if not media.thumbnail_path:
-        raise HTTPException(status_code=404, detail="Thumbnail not available")
+        raise AppError(status_code=404, code=thumbnail_not_available, detail="Thumbnail not available")
     return FileResponse(media.thumbnail_path, media_type="image/webp")
 
 

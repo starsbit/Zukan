@@ -33,11 +33,9 @@ describe('gallery search utils', () => {
     filters.status = ['done', 'pending'];
 
     expect(buildGalleryListQuery('tag:sky character:ayanami_rei', filters)).toMatchObject({
-      page: 1,
       page_size: 60,
       album_id: 'album-7',
-      status: ['done', 'pending'],
-      tags: 'sky',
+      status: 'done,pending',
       character_name: 'ayanami_rei',
       favorited: true,
       media_type: ['video']
@@ -56,7 +54,7 @@ describe('gallery search utils', () => {
 
   it('includes failed media in the default gallery query', () => {
     expect(buildGalleryListQuery('', createDefaultGallerySearchFilters())).toMatchObject({
-      status: ['pending', 'processing', 'done', 'failed']
+      status: 'pending,processing,done,failed'
     });
   });
 

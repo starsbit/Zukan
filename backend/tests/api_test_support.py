@@ -98,9 +98,40 @@ def mov_bytes(colors: list[tuple[int, int, int]]) -> bytes:
     return _video_bytes(colors, "mov", "mpeg4")
 
 
+_API_PREFIX = "/api/v1"
+
+
+class _PrefixedClient:
+    def __init__(self, client: TestClient, prefix: str):
+        self._c = client
+        self._pfx = prefix
+
+    def get(self, url, **kw):
+        return self._c.get(self._pfx + url, **kw)
+
+    def post(self, url, **kw):
+        return self._c.post(self._pfx + url, **kw)
+
+    def patch(self, url, **kw):
+        return self._c.patch(self._pfx + url, **kw)
+
+    def put(self, url, **kw):
+        return self._c.put(self._pfx + url, **kw)
+
+    def delete(self, url, **kw):
+        return self._c.delete(self._pfx + url, **kw)
+
+    def options(self, url, **kw):
+        return self._c.options(self._pfx + url, **kw)
+
+    def request(self, method, url, **kw):
+        return self._c.request(method, self._pfx + url, **kw)
+
+
 @dataclass
 class ApiHarness:
-    client: TestClient
+    client: _PrefixedClient
+    raw_client: TestClient
     database_url: str
 
     def auth_headers(self, token: str) -> dict[str, str]:
@@ -290,8 +321,12 @@ def api():
     tagger_module.tagger.predict = fake_predict
 
     try:
-        with TestClient(main_module.api) as client:
-            yield ApiHarness(client=client, database_url=database_url)
+        with TestClient(main_module.api) as raw_client:
+            yield ApiHarness(
+                client=_PrefixedClient(raw_client, _API_PREFIX),
+                raw_client=raw_client,
+                database_url=database_url,
+            )
     finally:
         run(test_engine.dispose())
         database_module.engine = original_engine

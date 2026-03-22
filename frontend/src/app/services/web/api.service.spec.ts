@@ -35,13 +35,13 @@ describe('ClientApiService', () => {
         page: 2,
         page_size: 50,
         favorited: false,
-        tags: 'cat,fox',
+        tag: ['cat', 'fox'],
         status: undefined,
-        exclude_tags: null
+        exclude_tag: null
       }
     }));
 
-    const request = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=50&favorited=false&tags=cat,fox');
+    const request = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=50&favorited=false&tag=cat&tag=fox');
     expect(request.request.context.get(AUTH_MODE)).toBe('required');
 
     request.flush({ ok: true });

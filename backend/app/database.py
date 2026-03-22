@@ -51,3 +51,35 @@ async def init_db():
                 "ADD COLUMN IF NOT EXISTS tag_confidence_threshold FLOAT NOT NULL DEFAULT 0.35"
             )
         )
+        await conn.execute(
+            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS source_url VARCHAR(2048)")
+        )
+        await conn.execute(text("""
+            CREATE OR REPLACE FUNCTION fn_media_tag_after_delete() RETURNS TRIGGER AS $$
+            BEGIN
+                UPDATE tags SET media_count = media_count - 1 WHERE id = OLD.tag_id;
+                DELETE FROM tags WHERE id = OLD.tag_id AND media_count <= 0;
+                RETURN NULL;
+            END;
+            $$ LANGUAGE plpgsql
+        """))
+        await conn.execute(text("DROP TRIGGER IF EXISTS trg_media_tag_after_delete ON media_tags"))
+        await conn.execute(text("""
+            CREATE TRIGGER trg_media_tag_after_delete
+            AFTER DELETE ON media_tags FOR EACH ROW
+            EXECUTE FUNCTION fn_media_tag_after_delete()
+        """))
+        await conn.execute(text("""
+            CREATE OR REPLACE FUNCTION fn_media_tag_after_insert() RETURNS TRIGGER AS $$
+            BEGIN
+                UPDATE tags SET media_count = media_count + 1 WHERE id = NEW.tag_id;
+                RETURN NULL;
+            END;
+            $$ LANGUAGE plpgsql
+        """))
+        await conn.execute(text("DROP TRIGGER IF EXISTS trg_media_tag_after_insert ON media_tags"))
+        await conn.execute(text("""
+            CREATE TRIGGER trg_media_tag_after_insert
+            AFTER INSERT ON media_tags FOR EACH ROW
+            EXECUTE FUNCTION fn_media_tag_after_insert()
+        """))

@@ -1,9 +1,9 @@
 import uuid
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.errors import AppError, album_not_found, album_read_only, album_share_forbidden, forbidden, media_not_in_album, share_not_found, share_self
 from backend.app.models import Album, AlbumMedia, AlbumShare, Media, User
 from backend.app.schemas import AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
 from backend.app.services.media import _apply_tag_filters, enrich_media, favorited_ids
@@ -12,7 +12,7 @@ from backend.app.services.media import _apply_tag_filters, enrich_media, favorit
 async def get_album(db: AsyncSession, album_id: uuid.UUID) -> Album:
     album = (await db.execute(select(Album).where(Album.id == album_id))).scalar_one_or_none()
     if album is None:
-        raise HTTPException(status_code=404, detail="Album not found")
+        raise AppError(status_code=404, code=album_not_found, detail="Album not found")
     return album
 
 
@@ -30,9 +30,9 @@ async def get_album_for_user(db: AsyncSession, album_id: uuid.UUID, user: User, 
         return album
     share = (await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == user.id))).scalar_one_or_none()
     if share is None:
-        raise HTTPException(status_code=404, detail="Album not found")
+        raise AppError(status_code=404, code=album_not_found, detail="Album not found")
     if require_edit and not share.can_edit:
-        raise HTTPException(status_code=403, detail="Read-only access")
+        raise AppError(status_code=403, code=album_read_only, detail="Read-only access")
     return album
 
 
@@ -42,7 +42,7 @@ async def get_album_for_edit(db: AsyncSession, album_id: uuid.UUID, user: User) 
         return album
     share = (await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == user.id))).scalar_one_or_none()
     if share is None or not share.can_edit:
-        raise HTTPException(status_code=403, detail="No edit access to album")
+        raise AppError(status_code=403, code=album_read_only, detail="No edit access to album")
     return album
 
 
@@ -86,7 +86,7 @@ async def update_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumUpdate,
                 )
             ).scalar_one_or_none()
             if exists is None:
-                raise HTTPException(status_code=400, detail="Media not in album")
+                raise AppError(status_code=400, code=media_not_in_album, detail="Media not in album")
         album.cover_media_id = body.cover_media_id
     await db.commit()
     await db.refresh(album)
@@ -96,7 +96,7 @@ async def update_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumUpdate,
 async def delete_album(db: AsyncSession, album_id: uuid.UUID, user: User) -> None:
     album = await get_album(db, album_id)
     if album.owner_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise AppError(status_code=403, code=forbidden, detail="Forbidden")
     await db.delete(album)
     await db.commit()
 
@@ -105,8 +105,8 @@ async def list_album_media(
     db: AsyncSession,
     album_id: uuid.UUID,
     user: User,
-    tags: str | None,
-    exclude_tags: str | None,
+    tags: list[str] | None,
+    exclude_tags: list[str] | None,
     mode: TagFilterMode,
     page: int,
     page_size: int,
@@ -154,7 +154,7 @@ async def remove_media_from_album(db: AsyncSession, album_id: uuid.UUID, media_i
         await db.execute(select(AlbumMedia).where(AlbumMedia.album_id == album_id, AlbumMedia.media_id == media_id))
     ).scalar_one_or_none()
     if album_media is None:
-        raise HTTPException(status_code=404, detail="Media not in album")
+        raise AppError(status_code=404, code=media_not_in_album, detail="Media not in album")
     await db.delete(album_media)
     if album.cover_media_id == media_id:
         album.cover_media_id = None
@@ -164,9 +164,9 @@ async def remove_media_from_album(db: AsyncSession, album_id: uuid.UUID, media_i
 async def share_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumShareCreate, user: User) -> AlbumShare:
     album = await get_album_for_user(db, album_id, user)
     if album.owner_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Only the owner can manage shares")
+        raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
     if body.user_id == user.id:
-        raise HTTPException(status_code=400, detail="Cannot share with yourself")
+        raise AppError(status_code=400, code=share_self, detail="Cannot share with yourself")
     share = (await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == body.user_id))).scalar_one_or_none()
     if share:
         share.can_edit = body.can_edit
@@ -181,12 +181,12 @@ async def share_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumShareCre
 async def revoke_share(db: AsyncSession, album_id: uuid.UUID, shared_user_id: uuid.UUID, user: User) -> None:
     album = await get_album_for_user(db, album_id, user)
     if album.owner_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Only the owner can manage shares")
+        raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
     share = (
         await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == shared_user_id))
     ).scalar_one_or_none()
     if share is None:
-        raise HTTPException(status_code=404, detail="Share not found")
+        raise AppError(status_code=404, code=share_not_found, detail="Share not found")
     await db.delete(share)
     await db.commit()
 
@@ -202,7 +202,7 @@ async def get_album_download_media(db: AsyncSession, album_id: uuid.UUID, user: 
         )
     ).scalars().all()
     if not rows:
-        raise HTTPException(status_code=404, detail="Album is empty")
+        raise AppError(status_code=404, code=album_empty, detail="Album is empty")
     album = await get_album(db, album_id)
     return album, rows
 

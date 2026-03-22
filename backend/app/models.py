@@ -91,6 +91,7 @@ class Media(Base):
         onupdate=func.now(),
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
     uploader: Mapped["User"] = relationship("User", back_populates="media")
     media_tags: Mapped[list["MediaTag"]] = relationship(

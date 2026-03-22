@@ -38,7 +38,7 @@ export class AlbumsClientService {
   }
 
   deleteAlbum(albumId: Uuid): Observable<void> {
-    return this.api.deleteVoid(`/albums/${albumId}`);
+    return this.api.delete<void>(`/albums/${albumId}`);
   }
 
   listAlbumMedia(albumId: Uuid, query?: ListAlbumMediaQuery): Observable<MediaListResponse> {
@@ -58,7 +58,7 @@ export class AlbumsClientService {
   }
 
   revokeShare(albumId: Uuid, sharedUserId: Uuid): Observable<void> {
-    return this.api.deleteVoid(`/albums/${albumId}/shares/${sharedUserId}`);
+    return this.api.delete<void>(`/albums/${albumId}/shares/${sharedUserId}`);
   }
 
   downloadAlbum(albumId: Uuid): Observable<Blob> {

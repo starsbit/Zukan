@@ -8,8 +8,8 @@ import {
   ListMediaQuery,
   MediaBatchDeleteDto,
   MediaBatchUpdateDto,
+  MediaCursorPage,
   MediaDetail,
-  MediaListResponse,
   MediaRead,
   MediaUpdateDto,
   TaggingJobQueuedResponse,
@@ -28,7 +28,7 @@ import {
 import { MediaClientService } from './web/media-client.service';
 
 export interface MediaState {
-  page: MediaListResponse | null;
+  page: MediaCursorPage | null;
   pageQuery: ListMediaQuery | null;
   details: Record<Uuid, MediaDetail>;
   selectedMediaId: Uuid | null;
@@ -92,7 +92,7 @@ export class MediaService {
     return this.stateSubject.value;
   }
 
-  loadPage(query?: ListMediaQuery): Observable<MediaListResponse> {
+  loadPage(query?: ListMediaQuery): Observable<MediaCursorPage> {
     this.patchState({
       pageQuery: query ?? null,
       request: beginRequest(this.stateSubject.value.request)
@@ -115,11 +115,11 @@ export class MediaService {
     );
   }
 
-  refreshPage(): Observable<MediaListResponse> {
+  refreshPage(): Observable<MediaCursorPage> {
     return this.loadPage(this.stateSubject.value.pageQuery ?? undefined);
   }
 
-  loadNextPage(): Observable<MediaListResponse | null> {
+  loadNextPage(): Observable<MediaCursorPage | null> {
     const state = this.stateSubject.value;
     const page = state.page;
 
@@ -127,14 +127,13 @@ export class MediaService {
       return of(null);
     }
 
-    if (page.items.length >= page.total) {
+    if (!page.next_cursor) {
       return of(null);
     }
 
-    const nextPage = Math.max(1, page.page) + 1;
     const nextQuery: ListMediaQuery = {
       ...(state.pageQuery ?? {}),
-      page: nextPage,
+      after: page.next_cursor,
       page_size: (state.pageQuery?.page_size ?? page.page_size)
     };
 
@@ -317,7 +316,7 @@ export class MediaService {
           this.patchState({
             page: this.stateSubject.value.page
               ? { ...this.stateSubject.value.page, items: [], total: 0 }
-              : { items: [], page: 1, page_size: 0, total: 0 }
+              : { items: [], next_cursor: null, page_size: 0, total: 0 }
           });
         } else {
           this.invalidatePage();

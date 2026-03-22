@@ -36,15 +36,15 @@ describe('TagsService', () => {
   });
 
   it('caches tag searches by query', async () => {
-    const firstSearch = firstValueFrom(service.search({ q: 'fox', limit: 10 }));
-    const request = httpTesting.expectOne('http://api.example.test/tags?q=fox&limit=10');
-    request.flush([{ id: 1, name: 'fox', category: 1, category_name: 'species', media_count: 2 }]);
+    const firstSearch = firstValueFrom(service.search({ q: 'fox', page_size: 10 }));
+    const request = httpTesting.expectOne('http://api.example.test/tags?q=fox&page_size=10');
+    request.flush({ total: 1, page: 1, page_size: 10, items: [{ id: 1, name: 'fox', category: 1, category_name: 'species', media_count: 2 }] });
 
     await expect(firstSearch).resolves.toHaveLength(1);
     expect(service.snapshot.tags).toHaveLength(1);
 
-    const secondSearch = firstValueFrom(service.search({ q: 'fox', limit: 10 }));
-    httpTesting.expectNone('http://api.example.test/tags?q=fox&limit=10');
+    const secondSearch = firstValueFrom(service.search({ q: 'fox', page_size: 10 }));
+    httpTesting.expectNone('http://api.example.test/tags?q=fox&page_size=10');
 
     await expect(secondSearch).resolves.toHaveLength(1);
   });
@@ -68,14 +68,14 @@ describe('TagsService', () => {
   it('deletes a tag and removes it from cached results', async () => {
     const searchPromise = firstValueFrom(service.search({ q: 'f' }));
     const searchRequest = httpTesting.expectOne('http://api.example.test/tags?q=f');
-    searchRequest.flush([forestTag, skyTag]);
+    searchRequest.flush({ total: 2, page: 1, page_size: 20, items: [forestTag, skyTag] });
     await expect(searchPromise).resolves.toEqual([forestTag, skyTag]);
 
     const deletePromise = firstValueFrom(service.deleteTag('forest'));
     expect(service.snapshot.mutationPending).toBe(true);
 
-    const deleteRequest = httpTesting.expectOne('http://api.example.test/tags/forest');
-    expect(deleteRequest.request.method).toBe('DELETE');
+    const deleteRequest = httpTesting.expectOne('http://api.example.test/tags/forest/actions/remove-from-media');
+    expect(deleteRequest.request.method).toBe('POST');
     deleteRequest.flush({
       matched_media: 1,
       updated_media: 1,
@@ -99,7 +99,7 @@ describe('TagsService', () => {
 
   it('maps tag and character management mutations and records failures', async () => {
     const trashTagPromise = firstValueFrom(service.trashMediaByTag('rating:general'));
-    const trashTagRequest = httpTesting.expectOne('http://api.example.test/tags/rating%3Ageneral/trash-media');
+    const trashTagRequest = httpTesting.expectOne('http://api.example.test/tags/rating%3Ageneral/actions/trash-media');
     expect(trashTagRequest.request.method).toBe('POST');
     expect(trashTagRequest.request.body).toEqual({});
     trashTagRequest.flush({
@@ -112,7 +112,7 @@ describe('TagsService', () => {
     await expect(trashTagPromise).resolves.toMatchObject({ trashed_media: 2, already_trashed: 2 });
 
     const trashCharacterPromise = firstValueFrom(service.trashMediaByCharacterName('ayanami_rei'));
-    const trashCharacterRequest = httpTesting.expectOne('http://api.example.test/character-names/ayanami_rei/trash-media');
+    const trashCharacterRequest = httpTesting.expectOne('http://api.example.test/character-names/ayanami_rei/actions/trash-media');
     expect(trashCharacterRequest.request.method).toBe('POST');
     trashCharacterRequest.flush({
       matched_media: 1,
@@ -124,8 +124,8 @@ describe('TagsService', () => {
     await expect(trashCharacterPromise).resolves.toMatchObject({ trashed_media: 1 });
 
     const deleteCharacterSuccessPromise = firstValueFrom(service.deleteCharacterName('ikari_shinji'));
-    const deleteCharacterSuccessRequest = httpTesting.expectOne('http://api.example.test/character-names/ikari_shinji');
-    expect(deleteCharacterSuccessRequest.request.method).toBe('DELETE');
+    const deleteCharacterSuccessRequest = httpTesting.expectOne('http://api.example.test/character-names/ikari_shinji/actions/remove-from-media');
+    expect(deleteCharacterSuccessRequest.request.method).toBe('POST');
     deleteCharacterSuccessRequest.flush({
       matched_media: 1,
       updated_media: 1,
@@ -136,21 +136,21 @@ describe('TagsService', () => {
     await expect(deleteCharacterSuccessPromise).resolves.toMatchObject({ updated_media: 1 });
 
     const deleteCharacterPromise = firstValueFrom(service.deleteCharacterName('ayanami_rei'));
-    const deleteCharacterRequest = httpTesting.expectOne('http://api.example.test/character-names/ayanami_rei');
-    expect(deleteCharacterRequest.request.method).toBe('DELETE');
+    const deleteCharacterRequest = httpTesting.expectOne('http://api.example.test/character-names/ayanami_rei/actions/remove-from-media');
+    expect(deleteCharacterRequest.request.method).toBe('POST');
     deleteCharacterRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
     await expect(deleteCharacterPromise).rejects.toMatchObject({ status: 500 });
     expect(service.snapshot.mutationError).toMatchObject({ status: 500 });
     expect(service.snapshot.mutationPending).toBe(false);
 
     const trashCharacterFailurePromise = firstValueFrom(service.trashMediaByCharacterName('shikinami_asuka')).catch((error) => error);
-    const trashCharacterFailureRequest = httpTesting.expectOne('http://api.example.test/character-names/shikinami_asuka/trash-media');
+    const trashCharacterFailureRequest = httpTesting.expectOne('http://api.example.test/character-names/shikinami_asuka/actions/trash-media');
     trashCharacterFailureRequest.flush({ detail: 'still broken' }, { status: 400, statusText: 'Bad Request' });
     await expect(trashCharacterFailurePromise).resolves.toMatchObject({ status: 400 });
   });
 
   it('settles pending mutations even when the client completes without emitting', async () => {
-    vi.spyOn(tagsClient, 'deleteCharacterName').mockReturnValue(EMPTY);
+    vi.spyOn(tagsClient, 'removeCharacterNameFromMedia').mockReturnValue(EMPTY);
 
     await new Promise<void>((resolve, reject) => {
       service.deleteCharacterName('quiet-complete').subscribe({

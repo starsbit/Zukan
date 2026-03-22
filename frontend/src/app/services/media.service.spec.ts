@@ -53,23 +53,23 @@ describe('MediaService', () => {
   });
 
   it('loads a media page and refreshes it with the last query', async () => {
-    const loadPromise = firstValueFrom(service.loadPage({ page: 2, page_size: 10, favorited: true }));
+    const loadPromise = firstValueFrom(service.loadPage({ after: 'cursor-pg2', page_size: 10, favorited: true }));
     expect(service.snapshot.request.loading).toBe(true);
 
-    const firstRequest = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=10&favorited=true');
+    const firstRequest = httpTesting.expectOne('http://api.example.test/media?after=cursor-pg2&page_size=10&favorited=true');
     firstRequest.flush({
       total: 1,
-      page: 2,
+      next_cursor: null,
       page_size: 10,
       items: [createMedia('media-1', { is_favorited: true })]
     });
 
     await expect(loadPromise).resolves.toMatchObject({ total: 1 });
-    expect(service.snapshot.pageQuery).toEqual({ page: 2, page_size: 10, favorited: true });
+    expect(service.snapshot.pageQuery).toEqual({ after: 'cursor-pg2', page_size: 10, favorited: true });
 
     const refreshPromise = firstValueFrom(service.refreshPage());
-    const refreshRequest = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=10&favorited=true');
-    refreshRequest.flush({ total: 0, page: 2, page_size: 10, items: [] });
+    const refreshRequest = httpTesting.expectOne('http://api.example.test/media?after=cursor-pg2&page_size=10&favorited=true');
+    refreshRequest.flush({ total: 0, next_cursor: null, page_size: 10, items: [] });
 
     await expect(refreshPromise).resolves.toMatchObject({ total: 0, items: [] });
   });
@@ -77,10 +77,10 @@ describe('MediaService', () => {
   it('loads and appends the next page of media items', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
-      pageQuery: { page: 1, page_size: 2, tags: 'sky' },
+      pageQuery: { page_size: 2, tag: ['sky'] },
       page: {
         total: 4,
-        page: 1,
+        next_cursor: 'cursor-next',
         page_size: 2,
         items: [createMedia('media-1'), createMedia('media-2')]
       },
@@ -88,25 +88,25 @@ describe('MediaService', () => {
     });
 
     const nextPagePromise = firstValueFrom(service.loadNextPage());
-    const nextRequest = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=2&tags=sky');
+    const nextRequest = httpTesting.expectOne('http://api.example.test/media?page_size=2&tag=sky&after=cursor-next');
     nextRequest.flush({
       total: 4,
-      page: 2,
+      next_cursor: null,
       page_size: 2,
       items: [createMedia('media-2'), createMedia('media-3'), createMedia('media-4')]
     });
 
-    await expect(nextPagePromise).resolves.toMatchObject({ page: 2 });
+    await expect(nextPagePromise).resolves.toMatchObject({ next_cursor: null });
     expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-1', 'media-2', 'media-3', 'media-4']);
   });
 
   it('does not load next page when all media has already been loaded', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
-      pageQuery: { page: 1, page_size: 2 },
+      pageQuery: { page_size: 2 },
       page: {
         total: 2,
-        page: 1,
+        next_cursor: null,
         page_size: 2,
         items: [createMedia('media-1'), createMedia('media-2')]
       },
@@ -114,16 +114,16 @@ describe('MediaService', () => {
     });
 
     await expect(firstValueFrom(service.loadNextPage())).resolves.toBeNull();
-    httpTesting.expectNone((request) => request.urlWithParams.includes('/media?page=2'));
+    httpTesting.expectNone((request) => request.urlWithParams.includes('/media?after'));
   });
 
   it('updates cached detail and current page items after a media mutation', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
-      pageQuery: { page: 1, page_size: 20 },
+      pageQuery: { page_size: 20 },
       page: {
         total: 1,
-        page: 1,
+        next_cursor: null,
         page_size: 20,
         items: [createMedia('media-1')]
       },
@@ -149,7 +149,7 @@ describe('MediaService', () => {
       pageQuery: { state: 'trashed' },
       page: {
         total: 1,
-        page: 1,
+        next_cursor: null,
         page_size: 20,
         items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })]
       },
@@ -190,7 +190,7 @@ describe('MediaService', () => {
   it('handles uploads, downloads, and tagging job requests', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
-      page: { total: 1, page: 1, page_size: 20, items: [createMedia('media-1')] },
+      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1')] },
       request: { loading: false, loaded: true, error: null }
     });
 
@@ -233,7 +233,7 @@ describe('MediaService', () => {
       pageQuery: { state: 'active' },
       page: {
         total: 2,
-        page: 1,
+        next_cursor: null,
         page_size: 20,
         items: [createMedia('media-1'), createMedia('media-2')]
       },
@@ -266,7 +266,7 @@ describe('MediaService', () => {
     service['stateSubject'].next({
       ...service.snapshot,
       pageQuery: { state: 'active' },
-      page: { total: 1, page: 1, page_size: 20, items: [createMedia('media-3')] },
+      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-3')] },
       details: { 'media-3': createMedia('media-3') },
       selectedMediaId: 'media-3'
     });
@@ -283,7 +283,7 @@ describe('MediaService', () => {
     service['stateSubject'].next({
       ...service.snapshot,
       pageQuery: { state: 'trashed' },
-      page: { total: 1, page: 1, page_size: 20, items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })] },
+      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })] },
       details: { 'media-1': createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' }) }
     });
 
@@ -307,7 +307,7 @@ describe('MediaService', () => {
     expect(service.snapshot.page?.total).toBe(0);
 
     const emptyTrashPromise = firstValueFrom(service.emptyTrash());
-    const emptyTrashRequest = httpTesting.expectOne('http://api.example.test/media/trash');
+    const emptyTrashRequest = httpTesting.expectOne('http://api.example.test/media/actions/empty-trash');
     emptyTrashRequest.flush(null, { status: 204, statusText: 'No Content' });
     await expect(emptyTrashPromise).resolves.toBeNull();
     expect(service.snapshot.page?.items).toEqual([]);
@@ -315,12 +315,12 @@ describe('MediaService', () => {
     service['stateSubject'].next({
       ...service.snapshot,
       pageQuery: { state: 'active' },
-      page: { total: 1, page: 1, page_size: 20, items: [createMedia('media-2')] },
+      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-2')] },
       request: { loading: false, loaded: true, error: null }
     });
 
     const emptyActivePromise = firstValueFrom(service.emptyTrash());
-    const emptyActiveRequest = httpTesting.expectOne('http://api.example.test/media/trash');
+    const emptyActiveRequest = httpTesting.expectOne('http://api.example.test/media/actions/empty-trash');
     emptyActiveRequest.flush(null, { status: 204, statusText: 'No Content' });
     await expect(emptyActivePromise).resolves.toBeNull();
     expect(service.snapshot.page).toBeNull();
@@ -328,8 +328,8 @@ describe('MediaService', () => {
   });
 
   it('records request and mutation failures', async () => {
-    const loadPromise = firstValueFrom(service.loadPage({ page: 1 }));
-    const loadRequest = httpTesting.expectOne('http://api.example.test/media?page=1');
+    const loadPromise = firstValueFrom(service.loadPage({}));
+    const loadRequest = httpTesting.expectOne('http://api.example.test/media');
     loadRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
     await expect(loadPromise).rejects.toMatchObject({ status: 500 });
     expect(service.snapshot.request.error).toMatchObject({ status: 500 });

@@ -139,7 +139,7 @@ def test_get_visible_media_blocks_hidden_nsfw_media(api):
         api.run_db(_exercise)
 
     assert exc.value.status_code == 403
-    assert exc.value.detail == "NSFW content hidden"
+    assert exc.value.detail["code"] == "nsfw_hidden"
 
 
 def test_retag_media_queues_media_id(api):
@@ -315,7 +315,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             session,
             db_user,
             MediaListState.ACTIVE,
-            tags="sky",
+            tags=["sky"],
             character_name="REI",
             exclude_tags=None,
             mode=TagFilterMode.AND,
@@ -323,7 +323,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in listing.items] == [blue_id]
@@ -341,7 +340,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in character_only.items] == [blue_id]
@@ -358,7 +356,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert normalized_character_only.items == []
@@ -397,7 +394,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in normalized_sumika.items] == [blue_id]
@@ -406,7 +402,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             session,
             db_user,
             MediaListState.ACTIVE,
-            tags="sky",
+            tags=["sky"],
             character_name=None,
             exclude_tags=None,
             mode=TagFilterMode.AND,
@@ -415,7 +411,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             metadata=MediaMetadataFilter(),
             favorited=None,
             album_id=album_id,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in album_filtered.items] == [blue_id]
@@ -432,7 +427,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
         favorites = await media_service.list_favorites(
             session,
             db_user,
-            tags="sky",
+            tags=["sky"],
             exclude_tags=None,
             mode=TagFilterMode.AND,
             page=1,
@@ -476,7 +471,7 @@ def test_media_service_trash_restore_on_this_day_and_purge_flow(api):
         db_user = await session.get(User, user_id)
 
         await media_service.soft_delete_media(session, kept_id, db_user)
-        trash = await media_service.list_trash(session, db_user, page=1, page_size=20)
+        trash = await media_service.list_trash(session, db_user, after=None, page_size=20)
         assert [item.id for item in trash.items] == [kept_id]
 
         await media_service.restore_media(session, kept_id, db_user)
@@ -500,7 +495,6 @@ def test_media_service_trash_restore_on_this_day_and_purge_flow(api):
                 captured_before_year=datetime.now(timezone.utc).year,
             ),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in on_this_day.items] == [kept_id]
@@ -540,7 +534,7 @@ def test_list_trash_auto_purges_items_older_than_thirty_days(api):
         expired_media.deleted_at = now - timedelta(days=31)
         await session.commit()
 
-        trashed = await media_service.list_trash(session, db_user, page=1, page_size=20)
+        trashed = await media_service.list_trash(session, db_user, after=None, page_size=20)
         assert [item.id for item in trashed.items] == [fresh_id]
         assert await session.get(Media, fresh_id) is not None
         assert await session.get(Media, expired_id) is None
@@ -582,7 +576,7 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             session,
             db_user,
             MediaListState.ACTIVE,
-            tags="custom_tag",
+            tags=["custom_tag"],
             character_name="shinji",
             exclude_tags=None,
             mode=TagFilterMode.AND,
@@ -590,7 +584,6 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert [item.id for item in by_new_tag.items] == [uploaded_id]
@@ -599,7 +592,7 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             session,
             db_user,
             MediaListState.ACTIVE,
-            tags="sky",
+            tags=["sky"],
             character_name=None,
             exclude_tags=None,
             mode=TagFilterMode.AND,
@@ -607,7 +600,6 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             status_filter="done",
             metadata=MediaMetadataFilter(),
             favorited=None,
-            page=1,
             page_size=20,
         )
         assert by_old_tag.items == []

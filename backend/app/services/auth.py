@@ -4,12 +4,12 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import bcrypt
-from fastapi import HTTPException
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import settings
+from backend.app.errors import AppError, duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token
 from backend.app.models import RefreshToken, User
 from backend.app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
@@ -118,9 +118,9 @@ async def authenticate_basic_user(db: AsyncSession, username: str, password: str
 
 async def register_user(db: AsyncSession, body: UserRegister) -> User:
     if await get_user_by_username(db, body.username):
-        raise HTTPException(status_code=400, detail="Username already taken")
+        raise AppError(status_code=400, code=duplicate_username, detail="Username already taken")
     if await get_user_by_email(db, body.email):
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise AppError(status_code=400, code=duplicate_email, detail="Email already registered")
 
     user = User(
         username=body.username,
@@ -137,7 +137,7 @@ async def register_user(db: AsyncSession, body: UserRegister) -> User:
 async def login_user(db: AsyncSession, body: UserLogin) -> TokenResponse:
     user = await get_user_by_username(db, body.username)
     if user is None or not verify_password(body.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise AppError(status_code=401, code=invalid_credentials, detail="Invalid credentials")
 
     access = create_access_token(user.id)
     refresh = await create_refresh_token(db, user.id, remember_me=body.remember_me)
@@ -147,7 +147,7 @@ async def login_user(db: AsyncSession, body: UserLogin) -> TokenResponse:
 async def refresh_access_token(db: AsyncSession, raw_refresh_token: str) -> AccessTokenResponse:
     result = await rotate_refresh_token(db, raw_refresh_token)
     if result is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+        raise AppError(status_code=401, code=invalid_refresh_token, detail="Invalid or expired refresh token")
 
     new_raw, user_id = result
     access = create_access_token(user_id)

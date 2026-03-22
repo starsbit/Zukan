@@ -1,16 +1,18 @@
 import asyncio
+import base64
+import json
 import re
 import uuid
-from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import HTTPException, UploadFile
-from sqlalchemy import and_, extract, func, select
+from fastapi import UploadFile
+from sqlalchemy import and_, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.config import settings
+from backend.app.errors import AppError, album_not_found, media_not_found, nsfw_hidden, nsfw_disabled, upload_limit_exceeded
 from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaTag, MediaType, Tag, User, UserFavorite
 from backend.app.schemas import (
     BatchUploadResponse,
@@ -18,6 +20,7 @@ from backend.app.schemas import (
     CATEGORY_NAMES,
     MediaBatchDelete,
     MediaBatchUpdate,
+    MediaCursorPage,
     MediaDetail,
     MediaListResponse,
     MediaListState,
@@ -90,20 +93,11 @@ async def favorited_ids(db: AsyncSession, user_id: uuid.UUID, media_ids: list[uu
     return set(result.scalars().all())
 
 
-def _parse_tag_values(value: str | None) -> list[str]:
-    if not value:
-        return []
-    return [tag.strip() for tag in value.split(",") if tag.strip()]
-
-
-def _apply_tag_filters(stmt, tags: str | None, exclude_tags: str | None, mode: TagFilterMode):
-    include_tags = _parse_tag_values(tags)
-    if include_tags:
-        stmt = stmt.where(Media.tags.contains(include_tags) if mode == TagFilterMode.AND else Media.tags.overlap(include_tags))
-
-    excluded_tags = _parse_tag_values(exclude_tags)
-    if excluded_tags:
-        stmt = stmt.where(~Media.tags.contains(excluded_tags))
+def _apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | None, mode: TagFilterMode):
+    if tags:
+        stmt = stmt.where(Media.tags.contains(tags) if mode == TagFilterMode.AND else Media.tags.overlap(tags))
+    if exclude_tags:
+        stmt = stmt.where(~Media.tags.contains(exclude_tags))
     return stmt
 
 
@@ -121,12 +115,10 @@ def _parse_csv_values(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def _apply_media_type_filters(stmt, media_type_filter: str | None):
-    values = _parse_csv_values(media_type_filter)
-    if not values:
+def _apply_media_type_filters(stmt, media_type_filter: list[str] | None):
+    if not media_type_filter:
         return stmt
-
-    valid_values = [MediaType(value) for value in values]
+    valid_values = [MediaType(value) for value in media_type_filter]
     return stmt.where(Media.media_type.in_(valid_values))
 
 
@@ -158,6 +150,41 @@ def _normalized_character_name_expr():
 
 def _captured_timestamp_expr():
     return func.coalesce(Media.captured_at, Media.created_at)
+
+
+def _encode_cursor(sort_val, item_id: uuid.UUID) -> str:
+    s = sort_val.isoformat() if isinstance(sort_val, datetime) else sort_val
+    payload = json.dumps({"s": s, "id": str(item_id)}, separators=(",", ":"))
+    return base64.urlsafe_b64encode(payload.encode()).decode().rstrip("=")
+
+
+def _decode_cursor(cursor: str, sort_by: str) -> tuple | None:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        data = json.loads(base64.urlsafe_b64decode(padded))
+        item_id = uuid.UUID(data["id"])
+        s = data["s"]
+        if sort_by in ("captured_at", "created_at"):
+            sort_val = datetime.fromisoformat(s)
+        elif sort_by == "file_size":
+            sort_val = int(s)
+        else:
+            sort_val = s
+        return sort_val, item_id
+    except Exception:
+        return None
+
+
+def _apply_cursor_where(stmt, sort_by: str, sort_order: str, cursor_val, cursor_id: uuid.UUID):
+    sort_expr = {
+        "captured_at": _captured_timestamp_expr(),
+        "created_at": Media.created_at,
+        "filename": Media.filename,
+        "file_size": Media.file_size,
+    }[sort_by]
+    if sort_order == "desc":
+        return stmt.where(or_(sort_expr < cursor_val, and_(sort_expr == cursor_val, Media.id < cursor_id)))
+    return stmt.where(or_(sort_expr > cursor_val, and_(sort_expr == cursor_val, Media.id > cursor_id)))
 
 
 def _format_tagging_error(exc: Exception) -> str:
@@ -200,6 +227,7 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         metadata=_build_media_metadata(media),
         tags=media.tags,
         character_name=media.character_name,
+        source_url=media.source_url,
         is_nsfw=media.is_nsfw,
         tagging_status=media.tagging_status,
         tagging_error=media.tagging_error,
@@ -220,33 +248,6 @@ def _build_tag_payloads(
     return [(tag_name, default_category, default_confidence) for tag_name in _normalize_manual_tags(tag_names)]
 
 
-async def _delete_orphaned_tags(db: AsyncSession, tag_ids: list[int]) -> set[int]:
-    if not tag_ids:
-        return set()
-
-    candidate_ids = sorted(set(tag_ids))
-    linked_ids = set((await db.execute(select(MediaTag.tag_id).where(MediaTag.tag_id.in_(candidate_ids)))).scalars().all())
-    orphan_ids = set(candidate_ids) - linked_ids
-    if not orphan_ids:
-        return set()
-
-    orphaned_tags = (await db.execute(select(Tag).where(Tag.id.in_(orphan_ids)))).scalars().all()
-    for tag in orphaned_tags:
-        await db.delete(tag)
-    return orphan_ids
-
-
-async def _decrement_tag_counts(db: AsyncSession, removals: Counter[int]) -> set[int]:
-    if not removals:
-        return set()
-
-    tags = (await db.execute(select(Tag).where(Tag.id.in_(list(removals))))).scalars().all()
-    for tag in tags:
-        tag.media_count = max(0, tag.media_count - removals[tag.id])
-    await db.flush()
-    return await _delete_orphaned_tags(db, [tag.id for tag in tags])
-
-
 async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: list[tuple[str, int, float]]) -> None:
     desired_payloads: list[tuple[str, int, float]] = []
     desired_by_name: dict[str, tuple[int, float]] = {}
@@ -261,7 +262,6 @@ async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: lis
     ).scalars().all()
     existing_by_name = {item.tag.name: item for item in existing_media_tags}
 
-    removed_tag_counts: Counter[int] = Counter()
     for name, media_tag in existing_by_name.items():
         if name in desired_by_name:
             desired_category, desired_confidence = desired_by_name[name]
@@ -269,10 +269,9 @@ async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: lis
                 media_tag.tag.category = desired_category
             media_tag.confidence = desired_confidence
             continue
-        removed_tag_counts[media_tag.tag_id] += 1
         await db.delete(media_tag)
 
-    await _decrement_tag_counts(db, removed_tag_counts)
+    await db.flush()
 
     missing_names = [name for name, _, _ in desired_payloads if name not in existing_by_name]
     existing_tags: dict[str, Tag] = {}
@@ -292,7 +291,6 @@ async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: lis
             existing_tags[name] = tag
         elif tag.category == 0 and category != 0:
             tag.category = category
-        tag.media_count += 1
         db.add(MediaTag(media_id=media.id, tag_id=tag.id, confidence=confidence))
 
     media.tags = [name for name, _, _ in desired_payloads]
@@ -305,7 +303,7 @@ def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
         return stmt
     if nsfw == NsfwFilter.ONLY:
         if not user.show_nsfw and not user.is_admin:
-            raise HTTPException(status_code=403, detail="Enable NSFW in your profile first")
+            raise AppError(status_code=403, code=nsfw_disabled, detail="Enable NSFW in your profile first")
         return stmt.where(Media.is_nsfw == True)
     return stmt
 
@@ -327,23 +325,35 @@ def _apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
     return stmt
 
 
+def _media_sort_expr(sort_by: str, sort_order: str):
+    col = {
+        "captured_at": _captured_timestamp_expr(),
+        "created_at": Media.created_at,
+        "filename": Media.filename,
+        "file_size": Media.file_size,
+    }[sort_by]
+    return col.asc() if sort_order == "asc" else col.desc()
+
+
 async def list_media(
     db: AsyncSession,
     user: User,
     state: MediaListState,
-    tags: str | None,
+    tags: list[str] | None,
     character_name: str | None,
-    exclude_tags: str | None,
+    exclude_tags: list[str] | None,
     mode: TagFilterMode,
     nsfw: NsfwFilter,
     status_filter: str | None,
     metadata: MediaMetadataFilter,
     favorited: bool | None,
-    media_type: str | None = None,
+    media_type: list[str] | None = None,
     album_id: uuid.UUID | None = None,
-    page: int = 1,
+    after: str | None = None,
     page_size: int = 20,
-) -> MediaListResponse:
+    sort_by: str = "captured_at",
+    sort_order: str = "desc",
+) -> MediaCursorPage:
     await purge_expired_trash(db)
     stmt = select(Media)
     if album_id is not None:
@@ -368,17 +378,40 @@ async def list_media(
     stmt = _apply_captured_at_filters(stmt, metadata)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-    rows = (
-        await db.execute(stmt.order_by(_captured_timestamp_expr().desc()).offset((page - 1) * page_size).limit(page_size))
-    ).scalars().all()
+
+    if after is not None:
+        decoded = _decode_cursor(after, sort_by)
+        if decoded is not None:
+            cursor_val, cursor_id = decoded
+            stmt = _apply_cursor_where(stmt, sort_by, sort_order, cursor_val, cursor_id)
+
+    sort_col = {
+        "captured_at": _captured_timestamp_expr(),
+        "created_at": Media.created_at,
+        "filename": Media.filename,
+        "file_size": Media.file_size,
+    }[sort_by]
+    if sort_order == "desc":
+        order_exprs = [sort_col.desc(), Media.id.desc()]
+    else:
+        order_exprs = [sort_col.asc(), Media.id.asc()]
+
+    rows = (await db.execute(stmt.order_by(*order_exprs).limit(page_size))).scalars().all()
     favs = await favorited_ids(db, user.id, [row.id for row in rows])
-    return MediaListResponse(total=total, page=page, page_size=page_size, items=enrich_media(rows, favs))
+
+    next_cursor = None
+    if len(rows) == page_size:
+        last = rows[-1]
+        sv = (last.captured_at or last.created_at) if sort_by == "captured_at" else getattr(last, sort_by)
+        next_cursor = _encode_cursor(sv, last.id)
+
+    return MediaCursorPage(total=total, next_cursor=next_cursor, page_size=page_size, items=enrich_media(rows, favs))
 
 
 async def _ensure_album_is_visible(db: AsyncSession, user: User, album_id: uuid.UUID) -> None:
     album = (await db.execute(select(Album).where(Album.id == album_id))).scalar_one_or_none()
     if album is None:
-        raise HTTPException(status_code=404, detail="Album not found")
+        raise AppError(status_code=404, code=album_not_found, detail="Album not found")
 
     if album.owner_id == user.id or user.is_admin:
         return
@@ -387,7 +420,7 @@ async def _ensure_album_is_visible(db: AsyncSession, user: User, album_id: uuid.
         await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == user.id))
     ).scalar_one_or_none()
     if share is None:
-        raise HTTPException(status_code=404, detail="Album not found")
+        raise AppError(status_code=404, code=album_not_found, detail="Album not found")
 
 
 async def list_character_suggestions(
@@ -424,7 +457,7 @@ async def list_character_suggestions(
     return [{"name": row.name, "media_count": row.media_count} for row in rows]
 
 
-async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) -> MediaListResponse:
+async def list_trash(db: AsyncSession, user: User, after: str | None, page_size: int) -> MediaCursorPage:
     return await list_media(
         db,
         user,
@@ -439,7 +472,7 @@ async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) ->
         favorited=None,
         media_type=None,
         album_id=None,
-        page=page,
+        after=after,
         page_size=page_size,
     )
 
@@ -457,8 +490,8 @@ async def empty_trash(db: AsyncSession, user: User) -> None:
 async def list_favorites(
     db: AsyncSession,
     user: User,
-    tags: str | None,
-    exclude_tags: str | None,
+    tags: list[str] | None,
+    exclude_tags: list[str] | None,
     mode: TagFilterMode,
     page: int,
     page_size: int,
@@ -479,15 +512,26 @@ async def list_favorites(
     return MediaListResponse(total=total, page=page, page_size=page_size, items=[_build_media_read(row, True) for row in rows])
 
 
-async def build_upload_response(db: AsyncSession, user: User, files: list[UploadFile]) -> BatchUploadResponse:
+async def build_upload_response(
+    db: AsyncSession,
+    user: User,
+    files: list[UploadFile],
+    *,
+    album_id: uuid.UUID | None = None,
+    tags: list[str] | None = None,
+    source_url: str | None = None,
+    captured_at_override: datetime | None = None,
+    character_name: str | None = None,
+) -> BatchUploadResponse:
     await purge_expired_trash(db)
     if len(files) > settings.max_batch_size:
-        raise HTTPException(status_code=400, detail=f"Max {settings.max_batch_size} files per request")
+        raise AppError(status_code=400, code=upload_limit_exceeded, detail=f"Max {settings.max_batch_size} files per request")
 
     queue = get_tag_queue()
     results: list[UploadResult] = []
     accepted = duplicates = errors = 0
     queued_media_ids: list[uuid.UUID] = []
+    tagging_media_ids: list[uuid.UUID] = []
 
     for upload in files:
         original_name = upload.filename or "unknown"
@@ -518,11 +562,13 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             existing.captured_at = existing.captured_at or captured_at
             await db.flush()
             queued_media_ids.append(existing.id)
+            tagging_media_ids.append(existing.id)
             results.append(UploadResult(id=existing.id, original_filename=original_name, status="accepted"))
             accepted += 1
             continue
 
         poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
+        normalized_tags = _normalize_manual_tags(tags) if tags else []
         media = Media(
             uploader_id=user.id,
             filename=saved.path.name,
@@ -537,24 +583,34 @@ async def build_upload_response(db: AsyncSession, user: User, files: list[Upload
             duration_seconds=metadata.duration_seconds,
             frame_count=metadata.frame_count,
             tags=[],
-            character_name=None,
+            character_name=character_name or None,
+            source_url=source_url or None,
             tagging_status="pending",
             tagging_error=None,
             thumbnail_path=str(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
             poster_path=str(poster) if poster else None,
             poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
-            captured_at=captured_at,
+            captured_at=captured_at_override or captured_at,
         )
         db.add(media)
         await db.flush()
+        if normalized_tags:
+            await _set_media_tag_links(db, media, _build_tag_payloads(normalized_tags))
+            media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
+            media.tagging_status = "done"
+        else:
+            tagging_media_ids.append(media.id)
         queued_media_ids.append(media.id)
         results.append(UploadResult(id=media.id, original_filename=original_name, status="accepted"))
         accepted += 1
 
     await db.commit()
+    if album_id is not None and queued_media_ids:
+        from backend.app.services.albums import add_media_to_album
+        await add_media_to_album(db, album_id, queued_media_ids, user)
     if queue:
-        for media_id in queued_media_ids:
+        for media_id in tagging_media_ids:
             await queue.put(media_id)
     return BatchUploadResponse(accepted=accepted, duplicates=duplicates, errors=errors, results=results)
 
@@ -573,7 +629,7 @@ async def get_downloadable_media(db: AsyncSession, user: User, media_ids: list[u
     if not user.is_admin:
         rows = [row for row in rows if row.uploader_id == user.id]
     if not rows:
-        raise HTTPException(status_code=404, detail="No accessible media found")
+        raise AppError(status_code=404, code=media_not_found, detail="No accessible media found")
     return rows
 
 
@@ -581,11 +637,11 @@ async def get_visible_media(db: AsyncSession, media_id: uuid.UUID, user: User) -
     await purge_expired_trash(db)
     media = (await db.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
     if media is None:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
     if media.deleted_at is not None and media.uploader_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
     if media.is_nsfw and not user.show_nsfw and not user.is_admin:
-        raise HTTPException(status_code=403, detail="NSFW content hidden")
+        raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
     return media
 
 
@@ -593,16 +649,16 @@ async def get_media_detail(db: AsyncSession, media_id: uuid.UUID, user: User) ->
     await purge_expired_trash(db)
     media = await _get_media_with_tags(db, media_id, deleted=False)
     if media is None:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
     if media.is_nsfw and not user.show_nsfw and not user.is_admin:
-        raise HTTPException(status_code=403, detail="NSFW content hidden")
+        raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
     return await build_media_detail(db, media, user.id)
 
 
 async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
     await purge_expired_trash(db)
     metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
-    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "metadata", "deleted"})
+    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "source_url", "metadata", "deleted"})
     if needs_owner_access:
         media = await get_owned_or_admin_media(db, media_id, user, trashed=None)
     else:
@@ -615,6 +671,8 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
 
     if "character_name" in payload.model_fields_set:
         media.character_name = payload.character_name.strip() if payload.character_name and payload.character_name.strip() else None
+    if "source_url" in payload.model_fields_set:
+        media.source_url = payload.source_url or None
     if "metadata" in payload.model_fields_set and "captured_at" in metadata_fields:
         media.captured_at = payload.metadata.captured_at or media.created_at
     if "deleted" in payload.model_fields_set:
@@ -662,7 +720,7 @@ async def unfavorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) ->
     await purge_expired_trash(db)
     favorite = await get_favorite(db, media_id, user.id)
     if favorite is None:
-        raise HTTPException(status_code=404, detail="Not in favorites")
+        raise AppError(status_code=404, code=media_not_found, detail="Not in favorites")
     await db.delete(favorite)
     await db.commit()
 
@@ -720,16 +778,16 @@ async def get_owned_or_admin_media(db: AsyncSession, media_id: uuid.UUID, user: 
     media = (await db.execute(stmt)).scalar_one_or_none()
     if media is None:
         detail = "Not found in trash" if trashed is True else "Not found"
-        raise HTTPException(status_code=404, detail=detail)
+        raise AppError(status_code=404, code=media_not_found, detail=detail)
     if media.uploader_id != user.id and not user.is_admin:
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise AppError(status_code=403, code=media_not_found, detail="Forbidden")
     return media
 
 
 async def get_active_media(db: AsyncSession, media_id: uuid.UUID) -> Media:
     media = (await db.execute(select(Media).where(Media.id == media_id, Media.deleted_at.is_(None)))).scalar_one_or_none()
     if media is None:
-        raise HTTPException(status_code=404, detail="Not found")
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
     return media
 
 
@@ -825,11 +883,8 @@ async def _batch_update_favorite_state(db: AsyncSession, media_ids: list[uuid.UU
 
 
 async def purge_media_record(media: Media, db: AsyncSession) -> None:
-    tag_ids = (await db.execute(select(MediaTag.tag_id).where(MediaTag.media_id == media.id))).scalars().all()
     await db.delete(media)
     await db.flush()
-    if tag_ids:
-        await _decrement_tag_counts(db, Counter(tag_ids))
     delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
 
 

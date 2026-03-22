@@ -5,6 +5,7 @@ from backend.tests.api_flows import (
     assert_album_endpoints,
     assert_auth_endpoints,
     assert_bulk_endpoints,
+    assert_custom_tag_save_and_search_regression,
     assert_docs_require_authorization,
     assert_media_complex_query_regression,
     assert_media_lifecycle_download_and_on_this_day_endpoints,
@@ -65,3 +66,7 @@ def test_admin_permissions(api):
 
 def test_mixed_media_endpoints(api):
     assert_mixed_media_endpoints(api)
+
+
+def test_custom_tag_save_and_search_regression(api):
+    assert_custom_tag_save_and_search_regression(api)

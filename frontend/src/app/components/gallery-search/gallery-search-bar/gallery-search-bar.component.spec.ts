@@ -214,7 +214,7 @@ describe('GallerySearchBarComponent', () => {
     await vi.advanceTimersByTimeAsync(200);
     fixture.detectChanges();
 
-    expect(tagsService.search).toHaveBeenCalledWith({ q: 'fox', limit: 6 });
+    expect(tagsService.search).toHaveBeenCalledWith({ q: 'fox', page_size: 6 });
     expect(characterSuggestionsService.search).toHaveBeenCalledWith('fox', 6);
     expect(component.tagSuggestions).toEqual([{
       kind: 'tag',
@@ -235,7 +235,7 @@ describe('GallerySearchBarComponent', () => {
     component.queryControl.setValue('tag:fo');
     await vi.advanceTimersByTimeAsync(200);
 
-    expect(tagsService.search).toHaveBeenCalledWith({ q: 'fo', limit: 8 });
+    expect(tagsService.search).toHaveBeenCalledWith({ q: 'fo', page_size: 8 });
     expect(characterSuggestionsService.search).not.toHaveBeenCalled();
   });
 

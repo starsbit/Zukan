@@ -10,6 +10,18 @@ from backend.app.models import MediaType
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 
 
+class ErrorResponse(BaseModel):
+    code: str
+    detail: str
+
+
+ERROR_RESPONSES = {
+    401: {"model": ErrorResponse, "description": "Not authenticated"},
+    403: {"model": ErrorResponse, "description": "Forbidden"},
+    404: {"model": ErrorResponse, "description": "Not found"},
+}
+
+
 class UserRegister(BaseModel):
     username: str = Field(min_length=3, max_length=64)
     email: EmailStr
@@ -139,6 +151,7 @@ class MediaRead(BaseModel):
     tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
     thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
     poster_status: str = Field(default="done", description="Current poster generation lifecycle state for animated media.")
+    source_url: str | None = Field(default=None, description="Optional source URL for the media, used to link to external anime/character entities.")
     created_at: datetime
     deleted_at: datetime | None
     is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
@@ -165,6 +178,10 @@ class MediaUpdate(BaseModel):
         default=None,
         description="Manual character name override. Send null or an empty string to clear it.",
     )
+    source_url: str | None = Field(
+        default=None,
+        description="Source URL for linking to an external anime or character entity.",
+    )
     metadata: MediaMetadataUpdate | None = None
     deleted: bool | None = Field(
         default=None,
@@ -188,6 +205,13 @@ class MediaUpdate(BaseModel):
 class MediaListResponse(BaseModel):
     total: int = Field(description="Total number of media items matching the current filters.")
     page: int = Field(description="Current page number.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[MediaRead] = Field(description="Media returned for the current page.")
+
+
+class MediaCursorPage(BaseModel):
+    total: int = Field(description="Total number of media items matching the current filters.")
+    next_cursor: str | None = Field(description="Opaque cursor for fetching the next page. Null if no more items.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[MediaRead] = Field(description="Media returned for the current page.")
 
@@ -322,3 +346,10 @@ class BatchUploadResponse(BaseModel):
 class UploadConfigResponse(BaseModel):
     max_batch_size: int
     max_upload_size_mb: int
+
+
+class TagListResponse(BaseModel):
+    total: int = Field(description="Total number of tags matching the current filters.")
+    page: int = Field(description="Current page number.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[TagRead] = Field(description="Tags returned for the current page.")

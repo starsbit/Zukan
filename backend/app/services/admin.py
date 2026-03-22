@@ -1,9 +1,9 @@
 import uuid
 
-from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.errors import AppError, user_not_found
 from backend.app.models import Media, User
 from backend.app.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
 from backend.app.services.media import get_tag_queue, purge_media_record
@@ -26,16 +26,24 @@ async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
     )
 
 
-async def list_users(db: AsyncSession, page: int, page_size: int) -> UserListResponse:
+async def list_users(
+    db: AsyncSession,
+    page: int,
+    page_size: int,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> UserListResponse:
+    sort_col = User.username if sort_by == "username" else User.created_at
+    order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
     total = (await db.execute(select(func.count(User.id)))).scalar_one()
-    users = (await db.execute(select(User).order_by(User.created_at.desc()).offset((page - 1) * page_size).limit(page_size))).scalars().all()
+    users = (await db.execute(select(User).order_by(order_expr).offset((page - 1) * page_size).limit(page_size))).scalars().all()
     return UserListResponse(total=total, page=page, page_size=page_size, items=users)
 
 
 async def get_user_detail(db: AsyncSession, user_id: uuid.UUID) -> AdminUserDetail:
     target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if target is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise AppError(status_code=404, code=user_not_found, detail="User not found")
     media_count = (await db.execute(select(func.count(Media.id)).where(Media.uploader_id == user_id))).scalar_one()
     storage_bytes = (await db.execute(select(func.coalesce(func.sum(Media.file_size), 0)).where(Media.uploader_id == user_id))).scalar_one()
     return AdminUserDetail.model_validate({**UserRead.model_validate(target).model_dump(), "media_count": media_count, "storage_used_bytes": storage_bytes})
@@ -44,7 +52,7 @@ async def get_user_detail(db: AsyncSession, user_id: uuid.UUID) -> AdminUserDeta
 async def update_user(db: AsyncSession, user_id: uuid.UUID, body: AdminUserUpdate):
     target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if target is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise AppError(status_code=404, code=user_not_found, detail="User not found")
     if "is_admin" in body.model_fields_set:
         target.is_admin = body.is_admin
     if "show_nsfw" in body.model_fields_set:
@@ -63,7 +71,7 @@ async def delete_user(
 ) -> None:
     target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if target is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise AppError(status_code=404, code=user_not_found, detail="User not found")
     if delete_media:
         media_items = (await db.execute(select(Media).where(Media.uploader_id == user_id))).scalars().all()
         for media in media_items:

@@ -451,7 +451,6 @@ export class MediaUploadService {
   private loadUploadMedia(mediaId: Uuid) {
     return this.mediaClient.getMedia(mediaId).pipe(
       catchError(() => this.mediaClient.listMedia({
-        page: 1,
         page_size: 200,
         nsfw: 'include'
       }).pipe(

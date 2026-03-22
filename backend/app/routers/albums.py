@@ -1,4 +1,5 @@
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
@@ -15,13 +16,14 @@ from backend.app.schemas import (
     AlbumShareRead,
     AlbumUpdate,
     BulkResult,
+    ERROR_RESPONSES,
     MediaListResponse,
     TagFilterMode,
 )
 from backend.app.services import albums as album_service
 from backend.app.services.storage import zip_media
 
-router = APIRouter(prefix="/albums", tags=["albums"])
+router = APIRouter(prefix="/albums", tags=["albums"], responses=ERROR_RESPONSES)
 album_access = album_service.album_access
 
 
@@ -74,15 +76,15 @@ async def delete_album(
 @router.get("/{album_id}/media", response_model=MediaListResponse)
 async def list_album_media(
     album_id: uuid.UUID,
-    tags: str | None = Query(default=None),
-    exclude_tags: str | None = Query(default=None),
+    tag: Annotated[list[str] | None, Query(description="Tags that must be present. Repeat for multiple: ?tag=cat&tag=night")] = None,
+    exclude_tag: Annotated[list[str] | None, Query(description="Tags that must not be present. Repeat for multiple.")] = None,
     mode: TagFilterMode = TagFilterMode.AND,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.list_album_media(db, album_id, user, tags, exclude_tags, mode, page, page_size)
+    return await album_service.list_album_media(db, album_id, user, tag, exclude_tag, mode, page, page_size)
 
 
 @router.put("/{album_id}/media", response_model=BulkResult)
@@ -117,7 +119,11 @@ async def share_album(
     return await album_service.share_album(db, album_id, body, user)
 
 
-@router.get("/{album_id}/download")
+@router.get(
+    "/{album_id}/download",
+    summary="Download Album Media",
+    responses={200: {"content": {"application/zip": {}}, "description": "ZIP archive of all album media."}},
+)
 async def download_album(
     album_id: uuid.UUID,
     user: User = Depends(current_user),

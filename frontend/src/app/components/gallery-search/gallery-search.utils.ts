@@ -106,11 +106,10 @@ export function buildGalleryListQuery(searchText: string, filters: GallerySearch
   const capturedBefore = toIsoString(filters.captured_before);
 
   return {
-    page: 1,
     page_size: DEFAULT_PAGE_SIZE,
     album_id: filters.album_id,
-    status: filters.status.length > 0 ? filters.status : null,
-    tags: parsed.tags.length > 0 ? parsed.tags.join(',') : null,
+    status: filters.status.length > 0 ? filters.status.join(',') : null,
+    tag: parsed.tags.length > 0 ? parsed.tags : null,
     character_name: parsed.characterName,
     favorited: filters.favorited === 'only' ? true : null,
     nsfw: filters.nsfw,

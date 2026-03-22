@@ -38,8 +38,8 @@ export interface AlbumMediaBatchUpdateDto {
 }
 
 export interface ListAlbumMediaQuery {
-  tags?: string | null;
-  exclude_tags?: string | null;
+  tag?: string[] | null;
+  exclude_tag?: string[] | null;
   mode?: TagFilterMode;
   page?: number;
   page_size?: number;

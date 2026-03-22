@@ -36,7 +36,7 @@ export class AdminClientService {
   }
 
   deleteUser(userId: Uuid, deleteMedia?: boolean): Observable<void> {
-    return this.api.deleteVoid(`/admin/users/${userId}`, {
+    return this.api.delete<void>(`/admin/users/${userId}`, {
       query: { delete_media: deleteMedia }
     });
   }

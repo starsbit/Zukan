@@ -128,11 +128,11 @@ def test_bulk_album_and_delete_endpoints(api):
     assert outsider_trash.status_code == 200
     assert {item["id"] for item in outsider_trash.json()["items"]} >= {str(first["id"]), str(outsider_image["id"])}
 
-    empty_owner_trash = api.client.delete("/media/trash", headers=owner_headers)
+    empty_owner_trash = api.client.post("/media/actions/empty-trash", headers=owner_headers)
     assert empty_owner_trash.status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(first["id"]))) is None
 
-    empty_admin_trash = api.client.delete("/media/trash", headers=admin_headers)
+    empty_admin_trash = api.client.post("/media/actions/empty-trash", headers=admin_headers)
     assert empty_admin_trash.status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(outsider_image["id"]))) is None
 
@@ -161,7 +161,7 @@ def test_batch_patch_validation_and_empty_trash_endpoint(api):
     assert trash_many.status_code == 200
     assert trash_many.json() == {"processed": 2, "skipped": 0}
 
-    empty_trash = api.client.delete("/media/trash", headers=headers)
+    empty_trash = api.client.post("/media/actions/empty-trash", headers=headers)
     assert empty_trash.status_code == 204
     assert api.fetch_media_row(uuid.UUID(str(first["id"]))) is None
     assert api.fetch_media_row(uuid.UUID(str(second["id"]))) is None

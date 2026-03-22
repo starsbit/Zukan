@@ -21,9 +21,16 @@ export interface TagWithConfidence {
   confidence: number;
 }
 
+export interface TagListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: TagRead[];
+}
+
 export interface ListTagsQuery {
-  limit?: number;
-  offset?: number;
+  page?: number;
+  page_size?: number;
   category?: number | null;
   q?: string | null;
 }

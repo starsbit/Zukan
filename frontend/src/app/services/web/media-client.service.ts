@@ -10,8 +10,8 @@ import {
   ListMediaQuery,
   MediaBatchDeleteDto,
   MediaBatchUpdateDto,
+  MediaCursorPage,
   MediaDetail,
-  MediaListResponse,
   MediaUpdateDto,
   TaggingJobQueuedResponse,
   Uuid
@@ -42,8 +42,8 @@ export class MediaClientService {
     return formData;
   }
 
-  listMedia(query?: ListMediaQuery): Observable<MediaListResponse> {
-    return this.api.get<MediaListResponse>('/media', { query });
+  listMedia(query?: ListMediaQuery): Observable<MediaCursorPage> {
+    return this.api.get<MediaCursorPage>('/media', { query });
   }
 
   listCharacterSuggestions(query: { q: string; limit?: number }): Observable<CharacterSuggestion[]> {
@@ -59,7 +59,7 @@ export class MediaClientService {
   }
 
   emptyTrash(): Observable<void> {
-    return this.api.deleteVoid('/media/trash');
+    return this.api.post<void>('/media/actions/empty-trash', null);
   }
 
   downloadMedia(body: DownloadRequestDto): Observable<Blob> {
@@ -83,7 +83,7 @@ export class MediaClientService {
   }
 
   deleteMedia(mediaId: Uuid): Observable<void> {
-    return this.api.deleteVoid(`/media/${mediaId}`);
+    return this.api.delete<void>(`/media/${mediaId}`);
   }
 
   queueTaggingJob(mediaId: Uuid): Observable<TaggingJobQueuedResponse> {

@@ -77,6 +77,7 @@ export class TagsService {
     });
 
     return this.tagsClient.list(query).pipe(
+      map((res) => res.items),
       tap((tags) => {
         this.patchState({
           tags,
@@ -99,7 +100,7 @@ export class TagsService {
   deleteTag(tagName: string): Observable<TagManagementResult> {
     this.startMutation();
 
-    return this.tagsClient.deleteTag(tagName).pipe(
+    return this.tagsClient.removeTagFromMedia(tagName).pipe(
       tap((result) => {
         this.invalidateResults((tag) => tag.name !== tagName);
         this.finishMutation();
@@ -123,7 +124,7 @@ export class TagsService {
   deleteCharacterName(characterName: string): Observable<TagManagementResult> {
     this.startMutation();
 
-    return this.tagsClient.deleteCharacterName(characterName).pipe(
+    return this.tagsClient.removeCharacterNameFromMedia(characterName).pipe(
       tap(() => this.finishMutation()),
       catchError((error) => this.failMutation(error)),
       finalize(() => this.ensureMutationSettled())

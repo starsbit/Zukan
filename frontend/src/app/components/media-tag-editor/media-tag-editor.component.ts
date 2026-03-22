@@ -107,7 +107,7 @@ export class MediaTagEditorComponent {
         if (!query) {
           return of([]);
         }
-        return this.tagsService.search({ q: query, limit: 8 });
+        return this.tagsService.search({ q: query, page_size: 8 });
       }),
       takeUntilDestroyed()
     ).subscribe((results) => {

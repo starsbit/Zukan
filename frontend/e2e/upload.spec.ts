@@ -14,12 +14,13 @@ import {
 import { blackPngFile, bluePngFile, greenPngFile, redPngFile } from './helpers/media-fixtures';
 
 const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
+const API_V1 = `${API_BASE_URL}/api/v1`;
 
 async function waitForListedMedia(
   request: APIRequestContext,
   accessToken: string,
   originalFilename: string,
-  query = 'page=1&page_size=50&nsfw=include',
+  query = 'page_size=50&nsfw=include',
   timeoutMs = 10_000,
   predicate?: (item: Awaited<ReturnType<typeof listMediaWithQuery>>[number]) => boolean
 ) {
@@ -42,7 +43,7 @@ async function uploadAndResolveMediaId(
   accessToken: string,
   file: ReturnType<typeof bluePngFile>
 ): Promise<string> {
-  const response = await request.post(`${API_BASE_URL}/media`, {
+  const response = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${accessToken}`
     },
@@ -64,7 +65,7 @@ async function uploadAndResolveMediaId(
     request,
     accessToken,
     file.name,
-    'page=1&page_size=200&nsfw=include',
+    'page_size=200&nsfw=include',
     10_000
   );
   return listed.id;
@@ -127,7 +128,7 @@ test('auto refreshes uploaded image state in the gallery when tagging finishes',
 
 test('processes uploaded media through the API and persists derived tags', async ({ request }) => {
   const session = await createSession(request);
-  const upload = await request.post(`${API_BASE_URL}/media`, {
+  const upload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -164,7 +165,7 @@ test('marks red uploads as tagged and leaves them hidden from the default galler
     request,
     session.accessToken,
     'red-upload.png',
-    'page=1&page_size=50&nsfw=include',
+    'page_size=50&nsfw=include',
     10_000,
     (media) => media.tagging_status === 'done' && media.tags.includes('rose')
   );
@@ -196,7 +197,7 @@ test('opens the upload review popup for missing characters and saves manual tags
   await page.getByRole('button', { name: 'Remove tag forest' }).click();
   await page.getByRole('button', { name: 'Save' }).click();
 
-  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&nsfw=include');
   const uploaded = mediaItems.find((item) => item.original_filename === 'green-review.png');
   expect(uploaded).toBeTruthy();
 
@@ -223,7 +224,7 @@ test('shows the failure review popup and lets the user skip it', async ({ page, 
   await page.getByRole('button', { name: 'Skip', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Tagging needs your review' })).toHaveCount(0);
 
-  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&nsfw=include');
   const uploaded = mediaItems.find((item) => item.original_filename === 'failed-review.png');
   expect(uploaded).toBeTruthy();
 
@@ -299,7 +300,7 @@ test('removes tags and character names through the management API and updates se
   const session = await createSession(request);
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-  const blueUpload = await request.post(`${API_BASE_URL}/media`, {
+  const blueUpload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -308,7 +309,7 @@ test('removes tags and character names through the management API and updates se
     }
   });
   await expect(blueUpload).toBeOK();
-  const greenUpload = await request.post(`${API_BASE_URL}/media`, {
+  const greenUpload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -401,7 +402,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
   expect(activeItems.some((item) => item.original_filename === firstName)).toBe(false);
   expect(activeItems.some((item) => item.original_filename === secondName)).toBe(false);
 
-  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&state=trashed&nsfw=include');
   expect(trashedItems.some((item) => item.original_filename === firstName)).toBe(true);
   expect(trashedItems.some((item) => item.original_filename === secondName)).toBe(true);
 
@@ -425,7 +426,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
   expect(activeAfterRestore.some((item) => item.original_filename === firstName)).toBe(true);
   expect(activeAfterRestore.some((item) => item.original_filename === secondName)).toBe(false);
 
-  const trashAfterRestore = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  const trashAfterRestore = await listMediaWithQuery(request, session.accessToken, 'page_size=50&state=trashed&nsfw=include');
   expect(trashAfterRestore.some((item) => item.original_filename === firstName)).toBe(false);
   expect(trashAfterRestore.some((item) => item.original_filename === secondName)).toBe(true);
 
@@ -438,7 +439,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
   await page.getByRole('button', { name: 'Empty trash' }).click();
   await expect(page.getByText('Trash is empty')).toBeVisible();
 
-  const trashAfterEmpty = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  const trashAfterEmpty = await listMediaWithQuery(request, session.accessToken, 'page_size=50&state=trashed&nsfw=include');
   expect(trashAfterEmpty).toEqual([]);
 });
 
@@ -446,7 +447,7 @@ test('trashes media by tag and character name through the management API, then r
   const session = await createSession(request);
   await seedLocalAuth(page, session);
 
-  const blueUpload = await request.post(`${API_BASE_URL}/media`, {
+  const blueUpload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -456,7 +457,7 @@ test('trashes media by tag and character name through the management API, then r
   });
   await expect(blueUpload).toBeOK();
 
-  const greenUpload = await request.post(`${API_BASE_URL}/media`, {
+  const greenUpload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -494,17 +495,17 @@ test('trashes media by tag and character name through the management API, then r
   await expect(page.locator('img[alt="manage-trash-blue.png"]')).toHaveCount(0);
   await expect(page.locator('img[alt="manage-trash-green.png"]')).toBeVisible();
 
-  const activeItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  const activeItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&nsfw=include');
   expect(activeItems.some((item) => item.original_filename === 'manage-trash-blue.png')).toBe(true);
   expect(activeItems.some((item) => item.original_filename === 'manage-trash-green.png')).toBe(false);
 
   await page.getByRole('button', { name: 'Empty trash' }).click();
   await expect(page.getByText('Trash is empty')).toBeVisible();
 
-  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&state=trashed&nsfw=include');
   expect(trashedItems).toEqual([]);
 
-  const greenResponse = await request.get(`${API_BASE_URL}/media/${greenId}`, {
+  const greenResponse = await request.get(`${API_V1}/media/${greenId}`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     }
@@ -524,7 +525,7 @@ test('allows reuploading the same files after trash is emptied through the API',
   ];
 
   for (const file of originalFiles) {
-    const uploadResponse = await request.post(`${API_BASE_URL}/media`, {
+    const uploadResponse = await request.post(`${API_V1}/media`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`
       },
@@ -546,7 +547,7 @@ test('allows reuploading the same files after trash is emptied through the API',
   expect(mediaIds).toHaveLength(2);
 
   for (const file of originalFiles) {
-    const duplicateResponse = await request.post(`${API_BASE_URL}/media`, {
+    const duplicateResponse = await request.post(`${API_V1}/media`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`
       },
@@ -561,7 +562,7 @@ test('allows reuploading the same files after trash is emptied through the API',
     expect(payload.results[0]?.status).toBe('duplicate');
   }
 
-  const trashResponse = await request.patch(`${API_BASE_URL}/media`, {
+  const trashResponse = await request.patch(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
@@ -572,7 +573,7 @@ test('allows reuploading the same files after trash is emptied through the API',
   });
   await expect(trashResponse).toBeOK();
 
-  const emptyTrashResponse = await request.delete(`${API_BASE_URL}/media/trash`, {
+  const emptyTrashResponse = await request.post(`${API_V1}/media/actions/empty-trash`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     }
@@ -580,7 +581,7 @@ test('allows reuploading the same files after trash is emptied through the API',
   expect(emptyTrashResponse.status()).toBe(204);
 
   for (const file of originalFiles) {
-    const reuploadResponse = await request.post(`${API_BASE_URL}/media`, {
+    const reuploadResponse = await request.post(`${API_V1}/media`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`
       },
@@ -613,7 +614,7 @@ test('uploads a 250-image batch from the gallery without backend 400 errors', as
     )
   ));
 
-  const baselineResponse = await request.get(`${API_BASE_URL}/media?page=1&page_size=1&nsfw=include`, {
+  const baselineResponse = await request.get(`${API_V1}/media?page_size=1&nsfw=include`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     }
@@ -626,7 +627,7 @@ test('uploads a 250-image batch from the gallery without backend 400 errors', as
   const uploadResponseStatuses: number[] = [];
   const uploadPayloadPromises: Array<Promise<{ accepted: number; duplicates: number; errors: number }>> = [];
   const onResponse = (response: Response) => {
-    if (response.url() === `${API_BASE_URL}/media` && response.request().method() === 'POST') {
+    if (response.url() === `${API_V1}/media` && response.request().method() === 'POST') {
       uploadResponseStatuses.push(response.status());
       if (response.status() === 202) {
         uploadPayloadPromises.push(response.json() as Promise<{ accepted: number; duplicates: number; errors: number }>);
@@ -642,7 +643,7 @@ test('uploads a 250-image batch from the gallery without backend 400 errors', as
   let lastResponseCount = 0;
   let unchangedRounds = 0;
   while (Date.now() < deadline) {
-    const response = await request.get(`${API_BASE_URL}/media?page=1&page_size=1&nsfw=include`, {
+    const response = await request.get(`${API_V1}/media?page_size=1&nsfw=include`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`
       }

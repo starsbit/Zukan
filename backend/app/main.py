@@ -2,13 +2,15 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
+
+from backend.app.errors import AppError
 
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
@@ -91,13 +93,21 @@ api.add_middleware(
     allow_headers=["*"],
 )
 
-api.include_router(auth.router)
-api.include_router(users.router)
-api.include_router(config.router)
-api.include_router(media.router)
-api.include_router(tags.router)
-api.include_router(albums.router)
-api.include_router(admin.router)
+
+@api.exception_handler(AppError)
+async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status_code, content=exc.detail)
+
+
+v1_router = APIRouter(prefix="/api/v1")
+v1_router.include_router(auth.router)
+v1_router.include_router(users.router)
+v1_router.include_router(config.router)
+v1_router.include_router(media.router)
+v1_router.include_router(tags.router)
+v1_router.include_router(albums.router)
+v1_router.include_router(admin.router)
+api.include_router(v1_router)
 
 
 @api.get("/openapi.json", include_in_schema=False)

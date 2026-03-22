@@ -385,7 +385,7 @@ describe('GalleryViewerComponent', () => {
       fixture.detectChanges();
 
       expect(characterSuggestionsService.search).toHaveBeenCalledWith('re', 6);
-      expect(tagsService.search).toHaveBeenCalledWith({ q: 'fo', limit: 8 });
+      expect(tagsService.search).toHaveBeenCalledWith({ q: 'fo', page_size: 8 });
     } finally {
       vi.useRealTimers();
     }

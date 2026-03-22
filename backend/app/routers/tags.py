@@ -1,29 +1,33 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.deps import current_user
 from backend.app.models import User
-from backend.app.schemas import TagManagementResult, TagRead
+from backend.app.schemas import ERROR_RESPONSES, TagListResponse, TagManagementResult
 from backend.app.services import tags as tag_service
 
-router = APIRouter(tags=["tags"])
+router = APIRouter(tags=["tags"], responses=ERROR_RESPONSES)
 
 
-@router.get("/tags", response_model=list[TagRead])
+@router.get("/tags", response_model=TagListResponse)
 async def list_tags(
-    limit: int = Query(default=100, ge=1, le=1000),
-    offset: int = Query(default=0, ge=0),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=1000),
     category: int | None = None,
     q: str | None = Query(default=None, min_length=1),
+    sort_by: Literal["name", "media_count"] = Query(default="media_count", description="Field to sort by."),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     _: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await tag_service.list_tags(db, limit=limit, offset=offset, category=category, query=q)
+    return await tag_service.list_tags(db, page=page, page_size=page_size, category=category, query=q, sort_by=sort_by, sort_order=sort_order)
 
 
-@router.delete("/tags/{tag_name}", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
-async def delete_tag(
+@router.post("/tags/{tag_name}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
+async def remove_tag_from_media(
     tag_name: str = Path(min_length=1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -31,7 +35,7 @@ async def delete_tag(
     return await tag_service.remove_tag_from_media(db, user, tag_name=tag_name)
 
 
-@router.post("/tags/{tag_name}/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
+@router.post("/tags/{tag_name}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
 async def trash_media_by_tag(
     tag_name: str = Path(min_length=1),
     user: User = Depends(current_user),
@@ -40,12 +44,12 @@ async def trash_media_by_tag(
     return await tag_service.trash_media_by_tag(db, user, tag_name=tag_name)
 
 
-@router.delete(
-    "/character-names/{character_name}",
+@router.post(
+    "/character-names/{character_name}/actions/remove-from-media",
     response_model=TagManagementResult,
     summary="Remove Character Name From Matching Media",
 )
-async def delete_character_name(
+async def remove_character_name_from_media(
     character_name: str = Path(min_length=1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -54,7 +58,7 @@ async def delete_character_name(
 
 
 @router.post(
-    "/character-names/{character_name}/trash-media",
+    "/character-names/{character_name}/actions/trash-media",
     response_model=TagManagementResult,
     summary="Move Matching Character Media To Trash",
 )

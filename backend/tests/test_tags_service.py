@@ -36,13 +36,13 @@ def test_list_tags_filters_by_category_and_sorts_by_media_count(api):
 
     async def _exercise(session):
         all_tags = await tag_service.list_tags(session, limit=20, offset=0, category=None)
-        assert all_tags
-        assert all_tags[0].name == "rating:general"
-        assert all_tags[0].media_count >= all_tags[-1].media_count
+        assert all_tags.items
+        assert all_tags.items[0].name == "rating:general"
+        assert all_tags.items[0].media_count >= all_tags.items[-1].media_count
 
         rating_tags = await tag_service.list_tags(session, limit=20, offset=0, category=9)
-        assert rating_tags
-        assert all(tag.category == 9 for tag in rating_tags)
+        assert rating_tags.items
+        assert all(tag.category == 9 for tag in rating_tags.items)
 
     api.run_db(_exercise)
 
@@ -56,7 +56,7 @@ def test_search_tags_returns_prefix_matches_in_popularity_order(api):
 
     async def _exercise(session):
         results = await tag_service.list_tags(session, limit=10, offset=0, category=None, query="r")
-        names = [tag.name for tag in results]
+        names = [tag.name for tag in results.items]
         assert "rose" in names
         assert all(name.startswith("r") for name in names)
 

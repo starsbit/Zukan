@@ -48,10 +48,13 @@ def test_init_db_runs_metadata_and_expected_sql(monkeypatch):
     asyncio.run(database.init_db())
 
     assert calls["run_sync"] == [database.Base.metadata.create_all]
-    assert len(calls["execute"]) == 6
+    assert len(calls["execute"]) == 13
     assert any("idx_media_tags" in stmt for stmt in calls["execute"])
     assert any("idx_media_character_name_lower" in stmt for stmt in calls["execute"])
     assert any("deleted_at" in stmt for stmt in calls["execute"])
     assert any("captured_at" in stmt for stmt in calls["execute"])
     assert any("tagging_error" in stmt for stmt in calls["execute"])
     assert any("tag_confidence_threshold" in stmt for stmt in calls["execute"])
+    assert any("source_url" in stmt for stmt in calls["execute"])
+    assert any("fn_media_tag_after_delete" in stmt for stmt in calls["execute"])
+    assert any("fn_media_tag_after_insert" in stmt for stmt in calls["execute"])

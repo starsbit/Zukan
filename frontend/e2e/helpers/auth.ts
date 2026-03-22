@@ -1,6 +1,7 @@
 import { APIRequestContext, expect, Page } from '@playwright/test';
 
 const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
+const API_V1 = `${API_BASE_URL}/api/v1`;
 
 export interface E2eSession {
   username: string;
@@ -13,7 +14,7 @@ export async function createSession(request: APIRequestContext): Promise<E2eSess
   const username = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const password = 'password123';
 
-  const registerResponse = await request.post(`${API_BASE_URL}/auth/register`, {
+  const registerResponse = await request.post(`${API_V1}/auth/register`, {
     data: {
       username,
       email: `${username}@example.com`,
@@ -22,7 +23,7 @@ export async function createSession(request: APIRequestContext): Promise<E2eSess
   });
   await expect(registerResponse).toBeOK();
 
-  const loginResponse = await request.post(`${API_BASE_URL}/auth/login`, {
+  const loginResponse = await request.post(`${API_V1}/auth/login`, {
     data: {
       username,
       password,
@@ -48,6 +49,6 @@ export async function seedLocalAuth(page: Page, session: E2eSession): Promise<vo
     localStorage.setItem('zukan.web.api_base_url', apiBaseUrl);
   }, {
     tokens: session,
-    apiBaseUrl: API_BASE_URL
+    apiBaseUrl: API_V1
   });
 }

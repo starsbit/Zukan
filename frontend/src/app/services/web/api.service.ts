@@ -62,15 +62,6 @@ export class ClientApiService {
     });
   }
 
-  deleteVoid(path: string, options?: ClientRequestOptions & { body?: unknown }): Observable<void> {
-    return this.http.delete<void>(this.buildUrl(path), {
-      body: options?.body,
-      context: this.buildContext(options),
-      headers: this.buildHeaders(options),
-      params: this.buildParams(options?.query)
-    });
-  }
-
   getBlob(path: string, options?: ClientRequestOptions): Observable<Blob> {
     return this.http.get(this.buildUrl(path), this.buildBlobOptions(options));
   }
@@ -120,12 +111,18 @@ export class ClientApiService {
       return params;
     }
 
-    for (const [key, value] of Object.entries(query as Record<string, QueryValue>)) {
+    for (const [key, value] of Object.entries(query as Record<string, unknown>)) {
       if (value === undefined || value === null) {
         continue;
       }
 
-      params = params.set(key, String(value));
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          params = params.append(key, String(item));
+        }
+      } else {
+        params = params.set(key, String(value as QueryValue));
+      }
     }
 
     return params;

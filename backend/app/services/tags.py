@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.models import Media, MediaTag, Tag, User
-from backend.app.schemas import CATEGORY_NAMES, TagManagementResult, TagRead
+from backend.app.schemas import CATEGORY_NAMES, TagListResponse, TagManagementResult, TagRead
 from backend.app.services import media as media_service
 
 
@@ -29,18 +29,30 @@ def _accessible_media_stmt(user: User):
 async def list_tags(
     db: AsyncSession,
     *,
-    limit: int,
-    offset: int,
+    page: int = 1,
+    page_size: int = 100,
     category: int | None,
     query: str | None = None,
-) -> list[TagRead]:
-    stmt = select(Tag).order_by(Tag.media_count.desc()).offset(offset).limit(limit)
+    sort_by: str = "media_count",
+    sort_order: str = "desc",
+    # Legacy params for direct service calls in tests
+    limit: int | None = None,
+    offset: int | None = None,
+) -> TagListResponse:
+    sort_col = Tag.name if sort_by == "name" else Tag.media_count
+    order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
+    base_stmt = select(Tag)
     if category is not None:
-        stmt = stmt.where(Tag.category == category)
+        base_stmt = base_stmt.where(Tag.category == category)
     if query:
-        stmt = stmt.where(Tag.name.ilike(f"{query}%"))
+        base_stmt = base_stmt.where(Tag.name.ilike(f"{query}%"))
+    total = (await db.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()
+    if limit is not None and offset is not None:
+        stmt = base_stmt.order_by(order_expr).offset(offset).limit(limit)
+    else:
+        stmt = base_stmt.order_by(order_expr).offset((page - 1) * page_size).limit(page_size)
     tags = (await db.execute(stmt)).scalars().all()
-    return [_to_tag_read(tag) for tag in tags]
+    return TagListResponse(total=total, page=page, page_size=page_size, items=[_to_tag_read(tag) for tag in tags])
 
 
 async def remove_tag_from_media(db: AsyncSession, user: User, *, tag_name: str) -> TagManagementResult:
@@ -70,8 +82,8 @@ async def remove_tag_from_media(db: AsyncSession, user: User, *, tag_name: str) 
     await db.flush()
     deleted_tag = False
     if tag is not None:
-        await media_service._delete_orphaned_tags(db, [tag.id])
-        deleted_tag = await db.get(Tag, tag.id) is None
+        remaining = (await db.execute(select(Tag).where(Tag.id == tag.id))).scalar_one_or_none()
+        deleted_tag = remaining is None
 
     await db.commit()
     return TagManagementResult(matched_media=len(media_rows), updated_media=updated, deleted_tag=deleted_tag)

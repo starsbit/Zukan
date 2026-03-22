@@ -76,7 +76,7 @@ export class GallerySearchBarComponent implements OnChanges {
 
         if (context.mode === 'tag') {
           return forkJoin({
-            tags: this.tagsService.search({ q: context.query, limit: 8 }),
+            tags: this.tagsService.search({ q: context.query, page_size: 8 }),
             characters: of([])
           });
         }
@@ -89,7 +89,7 @@ export class GallerySearchBarComponent implements OnChanges {
         }
 
         return forkJoin({
-          tags: this.tagsService.search({ q: context.query, limit: 6 }),
+          tags: this.tagsService.search({ q: context.query, page_size: 6 }),
           characters: this.characterSuggestionsService.search(context.query, 6)
         });
       }),
