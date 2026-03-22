@@ -1,3 +1,4 @@
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5,6 +6,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GallerySearchBarComponent } from './gallery-search-bar.component';
 import { CharacterSuggestionsService } from '../../../services/character-suggestions.service';
 import { TagsService } from '../../../services/tags.service';
+
+@Component({
+  selector: 'app-gallery-search-bar-host',
+  template: `
+    <app-gallery-search-bar
+      [searchText]="searchText()"
+      (searchSubmitted)="applySearch($event)"
+      (cleared)="clearSearch()"
+    />
+  `,
+  imports: [GallerySearchBarComponent],
+  standalone: true
+})
+class GallerySearchBarHostComponent {
+  readonly searchText = signal('');
+  readonly clearedCount = signal(0);
+
+  applySearch(value: string): void {
+    this.searchText.set(value);
+  }
+
+  clearSearch(): void {
+    this.searchText.set('');
+    this.clearedCount.update((count) => count + 1);
+  }
+}
 
 describe('GallerySearchBarComponent', () => {
   let fixture: ComponentFixture<GallerySearchBarComponent>;
@@ -304,24 +331,31 @@ describe('GallerySearchBarComponent', () => {
     fixture.detectChanges();
 
     const searchField = fixture.nativeElement.querySelector('mat-form-field.search-field') as HTMLElement;
-    const chipRow = searchField.querySelector('.search-chip-row') as HTMLElement | null;
+    const chip = searchField.querySelector('.search-chip') as HTMLElement | null;
 
-    expect(chipRow).toBeTruthy();
+    expect(chip).toBeTruthy();
     expect(searchField.textContent).toContain('Blue Eyes');
   });
 
-  it('keeps committed chips inline with the text input instead of forcing the input onto a new row', () => {
+  it('keeps committed chips as direct inline siblings of the text input in a single horizontal row', () => {
     fixture.componentRef.setInput('searchText', 'tag:blue_eyes tag:white_background');
     fixture.detectChanges();
 
-    const chipRow = fixture.nativeElement.querySelector('.search-chip-row') as HTMLElement;
+    const chip = fixture.nativeElement.querySelector('.search-chip') as HTMLElement;
     const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
-    const chipRowStyles = getComputedStyle(chipRow);
+    const infix = fixture.nativeElement.querySelector('.mat-mdc-form-field-infix') as HTMLElement;
+    const chipStyles = getComputedStyle(chip);
+    const infixStyles = getComputedStyle(infix);
     const inputStyles = getComputedStyle(input);
 
-    expect(chipRowStyles.display).toBe('flex');
-    expect(chipRowStyles.flexBasis).not.toBe('100%');
-    expect(inputStyles.width).not.toBe('100%');
+    expect(chip.parentElement).toBe(infix);
+    expect(input.parentElement).toBe(infix);
+    expect(infixStyles.flexWrap).toBe('nowrap');
+    expect(infixStyles.overflowX).toBe('auto');
+    expect(infixStyles.scrollbarWidth).toBe('none');
+    expect(chipStyles.flexBasis).toBe('auto');
+    expect(inputStyles.width).toBe('1px');
+    expect(inputStyles.flexBasis).toBe('10rem');
   });
 
   it('renders compact chip sizing inside the search field', () => {
@@ -338,9 +372,20 @@ describe('GallerySearchBarComponent', () => {
     const chipIconStyles = getComputedStyle(chipRemoveIcon);
 
     expect(chipStyles.minHeight).toBe('2rem');
-    expect(chipKindStyles.fontSize).toBe('0.42rem');
+    expect(chipKindStyles.fontSize).toBe('0.58rem');
     expect(chipLabelStyles.fontSize).toBe('0.82rem');
     expect(chipIconStyles.fontSize).toBe('0.8rem');
+  });
+
+  it('caps chip width so long tags stay on one row instead of forcing wraps', () => {
+    fixture.componentRef.setInput('searchText', 'tag:this_is_a_very_long_tag_name_that_should_not_push_the_input_onto_another_row');
+    fixture.detectChanges();
+
+    const chip = fixture.nativeElement.querySelector('.search-chip') as HTMLElement;
+    const chipStyles = getComputedStyle(chip);
+
+    expect(chipStyles.maxWidth).toContain('min(');
+    expect(chipStyles.whiteSpace).toBe('nowrap');
   });
 
   it('shows a tiny kind icon inside each committed chip', () => {
@@ -352,6 +397,19 @@ describe('GallerySearchBarComponent', () => {
     ).map((icon) => icon.textContent?.trim());
 
     expect(icons).toEqual(['sell', 'person']);
+  });
+
+  it('centers the kind icon inside a circular badge', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes');
+    fixture.detectChanges();
+
+    const kindIcon = fixture.nativeElement.querySelector('.search-chip-kind-icon') as HTMLElement;
+    const kindIconStyles = getComputedStyle(kindIcon);
+
+    expect(kindIconStyles.display).toBe('inline-grid');
+    expect(kindIconStyles.placeItems).toBe('center');
+    expect(kindIconStyles.width).toBe('1rem');
+    expect(kindIconStyles.height).toBe('1rem');
   });
 
   it('selects the last committed chip on backspace before removing it on the next backspace', () => {
@@ -377,6 +435,42 @@ describe('GallerySearchBarComponent', () => {
     ]);
     expect(component.selectedCommittedSuggestionIndex).toBe(0);
     expect(submittedSpy).toHaveBeenLastCalledWith('tag:blue_eyes');
+  });
+
+  it('navigates committed chips with the left and right arrow keys from the input', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes tag:white_background character:ikari_shinji');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(component.selectedCommittedSuggestionIndex).toBe(2);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(component.selectedCommittedSuggestionIndex).toBe(1);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(component.selectedCommittedSuggestionIndex).toBe(2);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(component.selectedCommittedSuggestionIndex).toBeNull();
+  });
+
+  it('does not hijack arrow-key cursor movement while the user is typing draft text', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes');
+    fixture.detectChanges();
+    component.queryControl.setValue('forest');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(component.selectedCommittedSuggestionIndex).toBeNull();
   });
 
   it('clears the selected chip state when the user types again', () => {
@@ -412,6 +506,7 @@ describe('GallerySearchBarComponent', () => {
   });
 
   it('re-focuses the input after submitting a committed search so repeated enter does not clear it', async () => {
+    vi.useFakeTimers();
     const submittedSpy = vi.fn();
     const clearedSpy = vi.fn();
     component.searchSubmitted.subscribe(submittedSpy);
@@ -423,9 +518,9 @@ describe('GallerySearchBarComponent', () => {
     input.focus();
 
     component.submit();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
     component.submit();
-    await Promise.resolve();
+    await vi.runAllTimersAsync();
     fixture.detectChanges();
 
     expect(document.activeElement).toBe(input);
@@ -436,5 +531,73 @@ describe('GallerySearchBarComponent', () => {
     expect(clearedSpy).not.toHaveBeenCalled();
     expect(submittedSpy).toHaveBeenNthCalledWith(1, 'tag:blue_eyes character:ikari_shinji');
     expect(submittedSpy).toHaveBeenNthCalledWith(2, 'tag:blue_eyes character:ikari_shinji');
+  });
+
+  it('keeps the input focused after the parent re-applies the submitted search text', async () => {
+    vi.useFakeTimers();
+    const clearedSpy = vi.fn();
+    component.cleared.subscribe(clearedSpy);
+    component.searchSubmitted.subscribe((searchText) => {
+      fixture.componentRef.setInput('searchText', searchText);
+    });
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes character:ikari_shinji');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    input.focus();
+
+    component.submit();
+    await vi.runAllTimersAsync();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(input);
+
+    component.submit();
+    await vi.runAllTimersAsync();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(input);
+    expect(component.committedSuggestions).toEqual([
+      { kind: 'tag', label: 'Blue Eyes', token: 'tag:blue_eyes', secondary: '' },
+      { kind: 'character', label: 'Ikari Shinji', token: 'character:ikari_shinji', secondary: '' }
+    ]);
+    expect(clearedSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not clear committed tags when enter is pressed twice through the real input flow', async () => {
+    vi.useFakeTimers();
+    const hostFixture = TestBed.createComponent(GallerySearchBarHostComponent);
+    hostFixture.detectChanges();
+
+    const hostComponent = hostFixture.componentInstance;
+    const searchBar = hostFixture.debugElement.children[0].componentInstance as GallerySearchBarComponent;
+    const input = hostFixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+
+    input.focus();
+    input.value = 'tag:blue_eyes';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    hostFixture.detectChanges();
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await vi.runAllTimersAsync();
+    hostFixture.detectChanges();
+
+    expect(hostComponent.searchText()).toBe('tag:blue_eyes');
+    expect(searchBar.committedSuggestions).toEqual([
+      { kind: 'tag', label: 'Blue Eyes', token: 'tag:blue_eyes', secondary: '' }
+    ]);
+    expect(hostComponent.clearedCount()).toBe(0);
+    expect(document.activeElement).toBe(input);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await vi.runAllTimersAsync();
+    hostFixture.detectChanges();
+
+    expect(hostComponent.searchText()).toBe('tag:blue_eyes');
+    expect(searchBar.committedSuggestions).toEqual([
+      { kind: 'tag', label: 'Blue Eyes', token: 'tag:blue_eyes', secondary: '' }
+    ]);
+    expect(hostComponent.clearedCount()).toBe(0);
+    expect(document.activeElement).toBe(input);
   });
 });

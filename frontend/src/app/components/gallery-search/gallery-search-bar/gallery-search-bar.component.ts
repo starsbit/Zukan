@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, Output, QueryList, SimpleChanges, ViewChild, ViewChildren, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
@@ -38,6 +38,7 @@ export class GallerySearchBarComponent implements OnChanges {
   private readonly characterSuggestionsService = inject(CharacterSuggestionsService);
 
   @ViewChild('searchInput') private searchInput?: ElementRef<HTMLInputElement>;
+  @ViewChildren('committedChip') private committedChipElements?: QueryList<ElementRef<HTMLButtonElement>>;
   @Input() searchText = '';
   @Input() activeFilterCount = 0;
   @Output() readonly searchSubmitted = new EventEmitter<string>();
@@ -52,6 +53,8 @@ export class GallerySearchBarComponent implements OnChanges {
   selectedCommittedSuggestionIndex: number | null = null;
   private draftTextValue = '';
   private committedSuggestionTokens = new Set<string>();
+  private shouldRefocusInput = false;
+  private refocusTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     this.queryControl.valueChanges.pipe(
@@ -116,6 +119,9 @@ export class GallerySearchBarComponent implements OnChanges {
     if (changes['searchText']) {
       this.syncFromSearchText(this.searchText);
       this.cdr.markForCheck();
+      if (this.shouldRefocusInput) {
+        this.refocusInput();
+      }
     }
   }
 
@@ -130,6 +136,7 @@ export class GallerySearchBarComponent implements OnChanges {
 
     this.syncFromSearchText(submittedQuery);
     this.cdr.markForCheck();
+    this.shouldRefocusInput = true;
     this.searchSubmitted.emit(submittedQuery.trim());
     this.refocusInput();
   }
@@ -142,6 +149,7 @@ export class GallerySearchBarComponent implements OnChanges {
     const nextValue = this.composeSearchText('', [...this.committedSuggestions, suggestion]);
     this.syncFromSearchText(nextValue);
     this.cdr.markForCheck();
+    this.shouldRefocusInput = true;
     this.searchSubmitted.emit(nextValue.trim());
     this.refocusInput();
   }
@@ -151,29 +159,38 @@ export class GallerySearchBarComponent implements OnChanges {
   }
 
   handleQueryKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      this.submit();
+      return;
+    }
+
     if (event.key === 'Escape') {
       if (!this.hasSearchValue) {
         return;
       }
 
       event.preventDefault();
+      this.shouldRefocusInput = true;
       this.clearAll();
       this.refocusInput();
       return;
     }
 
+    if (this.handleChipNavigation(event)) {
+      return;
+    }
+
     if (event.key !== 'Backspace') {
       if (this.selectedCommittedSuggestionIndex !== null) {
-        this.selectedCommittedSuggestionIndex = null;
-        this.cdr.markForCheck();
+        this.updateSelectedCommittedSuggestionIndex(null);
       }
       return;
     }
 
     if (this.draftTextValue.trim().length > 0 || this.committedSuggestions.length === 0) {
       if (this.selectedCommittedSuggestionIndex !== null) {
-        this.selectedCommittedSuggestionIndex = null;
-        this.cdr.markForCheck();
+        this.updateSelectedCommittedSuggestionIndex(null);
       }
       return;
     }
@@ -181,8 +198,7 @@ export class GallerySearchBarComponent implements OnChanges {
     event.preventDefault();
 
     if (this.selectedCommittedSuggestionIndex === null) {
-      this.selectedCommittedSuggestionIndex = this.committedSuggestions.length - 1;
-      this.cdr.markForCheck();
+      this.updateSelectedCommittedSuggestionIndex(this.committedSuggestions.length - 1);
       return;
     }
 
@@ -190,8 +206,7 @@ export class GallerySearchBarComponent implements OnChanges {
   }
 
   selectCommittedSuggestion(index: number): void {
-    this.selectedCommittedSuggestionIndex = index;
-    this.cdr.markForCheck();
+    this.updateSelectedCommittedSuggestionIndex(index);
   }
 
   isCommittedSuggestionSelected(index: number): boolean {
@@ -303,11 +318,73 @@ export class GallerySearchBarComponent implements OnChanges {
     this.queryControl.setValue(this.draftTextValue, { emitEvent: false });
     this.cdr.markForCheck();
     this.searchSubmitted.emit(nextValue.trim());
+    this.scrollActiveElementIntoView();
+  }
+
+  private handleChipNavigation(event: KeyboardEvent): boolean {
+    if (this.committedSuggestions.length === 0 || this.draftTextValue.trim().length > 0) {
+      return false;
+    }
+
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+
+      if (this.selectedCommittedSuggestionIndex === null) {
+        this.updateSelectedCommittedSuggestionIndex(this.committedSuggestions.length - 1);
+        return true;
+      }
+
+      this.updateSelectedCommittedSuggestionIndex(Math.max(0, this.selectedCommittedSuggestionIndex - 1));
+      return true;
+    }
+
+    if (event.key === 'ArrowRight' && this.selectedCommittedSuggestionIndex !== null) {
+      event.preventDefault();
+      const nextIndex = this.selectedCommittedSuggestionIndex + 1;
+      this.updateSelectedCommittedSuggestionIndex(
+        nextIndex < this.committedSuggestions.length ? nextIndex : null
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  private updateSelectedCommittedSuggestionIndex(index: number | null): void {
+    this.selectedCommittedSuggestionIndex = index;
+    this.cdr.markForCheck();
+    this.scrollActiveElementIntoView();
+  }
+
+  private scrollActiveElementIntoView(): void {
+    setTimeout(() => {
+      if (this.selectedCommittedSuggestionIndex === null) {
+        const inputElement = this.searchInput?.nativeElement;
+        if (typeof inputElement?.scrollIntoView === 'function') {
+          inputElement.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+        return;
+      }
+
+      const chipElement = this.committedChipElements?.get(this.selectedCommittedSuggestionIndex)?.nativeElement;
+      if (typeof chipElement?.scrollIntoView === 'function') {
+        chipElement.scrollIntoView({
+          block: 'nearest',
+          inline: 'nearest'
+        });
+      }
+    }, 0);
   }
 
   private refocusInput(): void {
-    queueMicrotask(() => {
+    if (this.refocusTimer !== null) {
+      clearTimeout(this.refocusTimer);
+    }
+
+    this.refocusTimer = setTimeout(() => {
       this.searchInput?.nativeElement.focus();
-    });
+      this.shouldRefocusInput = false;
+      this.refocusTimer = null;
+    }, 0);
   }
 }

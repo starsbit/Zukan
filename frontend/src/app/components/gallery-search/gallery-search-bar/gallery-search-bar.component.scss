@@ -13,38 +13,46 @@
 }
 
 :host ::ng-deep .search-field .mat-mdc-form-field-flex {
-  align-items: flex-start;
+  align-items: center;
 }
 
 :host ::ng-deep .search-field .mat-mdc-form-field-infix {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  width: auto;
+  width: 100%;
   min-width: 0;
-  row-gap: 0.35rem;
+  column-gap: 0.35rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 
-.search-chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  flex: 0 1 auto;
-  min-width: 0;
-  margin-right: 0.45rem;
+:host ::ng-deep .search-field .mat-mdc-form-field-infix::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.search-field .search-input,
+:host ::ng-deep .search-field .mdc-text-field__input.search-input {
+  display: inline-block;
+  flex: 1 0 10rem;
+  width: 1px;
+  min-width: 10rem;
+  margin: 0;
+  align-self: center;
 }
 
 .search-input {
-  display: block;
-  flex: 1 1 12rem;
-  width: auto;
-  min-width: 10rem;
+  padding: 0;
 }
 
 .search-chip {
   display: inline-flex;
   align-items: center;
-  max-width: 100%;
+  flex: 0 0 auto;
+  max-width: min(14rem, 40vw);
   min-height: 2rem;
   gap: 0.35rem;
   padding: 0.32rem 0.62rem;
@@ -56,6 +64,7 @@
   font-size: 0.84rem;
   font-weight: 500;
   line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   box-shadow: none;
   transition:
@@ -75,14 +84,16 @@
 }
 
 .search-chip-kind-icon {
-  width: 0.78rem;
-  height: 0.78rem;
-  padding: 0.18rem;
+  display: inline-grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0.16rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
   color: var(--mat-sys-primary);
-  font-size: 0.42rem;
-  line-height: 0.78rem;
+  font-size: 0.58rem;
+  line-height: 1;
   flex: 0 0 auto;
 }
 

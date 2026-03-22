@@ -2,26 +2,25 @@
   <mat-form-field class="search-field" appearance="outline" subscriptSizing="dynamic">
     <mat-icon matPrefix>search</mat-icon>
     @if (committedSuggestions.length > 0) {
-      <div class="search-chip-row" aria-label="Applied search terms">
-        @for (suggestion of committedSuggestions; track suggestion.token + '-' + $index) {
-          <button
-            type="button"
-            class="search-chip"
-            [class.search-chip-character]="suggestion.kind === 'character'"
-            [class.search-chip-selected]="isCommittedSuggestionSelected($index)"
-            [attr.aria-label]="'Remove ' + suggestion.kind + ' filter ' + suggestion.label"
-            [attr.aria-pressed]="isCommittedSuggestionSelected($index)"
-            (focus)="selectCommittedSuggestion($index)"
-            (click)="removeCommittedSuggestion($index)"
-          >
-            <mat-icon class="search-chip-kind-icon" [attr.aria-hidden]="true">
-              {{ suggestion.kind === 'character' ? 'person' : 'sell' }}
-            </mat-icon>
-            <span class="search-chip-label">{{ suggestion.label }}</span>
-            <mat-icon class="search-chip-remove-icon">close</mat-icon>
-          </button>
-        }
-      </div>
+      @for (suggestion of committedSuggestions; track suggestion.token + '-' + $index) {
+        <button
+          #committedChip
+          type="button"
+          class="search-chip"
+          [class.search-chip-character]="suggestion.kind === 'character'"
+          [class.search-chip-selected]="isCommittedSuggestionSelected($index)"
+          [attr.aria-label]="'Remove ' + suggestion.kind + ' filter ' + suggestion.label"
+          [attr.aria-pressed]="isCommittedSuggestionSelected($index)"
+          (focus)="selectCommittedSuggestion($index)"
+          (click)="removeCommittedSuggestion($index)"
+        >
+          <mat-icon class="search-chip-kind-icon" [attr.aria-hidden]="true">
+            {{ suggestion.kind === 'character' ? 'person' : 'sell' }}
+          </mat-icon>
+          <span class="search-chip-label">{{ suggestion.label }}</span>
+          <mat-icon class="search-chip-remove-icon">close</mat-icon>
+        </button>
+      }
     }
     <input
       #searchInput
