@@ -54,6 +54,9 @@ async def init_db():
         await conn.execute(
             text("ALTER TABLE media ADD COLUMN IF NOT EXISTS source_url VARCHAR(2048)")
         )
+        await conn.execute(
+            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS ocr_text TEXT")
+        )
         await conn.execute(text("""
             CREATE OR REPLACE FUNCTION fn_media_tag_after_delete() RETURNS TRIGGER AS $$
             BEGIN

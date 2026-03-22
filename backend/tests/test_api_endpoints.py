@@ -984,3 +984,47 @@ def test_user_journey_admin_moderation_workflow(api):
     assert missing_after_delete.status_code == 404
 
     _logout(api, admin_login["refresh_token"])
+
+
+def test_ocr_text_endpoint_set_and_search(api):
+    user = api.register_and_login("ocr-api-user")
+    headers = api.auth_headers(user["access_token"])
+
+    blue = api.upload_media(user["access_token"], "ocr-api-blue.png", (0, 0, 255))
+    green = api.upload_media(user["access_token"], "ocr-api-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+
+    patch = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text": "Invoice total: $42.00"},
+    )
+    assert patch.status_code == 200
+    assert patch.json()["ocr_text"] == "Invoice total: $42.00"
+
+    detail = api.client.get(f"/media/{blue['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["ocr_text"] == "Invoice total: $42.00"
+
+    hit = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
+    assert hit.status_code == 200
+    ids = [item["id"] for item in hit.json()["items"]]
+    assert str(blue["id"]) in ids
+    assert str(green["id"]) not in ids
+
+    no_match = api.client.get("/media", headers=headers, params={"ocr_text": "nonexistent phrase xyz"})
+    assert no_match.status_code == 200
+    assert no_match.json()["items"] == []
+
+    clear = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text": None},
+    )
+    assert clear.status_code == 200
+    assert clear.json()["ocr_text"] is None
+
+    after_clear = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
+    assert after_clear.status_code == 200
+    assert after_clear.json()["items"] == []

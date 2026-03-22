@@ -599,6 +599,67 @@ test('allows reuploading the same files after trash is emptied through the API',
   expect(itemsAfterReupload.filter((item) => item.original_filename === firstName || item.original_filename === secondName)).toHaveLength(2);
 });
 
+test('stores OCR text on media via PATCH and filters by it in the list endpoint', async ({ request }) => {
+  const session = await createSession(request);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const blueFile = bluePngFile(`ocr-e2e-blue-${runId}.png`);
+  const greenFile = greenPngFile(`ocr-e2e-green-${runId}.png`);
+
+  const blueUpload = await request.post(`${API_V1}/media`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    multipart: { files: blueFile }
+  });
+  await expect(blueUpload).toBeOK();
+  const greenUpload = await request.post(`${API_V1}/media`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    multipart: { files: greenFile }
+  });
+  await expect(greenUpload).toBeOK();
+  const bluePayload = await blueUpload.json() as { results: Array<{ id: string | null; status: string }> };
+  const greenPayload = await greenUpload.json() as { results: Array<{ id: string | null; status: string }> };
+  const blue = bluePayload.results.find((item) => item.status === 'accepted' && item.id)?.id
+    ?? (await waitForListedMedia(request, session.accessToken, blueFile.name, 'page_size=200&nsfw=include')).id;
+  const green = greenPayload.results.find((item) => item.status === 'accepted' && item.id)?.id
+    ?? (await waitForListedMedia(request, session.accessToken, greenFile.name, 'page_size=200&nsfw=include')).id;
+
+  const patchResponse = await request.patch(`${API_V1}/media/${blue}`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: { ocr_text: 'Unique OCR phrase for e2e test' }
+  });
+  await expect(patchResponse).toBeOK();
+  const patched = await patchResponse.json();
+  expect(patched.ocr_text).toBe('Unique OCR phrase for e2e test');
+
+  const detailResponse = await request.get(`${API_V1}/media/${blue}`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` }
+  });
+  await expect(detailResponse).toBeOK();
+  expect((await detailResponse.json()).ocr_text).toBe('Unique OCR phrase for e2e test');
+
+  const hitResponse = await request.get(`${API_V1}/media`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    params: { ocr_text: 'unique ocr phrase' }
+  });
+  await expect(hitResponse).toBeOK();
+  const hitItems: { id: string }[] = (await hitResponse.json()).items;
+  expect(hitItems.some((item) => item.id === blue)).toBe(true);
+  expect(hitItems.some((item) => item.id === green)).toBe(false);
+
+  const clearResponse = await request.patch(`${API_V1}/media/${blue}`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    data: { ocr_text: null }
+  });
+  await expect(clearResponse).toBeOK();
+  expect((await clearResponse.json()).ocr_text).toBeNull();
+
+  const afterClearResponse = await request.get(`${API_V1}/media`, {
+    headers: { Authorization: `Bearer ${session.accessToken}` },
+    params: { ocr_text: 'unique ocr phrase' }
+  });
+  await expect(afterClearResponse).toBeOK();
+  expect((await afterClearResponse.json()).items).toHaveLength(0);
+});
+
 test('uploads a 250-image batch from the gallery without backend 400 errors', async ({ page, request }) => {
   test.setTimeout(180_000);
 

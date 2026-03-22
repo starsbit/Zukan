@@ -152,6 +152,7 @@ class MediaRead(BaseModel):
     thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
     poster_status: str = Field(default="done", description="Current poster generation lifecycle state for animated media.")
     source_url: str | None = Field(default=None, description="Optional source URL for the media, used to link to external anime/character entities.")
+    ocr_text: str | None = Field(default=None, description="Text extracted from the media via OCR. Null if not yet processed or not applicable.")
     created_at: datetime
     deleted_at: datetime | None
     is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
@@ -190,6 +191,10 @@ class MediaUpdate(BaseModel):
     favorited: bool | None = Field(
         default=None,
         description="Whether the media should be favorited for the current user. Omit to keep favorite state unchanged.",
+    )
+    ocr_text: str | None = Field(
+        default=None,
+        description="OCR text extracted from the media. Send null to clear. Omit to keep unchanged.",
     )
 
     @model_validator(mode="after")

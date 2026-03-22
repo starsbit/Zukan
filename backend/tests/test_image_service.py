@@ -664,3 +664,78 @@ def test_manual_retag_and_purge_cleanup_remove_dangling_tag_rows(api, monkeypatc
         assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "rating:general"))).scalar_one_or_none() is None
 
     api.run_db(_exercise)
+
+
+def test_ocr_text_can_be_set_queried_and_searched(api):
+    user = api.register_and_login("image-service-ocr")
+    blue = api.upload_media(user["access_token"], "ocr-blue.png", (0, 0, 255))
+    green = api.upload_media(user["access_token"], "ocr-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+    blue_id = uuid.UUID(str(blue["id"]))
+    green_id = uuid.UUID(str(green["id"]))
+    user_id = uuid.UUID(user["user"]["id"])
+
+    async def _exercise(session):
+        from backend.app.models import User
+        from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+
+        db_user = await session.get(User, user_id)
+
+        updated = await media_service.update_media_metadata(
+            session,
+            blue_id,
+            db_user,
+            MediaUpdate(ocr_text="Hello World from OCR"),
+        )
+        assert updated.ocr_text == "Hello World from OCR"
+
+        refreshed = await media_service.get_media_detail(session, blue_id, db_user)
+        assert refreshed.ocr_text == "Hello World from OCR"
+
+        media_row = await session.get(media_service.Media, blue_id)
+        assert media_row.ocr_text == "Hello World from OCR"
+
+        hit = await media_service.list_media(
+            session,
+            db_user,
+            MediaListState.ACTIVE,
+            tags=None,
+            character_name=None,
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter=None,
+            metadata=MediaMetadataFilter(),
+            favorited=None,
+            page_size=20,
+            ocr_text="hello world",
+        )
+        assert [item.id for item in hit.items] == [blue_id]
+
+        no_match = await media_service.list_media(
+            session,
+            db_user,
+            MediaListState.ACTIVE,
+            tags=None,
+            character_name=None,
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter=None,
+            metadata=MediaMetadataFilter(),
+            favorited=None,
+            page_size=20,
+            ocr_text="nonexistent phrase xyz",
+        )
+        assert no_match.items == []
+
+        cleared = await media_service.update_media_metadata(
+            session,
+            blue_id,
+            db_user,
+            MediaUpdate(ocr_text=None),
+        )
+        assert cleared.ocr_text is None
+
+    api.run_db(_exercise)

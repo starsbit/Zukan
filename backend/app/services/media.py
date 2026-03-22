@@ -115,6 +115,12 @@ def _parse_csv_values(value: str | None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def _apply_ocr_text_filter(stmt, ocr_text: str | None):
+    if ocr_text and ocr_text.strip():
+        stmt = stmt.where(func.lower(func.coalesce(Media.ocr_text, "")).contains(ocr_text.strip().lower()))
+    return stmt
+
+
 def _apply_media_type_filters(stmt, media_type_filter: list[str] | None):
     if not media_type_filter:
         return stmt
@@ -228,6 +234,7 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         tags=media.tags,
         character_name=media.character_name,
         source_url=media.source_url,
+        ocr_text=media.ocr_text,
         is_nsfw=media.is_nsfw,
         tagging_status=media.tagging_status,
         tagging_error=media.tagging_error,
@@ -353,6 +360,7 @@ async def list_media(
     page_size: int = 20,
     sort_by: str = "captured_at",
     sort_order: str = "desc",
+    ocr_text: str | None = None,
 ) -> MediaCursorPage:
     await purge_expired_trash(db)
     stmt = select(Media)
@@ -376,6 +384,7 @@ async def list_media(
     stmt = _apply_character_name_filter(stmt, character_name)
     stmt = _apply_media_type_filters(stmt, media_type)
     stmt = _apply_captured_at_filters(stmt, metadata)
+    stmt = _apply_ocr_text_filter(stmt, ocr_text)
 
     total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
 
@@ -658,7 +667,7 @@ async def get_media_detail(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
     await purge_expired_trash(db)
     metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
-    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "source_url", "metadata", "deleted"})
+    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "source_url", "metadata", "deleted", "ocr_text"})
     if needs_owner_access:
         media = await get_owned_or_admin_media(db, media_id, user, trashed=None)
     else:
@@ -677,6 +686,8 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
         media.captured_at = payload.metadata.captured_at or media.created_at
     if "deleted" in payload.model_fields_set:
         media.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
+    if "ocr_text" in payload.model_fields_set:
+        media.ocr_text = payload.ocr_text or None
     if "favorited" in payload.model_fields_set:
         await set_favorite_state(db, media.id, user, payload.favorited)
 

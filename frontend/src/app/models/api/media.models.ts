@@ -34,6 +34,7 @@ export interface MediaRead {
   tagging_error?: string | null;
   thumbnail_status: string;
   poster_status?: string;
+  ocr_text?: string | null;
   created_at: string;
   deleted_at: string | null;
   is_favorited?: boolean;
@@ -49,6 +50,7 @@ export interface MediaUpdateDto {
   metadata?: MediaMetadataUpdateDto | null;
   deleted?: boolean | null;
   favorited?: boolean | null;
+  ocr_text?: string | null;
 }
 
 export interface MediaBatchUpdateDto {
@@ -130,6 +132,7 @@ export interface ListMediaQuery {
   captured_after?: string | null;
   captured_before?: string | null;
   captured_before_year?: number | null;
+  ocr_text?: string | null;
 }
 
 export type MediaListCache = MediaCursorPage & { query?: ListMediaQuery };

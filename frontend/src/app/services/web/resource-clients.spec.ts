@@ -351,4 +351,25 @@ describe('resource clients', () => {
     await expect(deleteUserPromise).resolves.toBeNull();
     await expect(queuePromise).resolves.toEqual({ queued: 7 });
   });
+
+  it('includes ocr_text in media list query and update payload', async () => {
+    const listPromise = firstValueFrom(mediaClient.listMedia({ ocr_text: 'hello world', page_size: 10 }));
+    const updatePromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text: 'Invoice $42' }));
+    const clearPromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text: null }));
+
+    const listRequest = expectRequest('GET', 'http://api.example.test/media?ocr_text=hello%20world&page_size=10');
+    listRequest.flush({ total: 1, next_cursor: null, page_size: 10, items: [{ id: 'media-ocr', ocr_text: 'hello world' }] });
+
+    const patchRequests = httpTesting.match(
+      (req) => req.method === 'PATCH' && req.urlWithParams === 'http://api.example.test/media/media-ocr'
+    );
+    expect(patchRequests[0].request.body).toEqual({ ocr_text: 'Invoice $42' });
+    patchRequests[0].flush({ id: 'media-ocr', ocr_text: 'Invoice $42', deleted_at: null });
+    expect(patchRequests[1].request.body).toEqual({ ocr_text: null });
+    patchRequests[1].flush({ id: 'media-ocr', ocr_text: null, deleted_at: null });
+
+    await expect(listPromise).resolves.toMatchObject({ total: 1 });
+    await expect(updatePromise).resolves.toMatchObject({ ocr_text: 'Invoice $42' });
+    await expect(clearPromise).resolves.toMatchObject({ ocr_text: null });
+  });
 });
