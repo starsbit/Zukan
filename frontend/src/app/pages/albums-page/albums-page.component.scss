@@ -18,14 +18,14 @@
 }
 
 :host ::ng-deep app-sidebar {
-  height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
+  height: calc(100vh - (var(--gallery-page-padding-y) * 2));
 }
 
 .albums-shell {
   display: grid;
   align-content: start;
   gap: 1.5rem;
-  height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
+  height: calc(100vh - (var(--gallery-page-padding-y) * 2));
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;

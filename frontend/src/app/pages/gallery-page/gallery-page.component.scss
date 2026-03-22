@@ -23,7 +23,7 @@
 }
 
 :host ::ng-deep app-sidebar {
-  height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
+  height: calc(100vh - (var(--gallery-page-padding-y) * 2));
 }
 
 .gallery-shell {
@@ -32,7 +32,7 @@
   grid-template-columns: minmax(0, 1fr) clamp(3.75rem, 4vw, 5rem);
   gap: clamp(0.75rem, 1.5vw, 1.25rem);
   align-items: stretch;
-  height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
+  height: calc(100vh - (var(--gallery-page-padding-y) * 2));
   min-height: 0;
 }
 
@@ -335,7 +335,7 @@
   position: fixed;
   top: var(--gallery-page-padding-y);
   right: var(--gallery-page-padding-x);
-  height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
+  height: calc(100vh - (var(--gallery-page-padding-y) * 2));
   min-height: 32rem;
   width: clamp(3.75rem, 4vw, 5rem);
   pointer-events: none;
