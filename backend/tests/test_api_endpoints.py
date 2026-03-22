@@ -203,7 +203,7 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
 
     tag_prefix = api.client.get("/tags", headers=headers, params={"q": "bl"})
     assert tag_prefix.status_code == 200
-    assert [item["name"] for item in tag_prefix.json()] == ["blue"]
+    assert tag_prefix.json() == []
 
     rating_tags = api.client.get("/tags", headers=headers, params={"category": 9})
     assert rating_tags.status_code == 200
@@ -288,6 +288,110 @@ def test_user_journey_upload_and_discover_mixed_media(api):
 
     assert api.client.get(f"/media/{gif_item['id']}/thumbnail", headers=headers).status_code == 200
     assert api.client.get(f"/media/{mp4_item['id']}/thumbnail", headers=headers).status_code == 200
+
+
+def test_user_journey_create_filter_and_delete_album(api):
+    logged_in = _login(api, api.register_and_login("journey-albums")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    blue = api.upload_media(logged_in["access_token"], "journey-album-blue.png", (0, 0, 255))
+    green = api.upload_media(logged_in["access_token"], "journey-album-green.png", (0, 255, 0))
+    red = api.upload_media(logged_in["access_token"], "journey-album-red.png", (255, 0, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+    api.wait_for_media_status(str(red["id"]))
+
+    created = api.client.post("/albums", headers=headers, json={"name": "Journey Album"})
+    assert created.status_code == 201
+    album_id = created.json()["id"]
+
+    add_media = api.client.put(
+        f"/albums/{album_id}/media",
+        headers=headers,
+        json={"media_ids": [str(blue["id"]), str(green["id"])]},
+    )
+    assert add_media.status_code == 200
+    assert add_media.json() == {"processed": 2, "skipped": 0}
+
+    album_media = api.client.get(f"/albums/{album_id}/media", headers=headers)
+    assert album_media.status_code == 200
+    assert {item["id"] for item in album_media.json()["items"]} == {str(blue["id"]), str(green["id"])}
+
+    album_search = api.client.get("/media", headers=headers, params={"album_id": album_id})
+    assert album_search.status_code == 200
+    assert {item["id"] for item in album_search.json()["items"]} == {str(blue["id"]), str(green["id"])}
+
+    mixed_filter_search = api.client.get(
+        "/media",
+        headers=headers,
+        params={"album_id": album_id, "tags": "sky", "status": "done"},
+    )
+    assert mixed_filter_search.status_code == 200
+    assert [item["id"] for item in mixed_filter_search.json()["items"]] == [str(blue["id"])]
+
+    renamed = api.client.patch(f"/albums/{album_id}", headers=headers, json={"name": "Journey Album Renamed"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Journey Album Renamed"
+
+    deleted = api.client.delete(f"/albums/{album_id}", headers=headers)
+    assert deleted.status_code == 204
+
+    deleted_detail = api.client.get(f"/albums/{album_id}", headers=headers)
+    assert deleted_detail.status_code == 404
+
+    deleted_album_search = api.client.get("/media", headers=headers, params={"album_id": album_id})
+    assert deleted_album_search.status_code == 404
+
+
+def test_user_journey_manage_tags_and_character_names(api):
+    logged_in = _login(api, api.register_and_login("journey-tag-management")["user"]["username"])
+    headers = api.auth_headers(logged_in["access_token"])
+
+    blue = api.upload_media(logged_in["access_token"], "journey-tag-blue.png", (0, 0, 255))
+    green = api.upload_media(logged_in["access_token"], "journey-tag-green.png", (0, 255, 0))
+    for item in (blue, green):
+        api.wait_for_media_status(str(item["id"]))
+
+    trash_by_character = api.client.post("/character-names/ayanami_rei/trash-media", headers=headers)
+    assert trash_by_character.status_code == 200
+    assert trash_by_character.json()["matched_media"] == 1
+    assert trash_by_character.json()["trashed_media"] == 1
+
+    trash_by_tag = api.client.post("/tags/forest/trash-media", headers=headers)
+    assert trash_by_tag.status_code == 200
+    assert trash_by_tag.json()["matched_media"] == 1
+    assert trash_by_tag.json()["trashed_media"] == 1
+
+    trash = api.client.get("/media", headers=headers, params={"state": "trashed", "nsfw": "include"})
+    assert trash.status_code == 200
+    assert {item["id"] for item in trash.json()["items"]} == {str(blue["id"]), str(green["id"])}
+
+    delete_character = api.client.delete("/character-names/ayanami_rei", headers=headers)
+    assert delete_character.status_code == 200
+    assert delete_character.json()["matched_media"] == 1
+    assert delete_character.json()["updated_media"] == 1
+
+    character_search = api.client.get("/media", headers=headers, params={"character_name": "ayanami", "state": "trashed"})
+    assert character_search.status_code == 200
+    assert character_search.json()["items"] == []
+
+    character_suggestions = api.client.get("/media/character-suggestions", headers=headers, params={"q": "aya"})
+    assert character_suggestions.status_code == 200
+    assert character_suggestions.json() == []
+
+    delete_tag = api.client.delete("/tags/forest", headers=headers)
+    assert delete_tag.status_code == 200
+    assert delete_tag.json()["matched_media"] == 1
+    assert delete_tag.json()["updated_media"] == 1
+    assert delete_tag.json()["deleted_tag"] is True
+
+    forest_search = api.client.get("/media", headers=headers, params={"tags": "forest", "state": "trashed"})
+    assert forest_search.status_code == 200
+    assert forest_search.json()["items"] == []
+
+    forest_tags = api.client.get("/tags", headers=headers, params={"q": "fo"})
+    assert forest_tags.status_code == 200
+    assert forest_tags.json() == []
 
 
 def test_user_journey_query_trash_and_purge_uploaded_media(api):

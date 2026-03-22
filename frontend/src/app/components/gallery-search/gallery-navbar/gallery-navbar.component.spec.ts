@@ -7,6 +7,7 @@ import { GalleryNavbarComponent } from './gallery-navbar.component';
 import { GallerySearchState } from '../gallery-search.models';
 import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
 import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-bar.component';
+import { GallerySearchOptionsDialogComponent } from '../gallery-search-options-dialog/gallery-search-options-dialog.component';
 import { ThemeService } from '../../../services/theme.service';
 
 @Component({
@@ -110,7 +111,12 @@ describe('GalleryNavbarComponent', () => {
 
     component.openFilters();
 
-    expect(dialog.open).toHaveBeenCalled();
+    expect(dialog.open).toHaveBeenCalledWith(GallerySearchOptionsDialogComponent, expect.objectContaining({
+      data: {
+        filters: searchState.filters,
+        albumSelectionEnabled: true
+      }
+    }));
     expect(searchAppliedSpy).toHaveBeenCalledWith({
       searchText: searchState.searchText,
       filters: nextFilters
@@ -178,5 +184,13 @@ describe('GalleryNavbarComponent', () => {
     expect(fixture.nativeElement.querySelector('button[aria-label="Upload media"]')).toBeNull();
     expect(emptyTrashSpy).toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('button[aria-label="Open settings"]')).toBeTruthy();
+  });
+
+  it('can hide the primary action button while keeping search controls', () => {
+    fixture.componentRef.setInput('showPrimaryAction', false);
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('button[aria-label="Upload media"]')).toBeNull();
+    expect(fixture.nativeElement.querySelector('button[aria-label="Empty trash"]')).toBeNull();
   });
 });

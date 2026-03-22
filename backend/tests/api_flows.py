@@ -640,10 +640,136 @@ def assert_media_complex_query_regression(api):
     assert impossible_combo.status_code == 200
     assert impossible_combo.json()["items"] == []
 
+    album = api.client.post("/albums", headers=headers, json={"name": "Regression Album"})
+    assert album.status_code == 201
+    album_id = album.json()["id"]
+
+    add_to_album = api.client.put(
+        f"/albums/{album_id}/media",
+        headers=headers,
+        json={"media_ids": [str(blue["id"]), str(blue_two["id"])]},
+    )
+    assert add_to_album.status_code == 200
+    assert add_to_album.json() == {"processed": 2, "skipped": 0}
+
+    album_filtered = api.client.get(
+        "/media",
+        headers=headers,
+        params={"album_id": album_id, "tags": "pilot", "status": "done"},
+    )
+    assert album_filtered.status_code == 200
+    assert {item["id"] for item in album_filtered.json()["items"]} == {str(blue["id"]), str(blue_two["id"])}
+
+
+def assert_tag_management_endpoints(api):
+    owner = api.register_and_login("tag-manager-owner")
+    other = api.register_and_login("tag-manager-other")
+    admin_login = api.client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    assert admin_login.status_code == 200
+
+    owner_headers = api.auth_headers(owner["access_token"])
+    other_headers = api.auth_headers(other["access_token"])
+    admin_headers = api.auth_headers(admin_login.json()["access_token"])
+
+    owner_blue = api.upload_media(owner["access_token"], "tag-owner-blue.png", (0, 0, 255))
+    owner_green = api.upload_media(owner["access_token"], "tag-owner-green.png", (0, 255, 0))
+    other_blue = api.upload_media(other["access_token"], "tag-other-blue.png", (0, 0, 254))
+    for item in (owner_blue, owner_green, other_blue):
+        api.wait_for_media_status(str(item["id"]))
+
+    trash_blue = api.client.post(f"/character-names/ayanami_rei/trash-media", headers=owner_headers)
+    assert trash_blue.status_code == 200
+    assert trash_blue.json() == {
+        "matched_media": 1,
+        "updated_media": 0,
+        "trashed_media": 1,
+        "already_trashed": 0,
+        "deleted_tag": False,
+    }
+
+    repeat_trash_blue = api.client.post(f"/character-names/ayanami_rei/trash-media", headers=owner_headers)
+    assert repeat_trash_blue.status_code == 200
+    assert repeat_trash_blue.json()["already_trashed"] == 1
+
+    owner_trash = api.client.get("/media", headers=owner_headers, params={"state": "trashed", "nsfw": "include"})
+    assert owner_trash.status_code == 200
+    assert [item["id"] for item in owner_trash.json()["items"]] == [str(owner_blue["id"])]
+
+    other_active_blue = api.client.get("/media", headers=other_headers, params={"tags": "sky"})
+    assert other_active_blue.status_code == 200
+    assert [item["id"] for item in other_active_blue.json()["items"]] == [str(other_blue["id"])]
+
+    delete_owner_character = api.client.delete("/character-names/ayanami_rei", headers=owner_headers)
+    assert delete_owner_character.status_code == 200
+    assert delete_owner_character.json()["matched_media"] == 1
+    assert delete_owner_character.json()["updated_media"] == 1
+
+    owner_character_search = api.client.get(
+        "/media",
+        headers=owner_headers,
+        params={"character_name": "ayanami", "nsfw": "include", "state": "trashed"},
+    )
+    assert owner_character_search.status_code == 200
+    assert owner_character_search.json()["items"] == []
+
+    other_character_search = api.client.get("/media", headers=other_headers, params={"character_name": "ayanami"})
+    assert other_character_search.status_code == 200
+    assert [item["id"] for item in other_character_search.json()["items"]] == [str(other_blue["id"])]
+
+    owner_character_suggestions = api.client.get("/media/character-suggestions", headers=owner_headers, params={"q": "aya"})
+    assert owner_character_suggestions.status_code == 200
+    assert owner_character_suggestions.json()[0]["name"] == "ayanami_rei"
+
+    other_character_suggestions = api.client.get("/media/character-suggestions", headers=other_headers, params={"q": "aya"})
+    assert other_character_suggestions.status_code == 200
+    assert other_character_suggestions.json()[0]["name"] == "ayanami_rei"
+
+    trash_forest = api.client.post("/tags/forest/trash-media", headers=owner_headers)
+    assert trash_forest.status_code == 200
+    assert trash_forest.json()["matched_media"] == 1
+    assert trash_forest.json()["trashed_media"] == 1
+
+    delete_forest = api.client.delete("/tags/forest", headers=owner_headers)
+    assert delete_forest.status_code == 200
+    assert delete_forest.json()["matched_media"] == 1
+    assert delete_forest.json()["updated_media"] == 1
+    assert delete_forest.json()["deleted_tag"] is True
+
+    owner_forest_search = api.client.get(
+        "/media",
+        headers=owner_headers,
+        params={"tags": "forest", "state": "trashed", "nsfw": "include"},
+    )
+    assert owner_forest_search.status_code == 200
+    assert owner_forest_search.json()["items"] == []
+
+    tags_after_owner_delete = api.client.get("/tags", headers=owner_headers, params={"q": "fo"})
+    assert tags_after_owner_delete.status_code == 200
+    assert tags_after_owner_delete.json() == []
+
+    admin_delete_sky = api.client.delete("/tags/sky", headers=admin_headers)
+    assert admin_delete_sky.status_code == 200
+    assert admin_delete_sky.json()["matched_media"] == 2
+    assert admin_delete_sky.json()["updated_media"] == 2
+    assert admin_delete_sky.json()["deleted_tag"] is True
+
+    sky_tags = api.client.get("/tags", headers=admin_headers, params={"q": "sk"})
+    assert sky_tags.status_code == 200
+    assert sky_tags.json() == []
+
+    owner_sky_search = api.client.get("/media", headers=owner_headers, params={"tags": "sky", "nsfw": "include", "state": "trashed"})
+    assert owner_sky_search.status_code == 200
+    assert owner_sky_search.json()["items"] == []
+
+    other_sky_search = api.client.get("/media", headers=other_headers, params={"tags": "sky"})
+    assert other_sky_search.status_code == 200
+    assert other_sky_search.json()["items"] == []
+
 
 def assert_album_endpoints(api):
     owner = api.register_and_login("album-owner")
     viewer = api.register_and_login("album-viewer")
+    outsider = api.register_and_login("album-outsider")
 
     first = api.upload_media(owner["access_token"], "album-blue.png", (0, 0, 255))
     second = api.upload_media(owner["access_token"], "album-green.png", (0, 255, 0))
@@ -679,6 +805,14 @@ def assert_album_endpoints(api):
     assert filtered_media.status_code == 200
     assert [item["id"] for item in filtered_media.json()["items"]] == [str(first["id"])]
 
+    album_query = api.client.get(
+        "/media",
+        headers=api.auth_headers(owner["access_token"]),
+        params={"album_id": album["id"]},
+    )
+    assert album_query.status_code == 200
+    assert {item["id"] for item in album_query.json()["items"]} == {str(first["id"]), str(second["id"])}
+
     updated = api.client.patch(
         f"/albums/{album['id']}",
         headers=api.auth_headers(owner["access_token"]),
@@ -699,6 +833,13 @@ def assert_album_endpoints(api):
     assert [item["id"] for item in shared_albums.json()] == [album["id"]]
 
     assert api.client.get(f"/albums/{album['id']}", headers=api.auth_headers(viewer["access_token"])).status_code == 200
+    shared_album_query = api.client.get(
+        "/media",
+        headers=api.auth_headers(viewer["access_token"]),
+        params={"album_id": album["id"]},
+    )
+    assert shared_album_query.status_code == 200
+    assert {item["id"] for item in shared_album_query.json()["items"]} == {str(first["id"]), str(second["id"])}
     assert api.client.request(
         "DELETE",
         f"/albums/{album['id']}/media",
@@ -733,12 +874,20 @@ def assert_album_endpoints(api):
     no_longer_shared = api.client.get(f"/albums/{album['id']}", headers=api.auth_headers(viewer["access_token"]))
     assert no_longer_shared.status_code == 404
 
+    inaccessible_album_query = api.client.get(
+        "/media",
+        headers=api.auth_headers(outsider["access_token"]),
+        params={"album_id": album["id"]},
+    )
+    assert inaccessible_album_query.status_code == 404
+
     assert api.client.delete(f"/albums/{album['id']}", headers=api.auth_headers(owner["access_token"])).status_code == 204
 
 
 def assert_album_edge_cases(api):
     owner = api.register_and_login("album-owner-2")
     viewer = api.register_and_login("album-viewer-2")
+    outsider = api.register_and_login("album-outsider-2")
     image = api.upload_media(owner["access_token"], "album-only.png", (0, 0, 255))
     api.wait_for_media_status(str(image["id"]))
 
@@ -770,6 +919,14 @@ def assert_album_edge_cases(api):
     )
     assert add_image.status_code == 200
 
+    duplicate_add = api.client.put(
+        f"/albums/{empty_album_id}/media",
+        headers=api.auth_headers(owner["access_token"]),
+        json={"media_ids": [str(image["id"])]},
+    )
+    assert duplicate_add.status_code == 200
+    assert duplicate_add.json() == {"processed": 0, "skipped": 1}
+
     invalid_cover = api.client.patch(
         f"/albums/{empty_album_id}",
         headers=api.auth_headers(owner["access_token"]),
@@ -790,6 +947,13 @@ def assert_album_edge_cases(api):
         json={"media_ids": [str(image["id"])]},
     )
     assert bulk_add_as_reader.status_code == 403
+
+    invisible_album_query = api.client.get(
+        "/media",
+        headers=api.auth_headers(outsider["access_token"]),
+        params={"album_id": empty_album_id},
+    )
+    assert invisible_album_query.status_code == 404
 
 
 def assert_bulk_endpoints(api):

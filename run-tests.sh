@@ -15,6 +15,11 @@ run_step() {
   "$@"
 }
 
+docker_daemon_available() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker ps >/dev/null 2>&1
+}
+
 if [[ ! -d "$FRONTEND_DIR" ]]; then
   echo "Frontend directory not found: $FRONTEND_DIR" >&2
   exit 1
@@ -37,7 +42,14 @@ fi
 
 run_step "Frontend unit tests" npm --prefix "$FRONTEND_DIR" run test -- --watch=false
 run_step "Backend tests" "$PYTEST_BIN" "$BACKEND_DIR/tests"
-run_step "Frontend e2e tests" npm --prefix "$FRONTEND_DIR" run e2e
+
+if docker_daemon_available; then
+  run_step "Frontend e2e tests" npm --prefix "$FRONTEND_DIR" run e2e
+else
+  echo
+  echo "==> Frontend e2e tests"
+  echo "Skipping Playwright e2e tests because the Docker daemon is not available."
+fi
 
 echo
 echo "All test suites passed."

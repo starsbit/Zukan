@@ -11,6 +11,7 @@ from backend.tests.api_flows import (
     assert_media_tag_search_and_favorite_endpoints,
     assert_media_upload_edge_cases,
     assert_mixed_media_endpoints,
+    assert_tag_management_endpoints,
 )
 
 
@@ -36,6 +37,10 @@ def test_media_upload_edge_cases(api):
 
 def test_media_complex_query_regression(api):
     assert_media_complex_query_regression(api)
+
+
+def test_tag_management_endpoints(api):
+    assert_tag_management_endpoints(api)
 
 
 def test_album_endpoints(api):

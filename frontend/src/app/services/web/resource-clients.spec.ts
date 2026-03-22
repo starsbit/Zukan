@@ -83,6 +83,7 @@ describe('resource clients', () => {
     const listPromise = firstValueFrom(mediaClient.listMedia({
       page: 3,
       page_size: 25,
+      album_id: 'album-9',
       favorited: true,
       character_name: 'rin',
       media_type: ['image', 'video'],
@@ -105,7 +106,7 @@ describe('resource clients', () => {
     progressUploadRequest.event({ type: HttpEventType.UploadProgress, loaded: 1, total: 2 });
     progressUploadRequest.flush({ accepted: 1, duplicates: 0, errors: 0, results: [] });
 
-    const listRequest = expectRequest('GET', 'http://api.example.test/media?page=3&page_size=25&favorited=true&character_name=rin&media_type=image,video&status=done,failed&captured_after=2026-03-21T00:00:00.000Z');
+    const listRequest = expectRequest('GET', 'http://api.example.test/media?page=3&page_size=25&album_id=album-9&favorited=true&character_name=rin&media_type=image,video&status=done,failed&captured_after=2026-03-21T00:00:00.000Z');
     listRequest.flush({ total: 0, page: 3, page_size: 25, items: [] });
 
     const suggestionsRequest = expectRequest('GET', 'http://api.example.test/media/character-suggestions?q=aya&limit=5');

@@ -1,6 +1,7 @@
 import asyncio
 import re
 import uuid
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.config import settings
-from backend.app.models import Media, MediaTag, MediaType, Tag, User, UserFavorite
+from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaTag, MediaType, Tag, User, UserFavorite
 from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
@@ -210,6 +211,93 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
     )
 
 
+def _build_tag_payloads(
+    tag_names: list[str],
+    *,
+    default_category: int = 0,
+    default_confidence: float = 1.0,
+) -> list[tuple[str, int, float]]:
+    return [(tag_name, default_category, default_confidence) for tag_name in _normalize_manual_tags(tag_names)]
+
+
+async def _delete_orphaned_tags(db: AsyncSession, tag_ids: list[int]) -> set[int]:
+    if not tag_ids:
+        return set()
+
+    candidate_ids = sorted(set(tag_ids))
+    linked_ids = set((await db.execute(select(MediaTag.tag_id).where(MediaTag.tag_id.in_(candidate_ids)))).scalars().all())
+    orphan_ids = set(candidate_ids) - linked_ids
+    if not orphan_ids:
+        return set()
+
+    orphaned_tags = (await db.execute(select(Tag).where(Tag.id.in_(orphan_ids)))).scalars().all()
+    for tag in orphaned_tags:
+        await db.delete(tag)
+    return orphan_ids
+
+
+async def _decrement_tag_counts(db: AsyncSession, removals: Counter[int]) -> set[int]:
+    if not removals:
+        return set()
+
+    tags = (await db.execute(select(Tag).where(Tag.id.in_(list(removals))))).scalars().all()
+    for tag in tags:
+        tag.media_count = max(0, tag.media_count - removals[tag.id])
+    await db.flush()
+    return await _delete_orphaned_tags(db, [tag.id for tag in tags])
+
+
+async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: list[tuple[str, int, float]]) -> None:
+    desired_payloads: list[tuple[str, int, float]] = []
+    desired_by_name: dict[str, tuple[int, float]] = {}
+    for name, category, confidence in tag_payloads:
+        if name in desired_by_name:
+            continue
+        desired_payloads.append((name, category, confidence))
+        desired_by_name[name] = (category, confidence)
+
+    existing_media_tags = (
+        await db.execute(select(MediaTag).options(selectinload(MediaTag.tag)).where(MediaTag.media_id == media.id))
+    ).scalars().all()
+    existing_by_name = {item.tag.name: item for item in existing_media_tags}
+
+    removed_tag_counts: Counter[int] = Counter()
+    for name, media_tag in existing_by_name.items():
+        if name in desired_by_name:
+            desired_category, desired_confidence = desired_by_name[name]
+            if media_tag.tag.category == 0 and desired_category != 0:
+                media_tag.tag.category = desired_category
+            media_tag.confidence = desired_confidence
+            continue
+        removed_tag_counts[media_tag.tag_id] += 1
+        await db.delete(media_tag)
+
+    await _decrement_tag_counts(db, removed_tag_counts)
+
+    missing_names = [name for name, _, _ in desired_payloads if name not in existing_by_name]
+    existing_tags: dict[str, Tag] = {}
+    if missing_names:
+        existing_tags = {
+            tag.name: tag for tag in (await db.execute(select(Tag).where(Tag.name.in_(missing_names)))).scalars().all()
+        }
+
+    for name, category, confidence in desired_payloads:
+        if name in existing_by_name:
+            continue
+        tag = existing_tags.get(name)
+        if tag is None:
+            tag = Tag(name=name, category=category, media_count=0)
+            db.add(tag)
+            await db.flush()
+            existing_tags[name] = tag
+        elif tag.category == 0 and category != 0:
+            tag.category = category
+        tag.media_count += 1
+        db.add(MediaTag(media_id=media.id, tag_id=tag.id, confidence=confidence))
+
+    media.tags = [name for name, _, _ in desired_payloads]
+
+
 def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     if nsfw == NsfwFilter.DEFAULT:
         if not user.show_nsfw:
@@ -252,11 +340,15 @@ async def list_media(
     metadata: MediaMetadataFilter,
     favorited: bool | None,
     media_type: str | None = None,
+    album_id: uuid.UUID | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> MediaListResponse:
     await purge_expired_trash(db)
     stmt = select(Media)
+    if album_id is not None:
+        await _ensure_album_is_visible(db, user, album_id)
+        stmt = stmt.join(AlbumMedia, AlbumMedia.media_id == Media.id).where(AlbumMedia.album_id == album_id)
     if state == MediaListState.TRASHED:
         stmt = stmt.where(Media.deleted_at.is_not(None))
         if not user.is_admin:
@@ -281,6 +373,21 @@ async def list_media(
     ).scalars().all()
     favs = await favorited_ids(db, user.id, [row.id for row in rows])
     return MediaListResponse(total=total, page=page, page_size=page_size, items=enrich_media(rows, favs))
+
+
+async def _ensure_album_is_visible(db: AsyncSession, user: User, album_id: uuid.UUID) -> None:
+    album = (await db.execute(select(Album).where(Album.id == album_id))).scalar_one_or_none()
+    if album is None:
+        raise HTTPException(status_code=404, detail="Album not found")
+
+    if album.owner_id == user.id or user.is_admin:
+        return
+
+    share = (
+        await db.execute(select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == user.id))
+    ).scalar_one_or_none()
+    if share is None:
+        raise HTTPException(status_code=404, detail="Album not found")
 
 
 async def list_character_suggestions(
@@ -331,6 +438,7 @@ async def list_trash(db: AsyncSession, user: User, page: int, page_size: int) ->
         metadata=MediaMetadataFilter(),
         favorited=None,
         media_type=None,
+        album_id=None,
         page=page,
         page_size=page_size,
     )
@@ -502,27 +610,7 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
 
     if "tags" in payload.model_fields_set and payload.tags is not None:
         normalized_tags = _normalize_manual_tags(payload.tags)
-        existing_media_tags = (
-            await db.execute(select(MediaTag).options(selectinload(MediaTag.tag)).where(MediaTag.media_id == media_id))
-        ).scalars().all()
-        existing_by_name = {item.tag.name: item for item in existing_media_tags}
-        for name, media_tag in existing_by_name.items():
-            if name not in normalized_tags:
-                media_tag.tag.media_count = max(0, media_tag.tag.media_count - 1)
-                await db.delete(media_tag)
-        new_tag_names = [name for name in normalized_tags if name not in existing_by_name]
-        existing_tags = {}
-        if new_tag_names:
-            existing_tags = {tag.name: tag for tag in (await db.execute(select(Tag).where(Tag.name.in_(new_tag_names)))).scalars().all()}
-        for name in new_tag_names:
-            tag = existing_tags.get(name)
-            if tag is None:
-                tag = Tag(name=name, category=0, media_count=0)
-                db.add(tag)
-                await db.flush()
-            tag.media_count += 1
-            db.add(MediaTag(media_id=media_id, tag_id=tag.id, confidence=1.0))
-        media.tags = normalized_tags
+        await _set_media_tag_links(db, media, _build_tag_payloads(normalized_tags))
         media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
 
     if "character_name" in payload.model_fields_set:
@@ -664,7 +752,12 @@ async def set_favorite_state(db: AsyncSession, media_id: uuid.UUID, user: User, 
 
 
 async def _get_media_with_tags(db: AsyncSession, media_id: uuid.UUID, deleted: bool | None) -> Media | None:
-    stmt = select(Media).options(selectinload(Media.media_tags).selectinload(MediaTag.tag)).where(Media.id == media_id)
+    stmt = (
+        select(Media)
+        .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
+        .where(Media.id == media_id)
+        .execution_options(populate_existing=True)
+    )
     if deleted is True:
         stmt = stmt.where(Media.deleted_at.is_not(None))
     elif deleted is False:
@@ -736,8 +829,7 @@ async def purge_media_record(media: Media, db: AsyncSession) -> None:
     await db.delete(media)
     await db.flush()
     if tag_ids:
-        for tag in (await db.execute(select(Tag).where(Tag.id.in_(tag_ids)))).scalars().all():
-            tag.media_count = max(0, tag.media_count - 1)
+        await _decrement_tag_counts(db, Counter(tag_ids))
     delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
 
 
@@ -793,14 +885,6 @@ def aggregate_tagging_results(results: list[TaggingResult]) -> TaggingResult:
 
 
 async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: TaggingResult) -> None:
-    existing_mts = await db.execute(select(MediaTag).where(MediaTag.media_id == media.id))
-    old_tag_ids = [it.tag_id for it in existing_mts.scalars().all()]
-    if old_tag_ids:
-        old_tags = await db.execute(select(Tag).where(Tag.id.in_(old_tag_ids)))
-        for tag in old_tags.scalars().all():
-            tag.media_count = max(0, tag.media_count - 1)
-        await db.execute(MediaTag.__table__.delete().where(MediaTag.media_id == media.id))
-
     uploader = None
     if media.uploader_id is not None:
         uploader = await db.get(User, media.uploader_id)
@@ -812,19 +896,9 @@ async def _store_tagging_result(db: AsyncSession, media: Media, tagging_result: 
         if prediction.category == 9 or prediction.confidence >= tag_threshold
     ]
 
-    tag_names: list[str] = []
-    for prediction in filtered_predictions:
-        tag_result = await db.execute(select(Tag).where(Tag.name == prediction.name))
-        tag = tag_result.scalar_one_or_none()
-        if tag is None:
-            tag = Tag(name=prediction.name, category=prediction.category, media_count=0)
-            db.add(tag)
-            await db.flush()
-        tag.media_count += 1
-        db.add(MediaTag(media_id=media.id, tag_id=tag.id, confidence=prediction.confidence))
-        tag_names.append(prediction.name)
-
-    media.tags = tag_names
+    tag_payloads = [(prediction.name, prediction.category, prediction.confidence) for prediction in filtered_predictions]
+    await _set_media_tag_links(db, media, tag_payloads)
+    tag_names = [prediction.name for prediction in filtered_predictions]
     media.character_name = derive_character_name(filtered_predictions)
     media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(tag_names)
     media.tagging_status = "done"

@@ -78,14 +78,18 @@ describe('GalleryViewerComponent', () => {
     revokeObjectUrlSpy.mockRestore();
   });
 
-  it('loads and renders an image when media is provided', async () => {
-    const media = createMediaRead();
-    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
-
+  async function renderViewer(media = createMediaRead()): Promise<void> {
     fixture.componentRef.setInput('media', media);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+  }
+
+  it('loads and renders an image when media is provided', async () => {
+    const media = createMediaRead();
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    await renderViewer(media);
 
     expect(mediaClient.getMediaFile).toHaveBeenCalledWith(media.id);
     expect(component.mediaUrl).toBe('blob:media-url');
@@ -95,7 +99,7 @@ describe('GalleryViewerComponent', () => {
   it('renders a video player for video media', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['video'])));
 
-    fixture.componentRef.setInput('media', createMediaRead({
+    await renderViewer(createMediaRead({
       media_type: 'video',
       metadata: {
         file_size: 2048,
@@ -106,9 +110,6 @@ describe('GalleryViewerComponent', () => {
         captured_at: '2024-01-01T12:00:00.000Z'
       }
     }));
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('video.viewer-asset')).toBeTruthy();
     expect(fixture.nativeElement.textContent).toContain('Duration');
@@ -118,10 +119,7 @@ describe('GalleryViewerComponent', () => {
     const media = createMediaRead({ tagging_status: 'pending' });
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
-    fixture.componentRef.setInput('media', media);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await renderViewer(media);
 
     expect(fixture.nativeElement.querySelector('.viewer-status mat-spinner')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('Processing');
@@ -132,9 +130,7 @@ describe('GalleryViewerComponent', () => {
     const media = createMediaRead({ tagging_status: 'pending' });
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
-    fixture.componentRef.setInput('media', media);
-    fixture.detectChanges();
-    await fixture.whenStable();
+    await renderViewer(media);
 
     mediaUploadService.taggingStatusByMediaId.set({ [media.id]: 'done' });
     fixture.detectChanges();
@@ -146,10 +142,7 @@ describe('GalleryViewerComponent', () => {
   it('shows the failed state when loading the media file errors', async () => {
     mediaClient.getMediaFile.mockReturnValue(throwError(() => new Error('broken')));
 
-    fixture.componentRef.setInput('media', createMediaRead());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await renderViewer(createMediaRead());
 
     expect(component.failed).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('We could not load this item.');
@@ -197,10 +190,7 @@ describe('GalleryViewerComponent', () => {
     const closedSpy = vi.fn();
     component.closed.subscribe(closedSpy);
 
-    fixture.componentRef.setInput('media', createMediaRead());
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await renderViewer(createMediaRead());
 
     (fixture.nativeElement.querySelector('button[aria-label="Close viewer"]') as HTMLButtonElement).click();
     (fixture.nativeElement.querySelector('.viewer-backdrop') as HTMLElement).click();
@@ -209,13 +199,98 @@ describe('GalleryViewerComponent', () => {
     expect(closedSpy).toHaveBeenCalledTimes(3);
   });
 
+  it('closes when clicking empty viewer space but not when clicking the image or sidebar', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+    const closedSpy = vi.fn();
+    component.closed.subscribe(closedSpy);
+
+    await renderViewer(createMediaRead({ tags: ['fox'] }));
+
+    (fixture.nativeElement.querySelector('.viewer-media') as HTMLElement).click();
+    fixture.detectChanges();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+
+    (fixture.nativeElement.querySelector('img.viewer-asset') as HTMLImageElement).click();
+    fixture.detectChanges();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+
+    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.viewer-sidebar') as HTMLElement).click();
+
+    expect(closedSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the viewer open when the toolbar is clicked', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+    const closedSpy = vi.fn();
+    component.closed.subscribe(closedSpy);
+
+    await renderViewer(createMediaRead());
+
+    (fixture.nativeElement.querySelector('.viewer-toolbar') as HTMLElement).click();
+
+    expect(closedSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the viewer open when the loading or failed state is clicked', async () => {
+    const closedSpy = vi.fn();
+    component.closed.subscribe(closedSpy);
+
+    mediaClient.getMediaFile.mockReturnValue(new Subject<Blob>().asObservable());
+    fixture.componentRef.setInput('media', createMediaRead());
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.viewer-state') as HTMLElement).click();
+    expect(closedSpy).not.toHaveBeenCalled();
+
+    mediaClient.getMediaFile.mockReturnValue(throwError(() => new Error('broken')));
+    await renderViewer(createMediaRead({ id: 'failed-media' }));
+
+    (fixture.nativeElement.querySelector('.viewer-state') as HTMLElement).click();
+    expect(closedSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the viewer open when the video element is clicked', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['video'])));
+    const closedSpy = vi.fn();
+    component.closed.subscribe(closedSpy);
+
+    await renderViewer(createMediaRead({
+      media_type: 'video',
+      metadata: {
+        file_size: 2048,
+        width: 1920,
+        height: 1080,
+        duration_seconds: 12,
+        mime_type: 'video/mp4',
+        captured_at: '2024-01-01T12:00:00.000Z'
+      }
+    }));
+
+    (fixture.nativeElement.querySelector('video.viewer-asset') as HTMLVideoElement).click();
+
+    expect(closedSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses a translucent backdrop', async () => {
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+
+    await renderViewer(createMediaRead());
+
+    const styleText = Array.from(document.head.querySelectorAll('style'))
+      .map((styleElement) => styleElement.textContent ?? '')
+      .join('\n');
+
+    expect(styleText).toContain('color-mix(in srgb,var(--mat-sys-scrim) 62%,transparent)');
+  });
+
   it('opens the tags sidebar from the toolbar', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
-    fixture.componentRef.setInput('media', createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], character_name: 'ikari_shinji' }));
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
+    await renderViewer(createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], character_name: 'ikari_shinji' }));
 
     expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeNull();
 

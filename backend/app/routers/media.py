@@ -63,6 +63,7 @@ async def upload(files: list[UploadFile], user: User = Depends(current_user), db
 async def list_media(
     metadata: Annotated[MediaMetadataFilter, Depends(media_metadata_filter_query)],
     state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
+    album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
     tags: Annotated[str | None, Query(description="Comma-separated tags to include in the search.")] = None,
     character_name: Annotated[str | None, Query(description="Case-insensitive partial match against derived character name.")] = None,
     exclude_tags: Annotated[str | None, Query(description="Comma-separated tags that must not be present.")] = None,
@@ -89,6 +90,7 @@ async def list_media(
         metadata,
         favorited,
         media_type,
+        album_id,
         page,
         page_size,
     )

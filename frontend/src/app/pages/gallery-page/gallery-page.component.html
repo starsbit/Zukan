@@ -8,89 +8,72 @@
 >
   <input #uploadInput type="file" multiple hidden (change)="onUploadSelection($event)" />
 
-  <aside class="gallery-sidebar" aria-label="Gallery navigation">
-    <mat-card appearance="outlined">
-      <mat-card-header>
-        <mat-card-title>Zukan</mat-card-title>
-      </mat-card-header>
-      <mat-nav-list>
-        <a
-          mat-list-item
-          routerLink="/gallery"
-          routerLinkActive="mdc-list-item--activated"
-          [routerLinkActiveOptions]="{ exact: true }"
-        >
-          <mat-icon matListItemIcon>photo_library</mat-icon>
-          <span matListItemTitle>Gallery</span>
-        </a>
-
-        <a
-          mat-list-item
-          routerLink="/gallery/trash"
-          routerLinkActive="mdc-list-item--activated"
-          [routerLinkActiveOptions]="{ exact: true }"
-        >
-          <mat-icon matListItemIcon>delete</mat-icon>
-          <span matListItemTitle>Trash</span>
-        </a>
-      </mat-nav-list>
-    </mat-card>
-  </aside>
+  <app-sidebar />
 
   <section class="gallery-shell">
     <section class="gallery-main">
-      @if (selectionMode) {
-        <section class="selection-toolbar" aria-label="Selection toolbar">
-          <div class="selection-toolbar-start">
-            <button mat-icon-button type="button" aria-label="Unselect all items" (click)="clearSelection()">
-              <mat-icon>close</mat-icon>
-            </button>
-            <p>{{ selectedCount }} selected</p>
-          </div>
+      <section class="gallery-header-stack">
+        @if (selectionMode) {
+          <app-selection-toolbar
+            ariaLabel="Selection toolbar"
+            clearButtonAriaLabel="Unselect all items"
+            [selectedCount]="selectedCount"
+            (clearRequested)="clearSelection()"
+          >
+            <div selectionToolbarActions>
+              @if (isTrashView) {
+                <button
+                  mat-flat-button
+                  type="button"
+                  class="selection-restore-button"
+                  [disabled]="(mutationPending$ | async) || selectedCount === 0"
+                  (click)="restoreSelected()"
+                >
+                  <mat-icon>restore_from_trash</mat-icon>
+                  <span>Restore</span>
+                </button>
+              } @else {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  class="selection-album-button"
+                  [disabled]="selectedCount === 0"
+                  (click)="addSelectedToAlbum()"
+                >
+                  <mat-icon>collections_bookmark</mat-icon>
+                  <span>Add to album</span>
+                </button>
+                <button
+                  mat-flat-button
+                  type="button"
+                  class="selection-delete-button"
+                  [disabled]="(mutationPending$ | async) || selectedCount === 0"
+                  (click)="deleteSelected()"
+                >
+                  <mat-icon>delete</mat-icon>
+                  <span>Delete</span>
+                </button>
+              }
+            </div>
+          </app-selection-toolbar>
+        } @else {
+          <app-gallery-navbar
+            [searchState]="searchState"
+            [isTrashView]="isTrashView"
+            (searchApplied)="applySearch($event)"
+            (settingsSaved)="reload()"
+            (uploadRequested)="openUploadPicker()"
+            (emptyTrashRequested)="emptyTrash()"
+          />
+        }
 
-          <div class="selection-toolbar-actions">
-            @if (isTrashView) {
-              <button
-                mat-flat-button
-                type="button"
-                class="selection-restore-button"
-                [disabled]="(mutationPending$ | async) || selectedCount === 0"
-                (click)="restoreSelected()"
-              >
-                <mat-icon>restore_from_trash</mat-icon>
-                <span>Restore</span>
-              </button>
-            } @else {
-              <button
-                mat-flat-button
-                type="button"
-                class="selection-delete-button"
-                [disabled]="(mutationPending$ | async) || selectedCount === 0"
-                (click)="deleteSelected()"
-              >
-                <mat-icon>delete</mat-icon>
-                <span>Delete</span>
-              </button>
-            }
-          </div>
-        </section>
-      } @else {
-        <app-gallery-navbar
-          [searchState]="searchState"
-          [isTrashView]="isTrashView"
-          (searchApplied)="applySearch($event)"
-          (settingsSaved)="reload()"
-          (uploadRequested)="openUploadPicker()"
-          (emptyTrashRequested)="emptyTrash()"
-        />
-      }
-
-      @if (isTrashView) {
-        <section class="trash-retention-notice" aria-label="Trash retention notice">
-          <mat-icon>warning_amber</mat-icon>
-          <p>Items in trash are deleted automatically after 30 days.</p>
-        </section>
-      }
+        @if (isTrashView) {
+          <section class="trash-retention-notice" aria-label="Trash retention notice">
+            <mat-icon>warning_amber</mat-icon>
+            <p>Items in trash are deleted automatically after 30 days.</p>
+          </section>
+        }
+      </section>
 
       <section #galleryScroller class="gallery-content-scroll" (scroll)="onGalleryScroll()">
         @if (dragActive && !isTrashView) {

@@ -26,6 +26,7 @@ export function normalizeCharacterSearchValue(value: string): string {
 export function createDefaultGallerySearchFilters(): GallerySearchFilters {
   return {
     favorited: 'any',
+    album_id: null,
     nsfw: 'default',
     status: ['pending', 'processing', 'done', 'failed'],
     media_type: [],
@@ -107,6 +108,7 @@ export function buildGalleryListQuery(searchText: string, filters: GallerySearch
   return {
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
+    album_id: filters.album_id,
     status: filters.status.length > 0 ? filters.status : null,
     tags: parsed.tags.length > 0 ? parsed.tags.join(',') : null,
     character_name: parsed.characterName,
@@ -122,6 +124,7 @@ export function countActiveAdvancedFilters(filters: GallerySearchFilters): numbe
   const defaults = createDefaultGallerySearchFilters();
   return [
     filters.favorited !== defaults.favorited,
+    filters.album_id !== defaults.album_id,
     filters.nsfw !== defaults.nsfw,
     !hasSameValues(filters.status, defaults.status),
     !hasSameValues(filters.media_type, defaults.media_type),

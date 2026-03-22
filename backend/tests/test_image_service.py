@@ -370,6 +370,21 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             MediaUpdate(character_name="Sumika (Muvluv)"),
         )
 
+        created_album = api.client.post(
+            "/albums",
+            headers=api.auth_headers(user["access_token"]),
+            json={"name": "Service Album"},
+        )
+        assert created_album.status_code == 201
+        album_id = uuid.UUID(created_album.json()["id"])
+
+        add_to_album = api.client.put(
+            f"/albums/{album_id}/media",
+            headers=api.auth_headers(user["access_token"]),
+            json={"media_ids": [str(blue_id)]},
+        )
+        assert add_to_album.status_code == 200
+
         normalized_sumika = await media_service.list_media(
             session,
             db_user,
@@ -386,6 +401,24 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             page_size=20,
         )
         assert [item.id for item in normalized_sumika.items] == [blue_id]
+
+        album_filtered = await media_service.list_media(
+            session,
+            db_user,
+            MediaListState.ACTIVE,
+            tags="sky",
+            character_name=None,
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            metadata=MediaMetadataFilter(),
+            favorited=None,
+            album_id=album_id,
+            page=1,
+            page_size=20,
+        )
+        assert [item.id for item in album_filtered.items] == [blue_id]
 
         detail = await media_service.get_media_detail(session, blue_id, db_user)
         assert detail.id == blue_id
@@ -587,5 +620,55 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
         )
         assert cleared.character_name is None
         assert cleared.metadata.captured_at == cleared.created_at
+
+    api.run_db(_exercise)
+
+
+def test_manual_retag_and_purge_cleanup_remove_dangling_tag_rows(api, monkeypatch):
+    user = api.register_and_login("image-service-tag-cleanup")
+    uploaded = api.upload_media(user["access_token"], "cleanup-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(uploaded["id"]))
+    user_id = uuid.UUID(user["user"]["id"])
+    uploaded_id = uuid.UUID(str(uploaded["id"]))
+
+    async def fake_predict(_image_path: str):
+        from backend.app.services.tagger import TagPrediction, TaggingResult
+
+        return TaggingResult(
+            predictions=[
+                TagPrediction(name="forest", category=0, confidence=0.95),
+                TagPrediction(name="green", category=0, confidence=0.9),
+                TagPrediction(name="rating:general", category=9, confidence=0.99),
+            ],
+            character_name=None,
+            is_nsfw=False,
+        )
+
+    monkeypatch.setattr(media_service.tagger, "predict", fake_predict)
+
+    async def _exercise(session):
+        from backend.app.models import User
+
+        db_user = await session.get(User, user_id)
+        await media_service.update_media_metadata(
+            session,
+            uploaded_id,
+            db_user,
+            MediaUpdate(tags=["custom_tag", "rating:general"]),
+        )
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "sky"))).scalar_one_or_none() is None
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "custom_tag"))).scalar_one_or_none() is not None
+
+        await media_service.tag_media(session, uploaded_id)
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "custom_tag"))).scalar_one_or_none() is None
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "forest"))).scalar_one_or_none() is not None
+
+        media = await session.get(media_service.Media, uploaded_id)
+        await media_service.purge_media_record(media, session)
+        await session.commit()
+
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "forest"))).scalar_one_or_none() is None
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "green"))).scalar_one_or_none() is None
+        assert (await session.execute(select(media_service.Tag).where(media_service.Tag.name == "rating:general"))).scalar_one_or_none() is None
 
     api.run_db(_exercise)

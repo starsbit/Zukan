@@ -1,0 +1,115 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.album-layout {
+  display: grid;
+  grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr);
+  gap: clamp(1rem, 1.8vw, 1.75rem);
+  width: 100%;
+  min-height: 100vh;
+  padding: clamp(1rem, 1.8vw, 1.5rem) clamp(1rem, 2vw, 2rem) 3rem;
+}
+
+.album-shell {
+  display: grid;
+  align-content: start;
+  gap: 1.35rem;
+}
+
+.album-header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.album-header-copy h1,
+.album-header-copy p {
+  margin: 0;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+  color: var(--mat-sys-primary);
+  text-decoration: none;
+}
+
+.album-header-copy h1 {
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1;
+}
+
+.album-header-copy p {
+  margin-top: 0.5rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.album-description {
+  max-width: 42rem;
+  line-height: 1.45;
+}
+
+.album-actions {
+  display: inline-flex;
+  gap: 0.75rem;
+}
+
+.delete-button {
+  border-radius: 999px;
+}
+
+.remove-button {
+  border-radius: 999px;
+}
+
+.album-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: flex-start;
+  --gallery-row-height: 13rem;
+}
+
+.album-state {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  padding: 5rem 1rem;
+  text-align: center;
+}
+
+.album-state p {
+  margin: 0;
+}
+
+.album-state mat-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 2.5rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+@media (max-width: 900px) {
+  .album-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .album-header {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .album-actions {
+    width: 100%;
+  }
+
+  .remove-button,
+  .delete-button,
+  .album-actions button {
+    width: 100%;
+    justify-content: center;
+  }
+}

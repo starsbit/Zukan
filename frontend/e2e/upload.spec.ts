@@ -1,7 +1,16 @@
 import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { createSession, seedLocalAuth } from './helpers/auth';
-import { getMedia, listMedia, listMediaWithQuery, waitForMedia } from './helpers/media-api';
+import {
+  getMedia,
+  listMedia,
+  listMediaWithQuery,
+  removeCharacterName,
+  removeTag,
+  trashMediaByCharacterName,
+  trashMediaByTag,
+  waitForMedia
+} from './helpers/media-api';
 import { blackPngFile, bluePngFile, greenPngFile, redPngFile } from './helpers/media-fixtures';
 
 const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
@@ -254,16 +263,69 @@ test('allows editing tags from the image inspector', async ({ page, request }) =
   expect(updated.character_name).toBe('ayanami_rei');
 });
 
+test('removes tags and character names through the management API and updates search sources', async ({ request }) => {
+  const session = await createSession(request);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const blueUpload = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: bluePngFile(`manage-blue-${runId}.png`, 'secondary')
+    }
+  });
+  await expect(blueUpload).toBeOK();
+  const greenUpload = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: greenPngFile(`manage-green-${runId}.png`)
+    }
+  });
+  await expect(greenUpload).toBeOK();
+
+  const bluePayload = await blueUpload.json();
+  const greenPayload = await greenUpload.json();
+  expect(bluePayload.accepted).toBe(1);
+  expect(greenPayload.accepted).toBe(1);
+  const blueId = bluePayload.results[0]?.id as string;
+  const greenId = greenPayload.results[0]?.id as string;
+  expect(blueId).toBeTruthy();
+  expect(greenId).toBeTruthy();
+
+  await waitForMedia(request, session.accessToken, blueId, (media) => media.tagging_status === 'done');
+  await waitForMedia(request, session.accessToken, greenId, (media) => media.tagging_status === 'done');
+
+  const removedCharacter = await removeCharacterName(request, session.accessToken, 'ayanami_rei');
+  expect(removedCharacter.matched_media).toBe(1);
+  expect(removedCharacter.updated_media).toBe(1);
+
+  const blueAfterCharacterDelete = await getMedia(request, session.accessToken, blueId);
+  expect(blueAfterCharacterDelete.character_name).toBeNull();
+
+  const removedTag = await removeTag(request, session.accessToken, 'forest');
+  expect(removedTag.matched_media).toBe(1);
+  expect(removedTag.updated_media).toBe(1);
+
+  const greenAfterTagDelete = await getMedia(request, session.accessToken, greenId);
+  expect(greenAfterTagDelete.tags).not.toContain('forest');
+});
+
 test('moves media to trash, restores one item from trash, and empties the remainder', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const firstName = `multi-select-a-${runId}.png`;
+  const secondName = `multi-select-b-${runId}.png`;
 
   const firstUpload = await request.post(`${API_BASE_URL}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-a.png')
+      files: bluePngFile(firstName)
     }
   });
   await expect(firstUpload).toBeOK();
@@ -273,24 +335,27 @@ test('moves media to trash, restores one item from trash, and empties the remain
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-b.png')
+      files: bluePngFile(secondName, 'secondary')
     }
   });
   await expect(secondUpload).toBeOK();
-  await waitForListedMedia(request, session.accessToken, 'multi-select-a.png');
-  await waitForListedMedia(request, session.accessToken, 'multi-select-b.png');
+  const firstMediaId = (await firstUpload.json()).results[0]?.id as string;
+  const secondMediaId = (await secondUpload.json()).results[0]?.id as string;
+
+  await waitForMedia(request, session.accessToken, firstMediaId, (media) => media.tagging_status === 'done');
+  await waitForMedia(request, session.accessToken, secondMediaId, (media) => media.tagging_status === 'done');
 
   await page.goto('/gallery');
-  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+  await expect(page.locator(`img[alt="${firstName}"]`)).toBeVisible();
+  await expect(page.locator(`img[alt="${secondName}"]`)).toBeVisible();
 
-  const firstCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-a.png"]') }).first();
-  const secondCard = page.locator('app-gallery-media-card').filter({ has: page.locator('img[alt="multi-select-b.png"]') }).first();
+  const firstCard = page.locator('app-gallery-media-card').filter({ has: page.locator(`img[alt="${firstName}"]`) }).first();
+  const secondCard = page.locator('app-gallery-media-card').filter({ has: page.locator(`img[alt="${secondName}"]`) }).first();
   const firstCardButton = firstCard.locator('.media-card');
   const secondCardButton = secondCard.locator('.media-card');
 
   await firstCard.hover();
-  await firstCard.getByRole('button', { name: 'Select multi-select-a.png' }).click();
+  await firstCard.getByRole('button', { name: `Select ${firstName}` }).click();
   await expect(page.getByText('1 selected')).toBeVisible();
   await expect(firstCardButton).toHaveClass(/media-card-selected/);
 
@@ -307,45 +372,46 @@ test('moves media to trash, restores one item from trash, and empties the remain
   await expect(secondCardButton).toHaveClass(/media-card-selected/);
 
   await page.getByRole('button', { name: 'Delete' }).click();
-  await expect(page.locator('img[alt="multi-select-a.png"]')).toHaveCount(0);
-  await expect(page.locator('img[alt="multi-select-b.png"]')).toHaveCount(0);
+  await expect(page.locator(`img[alt="${firstName}"]`)).toHaveCount(0);
+  await expect(page.locator(`img[alt="${secondName}"]`)).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Upload media' })).toBeVisible();
 
   const activeItems = await listMedia(request, session.accessToken);
-  expect(activeItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(false);
-  expect(activeItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(false);
+  expect(activeItems.some((item) => item.original_filename === firstName)).toBe(false);
+  expect(activeItems.some((item) => item.original_filename === secondName)).toBe(false);
 
   const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
-  expect(trashedItems.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
-  expect(trashedItems.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+  expect(trashedItems.some((item) => item.original_filename === firstName)).toBe(true);
+  expect(trashedItems.some((item) => item.original_filename === secondName)).toBe(true);
 
   await page.getByRole('link', { name: 'Trash' }).click();
   await expect(page).toHaveURL(/\/gallery\/trash$/);
-  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+  await expect(page.locator(`img[alt="${firstName}"]`)).toBeVisible();
+  await expect(page.locator(`img[alt="${secondName}"]`)).toBeVisible();
 
   const trashedFirstCard = page.locator('app-gallery-media-card').filter({
-    has: page.locator('img[alt="multi-select-a.png"]')
+    has: page.locator(`img[alt="${firstName}"]`)
   }).first();
   await trashedFirstCard.hover();
-  await trashedFirstCard.getByRole('button', { name: 'Select multi-select-a.png' }).click();
+  await expect(trashedFirstCard.getByRole('button', { name: `Select ${firstName}` })).toBeVisible();
+  await trashedFirstCard.getByRole('button', { name: `Select ${firstName}` }).click({ force: true });
   await page.locator('.selection-toolbar').getByRole('button', { name: 'Restore' }).click();
 
-  await expect(page.locator('img[alt="multi-select-a.png"]')).toHaveCount(0);
-  await expect(page.locator('img[alt="multi-select-b.png"]')).toBeVisible();
+  await expect(page.locator(`img[alt="${firstName}"]`)).toHaveCount(0);
+  await expect(page.locator(`img[alt="${secondName}"]`)).toBeVisible();
 
   const activeAfterRestore = await listMedia(request, session.accessToken);
-  expect(activeAfterRestore.some((item) => item.original_filename === 'multi-select-a.png')).toBe(true);
-  expect(activeAfterRestore.some((item) => item.original_filename === 'multi-select-b.png')).toBe(false);
+  expect(activeAfterRestore.some((item) => item.original_filename === firstName)).toBe(true);
+  expect(activeAfterRestore.some((item) => item.original_filename === secondName)).toBe(false);
 
   const trashAfterRestore = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
-  expect(trashAfterRestore.some((item) => item.original_filename === 'multi-select-a.png')).toBe(false);
-  expect(trashAfterRestore.some((item) => item.original_filename === 'multi-select-b.png')).toBe(true);
+  expect(trashAfterRestore.some((item) => item.original_filename === firstName)).toBe(false);
+  expect(trashAfterRestore.some((item) => item.original_filename === secondName)).toBe(true);
 
   await page.getByRole('link', { name: 'Gallery' }).click();
   await expect(page).toHaveURL(/\/gallery$/);
-  await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="multi-select-b.png"]')).toHaveCount(0);
+  await expect(page.locator(`img[alt="${firstName}"]`)).toBeVisible();
+  await expect(page.locator(`img[alt="${secondName}"]`)).toHaveCount(0);
 
   await page.getByRole('link', { name: 'Trash' }).click();
   await page.getByRole('button', { name: 'Empty trash' }).click();
@@ -355,33 +421,124 @@ test('moves media to trash, restores one item from trash, and empties the remain
   expect(trashAfterEmpty).toEqual([]);
 });
 
-test('allows reuploading the same files after trash is emptied through the API', async ({ page, request }) => {
+test('trashes media by tag and character name through the management API, then restores and purges with existing trash flows', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
 
+  const blueUpload = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: bluePngFile('manage-trash-blue.png')
+    }
+  });
+  await expect(blueUpload).toBeOK();
+
+  const greenUpload = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: greenPngFile('manage-trash-green.png')
+    }
+  });
+  await expect(greenUpload).toBeOK();
+
+  const blueId = (await blueUpload.json()).results[0]?.id as string;
+  const greenId = (await greenUpload.json()).results[0]?.id as string;
+
+  await waitForMedia(request, session.accessToken, blueId, (media) => media.tagging_status === 'done');
+  await waitForMedia(request, session.accessToken, greenId, (media) => media.tagging_status === 'done');
+
+  const tagTrashResult = await trashMediaByTag(request, session.accessToken, 'forest');
+  expect(tagTrashResult.matched_media).toBe(1);
+  expect(tagTrashResult.trashed_media).toBe(1);
+
+  const characterTrashResult = await trashMediaByCharacterName(request, session.accessToken, 'ayanami_rei');
+  expect(characterTrashResult.matched_media).toBe(1);
+  expect(characterTrashResult.trashed_media).toBe(1);
+
+  await page.goto('/gallery/trash');
+  await expect(page.locator('img[alt="manage-trash-blue.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="manage-trash-green.png"]')).toBeVisible();
+
+  const blueCard = page.locator('app-gallery-media-card').filter({
+    has: page.locator('img[alt="manage-trash-blue.png"]')
+  }).first();
+  await blueCard.hover();
+  await blueCard.getByRole('button', { name: 'Select manage-trash-blue.png' }).click();
+  await page.locator('.selection-toolbar').getByRole('button', { name: 'Restore' }).click();
+
+  await expect(page.locator('img[alt="manage-trash-blue.png"]')).toHaveCount(0);
+  await expect(page.locator('img[alt="manage-trash-green.png"]')).toBeVisible();
+
+  const activeItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  expect(activeItems.some((item) => item.original_filename === 'manage-trash-blue.png')).toBe(true);
+  expect(activeItems.some((item) => item.original_filename === 'manage-trash-green.png')).toBe(false);
+
+  await page.getByRole('button', { name: 'Empty trash' }).click();
+  await expect(page.getByText('Trash is empty')).toBeVisible();
+
+  const trashedItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&state=trashed&nsfw=include');
+  expect(trashedItems).toEqual([]);
+
+  const greenResponse = await request.get(`${API_BASE_URL}/media/${greenId}`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    }
+  });
+  expect(greenResponse.status()).toBe(404);
+});
+
+test('allows reuploading the same files after trash is emptied through the API', async ({ request }) => {
+  const session = await createSession(request);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const firstName = `reupload-after-purge-a-${runId}.png`;
+  const secondName = `reupload-after-purge-b-${runId}.png`;
+
   const originalFiles = [
-    bluePngFile('reupload-after-purge-a.png'),
-    bluePngFile('reupload-after-purge-b.png')
+    bluePngFile(firstName),
+    greenPngFile(secondName)
   ];
 
-  await page.goto('/gallery');
-  await page.getByRole('button', { name: 'Upload media' }).click();
-  await page.locator('input[type="file"]').setInputFiles(originalFiles);
-
-  await expect(page.locator('img[alt="reupload-after-purge-a.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="reupload-after-purge-b.png"]')).toBeVisible();
-
-  await page.getByRole('button', { name: 'Upload media' }).click();
-  await page.locator('input[type="file"]').setInputFiles(originalFiles);
-
-  await page.waitForTimeout(500);
+  for (const file of originalFiles) {
+    const uploadResponse = await request.post(`${API_BASE_URL}/media`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`
+      },
+      multipart: {
+        files: file
+      }
+    });
+    await expect(uploadResponse).toBeOK();
+    const payload = await uploadResponse.json();
+    expect(payload.accepted).toBe(1);
+    expect(payload.results[0]?.status).toBe('accepted');
+  }
 
   const activeItems = await listMedia(request, session.accessToken);
   const mediaIds = activeItems
-    .filter((item) => item.original_filename === 'reupload-after-purge-a.png' || item.original_filename === 'reupload-after-purge-b.png')
+    .filter((item) => item.original_filename === firstName || item.original_filename === secondName)
     .map((item) => item.id);
 
   expect(mediaIds).toHaveLength(2);
+
+  for (const file of originalFiles) {
+    const duplicateResponse = await request.post(`${API_BASE_URL}/media`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`
+      },
+      multipart: {
+        files: file
+      }
+    });
+    await expect(duplicateResponse).toBeOK();
+    const payload = await duplicateResponse.json();
+    expect(payload.accepted).toBe(0);
+    expect(payload.duplicates).toBe(1);
+    expect(payload.results[0]?.status).toBe('duplicate');
+  }
 
   const trashResponse = await request.patch(`${API_BASE_URL}/media`, {
     headers: {
@@ -401,9 +558,21 @@ test('allows reuploading the same files after trash is emptied through the API',
   });
   expect(emptyTrashResponse.status()).toBe(204);
 
-  await page.getByRole('button', { name: 'Upload media' }).click();
-  await page.locator('input[type="file"]').setInputFiles(originalFiles);
+  for (const file of originalFiles) {
+    const reuploadResponse = await request.post(`${API_BASE_URL}/media`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`
+      },
+      multipart: {
+        files: file
+      }
+    });
+    await expect(reuploadResponse).toBeOK();
+    const payload = await reuploadResponse.json();
+    expect(payload.accepted).toBe(1);
+    expect(payload.results[0]?.status).toBe('accepted');
+  }
 
-  await expect(page.locator('img[alt="reupload-after-purge-a.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="reupload-after-purge-b.png"]')).toBeVisible();
+  const itemsAfterReupload = await listMedia(request, session.accessToken);
+  expect(itemsAfterReupload.filter((item) => item.original_filename === firstName || item.original_filename === secondName)).toHaveLength(2);
 });

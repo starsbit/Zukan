@@ -10,12 +10,12 @@
   </div>
 
   <div class="navbar-actions">
-    @if (isTrashView) {
+    @if (showPrimaryAction && isTrashView) {
       <button mat-stroked-button type="button" class="trash-action-button" aria-label="Empty trash" (click)="emptyTrashRequested.emit()">
         <mat-icon>delete_sweep</mat-icon>
         <span>Empty Trash</span>
       </button>
-    } @else {
+    } @else if (showPrimaryAction) {
       <button mat-flat-button type="button" class="upload-button" aria-label="Upload media" (click)="uploadRequested.emit()">
         <mat-icon>cloud_upload</mat-icon>
         <span class="upload-label">Upload</span>

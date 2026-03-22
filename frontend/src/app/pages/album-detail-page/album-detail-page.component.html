@@ -1,0 +1,97 @@
+<section class="album-layout">
+  <app-sidebar />
+
+  <section class="album-shell">
+    @let album = (album$ | async);
+    @let items = (media$ | async) ?? [];
+    @let loading = (loading$ | async);
+    @let error = (error$ | async);
+
+    @if (selectionMode) {
+      <app-selection-toolbar
+        ariaLabel="Album selection toolbar"
+        clearButtonAriaLabel="Clear selection"
+        [selectedCount]="selectedCount"
+        (clearRequested)="clearSelection()"
+      >
+        <div selectionToolbarActions>
+          <button mat-flat-button type="button" class="remove-button" (click)="removeSelectedFromAlbum()">
+            <mat-icon>remove_circle</mat-icon>
+            <span>Remove from album</span>
+          </button>
+        </div>
+      </app-selection-toolbar>
+    } @else {
+      <app-gallery-navbar
+        [searchState]="searchState"
+        [albumSelectionEnabled]="false"
+        [showPrimaryAction]="false"
+        (searchApplied)="applySearch($event)"
+        (settingsSaved)="reload()"
+      />
+    }
+
+    <header class="album-header">
+      <div class="album-header-copy">
+        <a routerLink="/albums" class="back-link">Back to albums</a>
+        <h1>{{ album?.name ?? 'Album' }}</h1>
+        @if (album?.description) {
+          <p class="album-description">{{ album?.description }}</p>
+        }
+        <p>{{ album?.media_count ?? items.length }} {{ (album?.media_count ?? items.length) === 1 ? 'image' : 'images' }}</p>
+      </div>
+
+      @if (album) {
+        <div class="album-actions">
+          @if (!selectionMode) {
+            <button mat-stroked-button type="button" (click)="renameAlbum(album.name, album.description)">
+              <mat-icon>edit</mat-icon>
+              <span>Rename</span>
+            </button>
+            <button mat-flat-button type="button" class="delete-button" (click)="deleteAlbum(album.name)">
+              <mat-icon>delete</mat-icon>
+              <span>Delete</span>
+            </button>
+          }
+        </div>
+      }
+    </header>
+
+    @if (loading && items.length === 0) {
+      <section class="album-state">
+        <mat-spinner diameter="42"></mat-spinner>
+        <p>Loading album...</p>
+      </section>
+    } @else if (error && items.length === 0 && !album) {
+      <section class="album-state">
+        <mat-icon>error</mat-icon>
+        <p>We could not load this album.</p>
+        <button mat-stroked-button type="button" (click)="reload()">Try again</button>
+      </section>
+    } @else if (items.length === 0) {
+      <section class="album-state">
+        <mat-icon>imagesmode</mat-icon>
+        <p>This album is empty for now.</p>
+      </section>
+    } @else {
+      <section class="album-grid">
+        @for (item of items; track item.id) {
+          <app-gallery-media-card
+            [media]="item"
+            [selectionMode]="selectionMode"
+            [selected]="isSelected(item.id)"
+            (open)="openMedia($event)"
+            (selectionToggled)="toggleSelection($event)"
+          />
+        }
+      </section>
+    }
+  </section>
+</section>
+
+<app-gallery-viewer
+  [media]="selectedMedia"
+  [canDelete]="false"
+  [canRestore]="false"
+  (closed)="closeMedia()"
+/>

@@ -28,12 +28,14 @@ describe('gallery search utils', () => {
   it('builds the default gallery query with explicit filters', () => {
     const filters = createDefaultGallerySearchFilters();
     filters.favorited = 'only';
+    filters.album_id = 'album-7';
     filters.media_type = ['video'];
     filters.status = ['done', 'pending'];
 
     expect(buildGalleryListQuery('tag:sky character:ayanami_rei', filters)).toMatchObject({
       page: 1,
       page_size: 60,
+      album_id: 'album-7',
       status: ['done', 'pending'],
       tags: 'sky',
       character_name: 'ayanami_rei',
@@ -60,9 +62,10 @@ describe('gallery search utils', () => {
 
   it('counts active advanced filters relative to defaults', () => {
     const filters = createDefaultGallerySearchFilters();
+    filters.album_id = 'album-2';
     filters.nsfw = 'include';
     filters.captured_before = '2026-03-21T10:00';
 
-    expect(countActiveAdvancedFilters(filters)).toBe(2);
+    expect(countActiveAdvancedFilters(filters)).toBe(3);
   });
 });

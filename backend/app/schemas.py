@@ -271,6 +271,14 @@ class TaggingJobQueuedResponse(BaseModel):
     queued: int
 
 
+class TagManagementResult(BaseModel):
+    matched_media: int = Field(description="Number of accessible media items matching the exact tag or character name.")
+    updated_media: int = Field(default=0, description="Number of matching media items updated in-place.")
+    trashed_media: int = Field(default=0, description="Number of active matching media items moved to trash.")
+    already_trashed: int = Field(default=0, description="Number of matching media items that were already in trash.")
+    deleted_tag: bool = Field(default=False, description="Whether the canonical tag row was deleted after cleanup.")
+
+
 class AdminUserUpdate(BaseModel):
     is_admin: bool | None = None
     show_nsfw: bool | None = None

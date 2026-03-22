@@ -1,0 +1,26 @@
+<h2 mat-dialog-title>Add {{ data.selectedCount }} {{ data.selectedCount === 1 ? 'image' : 'images' }} to album</h2>
+
+<mat-dialog-content>
+  @if (data.albums.length === 0) {
+    <section class="empty-state">
+      <mat-icon>collections_bookmark</mat-icon>
+      <p>Create an album first, then come back to save your selection.</p>
+    </section>
+  } @else {
+    <form [formGroup]="form">
+      <mat-form-field appearance="outline" class="album-field">
+        <mat-label>Choose album</mat-label>
+        <mat-select formControlName="albumId" cdkFocusInitial>
+          @for (album of data.albums; track album.id) {
+            <mat-option [value]="album.id">{{ album.name }} ({{ album.media_count ?? 0 }})</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </form>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="form.invalid || data.albums.length === 0" (click)="submit()">Add</button>
+</mat-dialog-actions>

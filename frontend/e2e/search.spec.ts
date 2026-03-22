@@ -35,7 +35,7 @@ test('pressing enter on an active character suggestion keeps the query and searc
 
   const searchInput = page.getByRole('combobox', { name: 'Search gallery' });
   await searchInput.fill('ayanami');
-  await expect(page.getByRole('option', { name: /ayanami_rei/i }).first()).toBeVisible();
+  await expect(page.getByRole('option', { name: /ayanami rei/i }).first()).toBeVisible();
 
   const searchResponsePromise = page.waitForResponse((response) => {
     if (response.request().method() !== 'GET') {
@@ -49,6 +49,7 @@ test('pressing enter on an active character suggestion keeps the query and searc
   await searchInput.press('Enter');
 
   await searchResponsePromise;
-  await expect(searchInput).toHaveValue('character:ayanami_rei');
+  await expect(page.getByRole('button', { name: /remove character filter ayanami rei/i })).toBeVisible();
+  await expect(searchInput).toHaveValue('');
   await expect(page.locator('img[alt="search-character-blue.png"]')).toBeVisible();
 });

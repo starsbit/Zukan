@@ -99,6 +99,7 @@ export interface CharacterSuggestion {
 
 export interface ListMediaQuery {
   state?: MediaListState;
+  album_id?: Uuid | null;
   tags?: string | null;
   character_name?: string | null;
   exclude_tags?: string | null;

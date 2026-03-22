@@ -10,6 +10,18 @@
       </mat-select>
     </mat-form-field>
 
+    @if (albumSelectionEnabled) {
+      <mat-form-field appearance="outline">
+        <mat-label>Album</mat-label>
+        <mat-select formControlName="album_id">
+          <mat-option value="">All albums</mat-option>
+          @for (album of (albums$ | async) ?? []; track album.id) {
+            <mat-option [value]="album.id">{{ album.name }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    }
+
     <mat-form-field appearance="outline">
       <mat-label>NSFW</mat-label>
       <mat-select formControlName="nsfw">

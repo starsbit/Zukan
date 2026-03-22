@@ -70,6 +70,11 @@ def main() -> None:
         if os.environ.get("E2E_MANAGE_DB") == "1":
             register_db_cleanup_handlers()
             start_postgres_container()
+        elif not os.environ.get("DATABASE_URL"):
+            raise RuntimeError(
+                "E2E_MANAGE_DB is disabled, but DATABASE_URL is not set. "
+                "Set PLAYWRIGHT_E2E_DATABASE_URL or DATABASE_URL to an existing Postgres database."
+            )
 
         tagger_module.tagger.load = lambda: None
         tagger_module.tagger.predict = fake_predict
@@ -107,6 +112,7 @@ def start_postgres_container() -> str:
 
     container_name = os.environ.get("E2E_DB_CONTAINER", "zukan-e2e-db")
     port = os.environ.get("E2E_DB_PORT", "55432")
+    cleanup_stale_e2e_db_containers(container_name)
 
     subprocess.run(
         ["docker", "rm", "--force", "--volumes", container_name],
@@ -114,7 +120,7 @@ def start_postgres_container() -> str:
         stderr=subprocess.DEVNULL,
         check=False,
     )
-    subprocess.run(
+    started = subprocess.run(
         [
             "docker",
             "run",
@@ -134,10 +140,17 @@ def start_postgres_container() -> str:
             "/var/lib/postgresql/data",
             "postgres:16-alpine",
         ],
-        check=True,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        check=False,
+        capture_output=True,
+        text=True,
     )
+    if started.returncode != 0:
+        stderr = (started.stderr or "").strip()
+        stdout = (started.stdout or "").strip()
+        details = stderr or stdout or "No Docker error output was captured."
+        raise RuntimeError(
+            f"Could not start e2e PostgreSQL container {container_name} on host port {port}: {details}"
+        )
     _managed_db_container = container_name
 
     deadline = time.time() + 30
@@ -154,6 +167,25 @@ def start_postgres_container() -> str:
 
     cleanup_managed_db_container()
     raise RuntimeError(f"Timed out waiting for PostgreSQL container {container_name}")
+
+
+def cleanup_stale_e2e_db_containers(active_container_name: str) -> None:
+    listed = subprocess.run(
+        ["docker", "ps", "--all", "--format", "{{.Names}}"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if listed.returncode != 0:
+        return
+
+    for raw_name in listed.stdout.splitlines():
+        name = raw_name.strip()
+        if not name.startswith("zukan-e2e-db-"):
+            continue
+        if name == active_container_name:
+            continue
+        stop_postgres_container(name)
 
 
 def stop_postgres_container(container_name: str) -> None:

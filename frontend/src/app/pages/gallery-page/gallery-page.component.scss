@@ -22,49 +22,8 @@
   filter: saturate(1.03);
 }
 
-.gallery-sidebar {
-  position: sticky;
-  align-self: start;
+:host ::ng-deep app-sidebar {
   height: calc(100vh - (var(--gallery-page-padding-y) * 2) - var(--gallery-page-padding-bottom));
-}
-
-.gallery-sidebar mat-card {
-  display: grid;
-  align-content: start;
-  min-height: 100%;
-  padding: 0.7rem;
-  border-radius: 1.5rem;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent),
-      color-mix(in srgb, var(--mat-sys-surface-container) 96%, transparent)
-    );
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
-}
-
-.gallery-sidebar mat-card-header {
-  padding: 0.35rem 0.45rem 0.9rem;
-}
-
-.gallery-sidebar mat-card-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-}
-
-.gallery-sidebar mat-card-subtitle {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.gallery-sidebar mat-nav-list {
-  display: grid;
-  gap: 0.4rem;
-  padding: 0;
-}
-
-.gallery-sidebar .mdc-list-item {
-  border-radius: 1rem;
 }
 
 .gallery-shell {
@@ -83,6 +42,13 @@
   gap: 1.25rem;
   height: 100%;
   min-height: 0;
+  min-width: 0;
+}
+
+.gallery-header-stack {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
   min-width: 0;
 }
 
@@ -131,44 +97,14 @@
   color: var(--mat-sys-primary);
 }
 
-.selection-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: center;
-  min-height: 4rem;
-  padding: 0.55rem 0.75rem;
-  border-radius: 1.15rem;
-  background: linear-gradient(180deg, rgba(19, 19, 19, 0.94), rgba(30, 30, 30, 0.96));
-  color: white;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
-}
-
-.selection-toolbar-start {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.7rem;
-  min-width: 0;
-}
-
-.selection-toolbar-start p {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.selection-toolbar-start button {
-  color: white;
-}
-
 .selection-delete-button {
   border-radius: 999px;
 }
 
-.selection-toolbar-actions {
-  display: inline-flex;
-  gap: 0.75rem;
+.selection-album-button {
+  border-radius: 999px;
+  color: var(--mat-sys-on-surface);
+  border-color: color-mix(in srgb, var(--mat-sys-outline) 80%, transparent);
 }
 
 .selection-restore-button {
@@ -599,16 +535,9 @@
     pointer-events: auto;
   }
 
-  .selection-toolbar {
-    padding-inline: 0.5rem;
-  }
-
-  .selection-toolbar-actions {
-    width: 100%;
-    justify-content: stretch;
-  }
-
-  .selection-toolbar-actions button {
+  .selection-album-button,
+  .selection-delete-button,
+  .selection-restore-button {
     flex: 1;
   }
 }

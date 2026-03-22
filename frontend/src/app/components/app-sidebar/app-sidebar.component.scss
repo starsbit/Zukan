@@ -1,0 +1,44 @@
+:host {
+  display: block;
+  position: sticky;
+  align-self: start;
+  height: 100%;
+}
+
+.gallery-sidebar {
+  height: 100%;
+}
+
+.gallery-sidebar mat-card {
+  display: grid;
+  align-content: start;
+  min-height: 100%;
+  padding: 0.7rem;
+  border-radius: 1.5rem;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent),
+      color-mix(in srgb, var(--mat-sys-surface-container) 96%, transparent)
+    );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+
+.gallery-sidebar mat-card-header {
+  padding: 0.35rem 0.45rem 0.9rem;
+}
+
+.gallery-sidebar mat-card-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.gallery-sidebar mat-nav-list {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0;
+}
+
+.gallery-sidebar .mdc-list-item {
+  border-radius: 1rem;
+}

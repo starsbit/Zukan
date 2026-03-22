@@ -12,6 +12,27 @@ export interface MediaItem {
   poster_status?: string;
 }
 
+export interface TagListItem {
+  id: number;
+  name: string;
+  category: number;
+  category_name: string;
+  media_count: number;
+}
+
+export interface CharacterSuggestionItem {
+  name: string;
+  media_count: number;
+}
+
+export interface TagManagementResult {
+  matched_media: number;
+  updated_media: number;
+  trashed_media: number;
+  already_trashed: number;
+  deleted_tag: boolean;
+}
+
 function authHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`
@@ -66,4 +87,79 @@ export async function waitForMedia(
   }
 
   throw new Error(`Timed out waiting for media ${mediaId}`);
+}
+
+export async function listTags(
+  request: APIRequestContext,
+  accessToken: string,
+  query = ''
+): Promise<TagListItem[]> {
+  const response = await request.get(`${API_BASE_URL}/tags${query ? `?${query}` : ''}`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  return await response.json() as TagListItem[];
+}
+
+export async function listCharacterSuggestions(
+  request: APIRequestContext,
+  accessToken: string,
+  query: string
+): Promise<CharacterSuggestionItem[]> {
+  const response = await request.get(`${API_BASE_URL}/media/character-suggestions?${query}`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  return await response.json() as CharacterSuggestionItem[];
+}
+
+export async function removeTag(
+  request: APIRequestContext,
+  accessToken: string,
+  tagName: string
+): Promise<TagManagementResult> {
+  const response = await request.delete(`${API_BASE_URL}/tags/${encodeURIComponent(tagName)}`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  return await response.json() as TagManagementResult;
+}
+
+export async function trashMediaByTag(
+  request: APIRequestContext,
+  accessToken: string,
+  tagName: string
+): Promise<TagManagementResult> {
+  const response = await request.post(`${API_BASE_URL}/tags/${encodeURIComponent(tagName)}/trash-media`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  return await response.json() as TagManagementResult;
+}
+
+export async function removeCharacterName(
+  request: APIRequestContext,
+  accessToken: string,
+  characterName: string
+): Promise<TagManagementResult> {
+  const response = await request.delete(`${API_BASE_URL}/character-names/${encodeURIComponent(characterName)}`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  return await response.json() as TagManagementResult;
+}
+
+export async function trashMediaByCharacterName(
+  request: APIRequestContext,
+  accessToken: string,
+  characterName: string
+): Promise<TagManagementResult> {
+  const response = await request.post(
+    `${API_BASE_URL}/character-names/${encodeURIComponent(characterName)}/trash-media`,
+    {
+      headers: authHeaders(accessToken)
+    }
+  );
+  await expect(response).toBeOK();
+  return await response.json() as TagManagementResult;
 }

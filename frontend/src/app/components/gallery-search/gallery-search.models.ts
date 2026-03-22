@@ -2,6 +2,7 @@ import { MediaType, NsfwFilter } from '../../models/api';
 
 export interface GallerySearchFilters {
   favorited: 'any' | 'only';
+  album_id: string | null;
   nsfw: NsfwFilter;
   status: Array<'done' | 'pending' | 'processing' | 'failed'>;
   media_type: MediaType[];

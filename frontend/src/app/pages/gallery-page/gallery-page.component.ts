@@ -15,21 +15,24 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { ActivatedRoute, RouterLink, RouterLinkActive } from '@angular/router';
+import { MatSnackBar } from '@angular/material/snack-bar';
+import { ActivatedRoute } from '@angular/router';
 
 import { MediaRead } from '../../models/api';
+import { AlbumPickerDialogComponent } from '../../components/album-picker-dialog/album-picker-dialog.component';
+import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
 import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
 import { GallerySearchState } from '../../components/gallery-search/gallery-search.models';
 import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
+import { AlbumsService } from '../../services/albums.service';
 import { MediaService } from '../../services/media.service';
 import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
 import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
+import { SelectionToolbarComponent } from '../../components/selection-toolbar/selection-toolbar.component';
 import { UploadReviewDialogComponent, type UploadReviewDialogResult } from '../../components/upload-review-dialog/upload-review-dialog.component';
 import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
 
@@ -66,16 +69,14 @@ const REGROUP_ANIMATION_MS = 280;
   imports: [
     AsyncPipe,
     MatButtonModule,
-    MatCardModule,
     MatIconModule,
-    MatListModule,
     MatProgressSpinnerModule,
-    RouterLink,
-    RouterLinkActive,
+    AppSidebarComponent,
     GalleryMediaCardComponent,
     GalleryNavbarComponent,
     GalleryViewerComponent,
-    GalleryUploadStatusIslandComponent
+    GalleryUploadStatusIslandComponent,
+    SelectionToolbarComponent
   ],
   templateUrl: './gallery-page.component.html',
   styleUrl: './gallery-page.component.scss',
@@ -88,7 +89,9 @@ export class GalleryPageComponent implements OnDestroy {
   private readonly ngZone = inject(NgZone);
   private readonly route = inject(ActivatedRoute);
   private readonly dialog = inject(MatDialog);
+  private readonly snackBar = inject(MatSnackBar);
   private readonly mediaService = inject(MediaService);
+  private readonly albumsService = inject(AlbumsService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
   @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
@@ -403,6 +406,61 @@ export class GalleryPageComponent implements OnDestroy {
         },
         error: () => {
           // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
+  addSelectedToAlbum(): void {
+    if (this.selectedMediaIds.size === 0) {
+      return;
+    }
+
+    const openPicker = () => {
+      this.dialog.open(AlbumPickerDialogComponent, {
+        width: '420px',
+        maxWidth: 'calc(100vw - 2rem)',
+        data: {
+          albums: this.albumsService.snapshot.albums,
+          selectedCount: this.selectedMediaIds.size
+        }
+      }).afterClosed()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe((albumId: string | undefined) => {
+          if (!albumId) {
+            return;
+          }
+
+          this.albumsService.addMedia(albumId, { media_ids: Array.from(this.selectedMediaIds) })
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+              next: (result) => {
+                this.clearSelection();
+                this.snackBar.open(
+                  result.skipped > 0
+                    ? `Added ${result.processed} items. ${result.skipped} were already there.`
+                    : `Added ${result.processed} items to the album.`,
+                  'Close',
+                  { duration: 3000 }
+                );
+              },
+              error: () => {
+                this.snackBar.open('Could not add images to the album. Please try again.', 'Close', { duration: 3000 });
+              }
+            });
+        });
+    };
+
+    if (this.albumsService.snapshot.albums.length > 0) {
+      openPicker();
+      return;
+    }
+
+    this.albumsService.loadAlbums()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => openPicker(),
+        error: () => {
+          this.snackBar.open('Could not load albums. Please try again.', 'Close', { duration: 3000 });
         }
       });
   }

@@ -1,7 +1,7 @@
 @if (media) {
   <section class="viewer-backdrop" (click)="close()">
-    <article class="viewer-panel" (click)="$event.stopPropagation()">
-      <header class="viewer-toolbar">
+    <article class="viewer-panel">
+      <header class="viewer-toolbar" (click)="$event.stopPropagation()">
         <div class="viewer-toolbar-group">
           <button class="toolbar-button" mat-icon-button type="button" aria-label="Close viewer" (click)="close()">
             <mat-icon>arrow_back</mat-icon>
@@ -50,18 +50,18 @@
           (wheel)="onWheelZoom($event)"
         >
           @if (loading) {
-            <div class="viewer-state">
+            <div class="viewer-state" (click)="$event.stopPropagation()">
               <mat-spinner diameter="44"></mat-spinner>
               <p>Loading full media...</p>
             </div>
           } @else if (failed) {
-            <div class="viewer-state">
+            <div class="viewer-state" (click)="$event.stopPropagation()">
               <mat-icon>broken_image</mat-icon>
               <p>We could not load this item.</p>
             </div>
           } @else if (mediaUrl) {
             @if (media.media_type === 'video') {
-              <video class="viewer-asset" [src]="mediaUrl" controls autoplay playsinline></video>
+              <video class="viewer-asset" [src]="mediaUrl" controls autoplay playsinline (click)="$event.stopPropagation()"></video>
             } @else {
               <img
                 class="viewer-asset viewer-image"
@@ -71,12 +71,13 @@
                 draggable="false"
                 [style.transform]="imageTransform"
                 (pointerdown)="startPan($event)"
+                (click)="$event.stopPropagation()"
               >
             }
           }
         </div>
 
-        <aside class="viewer-sidebar" [class.viewer-sidebar-open]="tagsPanelOpen">
+        <aside class="viewer-sidebar" [class.viewer-sidebar-open]="tagsPanelOpen" (click)="$event.stopPropagation()">
           <mat-card class="viewer-sidebar-card" appearance="outlined">
             <mat-card-content class="viewer-sidebar-content">
               <section class="viewer-summary">

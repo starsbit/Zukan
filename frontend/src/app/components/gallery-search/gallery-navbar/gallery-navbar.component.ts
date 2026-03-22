@@ -30,6 +30,8 @@ export class GalleryNavbarComponent {
 
   @Input({ required: true }) searchState!: GallerySearchState;
   @Input() isTrashView = false;
+  @Input() albumSelectionEnabled = true;
+  @Input() showPrimaryAction = true;
   @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
   @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
@@ -57,7 +59,10 @@ export class GalleryNavbarComponent {
     const dialogRef = this.dialog.open(GallerySearchOptionsDialogComponent, {
       width: '680px',
       maxWidth: 'calc(100vw - 2rem)',
-      data: this.searchState.filters
+      data: {
+        filters: this.searchState.filters,
+        albumSelectionEnabled: this.albumSelectionEnabled
+      }
     });
 
     dialogRef.afterClosed().subscribe((filters) => {

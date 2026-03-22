@@ -3,6 +3,7 @@ import { AsyncPipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
@@ -19,6 +20,9 @@ import { GallerySearchState } from '../../components/gallery-search/gallery-sear
 import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
 import { createMediaRead } from '../../testing/media-test.utils';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
+import { AlbumsService } from '../../services/albums.service';
+import { AlbumRead } from '../../models/api';
+import { SelectionToolbarComponent } from '../../components/selection-toolbar/selection-toolbar.component';
 
 @Component({
   selector: 'app-gallery-navbar',
@@ -72,7 +76,30 @@ class StubGalleryViewerComponent {
 })
 class StubGalleryUploadStatusIslandComponent {}
 
+@Component({
+  selector: 'app-selection-toolbar',
+  template: '<ng-content select="[selectionToolbarActions]"></ng-content>',
+  standalone: true
+})
+class StubSelectionToolbarComponent {
+  @Input() selectedCount = 0;
+  @Input() clearButtonAriaLabel = 'Clear selection';
+  @Input() ariaLabel = 'Selection toolbar';
+  @Output() readonly clearRequested = new EventEmitter<void>();
+}
+
 describe('GalleryPageComponent', () => {
+  const album: AlbumRead = {
+    id: 'album-1',
+    owner_id: 'user-1',
+    name: 'Road Trip',
+    description: null,
+    cover_media_id: null,
+    media_count: 2,
+    created_at: '2026-03-21T00:00:00Z',
+    updated_at: '2026-03-21T00:00:00Z'
+  };
+
   let fixture: ComponentFixture<GalleryPageComponent>;
   let component: GalleryPageComponent;
   let mediaService: {
@@ -94,7 +121,14 @@ describe('GalleryPageComponent', () => {
     reviewRequested$: Subject<UploadReviewCandidate[]>;
     startUpload: ReturnType<typeof vi.fn>;
   };
+  let albumsService: {
+    albums$: BehaviorSubject<AlbumRead[]>;
+    snapshot: { albums: AlbumRead[] };
+    loadAlbums: ReturnType<typeof vi.fn>;
+    addMedia: ReturnType<typeof vi.fn>;
+  };
   let dialog: { open: ReturnType<typeof vi.fn> };
+  let snackBar: { open: ReturnType<typeof vi.fn> };
   let routeData: BehaviorSubject<Record<string, unknown>>;
 
   beforeEach(async () => {
@@ -117,8 +151,17 @@ describe('GalleryPageComponent', () => {
       reviewRequested$: new Subject<UploadReviewCandidate[]>(),
       startUpload: vi.fn()
     };
+    albumsService = {
+      albums$: new BehaviorSubject<AlbumRead[]>([album]),
+      snapshot: { albums: [album] },
+      loadAlbums: vi.fn().mockReturnValue(of([album])),
+      addMedia: vi.fn().mockReturnValue(of({ processed: 2, skipped: 0 }))
+    };
     dialog = {
       open: vi.fn().mockReturnValue({ afterClosed: () => of(undefined) })
+    };
+    snackBar = {
+      open: vi.fn()
     };
     routeData = new BehaviorSubject<Record<string, unknown>>({ state: 'active' });
 
@@ -128,14 +171,16 @@ describe('GalleryPageComponent', () => {
         AsyncPipe,
         provideRouter([]),
         { provide: MatDialog, useValue: dialog },
+        { provide: MatSnackBar, useValue: snackBar },
         { provide: MediaService, useValue: mediaService },
+        { provide: AlbumsService, useValue: albumsService },
         { provide: MediaUploadService, useValue: mediaUploadService },
         { provide: ActivatedRoute, useValue: { data: routeData.asObservable() } }
       ]
     })
       .overrideComponent(GalleryPageComponent, {
-        remove: { imports: [GalleryNavbarComponent, GalleryMediaCardComponent, GalleryViewerComponent, GalleryUploadStatusIslandComponent] },
-        add: { imports: [StubGalleryNavbarComponent, StubGalleryMediaCardComponent, StubGalleryViewerComponent, StubGalleryUploadStatusIslandComponent] }
+        remove: { imports: [GalleryNavbarComponent, GalleryMediaCardComponent, GalleryViewerComponent, GalleryUploadStatusIslandComponent, SelectionToolbarComponent] },
+        add: { imports: [StubGalleryNavbarComponent, StubGalleryMediaCardComponent, StubGalleryViewerComponent, StubGalleryUploadStatusIslandComponent, StubSelectionToolbarComponent] }
       })
       .compileComponents();
 
@@ -188,6 +233,7 @@ describe('GalleryPageComponent', () => {
       searchText: 'tag:fox character:renamon',
       filters: {
         ...createDefaultGallerySearchFilters(),
+        album_id: 'album-1',
         nsfw: 'include',
         media_type: ['video']
       }
@@ -198,6 +244,17 @@ describe('GalleryPageComponent', () => {
     expect(component.searchState).toEqual(nextState);
     expect(component.selectedCount).toBe(0);
     expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery(nextState.searchText, nextState.filters));
+  });
+
+  it('adds selected media to an album from the selection toolbar flow', () => {
+    component.selectedMediaIds = new Set(['media-1', 'media-2']);
+    dialog.open.mockReturnValue({ afterClosed: () => of('album-1') });
+
+    component.addSelectedToAlbum();
+
+    expect(albumsService.addMedia).toHaveBeenCalledWith('album-1', { media_ids: ['media-1', 'media-2'] });
+    expect(component.selectedCount).toBe(0);
+    expect(snackBar.open).toHaveBeenCalled();
   });
 
   it('tracks the selected media while opening and closing the viewer', () => {
