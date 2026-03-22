@@ -31,6 +31,7 @@ export interface MediaRead {
   character_name?: string | null;
   is_nsfw: boolean;
   tagging_status: string;
+  tagging_error?: string | null;
   thumbnail_status: string;
   poster_status?: string;
   created_at: string;

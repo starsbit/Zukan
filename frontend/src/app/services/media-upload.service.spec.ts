@@ -8,19 +8,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaUploadService } from './media-upload.service';
 import { MediaClientService } from './web/media-client.service';
 import { createMediaRead } from '../testing/media-test.utils';
+import type { UploadReviewCandidate } from './media-upload.service';
 
 describe('MediaUploadService', () => {
   let service: MediaUploadService;
   let mediaClient: {
     uploadMediaWithProgress: ReturnType<typeof vi.fn>;
     getMedia: ReturnType<typeof vi.fn>;
+    listMedia: ReturnType<typeof vi.fn>;
   };
   let snackBar: { open: ReturnType<typeof vi.fn> };
+  let reviewEvents: UploadReviewCandidate[][];
 
   beforeEach(() => {
     mediaClient = {
       uploadMediaWithProgress: vi.fn(),
-      getMedia: vi.fn()
+      getMedia: vi.fn(),
+      listMedia: vi.fn().mockReturnValue(of({ items: [], total: 0, page: 1, page_size: 200 }))
     };
     snackBar = {
       open: vi.fn()
@@ -35,6 +39,8 @@ describe('MediaUploadService', () => {
     });
 
     service = TestBed.inject(MediaUploadService);
+    reviewEvents = [];
+    service.reviewRequested$.subscribe((items) => reviewEvents.push(items));
   });
 
   afterEach(() => {
@@ -57,11 +63,12 @@ describe('MediaUploadService', () => {
       mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
       mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
         id: 'media-1',
+        character_name: 'ayanami_rei',
         tagging_status: 'processing',
         thumbnail_status: 'done',
         poster_status: 'done'
       })));
-      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({ id: 'media-1' })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({ id: 'media-1', character_name: 'ayanami_rei' })));
       service.refreshRequested$.subscribe(refreshSpy);
 
       service.startUpload([new File(['a'], 'a.png', { type: 'image/png' })]);
@@ -93,6 +100,7 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.processingProgress).toBe(100);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
       expect(service.getMediaTaggingStatus('media-1')).toBe('done');
+      expect(reviewEvents).toEqual([]);
 
       await vi.advanceTimersByTimeAsync(4000);
       expect(service.snapshot.expanded).toBe(false);
@@ -154,6 +162,63 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.items[0]?.status).toBe('done');
       expect(refreshSpy).toHaveBeenCalledTimes(2);
       expect(service.getMediaTaggingStatus('media-1')).toBe('done');
+      expect(reviewEvents[0]?.[0]?.issue).toBe('missing_character');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('emits review candidates only for failed tagging and missing characters once processing settles', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const events$ = new Subject<any>();
+      mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
+      mediaClient.getMedia
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-1',
+          tagging_status: 'done',
+          character_name: null,
+          thumbnail_status: 'done'
+        })))
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-2',
+          tagging_status: 'failed',
+          tagging_error: 'RuntimeError: failed',
+          thumbnail_status: 'done'
+        })))
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-3',
+          tagging_status: 'done',
+          character_name: 'ayanami_rei',
+          thumbnail_status: 'done'
+        })));
+
+      service.startUpload([
+        new File(['a'], 'a.png', { type: 'image/png' }),
+        new File(['b'], 'b.png', { type: 'image/png' }),
+        new File(['c'], 'c.png', { type: 'image/png' })
+      ]);
+
+      events$.next({
+        type: HttpEventType.Response,
+        body: {
+          accepted: 3,
+          duplicates: 0,
+          errors: 0,
+          results: [
+            { id: 'media-1', original_filename: 'a.png', status: 'accepted' },
+            { id: 'media-2', original_filename: 'b.png', status: 'accepted' },
+            { id: 'media-3', original_filename: 'c.png', status: 'accepted' }
+          ]
+        }
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(reviewEvents).toHaveLength(1);
+      expect(reviewEvents[0]?.map((item) => item.issue)).toEqual(['missing_character', 'tagging_failed']);
+      expect(reviewEvents[0]?.map((item) => item.media.id)).toEqual(['media-1', 'media-2']);
     } finally {
       vi.useRealTimers();
     }

@@ -100,6 +100,9 @@ describe('GallerySearchOptionsDialogComponent', () => {
     expect(text).toContain('Search options');
     expect(text).toContain('Clear all');
     expect(text).toContain('Search');
+    expect(text).toContain('Done');
+    expect(text).toContain('Failed');
+    expect(text).toContain('Image');
     expect(createDefaultGallerySearchFilters().status).toContain('done');
   });
 });

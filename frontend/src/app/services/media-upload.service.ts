@@ -47,6 +47,11 @@ export interface UploadSession {
   errorMessage: string | null;
 }
 
+export interface UploadReviewCandidate {
+  media: MediaDetail;
+  issue: 'tagging_failed' | 'missing_character';
+}
+
 const AUTO_MINIMIZE_DELAY_MS = 4000;
 const POLL_INTERVAL_MS = 2000;
 
@@ -77,6 +82,7 @@ export class MediaUploadService {
 
   private readonly sessionSubject = new BehaviorSubject<UploadSession>(createIdleSession());
   private readonly refreshSubject = new Subject<void>();
+  private readonly reviewSubject = new Subject<UploadReviewCandidate[]>();
   private readonly taggingStatusByMediaId = signal<Partial<Record<Uuid, string>>>({});
 
   private pollSubscription: Subscription | null = null;
@@ -84,6 +90,7 @@ export class MediaUploadService {
 
   readonly session$ = this.sessionSubject.asObservable();
   readonly refreshRequested$ = this.refreshSubject.asObservable();
+  readonly reviewRequested$ = this.reviewSubject.asObservable();
 
   get snapshot(): UploadSession {
     return this.sessionSubject.value;
@@ -276,15 +283,14 @@ export class MediaUploadService {
     this.clearPolling();
 
     this.pollSubscription = timer(0, POLL_INTERVAL_MS).pipe(
-      switchMap(() => forkJoin(mediaIds.map((mediaId) => this.mediaClient.getMedia(mediaId).pipe(
-        catchError(() => of(null))
-      )))),
+      switchMap(() => forkJoin(mediaIds.map((mediaId) => this.loadUploadMedia(mediaId)))),
       map((results) => results.filter((result): result is MediaDetail => Boolean(result))),
       tap((mediaItems) => this.patchProcessing(mediaItems, mediaIds.length)),
       filter((mediaItems) => mediaItems.length === mediaIds.length && mediaItems.every((item) => isProcessingSettled(item))),
       take(1)
-    ).subscribe(() => {
+    ).subscribe((mediaItems) => {
       this.clearPolling();
+      this.emitReviewCandidates(mediaItems);
       this.refreshSubject.next();
       this.completeSession();
     });
@@ -357,6 +363,37 @@ export class MediaUploadService {
     if (!hasErrors) {
       this.scheduleAutoMinimize();
     }
+  }
+
+  private emitReviewCandidates(mediaItems: MediaDetail[]): void {
+    const reviewCandidates: UploadReviewCandidate[] = mediaItems.flatMap((media): UploadReviewCandidate[] => {
+      if (media.tagging_status === 'failed') {
+        return [{ media, issue: 'tagging_failed' as const }];
+      }
+
+      if (media.media_type === 'image' && media.tagging_status === 'done' && !media.character_name) {
+        return [{ media, issue: 'missing_character' as const }];
+      }
+
+      return [];
+    });
+
+    if (reviewCandidates.length > 0) {
+      this.reviewSubject.next(reviewCandidates);
+    }
+  }
+
+  private loadUploadMedia(mediaId: Uuid) {
+    return this.mediaClient.getMedia(mediaId).pipe(
+      catchError(() => this.mediaClient.listMedia({
+        page: 1,
+        page_size: 200,
+        nsfw: 'include'
+      }).pipe(
+        map((page) => page.items.find((item) => item.id === mediaId) as MediaDetail | null),
+        catchError(() => of(null))
+      ))
+    );
   }
 
   private scheduleAutoMinimize(): void {

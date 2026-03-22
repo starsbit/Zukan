@@ -1,10 +1,32 @@
-import { expect, test } from '@playwright/test';
+import { APIRequestContext, expect, test } from '@playwright/test';
 
 import { createSession, seedLocalAuth } from './helpers/auth';
-import { listMedia, listMediaWithQuery, waitForMedia } from './helpers/media-api';
-import { bluePngFile, redPngFile } from './helpers/media-fixtures';
+import { getMedia, listMedia, listMediaWithQuery, waitForMedia } from './helpers/media-api';
+import { blackPngFile, bluePngFile, greenPngFile, redPngFile } from './helpers/media-fixtures';
 
 const API_BASE_URL = process.env['PLAYWRIGHT_E2E_API_BASE_URL'] ?? 'http://127.0.0.1:8010';
+
+async function waitForListedMedia(
+  request: APIRequestContext,
+  accessToken: string,
+  originalFilename: string,
+  query = 'page=1&page_size=50&nsfw=include',
+  timeoutMs = 10_000,
+  predicate?: (item: Awaited<ReturnType<typeof listMediaWithQuery>>[number]) => boolean
+) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    const items = await listMediaWithQuery(request, accessToken, query);
+    const match = items.find((item) => item.original_filename === originalFilename);
+    if (match && (!predicate || predicate(match))) {
+      return match;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error(`Timed out waiting for ${originalFilename} to appear in ${query}`);
+}
 
 test('uploads an image through the UI, renders it in the gallery, and applies tags in the backend', async ({ page, request }) => {
   const session = await createSession(request);
@@ -15,10 +37,7 @@ test('uploads an image through the UI, renders it in the gallery, and applies ta
 
   await page.getByRole('button', { name: 'Upload media' }).click();
   await page.locator('input[type="file"]').setInputFiles([bluePngFile()]);
-  await page.getByRole('button', { name: 'Start upload' }).click();
 
-  await expect(page.getByText('Upload status')).toBeVisible();
-  await expect(page.locator('mat-dialog-container').getByText('Completed')).toBeVisible();
   await expect(page.locator('img[alt="blue-upload.png"]')).toBeVisible();
 
   const mediaItems = await listMedia(request, session.accessToken);
@@ -41,8 +60,7 @@ test('auto refreshes uploaded image state in the gallery when tagging finishes',
 
   await page.goto('/gallery');
   await page.getByRole('button', { name: 'Upload media' }).click();
-  await page.locator('input[type="file"]').setInputFiles([bluePngFile('auto-refresh-blue.png')]);
-  await page.getByRole('button', { name: 'Start upload' }).click();
+  await page.locator('input[type="file"]').setInputFiles([bluePngFile('auto-refresh-blue.png', 'secondary')]);
 
   const uploadedCard = page.locator('app-gallery-media-card').filter({
     has: page.locator('img[alt="auto-refresh-blue.png"]')
@@ -50,7 +68,6 @@ test('auto refreshes uploaded image state in the gallery when tagging finishes',
   const statusBadge = uploadedCard.locator('.status-badge');
 
   await expect(uploadedCard).toBeVisible();
-  await expect(statusBadge).toContainText(/Pending|Processing/);
 
   const mediaItems = await listMedia(request, session.accessToken);
   const uploaded = mediaItems.find((item) => item.original_filename === 'auto-refresh-blue.png');
@@ -73,7 +90,7 @@ test('processes uploaded media through the API and persists derived tags', async
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('api-blue-upload.png', 'secondary')
+      files: bluePngFile('api-blue-upload.png')
     }
   });
   await expect(upload).toBeOK();
@@ -100,30 +117,141 @@ test('marks red uploads as tagged and leaves them hidden from the default galler
   await page.goto('/gallery');
   await page.getByRole('button', { name: 'Upload media' }).click();
   await page.locator('input[type="file"]').setInputFiles([redPngFile()]);
-  await page.getByRole('button', { name: 'Start upload' }).click();
 
-  await expect(page.getByText('Upload status')).toBeVisible();
-
-  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
-  const uploaded = mediaItems.find((item) => item.original_filename === 'red-upload.png');
-  expect(uploaded).toBeTruthy();
-
-  const deadline = Date.now() + 10_000;
-  let tagged = uploaded!;
-  while (Date.now() < deadline) {
-    const items = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
-    const nextMatch = items.find((item) => item.id === uploaded!.id);
-    if (nextMatch && nextMatch.tagging_status === 'done' && nextMatch.tags.includes('rose')) {
-      tagged = nextMatch;
-      break;
-    }
-    await page.waitForTimeout(250);
-  }
+  const tagged = await waitForListedMedia(
+    request,
+    session.accessToken,
+    'red-upload.png',
+    'page=1&page_size=50&nsfw=include',
+    10_000,
+    (media) => media.tagging_status === 'done' && media.tags.includes('rose')
+  );
 
   expect(tagged.tags).toContain('rose');
-  await page.getByRole('button', { name: 'Close' }).click();
-  await page.getByRole('button', { name: 'Refresh gallery' }).click();
+  await expect(page.getByRole('heading', { name: 'Add the missing character' })).toBeVisible();
+  await page.getByRole('button', { name: 'Skip', exact: true }).click();
+  await page.getByRole('button', { name: 'Dismiss' }).click();
   await expect(page.locator('img[alt="red-upload.png"]')).toHaveCount(0);
+});
+
+test('opens the upload review popup for missing characters and saves manual tags', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles([greenPngFile('green-review.png')]);
+
+  await expect(page.getByRole('heading', { name: 'Add the missing character' })).toBeVisible();
+  await expect(page.getByText(/no character was found/i)).toBeVisible();
+
+  const characterInput = page.getByLabel('Character name');
+  await characterInput.fill('ikari_shinji');
+
+  const tagInput = page.getByLabel('Add tag');
+  await tagInput.fill('mecha');
+  await page.getByRole('button', { name: 'Add current tag' }).click();
+  await page.getByRole('button', { name: 'Remove tag forest' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  const uploaded = mediaItems.find((item) => item.original_filename === 'green-review.png');
+  expect(uploaded).toBeTruthy();
+
+  const updated = await waitForMedia(
+    request,
+    session.accessToken,
+    uploaded!.id,
+    (media) => media.character_name === 'ikari_shinji' && media.tags.includes('mecha') && !media.tags.includes('forest')
+  );
+
+  expect(updated.tags).toContain('green');
+});
+
+test('shows the failure review popup and lets the user skip it', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles([blackPngFile('failed-review.png')]);
+
+  await expect(page.getByRole('heading', { name: 'Tagging needs your review' })).toBeVisible();
+  await expect(page.getByText(/Synthetic tagging failure/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Skip', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tagging needs your review' })).toHaveCount(0);
+
+  const mediaItems = await listMediaWithQuery(request, session.accessToken, 'page=1&page_size=50&nsfw=include');
+  const uploaded = mediaItems.find((item) => item.original_filename === 'failed-review.png');
+  expect(uploaded).toBeTruthy();
+
+  const failed = await getMedia(request, session.accessToken, uploaded!.id);
+  expect(failed.tagging_status).toBe('failed');
+});
+
+test('queues multiple flagged uploads sequentially and supports skip all', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  await page.locator('input[type="file"]').setInputFiles([
+    greenPngFile('queue-green.png'),
+    blackPngFile('queue-black.png')
+  ]);
+
+  await expect(page.getByRole('heading', { name: 'Add the missing character' })).toBeVisible();
+  await page.getByRole('button', { name: 'Skip', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tagging needs your review' })).toBeVisible();
+  await page.getByText(/Synthetic tagging failure/i).waitFor();
+  await page.getByRole('button', { name: 'Skip all' }).click();
+  await expect(page.getByRole('heading', { name: 'Tagging needs your review' })).toHaveCount(0);
+});
+
+test('allows editing tags from the image inspector', async ({ page, request }) => {
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  const upload = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    },
+    multipart: {
+      files: bluePngFile('viewer-edit-blue.png')
+    }
+  });
+  await expect(upload).toBeOK();
+  const payload = await upload.json();
+  const mediaId = payload.results[0]?.id as string;
+
+  await waitForMedia(
+    request,
+    session.accessToken,
+    mediaId,
+    (media) => media.tagging_status === 'done' && media.character_name === 'ayanami_rei'
+  );
+
+  await page.goto('/gallery');
+  const card = page.locator('app-gallery-media-card').filter({
+    has: page.locator('img[alt="viewer-edit-blue.png"]')
+  }).first();
+  await card.locator('.media-card').click();
+
+  await page.getByRole('button', { name: 'Show tags panel' }).click();
+  await page.getByRole('button', { name: 'Edit tags and character' }).click();
+  await page.getByRole('button', { name: 'Remove tag sky' }).click();
+  await page.getByLabel('Add tag').fill('eva');
+  await page.getByRole('button', { name: 'Add current tag' }).click();
+  await page.getByRole('button', { name: 'Save' }).click();
+
+  const updated = await waitForMedia(
+    request,
+    session.accessToken,
+    mediaId,
+    (media) => media.tags.includes('eva') && !media.tags.includes('sky')
+  );
+
+  expect(updated.character_name).toBe('ayanami_rei');
 });
 
 test('moves media to trash, restores one item from trash, and empties the remainder', async ({ page, request }) => {
@@ -135,7 +263,7 @@ test('moves media to trash, restores one item from trash, and empties the remain
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-a.png', 'primary')
+      files: bluePngFile('multi-select-a.png')
     }
   });
   await expect(firstUpload).toBeOK();
@@ -145,10 +273,12 @@ test('moves media to trash, restores one item from trash, and empties the remain
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('multi-select-b.png', 'secondary')
+      files: bluePngFile('multi-select-b.png')
     }
   });
   await expect(secondUpload).toBeOK();
+  await waitForListedMedia(request, session.accessToken, 'multi-select-a.png');
+  await waitForListedMedia(request, session.accessToken, 'multi-select-b.png');
 
   await page.goto('/gallery');
   await expect(page.locator('img[alt="multi-select-a.png"]')).toBeVisible();
@@ -230,29 +360,21 @@ test('allows reuploading the same files after trash is emptied through the API',
   await seedLocalAuth(page, session);
 
   const originalFiles = [
-    bluePngFile('reupload-after-purge-a.png', 'primary'),
-    bluePngFile('reupload-after-purge-b.png', 'secondary')
+    bluePngFile('reupload-after-purge-a.png'),
+    bluePngFile('reupload-after-purge-b.png')
   ];
 
   await page.goto('/gallery');
   await page.getByRole('button', { name: 'Upload media' }).click();
   await page.locator('input[type="file"]').setInputFiles(originalFiles);
-  await page.getByRole('button', { name: 'Start upload' }).click();
 
-  await expect(page.getByText('Upload status')).toBeVisible();
-  await expect(page.locator('mat-dialog-container').getByText('2 accepted')).toBeVisible();
-  await expect(page.locator('mat-dialog-container').getByText('0 duplicates')).toBeVisible();
   await expect(page.locator('img[alt="reupload-after-purge-a.png"]')).toBeVisible();
   await expect(page.locator('img[alt="reupload-after-purge-b.png"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
 
   await page.getByRole('button', { name: 'Upload media' }).click();
   await page.locator('input[type="file"]').setInputFiles(originalFiles);
-  await page.getByRole('button', { name: 'Start upload' }).click();
 
-  await expect(page.locator('mat-dialog-container').getByText('0 accepted')).toBeVisible();
-  await expect(page.locator('mat-dialog-container').getByText('2 duplicates')).toBeVisible();
-  await page.getByRole('button', { name: 'Close' }).click();
+  await page.waitForTimeout(500);
 
   const activeItems = await listMedia(request, session.accessToken);
   const mediaIds = activeItems
@@ -281,8 +403,7 @@ test('allows reuploading the same files after trash is emptied through the API',
 
   await page.getByRole('button', { name: 'Upload media' }).click();
   await page.locator('input[type="file"]').setInputFiles(originalFiles);
-  await page.getByRole('button', { name: 'Start upload' }).click();
 
-  await expect(page.locator('mat-dialog-container').getByText('2 accepted')).toBeVisible();
-  await expect(page.locator('mat-dialog-container').getByText('0 duplicates')).toBeVisible();
+  await expect(page.locator('img[alt="reupload-after-purge-a.png"]')).toBeVisible();
+  await expect(page.locator('img[alt="reupload-after-purge-b.png"]')).toBeVisible();
 });

@@ -15,6 +15,14 @@ export interface GalleryAutocompleteContext {
   query: string;
 }
 
+export function normalizeCharacterSearchValue(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 export function createDefaultGallerySearchFilters(): GallerySearchFilters {
   return {
     favorited: 'any',
@@ -29,12 +37,19 @@ export function createDefaultGallerySearchFilters(): GallerySearchFilters {
 export function parseGallerySearchText(searchText: string): ParsedGallerySearchText {
   const tags: string[] = [];
   let characterName: string | null = null;
+  const tokens = tokenizeSearchText(searchText);
 
-  for (const token of tokenizeSearchText(searchText)) {
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
     if (token.startsWith(CHARACTER_PREFIX)) {
-      const value = token.slice(CHARACTER_PREFIX.length).trim();
+      const valueParts = [token.slice(CHARACTER_PREFIX.length).trim()];
+      while (index + 1 < tokens.length && isCharacterContinuationToken(tokens[index + 1] ?? '')) {
+        index += 1;
+        valueParts.push(tokens[index] ?? '');
+      }
+      const value = valueParts.join(' ').trim();
       if (value) {
-        characterName = value;
+        characterName = normalizeCharacterSearchValue(value);
       }
       continue;
     }
@@ -120,6 +135,10 @@ function tokenizeSearchText(searchText: string): string[] {
     .split(/\s+/)
     .map((token) => token.trim())
     .filter(Boolean);
+}
+
+function isCharacterContinuationToken(token: string): boolean {
+  return /^\(.+\)$/.test(token.trim());
 }
 
 function getActiveToken(searchText: string): string {

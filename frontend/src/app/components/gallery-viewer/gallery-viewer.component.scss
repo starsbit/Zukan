@@ -201,6 +201,15 @@
 }
 
 .viewer-tags-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewer-tags-panel app-media-tag-editor {
+  display: block;
+  height: 100%;
   min-height: 0;
 }
 
@@ -209,6 +218,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.viewer-tags-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .viewer-tags-header h3,
@@ -247,6 +262,19 @@
   border-radius: 1rem;
   background: color-mix(in srgb, var(--mat-sys-surface-container-high) 88%, transparent);
   color: var(--mat-sys-on-surface-variant);
+}
+
+.viewer-edit-actions {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.viewer-warning {
+  color: var(--mat-sys-error);
+  overflow-wrap: anywhere;
 }
 
 .viewer-actions {

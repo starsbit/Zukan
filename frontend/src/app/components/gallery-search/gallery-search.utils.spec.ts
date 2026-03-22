@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildGalleryListQuery, countActiveAdvancedFilters, createDefaultGallerySearchFilters, parseGallerySearchText, replaceActiveToken } from './gallery-search.utils';
+import {
+  buildGalleryListQuery,
+  countActiveAdvancedFilters,
+  createDefaultGallerySearchFilters,
+  normalizeCharacterSearchValue,
+  parseGallerySearchText,
+  replaceActiveToken
+} from './gallery-search.utils';
 
 describe('gallery search utils', () => {
   it('parses tag and character tokens into a media query payload', () => {
@@ -8,6 +15,10 @@ describe('gallery search utils', () => {
       tags: ['sky', 'fox', 'blue'],
       characterName: 'ayanami_rei'
     });
+  });
+
+  it('normalizes character search values with spaces and punctuation', () => {
+    expect(normalizeCharacterSearchValue('Sumika (Muvluv)')).toBe('sumika_muvluv');
   });
 
   it('replaces only the active token when a suggestion is chosen', () => {
@@ -28,6 +39,12 @@ describe('gallery search utils', () => {
       character_name: 'ayanami_rei',
       favorited: true,
       media_type: ['video']
+    });
+  });
+
+  it('normalizes character search tokens before building the media query', () => {
+    expect(buildGalleryListQuery('character:Sumika (Muvluv)', createDefaultGallerySearchFilters())).toMatchObject({
+      character_name: 'sumika_muvluv'
     });
   });
 

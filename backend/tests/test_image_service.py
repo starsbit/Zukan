@@ -346,9 +346,50 @@ def test_media_service_listing_detail_and_favorites_flow(api):
         )
         assert [item.id for item in character_only.items] == [blue_id]
 
+        normalized_character_only = await media_service.list_media(
+            session,
+            db_user,
+            MediaListState.ACTIVE,
+            tags=None,
+            character_name="sumika_muvluv",
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            metadata=MediaMetadataFilter(),
+            favorited=None,
+            page=1,
+            page_size=20,
+        )
+        assert normalized_character_only.items == []
+
+        await media_service.update_media_metadata(
+            session,
+            blue_id,
+            db_user,
+            MediaUpdate(character_name="Sumika (Muvluv)"),
+        )
+
+        normalized_sumika = await media_service.list_media(
+            session,
+            db_user,
+            MediaListState.ACTIVE,
+            tags=None,
+            character_name="sumika_muvluv",
+            exclude_tags=None,
+            mode=TagFilterMode.AND,
+            nsfw=NsfwFilter.INCLUDE,
+            status_filter="done",
+            metadata=MediaMetadataFilter(),
+            favorited=None,
+            page=1,
+            page_size=20,
+        )
+        assert [item.id for item in normalized_sumika.items] == [blue_id]
+
         detail = await media_service.get_media_detail(session, blue_id, db_user)
         assert detail.id == blue_id
-        assert detail.character_name == "ayanami_rei"
+        assert detail.character_name == "Sumika (Muvluv)"
         assert detail.tag_details[0].name == "rating:general"
 
         visible = await media_service.get_visible_media(session, blue_id, db_user)

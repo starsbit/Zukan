@@ -1,4 +1,5 @@
 import asyncio
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -107,7 +108,9 @@ def _apply_tag_filters(stmt, tags: str | None, exclude_tags: str | None, mode: T
 
 def _apply_character_name_filter(stmt, character_name: str | None):
     if character_name and character_name.strip():
-        stmt = stmt.where(Media.character_name.ilike(f"%{character_name.strip()}%"))
+        normalized_query = _normalize_character_name_search(character_name)
+        if normalized_query:
+            stmt = stmt.where(_normalized_character_name_expr().contains(normalized_query))
     return stmt
 
 
@@ -136,6 +139,20 @@ def _normalize_manual_tags(tags: list[str]) -> list[str]:
         normalized.append(cleaned)
         seen.add(cleaned)
     return normalized
+
+
+def _normalize_character_name_search(value: str | None) -> str:
+    if not value:
+        return ""
+    normalized = re.sub(r"[^a-z0-9]+", "_", value.strip().lower())
+    return normalized.strip("_")
+
+
+def _normalized_character_name_expr():
+    return func.btrim(
+        func.regexp_replace(func.lower(func.coalesce(Media.character_name, "")), r"[^a-z0-9]+", "_", "g"),
+        "_",
+    )
 
 
 def _captured_timestamp_expr():

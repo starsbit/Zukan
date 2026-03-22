@@ -16,6 +16,7 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -29,7 +30,8 @@ import { MediaService } from '../../services/media.service';
 import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
 import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
-import { MediaUploadService } from '../../services/media-upload.service';
+import { UploadReviewDialogComponent, type UploadReviewDialogResult } from '../../components/upload-review-dialog/upload-review-dialog.component';
+import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
 
 interface GalleryDayGroup {
   key: string;
@@ -85,6 +87,7 @@ export class GalleryPageComponent implements OnDestroy {
   private readonly document = inject(DOCUMENT);
   private readonly ngZone = inject(NgZone);
   private readonly route = inject(ActivatedRoute);
+  private readonly dialog = inject(MatDialog);
   private readonly mediaService = inject(MediaService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
@@ -123,6 +126,8 @@ export class GalleryPageComponent implements OnDestroy {
   private timelineMetrics: GalleryTimelineMetric[] = [];
   private maxTimelineScroll = 1;
   private timelineRefreshQueued = false;
+  private pendingUploadReviews: UploadReviewCandidate[] = [];
+  private reviewDialogOpen = false;
   searchState: GallerySearchState = {
     searchText: '',
     filters: createDefaultGallerySearchFilters()
@@ -146,6 +151,17 @@ export class GalleryPageComponent implements OnDestroy {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => {
         this.reload();
+      });
+
+    this.mediaUploadService.reviewRequested$
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((candidates) => {
+        if (candidates.length === 0) {
+          return;
+        }
+
+        this.pendingUploadReviews.push(...candidates);
+        this.processNextUploadReview();
       });
 
     this.items$
@@ -201,6 +217,12 @@ export class GalleryPageComponent implements OnDestroy {
 
   closeMedia(): void {
     this.selectedMedia = null;
+  }
+
+  updateSelectedMedia(media: MediaRead): void {
+    if (this.selectedMedia?.id === media.id) {
+      this.selectedMedia = media;
+    }
   }
 
   openUploadPicker(): void {
@@ -517,6 +539,59 @@ export class GalleryPageComponent implements OnDestroy {
     }
 
     this.scrollToGroup(firstGroup.key);
+  }
+
+  private processNextUploadReview(): void {
+    if (this.reviewDialogOpen || this.pendingUploadReviews.length === 0) {
+      return;
+    }
+
+    const candidate = this.pendingUploadReviews.shift();
+    if (!candidate) {
+      return;
+    }
+
+    this.reviewDialogOpen = true;
+    const dialogRef = this.dialog.open(UploadReviewDialogComponent, {
+      data: candidate,
+      width: 'min(92vw, 720px)',
+      maxWidth: '720px',
+      disableClose: true,
+      autoFocus: false
+    });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result: UploadReviewDialogResult | undefined) => {
+        this.reviewDialogOpen = false;
+
+        if (!result || result.action === 'skip') {
+          this.processNextUploadReview();
+          return;
+        }
+
+        if (result.action === 'skip_all') {
+          this.pendingUploadReviews = [];
+          return;
+        }
+
+        this.mediaService.updateMedia(candidate.media.id, {
+          character_name: result.characterName ?? null,
+          tags: result.tags ?? []
+        })
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            next: (media) => {
+              if (this.selectedMedia?.id === media.id) {
+                this.selectedMedia = media;
+              }
+              this.processNextUploadReview();
+            },
+            error: () => {
+              this.processNextUploadReview();
+            }
+          });
+      });
   }
 
   private loadMedia(query = this.activeQuery): void {

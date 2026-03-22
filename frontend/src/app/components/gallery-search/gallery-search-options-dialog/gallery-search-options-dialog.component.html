@@ -27,7 +27,7 @@
             [selected]="form.controls.status.value.includes(status)"
             (click)="toggleStatus(status)"
           >
-            {{ status }}
+            {{ formatOptionLabel(status) }}
           </mat-chip-option>
         }
       </mat-chip-listbox>
@@ -41,7 +41,7 @@
             [selected]="form.controls.media_type.value.includes(mediaType)"
             (click)="toggleMediaType(mediaType)"
           >
-            {{ mediaType }}
+            {{ formatOptionLabel(mediaType) }}
           </mat-chip-option>
         }
       </mat-chip-listbox>

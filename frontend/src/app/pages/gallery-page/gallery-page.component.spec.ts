@@ -2,6 +2,7 @@ import '@angular/compiler';
 import { AsyncPipe } from '@angular/common';
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute, provideRouter } from '@angular/router';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
@@ -13,7 +14,7 @@ import { GalleryMediaCardComponent } from '../../components/gallery-media-card/g
 import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
 import { MediaRead } from '../../models/api';
 import { MediaService } from '../../services/media.service';
-import { MediaUploadService } from '../../services/media-upload.service';
+import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
 import { GallerySearchState } from '../../components/gallery-search/gallery-search.models';
 import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
 import { createMediaRead } from '../../testing/media-test.utils';
@@ -61,6 +62,7 @@ class StubGalleryViewerComponent {
   @Output() readonly closed = new EventEmitter<void>();
   @Output() readonly deleteRequested = new EventEmitter<MediaRead>();
   @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
+  @Output() readonly updated = new EventEmitter<MediaRead>();
 }
 
 @Component({
@@ -83,13 +85,16 @@ describe('GalleryPageComponent', () => {
     batchUpdateMedia: ReturnType<typeof vi.fn>;
     restoreMediaBatch: ReturnType<typeof vi.fn>;
     restoreMedia: ReturnType<typeof vi.fn>;
+    updateMedia: ReturnType<typeof vi.fn>;
     deleteMedia: ReturnType<typeof vi.fn>;
     emptyTrash: ReturnType<typeof vi.fn>;
   };
   let mediaUploadService: {
     refreshRequested$: Subject<void>;
+    reviewRequested$: Subject<UploadReviewCandidate[]>;
     startUpload: ReturnType<typeof vi.fn>;
   };
+  let dialog: { open: ReturnType<typeof vi.fn> };
   let routeData: BehaviorSubject<Record<string, unknown>>;
 
   beforeEach(async () => {
@@ -103,12 +108,17 @@ describe('GalleryPageComponent', () => {
       batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMediaBatch: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMedia: vi.fn().mockReturnValue(of(createMediaRead())),
+      updateMedia: vi.fn().mockReturnValue(of(createMediaRead())),
       deleteMedia: vi.fn().mockReturnValue(of(undefined)),
       emptyTrash: vi.fn().mockReturnValue(of(null))
     };
     mediaUploadService = {
       refreshRequested$: new Subject<void>(),
+      reviewRequested$: new Subject<UploadReviewCandidate[]>(),
       startUpload: vi.fn()
+    };
+    dialog = {
+      open: vi.fn().mockReturnValue({ afterClosed: () => of(undefined) })
     };
     routeData = new BehaviorSubject<Record<string, unknown>>({ state: 'active' });
 
@@ -117,6 +127,7 @@ describe('GalleryPageComponent', () => {
       providers: [
         AsyncPipe,
         provideRouter([]),
+        { provide: MatDialog, useValue: dialog },
         { provide: MediaService, useValue: mediaService },
         { provide: MediaUploadService, useValue: mediaUploadService },
         { provide: ActivatedRoute, useValue: { data: routeData.asObservable() } }
@@ -199,6 +210,16 @@ describe('GalleryPageComponent', () => {
     expect(component.selectedMedia).toBeNull();
   });
 
+  it('updates the selected media when the viewer saves metadata', () => {
+    const media = createMediaRead();
+    const updated = createMediaRead({ id: media.id, tags: ['fox', 'hero'] });
+
+    component.openMedia(media);
+    component.updateSelectedMedia(updated);
+
+    expect(component.selectedMedia).toEqual(updated);
+  });
+
   it('renders loading, error, and empty states from the service streams', () => {
     mediaService.requestLoading$.next(true);
     fixture.detectChanges();
@@ -220,6 +241,26 @@ describe('GalleryPageComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelectorAll('app-gallery-media-card')).toHaveLength(2);
+  });
+
+  it('opens upload review dialogs and saves the returned metadata updates', () => {
+    const candidate = {
+      media: createMediaRead({ id: 'media-7', character_name: null }),
+      issue: 'missing_character'
+    } satisfies UploadReviewCandidate;
+    const updated = createMediaRead({ id: 'media-7', character_name: 'ikari_shinji', tags: ['fox', 'hero'] });
+    dialog.open.mockReturnValue({
+      afterClosed: () => of({ action: 'save', characterName: 'ikari_shinji', tags: ['fox', 'hero'] })
+    });
+    mediaService.updateMedia.mockReturnValue(of(updated));
+
+    mediaUploadService.reviewRequested$.next([candidate]);
+
+    expect(dialog.open).toHaveBeenCalled();
+    expect(mediaService.updateMedia).toHaveBeenCalledWith('media-7', {
+      character_name: 'ikari_shinji',
+      tags: ['fox', 'hero']
+    });
   });
 
   it('renders media grouped under date headings', () => {

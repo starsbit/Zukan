@@ -20,6 +20,7 @@ export function createMediaRead(overrides: Partial<MediaRead> = {}): MediaRead {
     character_name: null,
     is_nsfw: false,
     tagging_status: 'done',
+    tagging_error: null,
     thumbnail_status: 'done',
     poster_status: 'done',
     created_at: '2024-01-01T12:00:00.000Z',

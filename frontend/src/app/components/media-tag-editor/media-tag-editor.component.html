@@ -1,0 +1,67 @@
+<section class="tag-editor">
+  <mat-form-field class="tag-editor-field" appearance="outline" subscriptSizing="dynamic">
+    <mat-label>Character</mat-label>
+    <input
+      matInput
+      type="text"
+      [formControl]="characterControl"
+      [matAutocomplete]="characterAutocomplete"
+      placeholder="Choose or type a character"
+      aria-label="Character name"
+    >
+    @if (hasCharacterValue) {
+      <button mat-icon-button matSuffix type="button" aria-label="Clear character" [disabled]="disabled" (click)="clearCharacter()">
+        <mat-icon>close</mat-icon>
+      </button>
+    }
+  </mat-form-field>
+
+  <mat-autocomplete #characterAutocomplete="matAutocomplete" autoActiveFirstOption (optionSelected)="selectCharacter($event.option.value)">
+    @for (suggestion of characterSuggestions; track suggestion.name) {
+      <mat-option [value]="suggestion">
+        <span>{{ formatDisplayValue(suggestion.name) }}</span>
+        <span class="tag-editor-option-secondary">{{ suggestion.media_count }} match{{ suggestion.media_count === 1 ? '' : 'es' }}</span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+
+  <mat-form-field class="tag-editor-field" appearance="outline" subscriptSizing="dynamic">
+    <mat-label>Tags</mat-label>
+    <input
+      matInput
+      type="text"
+      [formControl]="tagInputControl"
+      [matAutocomplete]="tagAutocomplete"
+      placeholder="Add an existing or new tag"
+      aria-label="Add tag"
+      (keydown.enter)="addTypedTagFromEvent($event)"
+    >
+    <button mat-icon-button matSuffix type="button" aria-label="Add current tag" [disabled]="!canAddTypedTag" (click)="addTypedTag()">
+      <mat-icon>add</mat-icon>
+    </button>
+  </mat-form-field>
+
+  <mat-autocomplete #tagAutocomplete="matAutocomplete" autoActiveFirstOption (optionSelected)="selectTag($event.option.value)">
+    @for (tag of tagSuggestions; track tag.id) {
+      <mat-option [value]="tag">
+        <span>{{ formatDisplayValue(tag.name) }}</span>
+        <span class="tag-editor-option-secondary">{{ formatDisplayValue(tag.category_name) }}</span>
+      </mat-option>
+    }
+  </mat-autocomplete>
+
+  @if (selectedTags.length > 0) {
+    <mat-chip-set class="tag-editor-chips" aria-label="Selected tags">
+      @for (tag of selectedTags; track tag) {
+        <mat-chip-row [removable]="!disabled" (removed)="removeTag(tag)">
+          {{ formatDisplayValue(tag) }}
+          <button matChipRemove type="button" aria-label="Remove tag {{ formatDisplayValue(tag) }}">
+            <mat-icon>cancel</mat-icon>
+          </button>
+        </mat-chip-row>
+      }
+    </mat-chip-set>
+  } @else {
+    <p class="tag-editor-empty">No tags selected yet.</p>
+  }
+</section>

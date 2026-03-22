@@ -1,10 +1,14 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { signal } from '@angular/core';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GalleryViewerComponent } from './gallery-viewer.component';
+import { CharacterSuggestionsService } from '../../services/character-suggestions.service';
+import { MediaService } from '../../services/media.service';
 import { MediaUploadService } from '../../services/media-upload.service';
+import { TagsService } from '../../services/tags.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 import { createMediaRead } from '../../testing/media-test.utils';
 
@@ -12,16 +16,23 @@ describe('GalleryViewerComponent', () => {
   let fixture: ComponentFixture<GalleryViewerComponent>;
   let component: GalleryViewerComponent;
   let mediaClient: { getMediaFile: ReturnType<typeof vi.fn> };
+  let mediaService: { updateMedia: ReturnType<typeof vi.fn> };
   let mediaUploadService: {
     taggingStatusByMediaId: ReturnType<typeof signal<Record<string, string>>>;
     getMediaTaggingStatus: ReturnType<typeof vi.fn>;
   };
+  let tagsService: { search: ReturnType<typeof vi.fn> };
+  let characterSuggestionsService: { search: ReturnType<typeof vi.fn> };
+  let snackBar: { open: ReturnType<typeof vi.fn> };
   let createObjectUrlSpy: ReturnType<typeof vi.spyOn>;
   let revokeObjectUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     mediaClient = {
       getMediaFile: vi.fn()
+    };
+    mediaService = {
+      updateMedia: vi.fn()
     };
     mediaUploadService = {
       taggingStatusByMediaId: signal<Record<string, string>>({}),
@@ -33,6 +44,15 @@ describe('GalleryViewerComponent', () => {
         return mediaUploadService.taggingStatusByMediaId()[mediaId] ?? null;
       })
     };
+    tagsService = {
+      search: vi.fn().mockReturnValue(of([]))
+    };
+    characterSuggestionsService = {
+      search: vi.fn().mockReturnValue(of([]))
+    };
+    snackBar = {
+      open: vi.fn()
+    };
 
     createObjectUrlSpy = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:media-url');
     revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
@@ -40,8 +60,12 @@ describe('GalleryViewerComponent', () => {
     await TestBed.configureTestingModule({
       imports: [GalleryViewerComponent],
       providers: [
+        { provide: CharacterSuggestionsService, useValue: characterSuggestionsService },
+        { provide: MediaService, useValue: mediaService },
         { provide: MediaClientService, useValue: mediaClient },
-        { provide: MediaUploadService, useValue: mediaUploadService }
+        { provide: MediaUploadService, useValue: mediaUploadService },
+        { provide: TagsService, useValue: tagsService },
+        { provide: MatSnackBar, useValue: snackBar }
       ]
     }).compileComponents();
 
@@ -116,7 +140,7 @@ describe('GalleryViewerComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.viewer-status mat-spinner')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('done');
+    expect(fixture.nativeElement.querySelector('.viewer-status')?.textContent).toContain('Done');
   });
 
   it('shows the failed state when loading the media file errors', async () => {
@@ -188,7 +212,7 @@ describe('GalleryViewerComponent', () => {
   it('opens the tags sidebar from the toolbar', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
-    fixture.componentRef.setInput('media', createMediaRead({ tags: ['fox', 'tail', 'smile'] }));
+    fixture.componentRef.setInput('media', createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], character_name: 'ikari_shinji' }));
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
@@ -202,8 +226,9 @@ describe('GalleryViewerComponent', () => {
     expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('mat-card.viewer-sidebar-card')).toBeTruthy();
     expect(fixture.nativeElement.querySelector('mat-chip-set.viewer-tags')).toBeTruthy();
-    expect(fixture.nativeElement.textContent).toContain('fox');
-    expect(fixture.nativeElement.textContent).toContain('tail');
+    expect(fixture.nativeElement.textContent).toContain('Fox');
+    expect(fixture.nativeElement.textContent).toContain('Blue Eyes');
+    expect(fixture.nativeElement.textContent).toContain('Ikari Shinji');
   });
 
   it('emits delete when the delete action is used', async () => {
@@ -221,6 +246,79 @@ describe('GalleryViewerComponent', () => {
     (fixture.nativeElement.querySelector('button[aria-label="Delete media"]') as HTMLButtonElement).click();
 
     expect(deleteSpy).toHaveBeenCalledWith(media);
+  });
+
+  it('lets the user edit tags and character details for images', async () => {
+    const media = createMediaRead({ tags: ['fox'], character_name: null });
+    const updatedMedia = createMediaRead({ tags: ['fox', 'hero'], character_name: 'ikari_shinji' });
+    mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+    mediaService.updateMedia.mockReturnValue(of(updatedMedia));
+
+    fixture.componentRef.setInput('media', media);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('button[aria-label="Edit tags and character"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const characterInput = fixture.nativeElement.querySelector('input[aria-label="Character name"]') as HTMLInputElement;
+    characterInput.value = 'ikari_shinji';
+    characterInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+
+    const tagInput = fixture.nativeElement.querySelector('input[aria-label="Add tag"]') as HTMLInputElement;
+    tagInput.value = 'hero';
+    tagInput.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    (fixture.nativeElement.querySelector('button[aria-label="Add current tag"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    (fixture.nativeElement.querySelector('.viewer-edit-actions button:last-child') as HTMLButtonElement).click();
+
+    expect(mediaService.updateMedia).toHaveBeenCalledWith(media.id, {
+      character_name: 'ikari_shinji',
+      tags: ['fox', 'hero']
+    });
+    expect(component.editingMetadata).toBe(false);
+    expect(component.media?.character_name).toBe('ikari_shinji');
+    expect(component.media?.tags).toEqual(['fox', 'hero']);
+  });
+
+  it('loads character and tag suggestions while editing metadata', async () => {
+    vi.useFakeTimers();
+
+    try {
+      mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
+      characterSuggestionsService.search.mockReturnValue(of([{ name: 'rei', media_count: 2 }]));
+      tagsService.search.mockReturnValue(of([{ id: 1, name: 'fox', category: 0, category_name: 'general', media_count: 2 }]));
+
+      fixture.componentRef.setInput('media', createMediaRead({ tags: [] }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      (fixture.nativeElement.querySelector('button[aria-label="Show tags panel"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      (fixture.nativeElement.querySelector('button[aria-label="Edit tags and character"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+
+      const characterInput = fixture.nativeElement.querySelector('input[aria-label="Character name"]') as HTMLInputElement;
+      characterInput.value = 're';
+      characterInput.dispatchEvent(new Event('input'));
+
+      const tagInput = fixture.nativeElement.querySelector('input[aria-label="Add tag"]') as HTMLInputElement;
+      tagInput.value = 'fo';
+      tagInput.dispatchEvent(new Event('input'));
+
+      await vi.advanceTimersByTimeAsync(250);
+      fixture.detectChanges();
+
+      expect(characterSuggestionsService.search).toHaveBeenCalledWith('re', 6);
+      expect(tagsService.search).toHaveBeenCalledWith({ q: 'fo', limit: 8 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('zooms images with the mouse wheel and resets pan when zoom returns to one', async () => {

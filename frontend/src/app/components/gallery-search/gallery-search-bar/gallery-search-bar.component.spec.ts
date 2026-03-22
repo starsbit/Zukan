@@ -41,7 +41,13 @@ describe('GallerySearchBarComponent', () => {
     fixture.componentRef.setInput('searchText', 'tag:fox');
     fixture.detectChanges();
 
-    expect(component.queryControl.getRawValue()).toBe('tag:fox');
+    expect(component.queryControl.getRawValue()).toBe('');
+    expect(component.committedSuggestions).toEqual([{
+      kind: 'tag',
+      label: 'Fox',
+      token: 'tag:fox',
+      secondary: ''
+    }]);
   });
 
   it('submits the trimmed raw query string', () => {
@@ -53,6 +59,7 @@ describe('GallerySearchBarComponent', () => {
 
     expect(submittedSpy).toHaveBeenCalledWith('fox');
     expect(component.queryControl.getRawValue()).toBe('fox');
+    expect(component.committedSuggestions).toEqual([]);
   });
 
   it('submits the latest typed query even before autocomplete debounce completes', () => {
@@ -64,7 +71,13 @@ describe('GallerySearchBarComponent', () => {
     component.submit();
 
     expect(submittedSpy).toHaveBeenCalledWith('tag:fox');
-    expect(component.queryControl.getRawValue()).toBe('tag:fox');
+    expect(component.queryControl.getRawValue()).toBe('');
+    expect(component.committedSuggestions).toEqual([{
+      kind: 'tag',
+      label: 'Fox',
+      token: 'tag:fox',
+      secondary: ''
+    }]);
   });
 
   it('submits the selected autocomplete token when enter is pressed on an active option', () => {
@@ -81,7 +94,13 @@ describe('GallerySearchBarComponent', () => {
     component.submit();
 
     expect(submittedSpy).toHaveBeenCalledWith('character:ayanami_rei');
-    expect(component.queryControl.getRawValue()).toBe('character:ayanami_rei');
+    expect(component.queryControl.getRawValue()).toBe('');
+    expect(component.committedSuggestions).toEqual([{
+      kind: 'character',
+      label: 'Ayanami Rei',
+      token: 'character:ayanami_rei',
+      secondary: ''
+    }]);
   });
 
   it('displays labels for suggestion objects', () => {
@@ -89,10 +108,10 @@ describe('GallerySearchBarComponent', () => {
     expect(component.displaySuggestion('fox')).toBe('fox');
     expect(component.displaySuggestion({
       kind: 'tag',
-      label: 'forest',
+      label: 'Forest',
       token: 'tag:forest',
       secondary: 'theme'
-    })).toBe('forest');
+    })).toBe('Forest');
   });
 
   it('replaces the active token and submits the search when a suggestion is selected', () => {
@@ -107,23 +126,47 @@ describe('GallerySearchBarComponent', () => {
       secondary: 'species'
     });
 
-    expect(component.queryControl.getRawValue()).toBe('tag:fox ');
+    expect(component.queryControl.getRawValue()).toBe('');
+    expect(component.committedSuggestions).toEqual([{
+      kind: 'tag',
+      label: 'Fox',
+      token: 'tag:fox',
+      secondary: ''
+    }]);
     expect(submittedSpy).toHaveBeenCalledWith('tag:fox');
   });
 
-  it('clears the search text, suggestion lists, and emits a clear event', () => {
+  it('clears the search text, committed chips, suggestion lists, and emits a clear event', () => {
     const clearSpy = vi.fn();
     component.cleared.subscribe(clearSpy);
     component.queryControl.setValue('character:fox');
+    component.committedSuggestions = [{ kind: 'tag', label: 'fox', token: 'tag:fox', secondary: '' }];
     component.tagSuggestions = [{ kind: 'tag', label: 'fox', token: 'tag:fox', secondary: 'species' }];
     component.characterSuggestions = [{ kind: 'character', label: 'renamon', token: 'character:renamon', secondary: '1 match' }];
 
     component.clearAll();
 
     expect(component.queryControl.getRawValue()).toBe('');
+    expect(component.committedSuggestions).toEqual([]);
     expect(component.tagSuggestions).toEqual([]);
     expect(component.characterSuggestions).toEqual([]);
     expect(clearSpy).toHaveBeenCalled();
+  });
+
+  it('removes a committed chip and re-submits the remaining query', () => {
+    const submittedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
+    component.committedSuggestions = [
+      { kind: 'tag', label: 'fox', token: 'tag:fox', secondary: '' },
+      { kind: 'character', label: 'Renamon', token: 'character:renamon', secondary: '' }
+    ];
+
+    component.removeCommittedSuggestion(0);
+
+    expect(component.committedSuggestions).toEqual([
+      { kind: 'character', label: 'Renamon', token: 'character:renamon', secondary: '' }
+    ]);
+    expect(submittedSpy).toHaveBeenCalledWith('character:renamon');
   });
 
   it('emits filtersRequested from the options button', () => {
@@ -148,14 +191,14 @@ describe('GallerySearchBarComponent', () => {
     expect(characterSuggestionsService.search).toHaveBeenCalledWith('fox', 6);
     expect(component.tagSuggestions).toEqual([{
       kind: 'tag',
-      label: 'fox',
+      label: 'Fox',
       token: 'tag:fox',
-      secondary: 'species'
+      secondary: 'Species'
     }]);
     expect(component.characterSuggestions).toEqual([{
       kind: 'character',
       label: 'Renamon',
-      token: 'character:Renamon',
+      token: 'character:renamon',
       secondary: '3 matches'
     }]);
   });
@@ -179,5 +222,40 @@ describe('GallerySearchBarComponent', () => {
     expect(tagsService.search).not.toHaveBeenCalled();
     expect(characterSuggestionsService.search).toHaveBeenCalledWith('fo', 8);
     expect(component.characterSuggestions[0]?.secondary).toBe('1 match');
+  });
+
+  it('normalizes character suggestion tokens that contain spaces and punctuation', async () => {
+    vi.useFakeTimers();
+    characterSuggestionsService.search.mockReturnValue(of([{ name: 'Sumika (Muvluv)', media_count: 1 }]));
+
+    component.queryControl.setValue('character:sum');
+    await vi.advanceTimersByTimeAsync(200);
+
+    expect(component.characterSuggestions).toEqual([{
+      kind: 'character',
+      label: 'Sumika (Muvluv)',
+      token: 'character:sumika_muvluv',
+      secondary: '1 match'
+    }]);
+  });
+
+  it('formats committed tag and character labels for display while keeping raw tokens', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes character:ikari_shinji');
+    fixture.detectChanges();
+
+    expect(component.committedSuggestions).toEqual([
+      {
+        kind: 'tag',
+        label: 'Blue Eyes',
+        token: 'tag:blue_eyes',
+        secondary: ''
+      },
+      {
+        kind: 'character',
+        label: 'Ikari Shinji',
+        token: 'character:ikari_shinji',
+        secondary: ''
+      }
+    ]);
   });
 });

@@ -10,6 +10,7 @@ import { MatSelectModule } from '@angular/material/select';
 
 import { GallerySearchFilters } from '../gallery-search.models';
 import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
+import { formatDisplayValue } from '../../../utils/display-value.utils';
 
 type SearchStatus = GallerySearchFilters['status'][number];
 
@@ -79,6 +80,10 @@ export class GallerySearchOptionsDialogComponent {
 
   toggleMediaType(mediaType: GallerySearchFilters['media_type'][number]): void {
     this.form.controls.media_type.setValue(toggleValue(this.form.controls.media_type.getRawValue(), mediaType));
+  }
+
+  formatOptionLabel(value: string): string {
+    return formatDisplayValue(value);
   }
 }
 

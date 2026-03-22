@@ -1,18 +1,23 @@
 import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, HostListener, Input, OnChanges, OnDestroy, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { CommonModule, DatePipe, DOCUMENT } from '@angular/common';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { MediaRead } from '../../models/api';
+import { MediaService } from '../../services/media.service';
 import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
+import { formatDisplayValue } from '../../utils/display-value.utils';
+import { MediaTagEditorComponent, MediaTagEditorDraft } from '../media-tag-editor/media-tag-editor.component';
 
 @Component({
   selector: 'app-gallery-viewer',
-  imports: [CommonModule, DatePipe, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule],
+  imports: [CommonModule, DatePipe, MatButtonToggleModule, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule, MediaTagEditorComponent],
   templateUrl: './gallery-viewer.component.html',
   styleUrl: './gallery-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -20,8 +25,10 @@ import { MediaClientService } from '../../services/web/media-client.service';
 export class GalleryViewerComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly document = inject(DOCUMENT);
+  private readonly mediaService = inject(MediaService);
   private readonly mediaClient = inject(MediaClientService);
   private readonly mediaUploadService = inject(MediaUploadService);
+  private readonly snackBar = inject(MatSnackBar);
   private mediaRequestId = 0;
   private pointerStartX = 0;
   private pointerStartY = 0;
@@ -38,15 +45,22 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   @Output() readonly closed = new EventEmitter<void>();
   @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
   @Output() readonly deleteRequested = new EventEmitter<MediaRead>();
+  @Output() readonly updated = new EventEmitter<MediaRead>();
 
   mediaUrl: string | null = null;
   loading = false;
   failed = false;
   tagsPanelOpen = false;
+  editingMetadata = false;
+  savingMetadata = false;
   zoom = 1;
   panX = 0;
   panY = 0;
   dragging = false;
+  metadataDraft: MediaTagEditorDraft = {
+    characterName: null,
+    tags: []
+  };
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['media']) {
@@ -93,6 +107,62 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
 
   toggleTagsPanel(): void {
     this.tagsPanelOpen = !this.tagsPanelOpen;
+  }
+
+  beginEditMetadata(): void {
+    if (!this.media || !this.isImage) {
+      return;
+    }
+
+    this.metadataDraft = {
+      characterName: this.media.character_name ?? null,
+      tags: [...this.media.tags]
+    };
+    this.editingMetadata = true;
+    this.cdr.markForCheck();
+  }
+
+  cancelEditMetadata(): void {
+    this.editingMetadata = false;
+    this.metadataDraft = {
+      characterName: this.media?.character_name ?? null,
+      tags: [...(this.media?.tags ?? [])]
+    };
+    this.cdr.markForCheck();
+  }
+
+  updateMetadataDraft(draft: MediaTagEditorDraft): void {
+    this.metadataDraft = draft;
+  }
+
+  saveMetadata(): void {
+    if (!this.media || this.savingMetadata) {
+      return;
+    }
+
+    this.savingMetadata = true;
+    this.mediaService.updateMedia(this.media.id, {
+      character_name: this.metadataDraft.characterName,
+      tags: this.metadataDraft.tags
+    }).subscribe({
+      next: (media) => {
+        this.media = media;
+        this.metadataDraft = {
+          characterName: media.character_name ?? null,
+          tags: [...media.tags]
+        };
+        this.editingMetadata = false;
+        this.savingMetadata = false;
+        this.updated.emit(media);
+        this.snackBar.open('Image tags updated.', 'Close', { duration: 3000 });
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.savingMetadata = false;
+        this.snackBar.open('Could not save image tags. Please try again.', 'Close', { duration: 3000 });
+        this.cdr.markForCheck();
+      }
+    });
   }
 
   onWheelZoom(event: WheelEvent): void {
@@ -169,7 +239,11 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
       return 'Processing';
     }
 
-    return this.currentTaggingStatus;
+    return formatDisplayValue(this.currentTaggingStatus);
+  }
+
+  formatDisplayValue(value: string | null | undefined): string {
+    return formatDisplayValue(value);
   }
 
   private get currentTaggingStatus(): string {
@@ -191,7 +265,13 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.loading = true;
     this.failed = false;
     this.tagsPanelOpen = false;
+    this.editingMetadata = false;
+    this.savingMetadata = false;
     this.dragging = false;
+    this.metadataDraft = {
+      characterName: this.media.character_name ?? null,
+      tags: [...this.media.tags]
+    };
     this.resetZoomState();
     this.cdr.markForCheck();
 
@@ -223,7 +303,13 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.loading = false;
     this.failed = false;
     this.tagsPanelOpen = false;
+    this.editingMetadata = false;
+    this.savingMetadata = false;
     this.dragging = false;
+    this.metadataDraft = {
+      characterName: null,
+      tags: []
+    };
     this.resetZoomState();
     this.cdr.markForCheck();
   }

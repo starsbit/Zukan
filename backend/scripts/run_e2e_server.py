@@ -24,6 +24,9 @@ async def fake_predict(image_path: str) -> TaggingResult:
     with PILImage.open(image_path) as image:
         r, g, b = image.convert("RGB").getpixel((0, 0))
 
+    if r < 20 and g < 20 and b < 20:
+        raise RuntimeError("Synthetic tagging failure")
+
     if r > 200 and g < 120 and b < 120:
         return TaggingResult(
             predictions=[

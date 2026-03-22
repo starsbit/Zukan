@@ -4,11 +4,71 @@
 }
 
 .search-form {
+  display: grid;
+  gap: 0.6rem;
   width: 100%;
 }
 
 .search-field {
   width: 100%;
+  --mat-form-field-outlined-container-shape: 1rem;
+}
+
+.search-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 75%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+  color: var(--mat-sys-on-surface);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    transform 160ms ease;
+}
+
+.search-chip:hover {
+  border-color: color-mix(in srgb, var(--mat-sys-primary) 36%, var(--mat-sys-outline-variant));
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 20%, var(--mat-sys-surface-container-high));
+  transform: translateY(-1px);
+}
+
+.search-chip-kind {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
+  color: var(--mat-sys-primary);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.search-chip-character .search-chip-kind {
+  background: color-mix(in srgb, var(--mat-sys-tertiary) 18%, transparent);
+  color: var(--mat-sys-tertiary);
+}
+
+.search-chip-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.search-chip mat-icon {
+  width: 1rem;
+  height: 1rem;
+  font-size: 1rem;
+  color: var(--mat-sys-on-surface-variant);
 }
 
 .option-secondary {

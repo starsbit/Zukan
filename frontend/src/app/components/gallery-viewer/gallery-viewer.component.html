@@ -115,7 +115,13 @@
                   @if (media.character_name) {
                     <div>
                       <dt>Character</dt>
-                      <dd>{{ media.character_name }}</dd>
+                      <dd>{{ formatDisplayValue(media.character_name) }}</dd>
+                    </div>
+                  }
+                  @if (media.tagging_error) {
+                    <div>
+                      <dt>Tagging warning</dt>
+                      <dd class="viewer-warning">{{ media.tagging_error }}</dd>
                     </div>
                   }
                 </dl>
@@ -124,13 +130,34 @@
               <section class="viewer-tags-panel">
                 <div class="viewer-tags-header">
                   <h3>Tags</h3>
-                  <span>{{ media.tags.length }}</span>
+                  <div class="viewer-tags-actions">
+                    <span>{{ media.tags.length }}</span>
+                    @if (isImage && !editingMetadata) {
+                      <button mat-stroked-button type="button" aria-label="Edit tags and character" (click)="beginEditMetadata()">
+                        <mat-icon>edit</mat-icon>
+                        <span>Edit</span>
+                      </button>
+                    }
+                  </div>
                 </div>
 
-                @if (media.tags.length > 0) {
+                @if (editingMetadata) {
+                  <app-media-tag-editor
+                    [characterName]="media.character_name ?? null"
+                    [tags]="media.tags"
+                    [disabled]="savingMetadata"
+                    (draftChange)="updateMetadataDraft($event)"
+                  />
+                  <div class="viewer-edit-actions">
+                    <button mat-button type="button" [disabled]="savingMetadata" (click)="cancelEditMetadata()">Cancel</button>
+                    <button mat-flat-button color="primary" type="button" [disabled]="savingMetadata" (click)="saveMetadata()">
+                      Save
+                    </button>
+                  </div>
+                } @else if (media.tags.length > 0) {
                   <mat-chip-set class="viewer-tags" role="list" aria-label="Media tags">
                     @for (tag of media.tags; track tag) {
-                      <mat-chip role="listitem">{{ tag }}</mat-chip>
+                      <mat-chip role="listitem">{{ formatDisplayValue(tag) }}</mat-chip>
                     }
                   </mat-chip-set>
                 } @else {
