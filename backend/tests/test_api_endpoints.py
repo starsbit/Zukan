@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timedelta, timezone
 
+from backend.app.config import settings
 from backend.app.services.auth import verify_password
 from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, png_bytes, webm_bytes
 
@@ -35,8 +36,8 @@ def test_upload_config_exposes_current_limits(api):
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["max_batch_size"] == 300
-    assert payload["max_upload_size_mb"] == 50
+    assert payload["max_batch_size"] == settings.max_batch_size
+    assert payload["max_upload_size_mb"] == settings.max_upload_size_mb
 
 
 def test_register_hashes_password_in_database(api):

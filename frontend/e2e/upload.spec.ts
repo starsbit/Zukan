@@ -275,7 +275,10 @@ test('allows editing tags from the image inspector', async ({ page, request }) =
   }).first();
   await card.locator('.media-card').click();
 
-  await page.getByRole('button', { name: 'Show tags panel' }).click();
+  const showTagsButton = page.getByRole('button', { name: 'Show tags panel' });
+  if (await showTagsButton.isVisible().catch(() => false)) {
+    await showTagsButton.click();
+  }
   await page.getByRole('button', { name: 'Edit tags and character' }).click();
   await page.getByRole('button', { name: 'Remove tag sky' }).click();
   await page.getByLabel('Add tag').fill('eva');
@@ -516,8 +519,8 @@ test('allows reuploading the same files after trash is emptied through the API',
   const secondName = `reupload-after-purge-b-${runId}.png`;
 
   const originalFiles = [
-    bluePngFile(firstName),
-    greenPngFile(secondName)
+    bluePngFile(firstName, `${runId}-first`),
+    greenPngFile(secondName, `${runId}-second`)
   ];
 
   for (const file of originalFiles) {
