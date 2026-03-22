@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     tagging_retry_backoff_seconds: float = 0.25
 
     max_upload_size_mb: int = 50
-    max_batch_size: int = 100
+    max_batch_size: int = 300
     thumbnail_size: int = 512
 
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"

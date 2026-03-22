@@ -74,6 +74,49 @@ describe('MediaService', () => {
     await expect(refreshPromise).resolves.toMatchObject({ total: 0, items: [] });
   });
 
+  it('loads and appends the next page of media items', async () => {
+    service['stateSubject'].next({
+      ...service.snapshot,
+      pageQuery: { page: 1, page_size: 2, tags: 'sky' },
+      page: {
+        total: 4,
+        page: 1,
+        page_size: 2,
+        items: [createMedia('media-1'), createMedia('media-2')]
+      },
+      request: { loading: false, loaded: true, error: null }
+    });
+
+    const nextPagePromise = firstValueFrom(service.loadNextPage());
+    const nextRequest = httpTesting.expectOne('http://api.example.test/media?page=2&page_size=2&tags=sky');
+    nextRequest.flush({
+      total: 4,
+      page: 2,
+      page_size: 2,
+      items: [createMedia('media-2'), createMedia('media-3'), createMedia('media-4')]
+    });
+
+    await expect(nextPagePromise).resolves.toMatchObject({ page: 2 });
+    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-1', 'media-2', 'media-3', 'media-4']);
+  });
+
+  it('does not load next page when all media has already been loaded', async () => {
+    service['stateSubject'].next({
+      ...service.snapshot,
+      pageQuery: { page: 1, page_size: 2 },
+      page: {
+        total: 2,
+        page: 1,
+        page_size: 2,
+        items: [createMedia('media-1'), createMedia('media-2')]
+      },
+      request: { loading: false, loaded: true, error: null }
+    });
+
+    await expect(firstValueFrom(service.loadNextPage())).resolves.toBeNull();
+    httpTesting.expectNone((request) => request.urlWithParams.includes('/media?page=2'));
+  });
+
   it('updates cached detail and current page items after a media mutation', async () => {
     service['stateSubject'].next({
       ...service.snapshot,

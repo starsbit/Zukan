@@ -98,6 +98,7 @@ describe('AlbumDetailPageComponent', () => {
     loading$: BehaviorSubject<boolean>;
     error$: BehaviorSubject<unknown | null>;
     loadPage: ReturnType<typeof vi.fn>;
+    loadNextPage: ReturnType<typeof vi.fn>;
   };
   let dialog: { open: ReturnType<typeof vi.fn> };
   let snackBar: { open: ReturnType<typeof vi.fn> };
@@ -135,7 +136,8 @@ describe('AlbumDetailPageComponent', () => {
       items$: new BehaviorSubject([createMediaRead()]),
       loading$: new BehaviorSubject(false),
       error$: new BehaviorSubject<unknown | null>(null),
-      loadPage: vi.fn().mockReturnValue(of(albumMedia))
+      loadPage: vi.fn().mockReturnValue(of(albumMedia)),
+      loadNextPage: vi.fn().mockReturnValue(of(null))
     };
     dialog = {
       open: vi.fn().mockReturnValue({ afterClosed: () => of(undefined) })
@@ -310,5 +312,24 @@ describe('AlbumDetailPageComponent', () => {
     component.onDocumentKeydown(new KeyboardEvent('keydown', { key: 'Escape' }));
 
     expect(navigateSpy).not.toHaveBeenCalled();
+  });
+
+  it('loads next page when scrolling near the end of the document', () => {
+    Object.defineProperty(document.documentElement, 'scrollHeight', {
+      configurable: true,
+      value: 2200
+    });
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 900
+    });
+    Object.defineProperty(window, 'scrollY', {
+      configurable: true,
+      value: 700
+    });
+
+    component.onWindowScroll();
+
+    expect(mediaService.loadNextPage).toHaveBeenCalledTimes(1);
   });
 });

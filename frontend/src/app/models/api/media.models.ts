@@ -85,6 +85,11 @@ export interface BatchUploadResponse {
   results: UploadResult[];
 }
 
+export interface UploadConfig {
+  max_batch_size: number;
+  max_upload_size_mb: number;
+}
+
 export interface MediaListResponse {
   total: number;
   page: number;

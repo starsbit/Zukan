@@ -109,6 +109,7 @@ describe('GalleryPageComponent', () => {
     error$: BehaviorSubject<unknown | null>;
     mutationPending$: BehaviorSubject<boolean>;
     loadPage: ReturnType<typeof vi.fn>;
+    loadNextPage: ReturnType<typeof vi.fn>;
     batchUpdateMedia: ReturnType<typeof vi.fn>;
     restoreMediaBatch: ReturnType<typeof vi.fn>;
     restoreMedia: ReturnType<typeof vi.fn>;
@@ -139,6 +140,7 @@ describe('GalleryPageComponent', () => {
       error$: new BehaviorSubject<unknown | null>(null),
       mutationPending$: new BehaviorSubject(false),
       loadPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
+      loadNextPage: vi.fn().mockReturnValue(of(null)),
       batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMediaBatch: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMedia: vi.fn().mockReturnValue(of(createMediaRead())),
@@ -628,6 +630,20 @@ describe('GalleryPageComponent', () => {
 
     mediaUploadService.refreshRequested$.next();
     expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads next media page when the gallery scroll nears the bottom', () => {
+    (component as unknown as { galleryScroller: { nativeElement: HTMLElement } }).galleryScroller = {
+      nativeElement: {
+        scrollHeight: 2400,
+        scrollTop: 1700,
+        clientHeight: 200
+      } as HTMLElement
+    };
+
+    component.onGalleryScroll();
+
+    expect(mediaService.loadNextPage).toHaveBeenCalledTimes(1);
   });
 
   it('renders trash-specific copy when the trash route is active', () => {

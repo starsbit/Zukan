@@ -317,3 +317,8 @@ class BatchUploadResponse(BaseModel):
     duplicates: int
     errors: int
     results: list[UploadResult]
+
+
+class UploadConfigResponse(BaseModel):
+    max_batch_size: int
+    max_upload_size_mb: int

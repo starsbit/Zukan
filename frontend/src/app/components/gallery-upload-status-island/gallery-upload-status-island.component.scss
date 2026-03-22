@@ -40,6 +40,16 @@ mat-card {
   color: var(--mat-sys-on-surface-variant);
 }
 
+.status-chip {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  font: inherit;
+  color: inherit;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 65%, transparent);
+  cursor: pointer;
+}
+
 .status-error {
   margin: 0.9rem 0 0;
   color: var(--mat-sys-error);

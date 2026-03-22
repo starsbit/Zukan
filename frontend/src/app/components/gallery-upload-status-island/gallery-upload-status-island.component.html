@@ -8,7 +8,7 @@
               <mat-icon>{{ session.phase === 'completed' ? 'check' : session.phase === 'failed' ? 'error' : 'cloud_upload' }}</mat-icon>
             </div>
             <mat-card-title>{{ session.totalFiles }} file{{ session.totalFiles === 1 ? '' : 's' }}</mat-card-title>
-            <mat-card-subtitle>{{ session.phase | titlecase }}</mat-card-subtitle>
+            <mat-card-subtitle>{{ phaseLabel(session.phase) }}</mat-card-subtitle>
           </mat-card-header>
 
           <mat-card-content>
@@ -33,8 +33,28 @@
 
             <div class="status-meta">
               <span>{{ session.accepted }} accepted</span>
-              <span>{{ session.duplicates }} duplicates</span>
-              <span>{{ session.errors }} errors</span>
+              @if (duplicateCount(session) > 0) {
+                <button
+                  class="status-chip"
+                  type="button"
+                  (click)="openDuplicateDialog(session)"
+                >
+                  {{ duplicateCount(session) }} duplicates
+                </button>
+              } @else {
+                <span>{{ session.duplicates }} duplicates</span>
+              }
+              @if (issueCount(session) > 0) {
+                <button
+                  class="status-chip"
+                  type="button"
+                  (click)="openIssueDialog(session)"
+                >
+                  {{ issueCount(session) }} errors
+                </button>
+              } @else {
+                <span>{{ session.errors }} errors</span>
+              }
             </div>
 
             @if (session.errorMessage) {

@@ -1,4 +1,4 @@
-import { APIRequestContext, expect, test } from '@playwright/test';
+import { APIRequestContext, Response, expect, test } from '@playwright/test';
 
 import { createSession, seedLocalAuth } from './helpers/auth';
 import {
@@ -35,6 +35,39 @@ async function waitForListedMedia(
   }
 
   throw new Error(`Timed out waiting for ${originalFilename} to appear in ${query}`);
+}
+
+async function uploadAndResolveMediaId(
+  request: APIRequestContext,
+  accessToken: string,
+  file: ReturnType<typeof bluePngFile>
+): Promise<string> {
+  const response = await request.post(`${API_BASE_URL}/media`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    },
+    multipart: {
+      files: file
+    }
+  });
+  await expect(response).toBeOK();
+
+  const payload = await response.json() as {
+    results: Array<{ id: string | null; status: string }>;
+  };
+  const acceptedId = payload.results.find((item) => item.status === 'accepted' && item.id)?.id;
+  if (acceptedId) {
+    return acceptedId;
+  }
+
+  const listed = await waitForListedMedia(
+    request,
+    accessToken,
+    file.name,
+    'page=1&page_size=200&nsfw=include',
+    10_000
+  );
+  return listed.id;
 }
 
 test('uploads an image through the UI, renders it in the gallery, and applies tags in the backend', async ({ page, request }) => {
@@ -220,18 +253,14 @@ test('queues multiple flagged uploads sequentially and supports skip all', async
 test('allows editing tags from the image inspector', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const fileName = `viewer-edit-blue-${runId}.png`;
 
-  const upload = await request.post(`${API_BASE_URL}/media`, {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`
-    },
-    multipart: {
-      files: bluePngFile('viewer-edit-blue.png')
-    }
-  });
-  await expect(upload).toBeOK();
-  const payload = await upload.json();
-  const mediaId = payload.results[0]?.id as string;
+  const mediaId = await uploadAndResolveMediaId(
+    request,
+    session.accessToken,
+    bluePngFile(fileName)
+  );
 
   await waitForMedia(
     request,
@@ -242,7 +271,7 @@ test('allows editing tags from the image inspector', async ({ page, request }) =
 
   await page.goto('/gallery');
   const card = page.locator('app-gallery-media-card').filter({
-    has: page.locator('img[alt="viewer-edit-blue.png"]')
+    has: page.locator(`img[alt="${fileName}"]`)
   }).first();
   await card.locator('.media-card').click();
 
@@ -320,27 +349,16 @@ test('moves media to trash, restores one item from trash, and empties the remain
   const firstName = `multi-select-a-${runId}.png`;
   const secondName = `multi-select-b-${runId}.png`;
 
-  const firstUpload = await request.post(`${API_BASE_URL}/media`, {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`
-    },
-    multipart: {
-      files: bluePngFile(firstName)
-    }
-  });
-  await expect(firstUpload).toBeOK();
-
-  const secondUpload = await request.post(`${API_BASE_URL}/media`, {
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`
-    },
-    multipart: {
-      files: bluePngFile(secondName, 'secondary')
-    }
-  });
-  await expect(secondUpload).toBeOK();
-  const firstMediaId = (await firstUpload.json()).results[0]?.id as string;
-  const secondMediaId = (await secondUpload.json()).results[0]?.id as string;
+  const firstMediaId = await uploadAndResolveMediaId(
+    request,
+    session.accessToken,
+    bluePngFile(firstName)
+  );
+  const secondMediaId = await uploadAndResolveMediaId(
+    request,
+    session.accessToken,
+    bluePngFile(secondName, 'secondary')
+  );
 
   await waitForMedia(request, session.accessToken, firstMediaId, (media) => media.tagging_status === 'done');
   await waitForMedia(request, session.accessToken, secondMediaId, (media) => media.tagging_status === 'done');
@@ -575,4 +593,88 @@ test('allows reuploading the same files after trash is emptied through the API',
 
   const itemsAfterReupload = await listMedia(request, session.accessToken);
   expect(itemsAfterReupload.filter((item) => item.original_filename === firstName || item.original_filename === secondName)).toHaveLength(2);
+});
+
+test('uploads a 250-image batch from the gallery without backend 400 errors', async ({ page, request }) => {
+  test.setTimeout(180_000);
+
+  const session = await createSession(request);
+  await seedLocalAuth(page, session);
+
+  const batchSize = 250;
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const files = Array.from({ length: batchSize }, (_, index) => (
+    bluePngFile(
+      `bulk-upload-${runId}-${String(index + 1).padStart(3, '0')}.png`,
+      index % 2 === 0 ? 'primary' : 'secondary'
+    )
+  ));
+
+  const baselineResponse = await request.get(`${API_BASE_URL}/media?page=1&page_size=1&nsfw=include`, {
+    headers: {
+      Authorization: `Bearer ${session.accessToken}`
+    }
+  });
+  await expect(baselineResponse).toBeOK();
+  const baselineTotal = (await baselineResponse.json() as { total: number }).total;
+
+  await page.goto('/gallery');
+  await page.getByRole('button', { name: 'Upload media' }).click();
+  const uploadResponseStatuses: number[] = [];
+  const uploadPayloadPromises: Array<Promise<{ accepted: number; duplicates: number; errors: number }>> = [];
+  const onResponse = (response: Response) => {
+    if (response.url() === `${API_BASE_URL}/media` && response.request().method() === 'POST') {
+      uploadResponseStatuses.push(response.status());
+      if (response.status() === 202) {
+        uploadPayloadPromises.push(response.json() as Promise<{ accepted: number; duplicates: number; errors: number }>);
+      }
+    }
+  };
+  page.on('response', onResponse);
+  await page.locator('input[type="file"]').setInputFiles(files);
+
+  const deadline = Date.now() + 120_000;
+  let observedTotal = 0;
+  let lastObservedTotal = -1;
+  let lastResponseCount = 0;
+  let unchangedRounds = 0;
+  while (Date.now() < deadline) {
+    const response = await request.get(`${API_BASE_URL}/media?page=1&page_size=1&nsfw=include`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`
+      }
+    });
+    await expect(response).toBeOK();
+
+    const payload = await response.json() as { total: number };
+    observedTotal = payload.total;
+
+    const responseCount = uploadResponseStatuses.length;
+    if (responseCount > 0 && observedTotal === lastObservedTotal && responseCount === lastResponseCount) {
+      unchangedRounds += 1;
+    } else {
+      unchangedRounds = 0;
+    }
+
+    lastObservedTotal = observedTotal;
+    lastResponseCount = responseCount;
+
+    if (unchangedRounds >= 6) {
+      break;
+    }
+
+    await page.waitForTimeout(500);
+  }
+
+  page.off('response', onResponse);
+  const uploadPayloads = await Promise.all(uploadPayloadPromises);
+  const acceptedTotal = uploadPayloads.reduce((sum, payload) => sum + payload.accepted, 0);
+  const duplicatesTotal = uploadPayloads.reduce((sum, payload) => sum + payload.duplicates, 0);
+  const errorsTotal = uploadPayloads.reduce((sum, payload) => sum + payload.errors, 0);
+
+  expect(uploadResponseStatuses.length).toBeGreaterThan(0);
+  expect(uploadResponseStatuses.every((status) => status === 202)).toBeTruthy();
+  expect(acceptedTotal + duplicatesTotal + errorsTotal).toBe(batchSize);
+  expect(errorsTotal).toBe(0);
+  expect(observedTotal - baselineTotal).toBe(acceptedTotal);
 });

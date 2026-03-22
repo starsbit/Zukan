@@ -22,6 +22,8 @@ import { SelectionToolbarComponent } from '../../components/selection-toolbar/se
 import { AlbumsService } from '../../services/albums.service';
 import { MediaService } from '../../services/media.service';
 
+const LOAD_MORE_THRESHOLD_PX = 640;
+
 @Component({
   selector: 'app-album-detail-page',
   imports: [
@@ -208,6 +210,17 @@ export class AlbumDetailPageComponent {
     }
 
     void this.router.navigate(['/albums']);
+  }
+
+  @HostListener('window:scroll')
+  onWindowScroll(): void {
+    const root = document.documentElement;
+    const remaining = root.scrollHeight - (window.scrollY + window.innerHeight);
+    if (remaining > LOAD_MORE_THRESHOLD_PX) {
+      return;
+    }
+
+    this.mediaService.loadNextPage().subscribe({ error: () => undefined });
   }
 
   toggleSelection(media: MediaRead): void {

@@ -3,6 +3,7 @@ import { Injectable, inject, signal } from '@angular/core';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import {
   BehaviorSubject,
+  Observable,
   Subject,
   Subscription,
   catchError,
@@ -17,6 +18,7 @@ import {
 } from 'rxjs';
 
 import { BatchUploadResponse, MediaDetail, Uuid } from '../models/api';
+import { ConfigClientService } from './web/config-client.service';
 import { MediaClientService } from './web/media-client.service';
 
 export type UploadPhase = 'idle' | 'selecting' | 'uploading' | 'processing' | 'completed' | 'completed_with_errors' | 'failed';
@@ -26,6 +28,7 @@ export interface UploadQueueItem {
   fileName: string;
   size: number;
   mimeType: string;
+  previewUrl: string | null;
   status: UploadQueueItemState;
   mediaId: Uuid | null;
   message: string | null;
@@ -54,6 +57,7 @@ export interface UploadReviewCandidate {
 
 const AUTO_MINIMIZE_DELAY_MS = 4000;
 const POLL_INTERVAL_MS = 2000;
+const DEFAULT_UPLOAD_BATCH_SIZE = 100;
 
 function createIdleSession(): UploadSession {
   return {
@@ -78,6 +82,7 @@ function createIdleSession(): UploadSession {
 })
 export class MediaUploadService {
   private readonly mediaClient = inject(MediaClientService);
+  private readonly configClient = inject(ConfigClientService);
   private readonly snackBar = inject(MatSnackBar);
 
   private readonly sessionSubject = new BehaviorSubject<UploadSession>(createIdleSession());
@@ -119,6 +124,7 @@ export class MediaUploadService {
 
     this.clearTimers();
     this.clearTaggingStatuses();
+    this.releasePreviewUrls(this.snapshot.items);
 
     this.sessionSubject.next({
       phase: 'uploading',
@@ -136,6 +142,7 @@ export class MediaUploadService {
         fileName: file.name,
         size: file.size,
         mimeType: file.type,
+        previewUrl: createPreviewUrl(file),
         status: 'uploading',
         mediaId: null,
         message: null
@@ -143,30 +150,12 @@ export class MediaUploadService {
       errorMessage: null
     });
 
-    this.mediaClient.uploadMediaWithProgress(uploadFiles).subscribe({
-      next: (event) => {
-        if (event.type === HttpEventType.Sent) {
-          this.patchSession({
-            phase: 'uploading',
-            uploadProgress: 0
-          });
-          return;
-        }
-
-        if (event.type === HttpEventType.UploadProgress) {
-          const total = event.total ?? 0;
-          const progress = total > 0 ? Math.round((event.loaded / total) * 100) : null;
-          this.patchSession({
-            phase: 'uploading',
-            uploadProgress: progress
-          });
-          return;
-        }
-
-        if (event.type === HttpEventType.Response && event.body) {
-          this.handleUploadResponse(event.body);
-        }
-      },
+    this.configClient.getUploadConfig().pipe(
+      map((config) => normalizeUploadBatchSize(config.max_batch_size)),
+      catchError(() => of(DEFAULT_UPLOAD_BATCH_SIZE)),
+      switchMap((batchSize) => this.uploadInBatches(uploadFiles, batchSize))
+    ).subscribe({
+      next: (response) => this.handleUploadResponse(response),
       error: () => {
         this.clearPolling();
         this.patchSession({
@@ -183,9 +172,85 @@ export class MediaUploadService {
     });
   }
 
+  private uploadInBatches(files: File[], batchSize: number): Observable<BatchUploadResponse> {
+    const normalizedBatchSize = normalizeUploadBatchSize(batchSize);
+    const batches = chunkFiles(files, normalizedBatchSize);
+    const totalBytes = files.reduce((sum, file) => sum + Math.max(0, file.size), 0);
+
+    return new Observable<BatchUploadResponse>((subscriber) => {
+      let currentSubscription: Subscription | null = null;
+      let batchIndex = 0;
+      let uploadedBytes = 0;
+      const aggregate: BatchUploadResponse = {
+        accepted: 0,
+        duplicates: 0,
+        errors: 0,
+        results: []
+      };
+
+      const runNextBatch = () => {
+        if (batchIndex >= batches.length) {
+          subscriber.next(aggregate);
+          subscriber.complete();
+          return;
+        }
+
+        const currentBatch = batches[batchIndex] ?? [];
+        const currentBatchBytes = currentBatch.reduce((sum, file) => sum + Math.max(0, file.size), 0);
+
+        currentSubscription = this.mediaClient.uploadMediaWithProgress(currentBatch).subscribe({
+          next: (event) => {
+            if (event.type === HttpEventType.Sent) {
+              this.patchSession({
+                phase: 'uploading',
+                uploadProgress: totalBytes > 0 ? Math.round((uploadedBytes / totalBytes) * 100) : 0
+              });
+              return;
+            }
+
+            if (event.type === HttpEventType.UploadProgress) {
+              const totalForEvent = event.total ?? currentBatchBytes;
+              const fraction = totalForEvent > 0 ? Math.min(1, event.loaded / totalForEvent) : 0;
+              const currentUploadedBytes = uploadedBytes + (fraction * currentBatchBytes);
+              this.patchSession({
+                phase: 'uploading',
+                uploadProgress: totalBytes > 0 ? Math.round((currentUploadedBytes / totalBytes) * 100) : null
+              });
+              return;
+            }
+
+            if (event.type === HttpEventType.Response && event.body) {
+              aggregate.accepted += event.body.accepted;
+              aggregate.duplicates += event.body.duplicates;
+              aggregate.errors += event.body.errors;
+              aggregate.results.push(...event.body.results);
+
+              uploadedBytes += currentBatchBytes;
+              this.patchSession({
+                phase: 'uploading',
+                uploadProgress: totalBytes > 0 ? Math.round((uploadedBytes / totalBytes) * 100) : 100
+              });
+
+              batchIndex += 1;
+              runNextBatch();
+            }
+          },
+          error: (error) => subscriber.error(error)
+        });
+      };
+
+      runNextBatch();
+
+      return () => {
+        currentSubscription?.unsubscribe();
+      };
+    });
+  }
+
   dismissSession(): void {
     this.clearTimers();
     this.clearTaggingStatuses();
+    this.releasePreviewUrls(this.snapshot.items);
     this.sessionSubject.next(createIdleSession());
   }
 
@@ -312,7 +377,7 @@ export class MediaUploadService {
         return {
           ...item,
           status: 'failed',
-          message: 'Processing failed'
+          message: media.tagging_error ?? 'Processing failed'
         };
       }
 
@@ -452,6 +517,18 @@ export class MediaUploadService {
   private clearTaggingStatuses(): void {
     this.taggingStatusByMediaId.set({});
   }
+
+  private releasePreviewUrls(items: UploadQueueItem[]): void {
+    if (typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') {
+      return;
+    }
+
+    for (const item of items) {
+      if (item.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
+    }
+  }
 }
 
 function hasProcessingFailed(media: MediaDetail): boolean {
@@ -486,4 +563,32 @@ function detailsToQueueStatus(media: MediaDetail): UploadQueueItemState {
   }
 
   return 'processing';
+}
+
+function normalizeUploadBatchSize(value: number): number {
+  if (!Number.isFinite(value) || value < 1) {
+    return DEFAULT_UPLOAD_BATCH_SIZE;
+  }
+
+  return Math.floor(value);
+}
+
+function chunkFiles(files: File[], chunkSize: number): File[][] {
+  const chunks: File[][] = [];
+  for (let index = 0; index < files.length; index += chunkSize) {
+    chunks.push(files.slice(index, index + chunkSize));
+  }
+  return chunks;
+}
+
+function createPreviewUrl(file: File): string | null {
+  if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    return null;
+  }
+
+  try {
+    return URL.createObjectURL(file);
+  } catch {
+    return null;
+  }
 }

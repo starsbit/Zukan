@@ -13,7 +13,7 @@ from sqlalchemy import select
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.models import Media, User
-from backend.app.routers import admin, albums, auth, media, tags, users
+from backend.app.routers import admin, albums, auth, config, media, tags, users
 from backend.app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
 from backend.app.services.media import mark_tagging_failure, set_tag_queue, tag_media
 from backend.app.services.tagger import tagger
@@ -93,6 +93,7 @@ api.add_middleware(
 
 api.include_router(auth.router)
 api.include_router(users.router)
+api.include_router(config.router)
 api.include_router(media.router)
 api.include_router(tags.router)
 api.include_router(albums.router)

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, tap, throwError } from 'rxjs';
+import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, of, tap, throwError } from 'rxjs';
 
 import {
   BatchUploadResponse,
@@ -117,6 +117,51 @@ export class MediaService {
 
   refreshPage(): Observable<MediaListResponse> {
     return this.loadPage(this.stateSubject.value.pageQuery ?? undefined);
+  }
+
+  loadNextPage(): Observable<MediaListResponse | null> {
+    const state = this.stateSubject.value;
+    const page = state.page;
+
+    if (!page || state.request.loading) {
+      return of(null);
+    }
+
+    if (page.items.length >= page.total) {
+      return of(null);
+    }
+
+    const nextPage = Math.max(1, page.page) + 1;
+    const nextQuery: ListMediaQuery = {
+      ...(state.pageQuery ?? {}),
+      page: nextPage,
+      page_size: (state.pageQuery?.page_size ?? page.page_size)
+    };
+
+    this.patchState({
+      request: beginRequest(state.request)
+    });
+
+    return this.mediaClient.listMedia(nextQuery).pipe(
+      tap((next) => {
+        const currentPage = this.stateSubject.value.page;
+        const mergedItems = mergePageItems(currentPage?.items ?? [], next.items);
+
+        this.patchState({
+          page: {
+            ...next,
+            items: mergedItems
+          },
+          request: completeRequest(this.stateSubject.value.request)
+        });
+      }),
+      catchError((error) => {
+        this.patchState({
+          request: failRequest(this.stateSubject.value.request, error)
+        });
+        return throwError(() => error);
+      })
+    );
   }
 
   selectMedia(mediaId: Uuid): Observable<MediaDetail> {
@@ -477,4 +522,23 @@ function shouldRemoveFromCurrentViewForDeletedState(
   }
 
   return false;
+}
+
+function mergePageItems(existing: MediaRead[], next: MediaRead[]): MediaRead[] {
+  if (existing.length === 0) {
+    return [...next];
+  }
+
+  const seenIds = new Set(existing.map((item) => item.id));
+  const merged = [...existing];
+
+  for (const item of next) {
+    if (seenIds.has(item.id)) {
+      continue;
+    }
+    merged.push(item);
+    seenIds.add(item.id);
+  }
+
+  return merged;
 }

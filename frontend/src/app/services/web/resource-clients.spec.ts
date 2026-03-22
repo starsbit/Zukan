@@ -1,12 +1,15 @@
+import '@angular/compiler';
 import { HttpEventType } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CLIENT_API_BASE_URL } from './api.config';
 import { AdminClientService } from './admin-client.service';
 import { AlbumsClientService } from './albums-client.service';
+import { ConfigClientService } from './config-client.service';
 import { MediaClientService } from './media-client.service';
 import { TagsClientService } from './tags-client.service';
 import { UsersClientService } from './users-client.service';
@@ -15,6 +18,7 @@ describe('resource clients', () => {
   let usersClient: UsersClientService;
   let tagsClient: TagsClientService;
   let mediaClient: MediaClientService;
+  let configClient: ConfigClientService;
   let albumsClient: AlbumsClientService;
   let adminClient: AdminClientService;
   let httpTesting: HttpTestingController;
@@ -25,6 +29,7 @@ describe('resource clients', () => {
         UsersClientService,
         TagsClientService,
         MediaClientService,
+        ConfigClientService,
         AlbumsClientService,
         AdminClientService,
         provideHttpClient(),
@@ -36,6 +41,7 @@ describe('resource clients', () => {
     usersClient = TestBed.inject(UsersClientService);
     tagsClient = TestBed.inject(TagsClientService);
     mediaClient = TestBed.inject(MediaClientService);
+    configClient = TestBed.inject(ConfigClientService);
     albumsClient = TestBed.inject(AlbumsClientService);
     adminClient = TestBed.inject(AdminClientService);
     httpTesting = TestBed.inject(HttpTestingController);
@@ -138,6 +144,15 @@ describe('resource clients', () => {
     await expect(listPromise).resolves.toMatchObject({ total: 0, items: [] });
     await expect(suggestionsPromise).resolves.toEqual([{ name: 'ayanami_rei', media_count: 2 }]);
     expect(progressEvents).toContain(HttpEventType.UploadProgress);
+  });
+
+  it('maps configuration requests to the config endpoint group', async () => {
+    const uploadConfigPromise = firstValueFrom(configClient.getUploadConfig());
+
+    const uploadConfigRequest = expectRequest('GET', 'http://api.example.test/config/upload');
+    uploadConfigRequest.flush({ max_batch_size: 300, max_upload_size_mb: 50 });
+
+    await expect(uploadConfigPromise).resolves.toEqual({ max_batch_size: 300, max_upload_size_mb: 50 });
   });
 
   it('maps the rest of the media client methods to the correct endpoints', async () => {

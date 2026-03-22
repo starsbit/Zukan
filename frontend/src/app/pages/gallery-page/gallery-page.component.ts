@@ -63,6 +63,7 @@ interface GalleryTimelineMetric {
 const TIMELINE_EDGE_PERCENT = 1.5;
 const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
 const REGROUP_ANIMATION_MS = 280;
+const LOAD_MORE_THRESHOLD_PX = 640;
 
 @Component({
   selector: 'app-gallery-page',
@@ -318,6 +319,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   onGalleryScroll(): void {
+    this.tryLoadNextPage();
     this.showTimelineCurrentLabelTemporarily();
     this.scheduleTimelineRefresh();
   }
@@ -660,6 +662,22 @@ export class GalleryPageComponent implements OnDestroy {
           // The template already renders the error state from MediaService.
         }
       });
+  }
+
+  private tryLoadNextPage(): void {
+    const scroller = this.galleryScroller?.nativeElement;
+    if (!scroller) {
+      return;
+    }
+
+    const remaining = scroller.scrollHeight - (scroller.scrollTop + scroller.clientHeight);
+    if (remaining > LOAD_MORE_THRESHOLD_PX) {
+      return;
+    }
+
+    this.mediaService.loadNextPage()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined });
   }
 
   private buildQueryForCurrentView() {

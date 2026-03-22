@@ -29,6 +29,16 @@ def test_login_preflight_allows_loopback_frontend_origin(api):
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:4200"
 
 
+def test_upload_config_exposes_current_limits(api):
+    user = api.register_and_login("upload-config-user")
+    response = api.client.get("/config/upload", headers=api.auth_headers(user["access_token"]))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["max_batch_size"] == 300
+    assert payload["max_upload_size_mb"] == 50
+
+
 def test_register_hashes_password_in_database(api):
     password = "plain-password123"
     response = api.client.post(

@@ -6,6 +6,7 @@ import { Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MediaUploadService } from './media-upload.service';
+import { ConfigClientService } from './web/config-client.service';
 import { MediaClientService } from './web/media-client.service';
 import { createMediaRead } from '../testing/media-test.utils';
 import type { UploadReviewCandidate } from './media-upload.service';
@@ -17,14 +18,20 @@ describe('MediaUploadService', () => {
     getMedia: ReturnType<typeof vi.fn>;
     listMedia: ReturnType<typeof vi.fn>;
   };
+  let configClient: {
+    getUploadConfig: ReturnType<typeof vi.fn>;
+  };
   let snackBar: { open: ReturnType<typeof vi.fn> };
   let reviewEvents: UploadReviewCandidate[][];
 
   beforeEach(() => {
     mediaClient = {
       uploadMediaWithProgress: vi.fn(),
-      getMedia: vi.fn(),
+      getMedia: vi.fn().mockReturnValue(of(createMediaRead({ id: 'fallback-media' }))),
       listMedia: vi.fn().mockReturnValue(of({ items: [], total: 0, page: 1, page_size: 200 }))
+    };
+    configClient = {
+      getUploadConfig: vi.fn().mockReturnValue(of({ max_batch_size: 100, max_upload_size_mb: 50 }))
     };
     snackBar = {
       open: vi.fn()
@@ -34,6 +41,7 @@ describe('MediaUploadService', () => {
       providers: [
         MediaUploadService,
         { provide: MediaClientService, useValue: mediaClient },
+        { provide: ConfigClientService, useValue: configClient },
         { provide: MatSnackBar, useValue: snackBar }
       ]
     });
@@ -302,5 +310,55 @@ describe('MediaUploadService', () => {
     expect(service.snapshot.phase).toBe('failed');
     expect(service.snapshot.active).toBe(false);
     expect(snackBar.open).toHaveBeenCalledWith('Upload failed. Please try again.', 'Close', { duration: 3000 });
+  });
+
+  it('splits uploads into sequential batches using backend-configured max batch size', () => {
+    const firstBatch$ = new Subject<any>();
+    const secondBatch$ = new Subject<any>();
+
+    configClient.getUploadConfig.mockReturnValue(of({ max_batch_size: 2, max_upload_size_mb: 50 }));
+    mediaClient.uploadMediaWithProgress
+      .mockReturnValueOnce(firstBatch$.asObservable())
+      .mockReturnValueOnce(secondBatch$.asObservable());
+
+    service.startUpload([
+      new File(['a'], 'a.png', { type: 'image/png' }),
+      new File(['b'], 'b.png', { type: 'image/png' }),
+      new File(['c'], 'c.png', { type: 'image/png' })
+    ]);
+
+    expect(mediaClient.uploadMediaWithProgress).toHaveBeenCalledTimes(1);
+    expect((mediaClient.uploadMediaWithProgress.mock.calls[0]?.[0] as File[]).map((file) => file.name)).toEqual(['a.png', 'b.png']);
+
+    firstBatch$.next({
+      type: HttpEventType.Response,
+      body: {
+        accepted: 2,
+        duplicates: 0,
+        errors: 0,
+        results: [
+          { id: 'media-1', original_filename: 'a.png', status: 'accepted' },
+          { id: 'media-2', original_filename: 'b.png', status: 'accepted' }
+        ]
+      }
+    });
+
+    expect(mediaClient.uploadMediaWithProgress).toHaveBeenCalledTimes(2);
+    expect((mediaClient.uploadMediaWithProgress.mock.calls[1]?.[0] as File[]).map((file) => file.name)).toEqual(['c.png']);
+
+    secondBatch$.next({
+      type: HttpEventType.Response,
+      body: {
+        accepted: 1,
+        duplicates: 0,
+        errors: 0,
+        results: [
+          { id: 'media-3', original_filename: 'c.png', status: 'accepted' }
+        ]
+      }
+    });
+
+    expect(service.snapshot.accepted).toBe(3);
+    expect(service.snapshot.items.map((item) => item.status)).toEqual(['processing', 'processing', 'processing']);
   });
 });
