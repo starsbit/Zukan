@@ -4,8 +4,6 @@
 }
 
 .search-form {
-  display: grid;
-  gap: 0.6rem;
   width: 100%;
 }
 
@@ -14,60 +12,99 @@
   --mat-form-field-outlined-container-shape: 1rem;
 }
 
+:host ::ng-deep .search-field .mat-mdc-form-field-flex {
+  align-items: flex-start;
+}
+
+:host ::ng-deep .search-field .mat-mdc-form-field-infix {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  width: auto;
+  min-width: 0;
+  row-gap: 0.35rem;
+}
+
 .search-chip-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.35rem;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-right: 0.45rem;
+}
+
+.search-input {
+  display: block;
+  flex: 1 1 12rem;
+  width: auto;
+  min-width: 10rem;
 }
 
 .search-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 75%, transparent);
+  max-width: 100%;
+  min-height: 2rem;
+  gap: 0.35rem;
+  padding: 0.32rem 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 80%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
   color: var(--mat-sys-on-surface);
   font: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1;
   cursor: pointer;
+  box-shadow: none;
   transition:
     border-color 160ms ease,
     background-color 160ms ease,
     transform 160ms ease;
 }
 
+.search-chip-selected,
 .search-chip:hover {
   border-color: color-mix(in srgb, var(--mat-sys-primary) 36%, var(--mat-sys-outline-variant));
   background: color-mix(in srgb, var(--mat-sys-primary-container) 20%, var(--mat-sys-surface-container-high));
+}
+
+.search-chip:hover {
   transform: translateY(-1px);
 }
 
-.search-chip-kind {
-  padding: 0.2rem 0.45rem;
+.search-chip-kind-icon {
+  width: 0.78rem;
+  height: 0.78rem;
+  padding: 0.18rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--mat-sys-primary) 16%, transparent);
   color: var(--mat-sys-primary);
-  font-size: 0.73rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.42rem;
+  line-height: 0.78rem;
+  flex: 0 0 auto;
 }
 
-.search-chip-character .search-chip-kind {
+.search-chip-character .search-chip-kind-icon {
   background: color-mix(in srgb, var(--mat-sys-tertiary) 18%, transparent);
   color: var(--mat-sys-tertiary);
 }
 
 .search-chip-label {
-  font-size: 0.9rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
-.search-chip mat-icon {
-  width: 1rem;
-  height: 1rem;
-  font-size: 1rem;
+.search-chip-remove-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  font-size: 0.8rem;
+  flex: 0 0 auto;
   color: var(--mat-sys-on-surface-variant);
 }
 

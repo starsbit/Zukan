@@ -1,5 +1,5 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, inject } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Input, OnChanges, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatAutocompleteModule } from '@angular/material/autocomplete';
@@ -37,6 +37,7 @@ export class GallerySearchBarComponent implements OnChanges {
   private readonly tagsService = inject(TagsService);
   private readonly characterSuggestionsService = inject(CharacterSuggestionsService);
 
+  @ViewChild('searchInput') private searchInput?: ElementRef<HTMLInputElement>;
   @Input() searchText = '';
   @Input() activeFilterCount = 0;
   @Output() readonly searchSubmitted = new EventEmitter<string>();
@@ -48,7 +49,9 @@ export class GallerySearchBarComponent implements OnChanges {
   committedSuggestions: GallerySearchSuggestion[] = [];
   tagSuggestions: GallerySearchSuggestion[] = [];
   characterSuggestions: GallerySearchSuggestion[] = [];
+  selectedCommittedSuggestionIndex: number | null = null;
   private draftTextValue = '';
+  private committedSuggestionTokens = new Set<string>();
 
   constructor() {
     this.queryControl.valueChanges.pipe(
@@ -89,18 +92,22 @@ export class GallerySearchBarComponent implements OnChanges {
       }),
       takeUntilDestroyed()
     ).subscribe(({ tags, characters }) => {
-      this.tagSuggestions = tags.map((tag) => ({
-        kind: 'tag',
-        label: formatDisplayValue(tag.name),
-        token: `tag:${tag.name}`,
-        secondary: formatDisplayValue(tag.category_name)
-      }));
-      this.characterSuggestions = characters.map((character) => ({
-        kind: 'character',
-        label: formatDisplayValue(character.name),
-        token: `character:${normalizeCharacterSearchValue(character.name)}`,
-        secondary: `${character.media_count} match${character.media_count === 1 ? '' : 'es'}`
-      }));
+      this.tagSuggestions = tags
+        .map((tag) => ({
+          kind: 'tag' as const,
+          label: formatDisplayValue(tag.name),
+          token: `tag:${tag.name}`,
+          secondary: formatDisplayValue(tag.category_name)
+        }))
+        .filter((suggestion) => !this.committedSuggestionTokens.has(suggestion.token));
+      this.characterSuggestions = characters
+        .map((character) => ({
+          kind: 'character' as const,
+          label: formatDisplayValue(character.name),
+          token: `character:${normalizeCharacterSearchValue(character.name)}`,
+          secondary: `${character.media_count} match${character.media_count === 1 ? '' : 'es'}`
+        }))
+        .filter((suggestion) => !this.committedSuggestionTokens.has(suggestion.token));
       this.cdr.markForCheck();
     });
   }
@@ -124,6 +131,7 @@ export class GallerySearchBarComponent implements OnChanges {
     this.syncFromSearchText(submittedQuery);
     this.cdr.markForCheck();
     this.searchSubmitted.emit(submittedQuery.trim());
+    this.refocusInput();
   }
 
   displaySuggestion(value: string | GallerySearchSuggestion | null): string {
@@ -135,21 +143,65 @@ export class GallerySearchBarComponent implements OnChanges {
     this.syncFromSearchText(nextValue);
     this.cdr.markForCheck();
     this.searchSubmitted.emit(nextValue.trim());
+    this.refocusInput();
   }
 
   removeCommittedSuggestion(index: number): void {
-    const nextSuggestions = this.committedSuggestions.filter((_, currentIndex) => currentIndex !== index);
-    const nextValue = this.composeSearchText(this.draftTextValue, nextSuggestions);
+    this.removeCommittedSuggestionAtIndex(index);
+  }
 
-    this.committedSuggestions = nextSuggestions;
-    this.draftTextValue = this.extractDraftText(nextValue);
-    this.queryControl.setValue(this.draftTextValue, { emitEvent: false });
+  handleQueryKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Escape') {
+      if (!this.hasSearchValue) {
+        return;
+      }
+
+      event.preventDefault();
+      this.clearAll();
+      this.refocusInput();
+      return;
+    }
+
+    if (event.key !== 'Backspace') {
+      if (this.selectedCommittedSuggestionIndex !== null) {
+        this.selectedCommittedSuggestionIndex = null;
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    if (this.draftTextValue.trim().length > 0 || this.committedSuggestions.length === 0) {
+      if (this.selectedCommittedSuggestionIndex !== null) {
+        this.selectedCommittedSuggestionIndex = null;
+        this.cdr.markForCheck();
+      }
+      return;
+    }
+
+    event.preventDefault();
+
+    if (this.selectedCommittedSuggestionIndex === null) {
+      this.selectedCommittedSuggestionIndex = this.committedSuggestions.length - 1;
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.removeCommittedSuggestionAtIndex(this.selectedCommittedSuggestionIndex);
+  }
+
+  selectCommittedSuggestion(index: number): void {
+    this.selectedCommittedSuggestionIndex = index;
     this.cdr.markForCheck();
-    this.searchSubmitted.emit(nextValue.trim());
+  }
+
+  isCommittedSuggestionSelected(index: number): boolean {
+    return this.selectedCommittedSuggestionIndex === index;
   }
 
   clearAll(): void {
     this.committedSuggestions = [];
+    this.selectedCommittedSuggestionIndex = null;
+    this.committedSuggestionTokens.clear();
     this.draftTextValue = '';
     this.queryControl.setValue('', { emitEvent: false });
     this.tagSuggestions = [];
@@ -169,6 +221,8 @@ export class GallerySearchBarComponent implements OnChanges {
   private syncFromSearchText(searchText: string): void {
     const { committedSuggestions, draftText } = this.decomposeSearchText(searchText);
     this.committedSuggestions = committedSuggestions;
+    this.selectedCommittedSuggestionIndex = null;
+    this.committedSuggestionTokens = new Set(committedSuggestions.map((suggestion) => suggestion.token));
     this.draftTextValue = draftText;
     this.queryControl.setValue(draftText, { emitEvent: false });
   }
@@ -234,5 +288,26 @@ export class GallerySearchBarComponent implements OnChanges {
 
   private extractDraftText(searchText: string): string {
     return this.decomposeSearchText(searchText).draftText;
+  }
+
+  private removeCommittedSuggestionAtIndex(index: number): void {
+    const nextSuggestions = this.committedSuggestions.filter((_, currentIndex) => currentIndex !== index);
+    const nextValue = this.composeSearchText(this.draftTextValue, nextSuggestions);
+
+    this.committedSuggestions = nextSuggestions;
+    this.selectedCommittedSuggestionIndex = nextSuggestions.length > 0
+      ? Math.min(index, nextSuggestions.length - 1)
+      : null;
+    this.committedSuggestionTokens = new Set(nextSuggestions.map((suggestion) => suggestion.token));
+    this.draftTextValue = this.extractDraftText(nextValue);
+    this.queryControl.setValue(this.draftTextValue, { emitEvent: false });
+    this.cdr.markForCheck();
+    this.searchSubmitted.emit(nextValue.trim());
+  }
+
+  private refocusInput(): void {
+    queueMicrotask(() => {
+      this.searchInput?.nativeElement.focus();
+    });
   }
 }

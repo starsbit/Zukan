@@ -1,10 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { GallerySearchBarComponent } from './gallery-search-bar.component';
 import { CharacterSuggestionsService } from '../../../services/character-suggestions.service';
 import { TagsService } from '../../../services/tags.service';
-import { GallerySearchSuggestion } from '../gallery-search.models';
 
 describe('GallerySearchBarComponent', () => {
   let fixture: ComponentFixture<GallerySearchBarComponent>;
@@ -224,6 +224,46 @@ describe('GallerySearchBarComponent', () => {
     expect(component.characterSuggestions[0]?.secondary).toBe('1 match');
   });
 
+  it('filters out committed tag suggestions that are already entered', async () => {
+    vi.useFakeTimers();
+    fixture.componentRef.setInput('searchText', 'tag:fox');
+    tagsService.search.mockReturnValue(of([
+      { id: 1, name: 'fox', category: 1, category_name: 'species', media_count: 2 },
+      { id: 2, name: 'forest', category: 0, category_name: 'general', media_count: 4 }
+    ]));
+
+    component.queryControl.setValue('fo');
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.detectChanges();
+
+    expect(component.tagSuggestions).toEqual([{
+      kind: 'tag',
+      label: 'Forest',
+      token: 'tag:forest',
+      secondary: 'General'
+    }]);
+  });
+
+  it('filters out committed character suggestions that are already entered', async () => {
+    vi.useFakeTimers();
+    fixture.componentRef.setInput('searchText', 'character:ayanami_rei');
+    characterSuggestionsService.search.mockReturnValue(of([
+      { name: 'Ayanami Rei', media_count: 2 },
+      { name: 'Asuka Langley', media_count: 1 }
+    ]));
+
+    component.queryControl.setValue('a');
+    await vi.advanceTimersByTimeAsync(200);
+    fixture.detectChanges();
+
+    expect(component.characterSuggestions).toEqual([{
+      kind: 'character',
+      label: 'Asuka Langley',
+      token: 'character:asuka_langley',
+      secondary: '1 match'
+    }]);
+  });
+
   it('normalizes character suggestion tokens that contain spaces and punctuation', async () => {
     vi.useFakeTimers();
     characterSuggestionsService.search.mockReturnValue(of([{ name: 'Sumika (Muvluv)', media_count: 1 }]));
@@ -257,5 +297,144 @@ describe('GallerySearchBarComponent', () => {
         secondary: ''
       }
     ]);
+  });
+
+  it('renders committed chips inside the search field', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes');
+    fixture.detectChanges();
+
+    const searchField = fixture.nativeElement.querySelector('mat-form-field.search-field') as HTMLElement;
+    const chipRow = searchField.querySelector('.search-chip-row') as HTMLElement | null;
+
+    expect(chipRow).toBeTruthy();
+    expect(searchField.textContent).toContain('Blue Eyes');
+  });
+
+  it('keeps committed chips inline with the text input instead of forcing the input onto a new row', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes tag:white_background');
+    fixture.detectChanges();
+
+    const chipRow = fixture.nativeElement.querySelector('.search-chip-row') as HTMLElement;
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    const chipRowStyles = getComputedStyle(chipRow);
+    const inputStyles = getComputedStyle(input);
+
+    expect(chipRowStyles.display).toBe('flex');
+    expect(chipRowStyles.flexBasis).not.toBe('100%');
+    expect(inputStyles.width).not.toBe('100%');
+  });
+
+  it('renders compact chip sizing inside the search field', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes');
+    fixture.detectChanges();
+
+    const chip = fixture.nativeElement.querySelector('.search-chip') as HTMLElement;
+    const chipKindIcon = fixture.nativeElement.querySelector('.search-chip-kind-icon') as HTMLElement;
+    const chipLabel = fixture.nativeElement.querySelector('.search-chip-label') as HTMLElement;
+    const chipRemoveIcon = fixture.nativeElement.querySelector('.search-chip-remove-icon') as HTMLElement;
+    const chipStyles = getComputedStyle(chip);
+    const chipKindStyles = getComputedStyle(chipKindIcon);
+    const chipLabelStyles = getComputedStyle(chipLabel);
+    const chipIconStyles = getComputedStyle(chipRemoveIcon);
+
+    expect(chipStyles.minHeight).toBe('2rem');
+    expect(chipKindStyles.fontSize).toBe('0.42rem');
+    expect(chipLabelStyles.fontSize).toBe('0.82rem');
+    expect(chipIconStyles.fontSize).toBe('0.8rem');
+  });
+
+  it('shows a tiny kind icon inside each committed chip', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes character:ikari_shinji');
+    fixture.detectChanges();
+
+    const icons = Array.from(
+      fixture.nativeElement.querySelectorAll('.search-chip-kind-icon') as NodeListOf<HTMLElement>
+    ).map((icon) => icon.textContent?.trim());
+
+    expect(icons).toEqual(['sell', 'person']);
+  });
+
+  it('selects the last committed chip on backspace before removing it on the next backspace', () => {
+    const submittedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes tag:white_background');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(component.selectedCommittedSuggestionIndex).toBe(1);
+    expect(component.committedSuggestions).toHaveLength(2);
+    expect(fixture.nativeElement.querySelectorAll('.search-chip-selected')).toHaveLength(1);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(component.committedSuggestions).toEqual([
+      { kind: 'tag', label: 'Blue Eyes', token: 'tag:blue_eyes', secondary: '' }
+    ]);
+    expect(component.selectedCommittedSuggestionIndex).toBe(0);
+    expect(submittedSpy).toHaveBeenLastCalledWith('tag:blue_eyes');
+  });
+
+  it('clears the selected chip state when the user types again', () => {
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(component.selectedCommittedSuggestionIndex).toBe(0);
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    fixture.detectChanges();
+
+    expect(component.selectedCommittedSuggestionIndex).toBeNull();
+    expect(fixture.nativeElement.querySelector('.search-chip-selected')).toBeNull();
+  });
+
+  it('clears the current search when escape is pressed in the input', () => {
+    const clearedSpy = vi.fn();
+    component.cleared.subscribe(clearedSpy);
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes character:ikari_shinji');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+
+    expect(component.committedSuggestions).toEqual([]);
+    expect(component.queryControl.getRawValue()).toBe('');
+    expect(clearedSpy).toHaveBeenCalledOnce();
+  });
+
+  it('re-focuses the input after submitting a committed search so repeated enter does not clear it', async () => {
+    const submittedSpy = vi.fn();
+    const clearedSpy = vi.fn();
+    component.searchSubmitted.subscribe(submittedSpy);
+    component.cleared.subscribe(clearedSpy);
+    fixture.componentRef.setInput('searchText', 'tag:blue_eyes character:ikari_shinji');
+    fixture.detectChanges();
+
+    const input = fixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
+    input.focus();
+
+    component.submit();
+    await Promise.resolve();
+    component.submit();
+    await Promise.resolve();
+    fixture.detectChanges();
+
+    expect(document.activeElement).toBe(input);
+    expect(component.committedSuggestions).toEqual([
+      { kind: 'tag', label: 'Blue Eyes', token: 'tag:blue_eyes', secondary: '' },
+      { kind: 'character', label: 'Ikari Shinji', token: 'character:ikari_shinji', secondary: '' }
+    ]);
+    expect(clearedSpy).not.toHaveBeenCalled();
+    expect(submittedSpy).toHaveBeenNthCalledWith(1, 'tag:blue_eyes character:ikari_shinji');
+    expect(submittedSpy).toHaveBeenNthCalledWith(2, 'tag:blue_eyes character:ikari_shinji');
   });
 });

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import atexit
 import asyncio
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -16,6 +18,8 @@ from PIL import Image as PILImage
 from backend.app.services.tagger import TagPrediction, TaggingResult
 import backend.app.main as main_module
 import backend.app.services.tagger as tagger_module
+
+_managed_db_container: str | None = None
 
 
 async def fake_predict(image_path: str) -> TaggingResult:
@@ -62,20 +66,20 @@ async def fake_predict(image_path: str) -> TaggingResult:
 
 
 def main() -> None:
-    db_container = None
-    if os.environ.get("E2E_MANAGE_DB") == "1":
-        db_container = start_postgres_container()
-
-    tagger_module.tagger.load = lambda: None
-    tagger_module.tagger.predict = fake_predict
-
-    @main_module.api.get("/healthz", include_in_schema=False)
-    async def healthcheck():
-        return {"status": "ok"}
-
-    import uvicorn
-
     try:
+        if os.environ.get("E2E_MANAGE_DB") == "1":
+            register_db_cleanup_handlers()
+            start_postgres_container()
+
+        tagger_module.tagger.load = lambda: None
+        tagger_module.tagger.predict = fake_predict
+
+        @main_module.api.get("/healthz", include_in_schema=False)
+        async def healthcheck():
+            return {"status": "ok"}
+
+        import uvicorn
+
         uvicorn.run(
             main_module.api,
             host=os.environ.get("HOST", "127.0.0.1"),
@@ -83,11 +87,24 @@ def main() -> None:
             log_level=os.environ.get("LOG_LEVEL", "info"),
         )
     finally:
-        if db_container:
-            stop_postgres_container(db_container)
+        cleanup_managed_db_container()
+
+
+def register_db_cleanup_handlers() -> None:
+    atexit.register(cleanup_managed_db_container)
+
+    for signum in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(signum, _handle_exit_signal)
+
+
+def _handle_exit_signal(signum: int, _frame) -> None:
+    cleanup_managed_db_container()
+    raise SystemExit(128 + signum)
 
 
 def start_postgres_container() -> str:
+    global _managed_db_container
+
     container_name = os.environ.get("E2E_DB_CONTAINER", "zukan-e2e-db")
     port = os.environ.get("E2E_DB_PORT", "55432")
 
@@ -121,6 +138,7 @@ def start_postgres_container() -> str:
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
+    _managed_db_container = container_name
 
     deadline = time.time() + 30
     while time.time() < deadline:
@@ -134,7 +152,7 @@ def start_postgres_container() -> str:
             return container_name
         time.sleep(1)
 
-    stop_postgres_container(container_name)
+    cleanup_managed_db_container()
     raise RuntimeError(f"Timed out waiting for PostgreSQL container {container_name}")
 
 
@@ -145,6 +163,16 @@ def stop_postgres_container(container_name: str) -> None:
         stderr=subprocess.DEVNULL,
         check=False,
     )
+
+
+def cleanup_managed_db_container() -> None:
+    global _managed_db_container
+
+    if _managed_db_container is None:
+        return
+
+    stop_postgres_container(_managed_db_container)
+    _managed_db_container = None
 
 
 if __name__ == "__main__":
