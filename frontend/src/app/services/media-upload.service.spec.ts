@@ -71,12 +71,11 @@ describe('MediaUploadService', () => {
       mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
       mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({
         id: 'media-1',
-        character_name: 'ayanami_rei',
         tagging_status: 'processing',
         thumbnail_status: 'done',
         poster_status: 'done'
       })));
-      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({ id: 'media-1', character_name: 'ayanami_rei' })));
+      mediaClient.getMedia.mockReturnValueOnce(of(createMediaRead({ id: 'media-1' })));
       service.refreshRequested$.subscribe(refreshSpy);
 
       service.startUpload([new File(['a'], 'a.png', { type: 'image/png' })]);
@@ -186,7 +185,6 @@ describe('MediaUploadService', () => {
         .mockReturnValueOnce(of(createMediaRead({
           id: 'media-1',
           tagging_status: 'done',
-          character_name: null,
           thumbnail_status: 'done'
         })))
         .mockReturnValueOnce(of(createMediaRead({
@@ -198,7 +196,7 @@ describe('MediaUploadService', () => {
         .mockReturnValueOnce(of(createMediaRead({
           id: 'media-3',
           tagging_status: 'done',
-          character_name: 'ayanami_rei',
+          entities: [{ id: 'entity-1', entity_type: 'character', entity_id: null, name: 'ayanami_rei', role: 'primary', source: 'tagger', confidence: 0.95 }],
           thumbnail_status: 'done'
         })));
 

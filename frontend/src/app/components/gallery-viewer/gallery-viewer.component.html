@@ -113,11 +113,13 @@
                       <dd>{{ media.metadata.duration_seconds }}s</dd>
                     </div>
                   }
-                  @if (media.character_name) {
-                    <div>
-                      <dt>Character</dt>
-                      <dd>{{ formatDisplayValue(media.character_name) }}</dd>
-                    </div>
+                  @for (entity of $any(media).entities; track entity.id) {
+                    @if (entity.entity_type === 'character') {
+                      <div>
+                        <dt>Character</dt>
+                        <dd>{{ formatDisplayValue(entity.name) }}</dd>
+                      </div>
+                    }
                   }
                   @if (media.tagging_error) {
                     <div>
@@ -144,7 +146,7 @@
 
                 @if (editingMetadata) {
                   <app-media-tag-editor
-                    [characterName]="media.character_name ?? null"
+                    [characterName]="metadataDraft.characterName"
                     [tags]="media.tags"
                     [disabled]="savingMetadata"
                     (draftChange)="updateMetadataDraft($event)"

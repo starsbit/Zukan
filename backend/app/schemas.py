@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
 from backend.app.models.media import MediaType, TaggingStatus, ProcessingStatus
+from backend.app.models.relations import MediaEntityType
 
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 
@@ -86,8 +87,28 @@ class TagRead(BaseModel):
 
 
 class CharacterSuggestion(BaseModel):
-    name: str = Field(description="Persisted character name suggestion.")
+    name: str = Field(description="Character entity name suggestion.")
     media_count: int = Field(description="Number of visible media items using this character name.")
+
+
+class EntityRead(BaseModel):
+    id: uuid.UUID
+    entity_type: MediaEntityType = Field(description="Entity type.")
+    entity_id: uuid.UUID | None = Field(default=None, description="Optional pointer to a canonical entity.")
+    name: str = Field(description="Display name of the entity.")
+    role: str = Field(description="Role of the entity in the media (e.g. 'primary').")
+    source: str = Field(description="Source of the entity annotation (e.g. 'tagger', 'manual').")
+    confidence: float | None = Field(default=None, description="Confidence score if derived from a model.")
+
+    model_config = {"from_attributes": True}
+
+
+class EntityCreate(BaseModel):
+    entity_type: MediaEntityType = Field(description="Entity type.")
+    entity_id: uuid.UUID | None = Field(default=None, description="Optional pointer to a canonical entity.")
+    name: str = Field(min_length=1, max_length=512, description="Display name of the entity.")
+    role: str = Field(default="primary", min_length=1, max_length=64, description="Role of the entity.")
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0, description="Optional confidence score.")
 
 
 class TagWithConfidence(BaseModel):
@@ -166,11 +187,6 @@ class MediaRead(BaseModel):
     deleted_at: datetime | None
     # annotations
     tags: list[str] = Field(description="All tags currently stored for the media.")
-    character_name: str | None = Field(
-        default=None,
-        description="Highest-confidence character tag selected by the active tagging backend, if any.",
-    )
-    source_url: str | None = Field(default=None, description="Optional source URL for the media.")
     ocr_text_override: str | None = Field(
         default=None,
         description="User-supplied transcript or OCR correction. Takes precedence over system-derived ocr_text.",
@@ -195,6 +211,10 @@ class MediaDetail(MediaRead):
         default_factory=list,
         description="External references linking this media to known providers.",
     )
+    entities: list[EntityRead] = Field(
+        default_factory=list,
+        description="Entity annotations for this media (e.g. identified characters).",
+    )
 
 
 class MediaListState(str, Enum):
@@ -207,13 +227,9 @@ class MediaUpdate(BaseModel):
         default=None,
         description="Complete replacement tag list. Omit to keep tags unchanged.",
     )
-    character_name: str | None = Field(
+    entities: list[EntityCreate] | None = Field(
         default=None,
-        description="Manual character name override. Send null or an empty string to clear it.",
-    )
-    source_url: str | None = Field(
-        default=None,
-        description="Source URL for linking to an external anime or character entity.",
+        description="Complete replacement entity list. Omit to keep unchanged. Send empty list to clear.",
     )
     metadata: MediaMetadataUpdate | None = None
     deleted: bool | None = Field(

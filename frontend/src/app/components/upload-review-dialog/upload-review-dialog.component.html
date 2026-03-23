@@ -28,7 +28,7 @@
     <section class="upload-review-form">
       <p class="upload-review-filename">{{ data.media.original_filename || data.media.filename }}</p>
       <app-media-tag-editor
-        [characterName]="data.media.character_name ?? null"
+        [characterName]="draft.characterName"
         [tags]="data.media.tags"
         (draftChange)="updateDraft($event)"
       />

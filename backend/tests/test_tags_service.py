@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import select
 from backend.app.models.auth import User
 from backend.app.models.media import Media
+from backend.app.models.relations import MediaEntity
 from backend.app.models.tags import Tag
 from backend.app.services import media as media_service
 from backend.app.services import tags as tag_service
@@ -126,10 +127,26 @@ def test_clear_character_name_and_trash_media_by_character_name_are_owner_scoped
         assert clear_result.matched_media == 1
         assert clear_result.updated_media == 1
 
-        owner_row = await session.get(Media, uuid.UUID(str(owner_media["id"])))
-        other_row = await session.get(Media, uuid.UUID(str(other_media["id"])))
-        assert owner_row.character_name is None
-        assert other_row.character_name == "ayanami_rei"
+        owner_entities = (
+            await session.execute(
+                select(MediaEntity).where(
+                    MediaEntity.media_id == uuid.UUID(str(owner_media["id"])),
+                    MediaEntity.entity_type == "character",
+                    MediaEntity.name == "ayanami_rei",
+                )
+            )
+        ).scalars().all()
+        other_entities = (
+            await session.execute(
+                select(MediaEntity).where(
+                    MediaEntity.media_id == uuid.UUID(str(other_media["id"])),
+                    MediaEntity.entity_type == "character",
+                    MediaEntity.name == "ayanami_rei",
+                )
+            )
+        ).scalars().all()
+        assert owner_entities == []
+        assert len(other_entities) == 1
 
         trash_result = await tag_service.trash_media_by_character_name(session, owner_user, character_name="ayanami_rei")
         assert trash_result.matched_media == 0

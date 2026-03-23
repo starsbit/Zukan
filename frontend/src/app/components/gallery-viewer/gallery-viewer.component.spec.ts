@@ -288,7 +288,7 @@ describe('GalleryViewerComponent', () => {
   it('shows the tags sidebar by default for images and toggles it from the toolbar', async () => {
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
 
-    await renderViewer(createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], character_name: 'ikari_shinji' }));
+    await renderViewer(createMediaRead({ tags: ['fox', 'blue_eyes', 'smile'], entities: [{ id: 'e-1', entity_type: 'character', entity_id: null, name: 'ikari_shinji', role: 'primary', source: 'tagger', confidence: null }] }));
 
     expect(component.tagsPanelOpen).toBe(true);
     expect(fixture.nativeElement.querySelector('.viewer-shell-sidebar-open')).toBeTruthy();
@@ -323,8 +323,8 @@ describe('GalleryViewerComponent', () => {
   });
 
   it('lets the user edit tags and character details for images', async () => {
-    const media = createMediaRead({ tags: ['fox'], character_name: null });
-    const updatedMedia = createMediaRead({ tags: ['fox', 'hero'], character_name: 'ikari_shinji' });
+    const media = createMediaRead({ tags: ['fox'] });
+    const updatedMedia = createMediaRead({ tags: ['fox', 'hero'] });
     mediaClient.getMediaFile.mockReturnValue(of(new Blob(['image'])));
     mediaService.updateMedia.mockReturnValue(of(updatedMedia));
 
@@ -351,11 +351,10 @@ describe('GalleryViewerComponent', () => {
     (fixture.nativeElement.querySelector('.viewer-edit-actions button:last-child') as HTMLButtonElement).click();
 
     expect(mediaService.updateMedia).toHaveBeenCalledWith(media.id, {
-      character_name: 'ikari_shinji',
+      entities: [{ entity_type: 'character', name: 'ikari_shinji' }],
       tags: ['fox', 'hero']
     });
     expect(component.editingMetadata).toBe(false);
-    expect(component.media?.character_name).toBe('ikari_shinji');
     expect(component.media?.tags).toEqual(['fox', 'hero']);
   });
 

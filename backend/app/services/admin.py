@@ -1,29 +1,24 @@
 import uuid
 
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors import AppError, user_not_found
 from backend.app.models.auth import User
-from backend.app.models.media import Media
+from backend.app.repositories.auth import UserRepository
+from backend.app.repositories.media import MediaRepository
 from backend.app.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
 from backend.app.services.media import get_tag_queue, purge_media_record
 
 
 async def get_admin_stats(db: AsyncSession) -> AdminStatsResponse:
-    total_users = (await db.execute(select(func.count(User.id)))).scalar_one()
-    total_media = (await db.execute(select(func.count(Media.id)).where(Media.deleted_at.is_(None)))).scalar_one()
-    storage_bytes = (await db.execute(select(func.coalesce(func.sum(Media.file_size), 0)).where(Media.deleted_at.is_(None)))).scalar_one()
-    pending = (await db.execute(select(func.count(Media.id)).where(Media.tagging_status == "pending", Media.deleted_at.is_(None)))).scalar_one()
-    failed = (await db.execute(select(func.count(Media.id)).where(Media.tagging_status == "failed", Media.deleted_at.is_(None)))).scalar_one()
-    trashed = (await db.execute(select(func.count(Media.id)).where(Media.deleted_at.is_not(None)))).scalar_one()
+    media = MediaRepository(db)
     return AdminStatsResponse(
-        total_users=total_users,
-        total_media=total_media,
-        total_storage_bytes=storage_bytes,
-        pending_tagging=pending,
-        failed_tagging=failed,
-        trashed_media=trashed,
+        total_users=await UserRepository(db).count(),
+        total_media=await media.count_active(),
+        total_storage_bytes=await media.sum_file_size(),
+        pending_tagging=await media.count_by_tagging_status("pending"),
+        failed_tagging=await media.count_by_tagging_status("failed"),
+        trashed_media=await media.count_trashed(),
     )
 
 
@@ -36,22 +31,24 @@ async def list_users(
 ) -> UserListResponse:
     sort_col = User.username if sort_by == "username" else User.created_at
     order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
-    total = (await db.execute(select(func.count(User.id)))).scalar_one()
-    users = (await db.execute(select(User).order_by(order_expr).offset((page - 1) * page_size).limit(page_size))).scalars().all()
+    users_repo = UserRepository(db)
+    total = await users_repo.count()
+    users = await users_repo.list(offset=(page - 1) * page_size, limit=page_size, order_expr=order_expr)
     return UserListResponse(total=total, page=page, page_size=page_size, items=users)
 
 
 async def get_user_detail(db: AsyncSession, user_id: uuid.UUID) -> AdminUserDetail:
-    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    target = await UserRepository(db).get_by_id(user_id)
     if target is None:
         raise AppError(status_code=404, code=user_not_found, detail="User not found")
-    media_count = (await db.execute(select(func.count(Media.id)).where(Media.uploader_id == user_id))).scalar_one()
-    storage_bytes = (await db.execute(select(func.coalesce(func.sum(Media.file_size), 0)).where(Media.uploader_id == user_id))).scalar_one()
+    media = MediaRepository(db)
+    media_count = await media.count_by_uploader(user_id)
+    storage_bytes = await media.sum_file_size(uploader_id=user_id)
     return AdminUserDetail.model_validate({**UserRead.model_validate(target).model_dump(), "media_count": media_count, "storage_used_bytes": storage_bytes})
 
 
 async def update_user(db: AsyncSession, user_id: uuid.UUID, body: AdminUserUpdate):
-    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    target = await UserRepository(db).get_by_id(user_id)
     if target is None:
         raise AppError(status_code=404, code=user_not_found, detail="User not found")
     if "is_admin" in body.model_fields_set:
@@ -70,19 +67,18 @@ async def delete_user(
     user_id: uuid.UUID,
     delete_media: bool = False,
 ) -> None:
-    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    target = await UserRepository(db).get_by_id(user_id)
     if target is None:
         raise AppError(status_code=404, code=user_not_found, detail="User not found")
     if delete_media:
-        media_items = (await db.execute(select(Media).where(Media.uploader_id == user_id))).scalars().all()
-        for media in media_items:
+        for media in await MediaRepository(db).get_by_uploader(user_id):
             await purge_media_record(media, db)
     await db.delete(target)
     await db.commit()
 
 
 async def retag_all_media(db: AsyncSession, user_id: uuid.UUID) -> int:
-    media_items = (await db.execute(select(Media).where(Media.uploader_id == user_id, Media.deleted_at.is_(None)))).scalars().all()
+    media_items = await MediaRepository(db).get_active_by_uploader(user_id)
     for media in media_items:
         media.tagging_status = "pending"
     await db.commit()

@@ -1,11 +1,16 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database import Base
+
+
+class MediaEntityType(str, Enum):
+    character = "character"
 
 
 class MediaEntity(Base):
@@ -41,8 +46,6 @@ class MediaExternalRef(Base):
         nullable=False,
         index=True,
     )
-    # provider is the external system (e.g. 'pixiv', 'danbooru', 'anilist')
-    # source_url on Media is the primary human-readable link; external_refs are provider-keyed machine references
     provider: Mapped[str] = mapped_column(String(64), nullable=False)
     external_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
     url: Mapped[str | None] = mapped_column(String(2048), nullable=True)

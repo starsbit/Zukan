@@ -106,7 +106,7 @@ def test_media_patch_response_includes_version(api):
     patch = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"character_name": "rei"},
+        json={"ocr_text_override": "rei"},
     )
     assert patch.status_code == 200
     assert patch.json()["version"] == before_version + 1
@@ -152,7 +152,7 @@ def test_media_patch_version_conflict_returns_409(api):
     first = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"character_name": "rei", "version": current_version},
+        json={"ocr_text_override": "rei", "version": current_version},
     )
     assert first.status_code == 200
     assert first.json()["version"] == current_version + 1
@@ -160,7 +160,7 @@ def test_media_patch_version_conflict_returns_409(api):
     conflict = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"character_name": "asuka", "version": current_version},
+        json={"ocr_text_override": "asuka", "version": current_version},
     )
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "version_conflict"
@@ -204,7 +204,7 @@ def test_media_patch_without_version_always_succeeds(api):
         patch = api.client.patch(
             f"/media/{blue['id']}",
             headers=headers,
-            json={"character_name": "rei"},
+            json={"ocr_text_override": "rei"},
         )
         assert patch.status_code == 200
 
@@ -222,7 +222,7 @@ def test_media_service_version_conflict_raises_http_exception(api):
         db_user = await session.get(User, user_id)
         with pytest.raises(HTTPException) as exc:
             await media_service.update_media_metadata(
-                session, blue_id, db_user, MediaUpdate(character_name="rei", version=999)
+                session, blue_id, db_user, MediaUpdate(ocr_text_override="rei", version=999)
             )
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "version_conflict"

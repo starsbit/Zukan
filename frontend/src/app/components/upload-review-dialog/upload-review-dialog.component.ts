@@ -50,7 +50,7 @@ export class UploadReviewDialogComponent implements OnInit, OnDestroy {
   loading = true;
   failed = false;
   draft: MediaTagEditorDraft = {
-    characterName: this.data.media.character_name ?? null,
+    characterName: this.data.media.entities?.find(e => e.entity_type === 'character')?.name ?? null,
     tags: [...this.data.media.tags]
   };
 

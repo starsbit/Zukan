@@ -42,7 +42,6 @@ class TagPrediction:
 @dataclass(frozen=True)
 class TaggingResult:
     predictions: list[TagPrediction]
-    character_name: str | None
     is_nsfw: bool
 
 
@@ -125,11 +124,7 @@ class WDTagger:
 
         rating_is_nsfw = best_rating is not None and best_rating.name in NSFW_RATING_TAGS
         is_nsfw = rating_is_nsfw or tag_names_mark_nsfw([prediction.name for prediction in predictions])
-        return TaggingResult(
-            predictions=predictions,
-            character_name=derive_character_name(predictions),
-            is_nsfw=is_nsfw,
-        )
+        return TaggingResult(predictions=predictions, is_nsfw=is_nsfw)
 
     async def predict(self, image_path: str) -> TaggingResult:
         loop = asyncio.get_running_loop()

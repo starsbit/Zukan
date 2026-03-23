@@ -1,6 +1,6 @@
-import { MediaRead } from '../models/api';
+import { MediaDetail } from '../models/api';
 
-export function createMediaRead(overrides: Partial<MediaRead> = {}): MediaRead {
+export function createMediaRead(overrides: Partial<MediaDetail> = {}): MediaDetail {
   return {
     id: 'media-1',
     uploader_id: 'user-1',
@@ -17,7 +17,6 @@ export function createMediaRead(overrides: Partial<MediaRead> = {}): MediaRead {
       captured_at: '2024-01-01T12:00:00.000Z'
     },
     tags: ['fox'],
-    character_name: null,
     is_nsfw: false,
     tagging_status: 'done',
     tagging_error: null,

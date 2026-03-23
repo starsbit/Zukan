@@ -5,12 +5,12 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from jose import JWTError, jwt
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import settings
 from backend.app.errors import AppError, duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token, version_conflict
 from backend.app.models.auth import RefreshToken, User
+from backend.app.repositories.auth import RefreshTokenRepository, UserRepository
 from backend.app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
 ALGORITHM = "HS256"
@@ -47,6 +47,18 @@ def _refresh_token_expiry_days(remember_me: bool) -> int:
     return settings.refresh_token_expire_days
 
 
+async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
+    return await UserRepository(db).get_by_id(user_id)
+
+
+async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
+    return await UserRepository(db).get_by_username(username)
+
+
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    return await UserRepository(db).get_by_email(email)
+
+
 async def create_refresh_token(db: AsyncSession, user_id: uuid.UUID, *, remember_me: bool = False) -> str:
     raw = secrets.token_hex(32)
     record = RefreshToken(
@@ -62,8 +74,7 @@ async def create_refresh_token(db: AsyncSession, user_id: uuid.UUID, *, remember
 
 async def rotate_refresh_token(db: AsyncSession, raw_token: str) -> tuple[str, uuid.UUID] | None:
     token_hash = _hash_token(raw_token)
-    result = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
-    record = result.scalar_one_or_none()
+    record = await RefreshTokenRepository(db).get_by_hash(token_hash)
 
     if record is None or record.revoked or record.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
         return None
@@ -83,8 +94,7 @@ async def rotate_refresh_token(db: AsyncSession, raw_token: str) -> tuple[str, u
 
 async def revoke_refresh_token(db: AsyncSession, raw_token: str) -> bool:
     token_hash = _hash_token(raw_token)
-    result = await db.execute(select(RefreshToken).where(RefreshToken.token_hash == token_hash))
-    record = result.scalar_one_or_none()
+    record = await RefreshTokenRepository(db).get_by_hash(token_hash)
     if record is None:
         return False
     record.revoked = True
@@ -92,23 +102,8 @@ async def revoke_refresh_token(db: AsyncSession, raw_token: str) -> bool:
     return True
 
 
-async def get_user_by_id(db: AsyncSession, user_id: uuid.UUID) -> User | None:
-    result = await db.execute(select(User).where(User.id == user_id))
-    return result.scalar_one_or_none()
-
-
-async def get_user_by_username(db: AsyncSession, username: str) -> User | None:
-    result = await db.execute(select(User).where(User.username == username))
-    return result.scalar_one_or_none()
-
-
-async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
-    result = await db.execute(select(User).where(User.email == email))
-    return result.scalar_one_or_none()
-
-
 async def authenticate_basic_user(db: AsyncSession, username: str, password: str) -> User | None:
-    user = await get_user_by_username(db, username)
+    user = await UserRepository(db).get_by_username(username)
     valid_user = user is not None and secrets.compare_digest(user.username, username)
     valid_password = user is not None and verify_password(password, user.hashed_password)
     if not valid_user or not valid_password:
@@ -117,9 +112,10 @@ async def authenticate_basic_user(db: AsyncSession, username: str, password: str
 
 
 async def register_user(db: AsyncSession, body: UserRegister) -> User:
-    if await get_user_by_username(db, body.username):
+    users = UserRepository(db)
+    if await users.get_by_username(body.username):
         raise AppError(status_code=400, code=duplicate_username, detail="Username already taken")
-    if await get_user_by_email(db, body.email):
+    if await users.get_by_email(body.email):
         raise AppError(status_code=400, code=duplicate_email, detail="Email already registered")
 
     user = User(
@@ -135,7 +131,7 @@ async def register_user(db: AsyncSession, body: UserRegister) -> User:
 
 
 async def login_user(db: AsyncSession, body: UserLogin) -> TokenResponse:
-    user = await get_user_by_username(db, body.username)
+    user = await UserRepository(db).get_by_username(body.username)
     if user is None or not verify_password(body.password, user.hashed_password):
         raise AppError(status_code=401, code=invalid_credentials, detail="Invalid credentials")
 

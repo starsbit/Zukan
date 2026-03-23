@@ -33,9 +33,6 @@ async def init_db():
 
         # Indexes
         await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_media_character_name_lower ON media (LOWER(character_name))")
-        )
-        await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media (deleted_at)")
         )
         await conn.execute(
@@ -60,9 +57,6 @@ async def init_db():
                 "ALTER TABLE users "
                 "ADD COLUMN IF NOT EXISTS tag_confidence_threshold FLOAT NOT NULL DEFAULT 0.35"
             )
-        )
-        await conn.execute(
-            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS source_url VARCHAR(2048)")
         )
         await conn.execute(
             text("ALTER TABLE media ADD COLUMN IF NOT EXISTS ocr_text TEXT")

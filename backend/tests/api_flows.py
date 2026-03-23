@@ -160,7 +160,6 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     })
     assert by_tag.status_code == 200
     assert by_tag.json()["total"] == 1
-    assert by_tag.json()["items"][0]["character_name"] == "ayanami_rei"
 
     by_metadata_group = api.client.get(
         "/media",
@@ -210,7 +209,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     detail = api.client.get(f"/media/{blue['id']}", headers=api.auth_headers(owner["access_token"]))
     assert detail.status_code == 200
     assert detail.json()["is_favorited"] is False
-    assert detail.json()["character_name"] == "ayanami_rei"
+    assert any(e["name"] == "ayanami_rei" and e["entity_type"] == "character" for e in detail.json()["entities"])
     assert [tag["name"] for tag in detail.json()["tag_details"]] == ["rating:general", "ayanami_rei", "sky", "blue"]
 
     image_file = api.client.get(f"/media/{blue['id']}/file", headers=api.auth_headers(owner["access_token"]))
@@ -277,10 +276,10 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     manual_edit = api.client.patch(
         f"/media/{blue['id']}",
         headers=api.auth_headers(owner["access_token"]),
-        json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
+        json={"tags": ["pilot", "rating:general"], "entities": [{"entity_type": "character", "name": "ikari_shinji"}]},
     )
     assert manual_edit.status_code == 200
-    assert manual_edit.json()["character_name"] == "ikari_shinji"
+    assert any(e["name"] == "ikari_shinji" and e["entity_type"] == "character" for e in manual_edit.json()["entities"])
     assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
 
     corrected = api.client.get(
@@ -301,7 +300,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
 
     corrected_detail = api.client.get(f"/media/{blue['id']}", headers=api.auth_headers(owner["access_token"]))
     assert corrected_detail.status_code == 200
-    assert corrected_detail.json()["character_name"] == "ikari_shinji"
+    assert any(e["name"] == "ikari_shinji" and e["entity_type"] == "character" for e in corrected_detail.json()["entities"])
     assert {tag["name"] for tag in corrected_detail.json()["tag_details"]} == {"pilot", "rating:general"}
 
     retag = api.client.post(f"/media/{blue['id']}/tagging-jobs", headers=api.auth_headers(owner["access_token"]))
@@ -560,7 +559,7 @@ def assert_media_complex_query_regression(api):
         headers=headers,
         json={
             "tags": ["pilot", "eva", "tokyo3", "rating:general"],
-            "character_name": "ikari_shinji",
+            "entities": [{"entity_type": "character", "name": "ikari_shinji"}],
         },
     )
     assert blue_update.status_code == 200
@@ -570,7 +569,7 @@ def assert_media_complex_query_regression(api):
         headers=headers,
         json={
             "tags": ["forest", "mecha", "support", "rating:general"],
-            "character_name": "soryu_asuka_langley",
+            "entities": [{"entity_type": "character", "name": "soryu_asuka_langley"}],
         },
     )
     assert green_update.status_code == 200
@@ -580,7 +579,7 @@ def assert_media_complex_query_regression(api):
         headers=headers,
         json={
             "tags": ["pilot", "eva", "moon", "rating:general"],
-            "character_name": "nagisa_kaworu",
+            "entities": [{"entity_type": "character", "name": "nagisa_kaworu"}],
         },
     )
     assert blue_two_update.status_code == 200

@@ -5,6 +5,25 @@ export type MediaType = 'image' | 'gif' | 'video';
 export type MediaListState = 'active' | 'trashed';
 export type TagFilterMode = 'and' | 'or';
 export type NsfwFilter = 'default' | 'only' | 'include';
+export type MediaEntityType = 'character';
+
+export interface EntityRead {
+  id: Uuid;
+  entity_type: MediaEntityType;
+  entity_id: Uuid | null;
+  name: string;
+  role: string;
+  source: string;
+  confidence: number | null;
+}
+
+export interface EntityCreateDto {
+  entity_type: MediaEntityType;
+  entity_id?: Uuid | null;
+  name: string;
+  role?: string;
+  confidence?: number | null;
+}
 
 export interface MediaMetadata {
   file_size: number | null;
@@ -41,7 +60,6 @@ export interface MediaRead {
   media_type?: MediaType;
   metadata: MediaMetadata;
   tags: string[];
-  character_name?: string | null;
   is_nsfw: boolean;
   tagging_status: string;
   tagging_error?: string | null;
@@ -58,11 +76,12 @@ export interface MediaRead {
 export interface MediaDetail extends MediaRead {
   tag_details?: TagWithConfidence[];
   external_refs?: ExternalRefRead[];
+  entities?: EntityRead[];
 }
 
 export interface MediaUpdateDto {
   tags?: string[] | null;
-  character_name?: string | null;
+  entities?: EntityCreateDto[] | null;
   metadata?: MediaMetadataUpdateDto | null;
   deleted?: boolean | null;
   favorited?: boolean | null;

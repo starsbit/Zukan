@@ -636,7 +636,7 @@ export class GalleryPageComponent implements OnDestroy {
         }
 
         this.mediaService.updateMedia(candidate.media.id, {
-          character_name: result.characterName ?? null,
+          entities: result.characterName ? [{ entity_type: 'character' as const, name: result.characterName }] : [],
           tags: result.tags ?? []
         })
           .pipe(takeUntilDestroyed(this.destroyRef))

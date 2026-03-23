@@ -61,9 +61,7 @@ async def upload(
     files: list[UploadFile],
     album_id: uuid.UUID | None = Form(default=None),
     tags: list[str] | None = Form(default=None),
-    source_url: str | None = Form(default=None),
     captured_at: datetime | None = Form(default=None),
-    character_name: str | None = Form(default=None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -73,9 +71,7 @@ async def upload(
         files,
         album_id=album_id,
         tags=tags,
-        source_url=source_url,
         captured_at_override=captured_at,
-        character_name=character_name,
     )
 
 

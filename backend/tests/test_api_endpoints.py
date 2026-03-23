@@ -154,7 +154,6 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
     sky_search = api.client.get("/media", headers=headers, params={"tag": "sky"})
     assert sky_search.status_code == 200
     assert [item["id"] for item in sky_search.json()["items"]] == [str(blue["id"])]
-    assert sky_search.json()["items"][0]["character_name"] == "ayanami_rei"
 
     character_search = api.client.get("/media", headers=headers, params={"character_name": "rei"})
     assert character_search.status_code == 200
@@ -179,11 +178,11 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
     manual_edit = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
+        json={"tags": ["pilot", "rating:general"], "entities": [{"entity_type": "character", "name": "ikari_shinji"}]},
     )
     assert manual_edit.status_code == 200
     assert set(manual_edit.json()["tags"]) == {"pilot", "rating:general"}
-    assert manual_edit.json()["character_name"] == "ikari_shinji"
+    assert any(e["name"] == "ikari_shinji" and e["entity_type"] == "character" for e in manual_edit.json()["entities"])
     assert manual_edit.json()["metadata"]["captured_at"]
 
     manual_timestamp = api.client.patch(
@@ -225,13 +224,13 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
     assert nsfw_search.status_code == 200
     assert [item["id"] for item in nsfw_search.json()["items"]] == [str(red["id"])]
 
-    clear_character_name = api.client.patch(
+    clear_entities = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"character_name": ""},
+        json={"entities": []},
     )
-    assert clear_character_name.status_code == 200
-    assert clear_character_name.json()["character_name"] is None
+    assert clear_entities.status_code == 200
+    assert clear_entities.json()["entities"] == []
 
     refreshed = api.client.post("/auth/refresh", json={"refresh_token": logged_in["refresh_token"]})
     assert refreshed.status_code == 200
@@ -476,7 +475,7 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     blue_image_detail = api.client.get(f"/media/{blue_image['id']}", headers=headers)
     assert blue_image_detail.status_code == 200
     assert blue_image_detail.json()["media_type"] == "image"
-    assert blue_image_detail.json()["character_name"] == "ayanami_rei"
+    assert any(e["name"] == "ayanami_rei" and e["entity_type"] == "character" for e in blue_image_detail.json()["entities"])
 
     video_only = api.client.get("/media", headers=headers, params={"media_type": "video", "nsfw": "include"})
     assert video_only.status_code == 200

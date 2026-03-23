@@ -305,10 +305,10 @@ describe('GalleryPageComponent', () => {
 
   it('opens upload review dialogs and saves the returned metadata updates', () => {
     const candidate = {
-      media: createMediaRead({ id: 'media-7', character_name: null }),
+      media: createMediaRead({ id: 'media-7' }),
       issue: 'missing_character'
     } satisfies UploadReviewCandidate;
-    const updated = createMediaRead({ id: 'media-7', character_name: 'ikari_shinji', tags: ['fox', 'hero'] });
+    const updated = createMediaRead({ id: 'media-7', tags: ['fox', 'hero'] });
     dialog.open.mockReturnValue({
       afterClosed: () => of({ action: 'save', characterName: 'ikari_shinji', tags: ['fox', 'hero'] })
     });
@@ -318,7 +318,7 @@ describe('GalleryPageComponent', () => {
 
     expect(dialog.open).toHaveBeenCalled();
     expect(mediaService.updateMedia).toHaveBeenCalledWith('media-7', {
-      character_name: 'ikari_shinji',
+      entities: [{ entity_type: 'character', name: 'ikari_shinji' }],
       tags: ['fox', 'hero']
     });
   });

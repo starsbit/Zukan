@@ -436,7 +436,7 @@ export class MediaUploadService {
         return [{ media, issue: 'tagging_failed' as const }];
       }
 
-      if (media.media_type === 'image' && media.tagging_status === 'done' && !media.character_name) {
+      if (media.media_type === 'image' && media.tagging_status === 'done' && !media.entities?.some(e => e.entity_type === 'character')) {
         return [{ media, issue: 'missing_character' as const }];
       }
 

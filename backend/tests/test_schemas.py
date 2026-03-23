@@ -19,7 +19,6 @@ def _base_media_data(**overrides):
             "captured_at": now,
         },
         tags=[],
-        character_name=None,
         is_nsfw=False,
         tagging_status="done",
         thumbnail_status="done",
@@ -56,11 +55,6 @@ def test_image_read_metadata_nested():
     m = MediaRead(**_base_media_data())
     assert m.metadata.captured_at
     assert m.metadata.mime_type == "image/jpeg"
-
-
-def test_image_read_character_name_nullable():
-    m = MediaRead(**_base_media_data(character_name="ayanami_rei"))
-    assert m.character_name == "ayanami_rei"
 
 
 def test_image_detail_inherits_deleted_at():

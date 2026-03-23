@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { MediaRead } from '../../models/api';
+import { MediaDetail, MediaRead } from '../../models/api';
 import { MediaService } from '../../services/media.service';
 import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
@@ -115,7 +115,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     }
 
     this.metadataDraft = {
-      characterName: this.media.character_name ?? null,
+      characterName: primaryCharacterName(this.media),
       tags: [...this.media.tags]
     };
     this.editingMetadata = true;
@@ -125,7 +125,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   cancelEditMetadata(): void {
     this.editingMetadata = false;
     this.metadataDraft = {
-      characterName: this.media?.character_name ?? null,
+      characterName: this.media ? primaryCharacterName(this.media) : null,
       tags: [...(this.media?.tags ?? [])]
     };
     this.cdr.markForCheck();
@@ -141,14 +141,17 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     }
 
     this.savingMetadata = true;
+    const entities = this.metadataDraft.characterName
+      ? [{ entity_type: 'character' as const, name: this.metadataDraft.characterName }]
+      : [];
     this.mediaService.updateMedia(this.media.id, {
-      character_name: this.metadataDraft.characterName,
+      entities,
       tags: this.metadataDraft.tags
     }).subscribe({
       next: (media) => {
         this.media = media;
         this.metadataDraft = {
-          characterName: media.character_name ?? null,
+          characterName: primaryCharacterName(media),
           tags: [...media.tags]
         };
         this.editingMetadata = false;
@@ -269,7 +272,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.savingMetadata = false;
     this.dragging = false;
     this.metadataDraft = {
-      characterName: this.media.character_name ?? null,
+      characterName: primaryCharacterName(this.media),
       tags: [...this.media.tags]
     };
     this.resetZoomState();
@@ -362,6 +365,10 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
     this.document.documentElement.style.overflow = this.previousHtmlOverflow;
     this.scrollLocked = false;
   }
+}
+
+function primaryCharacterName(media: MediaRead | MediaDetail): string | null {
+  return (media as MediaDetail).entities?.find(e => e.entity_type === 'character')?.name ?? null;
 }
 
 function clampNumber(value: number, min: number, max: number): number {

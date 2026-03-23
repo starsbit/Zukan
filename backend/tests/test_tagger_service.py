@@ -91,7 +91,6 @@ def test_predict_sync_filters_by_thresholds_and_marks_nsfw(tmp_path, monkeypatch
     result = wd._predict_sync(str(image_path))
 
     assert result.is_nsfw is True
-    assert result.character_name == "hero"
     assert [item.name for item in result.predictions] == ["hero", "forest", "rating:questionable"]
 
 
@@ -119,7 +118,6 @@ def test_predict_sync_keeps_multiple_character_predictions_above_threshold(tmp_p
     result = wd._predict_sync(str(image_path))
 
     assert result.is_nsfw is False
-    assert result.character_name == "heroine_a"
     assert [item.name for item in result.predictions] == ["heroine_a", "heroine_b", "landscape", "rating:general"]
 
 
@@ -182,7 +180,6 @@ def test_predict_uses_executor(monkeypatch):
         "_predict_sync",
         lambda path: TaggingResult(
             predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
-            character_name=None,
             is_nsfw=False,
         ),
     )
@@ -191,7 +188,6 @@ def test_predict_uses_executor(monkeypatch):
 
     assert result == TaggingResult(
         predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
-        character_name=None,
         is_nsfw=False,
     )
 

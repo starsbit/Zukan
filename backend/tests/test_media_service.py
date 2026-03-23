@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from backend.app.services import media as media_service
-from backend.app.schemas import MediaListState, MediaUpdate
+from backend.app.schemas import EntityCreate, MediaListState, MediaUpdate
 from backend.tests.api_test_support import jpeg_bytes, png_bytes
 from backend.app.models.media import Media
 from backend.app.models.auth import User
@@ -172,7 +172,6 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
 
         return TaggingResult(
             predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
-            character_name=None,
             is_nsfw=False,
         )
 
@@ -214,7 +213,6 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
                 TagPrediction(name="heroine_a", category=4, confidence=0.74),
                 TagPrediction(name="rating:general", category=9, confidence=0.99),
             ],
-            character_name="heroine_a",
             is_nsfw=False,
         )
 
@@ -237,7 +235,7 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
 
         media = await media_service._get_media_with_tags(session, media_id, deleted=None)
         assert {mt.tag.name for mt in media.media_tags} == {"rating:general", "sky"}
-        assert media.character_name is None
+        assert media.entities == []
 
     api.run_db(_exercise)
 
@@ -306,7 +304,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             page_size=20,
         )
         assert [item.id for item in listing.items] == [blue_id]
-        assert listing.items[0].character_name == "ayanami_rei"
 
         character_only = await media_service.list_media(
             session,
@@ -344,7 +341,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
             session,
             blue_id,
             db_user,
-            MediaUpdate(character_name="Sumika (Muvluv)"),
+            MediaUpdate(entities=[EntityCreate(entity_type="character", name="Sumika (Muvluv)")]),
         )
 
         created_album = api.client.post(
@@ -397,7 +394,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
 
         detail = await media_service.get_media_detail(session, blue_id, db_user)
         assert detail.id == blue_id
-        assert detail.character_name == "Sumika (Muvluv)"
+        assert any(e.name == "Sumika (Muvluv)" and e.entity_type == "character" for e in detail.entities)
         assert detail.tag_details[0].name == "rating:general"
 
         visible = await media_service.get_visible_media(session, blue_id, db_user)
@@ -517,7 +514,7 @@ def test_list_trash_auto_purges_items_older_than_thirty_days(api):
     api.run_db(_exercise)
 
 
-def test_update_media_metadata_replaces_tags_and_character_name(api):
+def test_update_media_metadata_replaces_tags_and_entities(api):
     user = api.register_and_login("image-service-manual-edit")
     uploaded = api.upload_media(user["access_token"], "manual-edit-blue.png", (0, 0, 255))
     api.wait_for_media_status(str(uploaded["id"]))
@@ -534,12 +531,12 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             db_user,
             MediaUpdate(
                 tags=["custom_tag", "rating:questionable"],
-                character_name="ikari_shinji",
+                entities=[EntityCreate(entity_type="character", name="ikari_shinji")],
                 metadata=MediaMetadataUpdate(captured_at=datetime(2020, 3, 21, 9, 30, tzinfo=timezone.utc)),
             ),
         )
         assert updated.tags == ["custom_tag", "rating:questionable"]
-        assert updated.character_name == "ikari_shinji"
+        assert any(e.name == "ikari_shinji" and e.entity_type == "character" for e in updated.entities)
         assert updated.metadata.captured_at == datetime(2020, 3, 21, 9, 30, tzinfo=timezone.utc)
         assert updated.is_nsfw is True
         assert {tag.name for tag in updated.tag_details} == {"custom_tag", "rating:questionable"}
@@ -580,9 +577,9 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
             session,
             uploaded_id,
             db_user,
-            MediaUpdate(character_name="", metadata=MediaMetadataUpdate(captured_at=None)),
+            MediaUpdate(entities=[], metadata=MediaMetadataUpdate(captured_at=None)),
         )
-        assert cleared.character_name is None
+        assert cleared.entities == []
         assert cleared.metadata.captured_at == cleared.created_at
 
     api.run_db(_exercise)
@@ -602,7 +599,6 @@ def test_manual_retag_and_purge_cleanup_remove_dangling_tag_rows(api, monkeypatc
                 TagPrediction(name="green", category=0, confidence=0.9),
                 TagPrediction(name="rating:general", category=9, confidence=0.99),
             ],
-            character_name=None,
             is_nsfw=False,
         )
 

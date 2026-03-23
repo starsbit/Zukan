@@ -54,7 +54,6 @@ class Media(Base):
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    character_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     # Analysis / processing state
     tagging_status: Mapped[TaggingStatus] = mapped_column(
@@ -70,7 +69,6 @@ class Media(Base):
         Enum(ProcessingStatus, name="processing_status_enum"), nullable=False, default=ProcessingStatus.PENDING
     )
     # User-curated annotations
-    source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_text_override: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Lifecycle

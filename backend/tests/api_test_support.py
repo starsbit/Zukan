@@ -276,7 +276,6 @@ def api():
                     TagPrediction(name="warm", category=0, confidence=0.88),
                     TagPrediction(name="rating:questionable", category=9, confidence=0.99),
                 ],
-                character_name=None,
                 is_nsfw=True,
             )
         if b > 200:
@@ -287,7 +286,6 @@ def api():
                     TagPrediction(name="blue", category=0, confidence=0.9),
                     TagPrediction(name="rating:general", category=9, confidence=0.99),
                 ],
-                character_name="ayanami_rei",
                 is_nsfw=False,
             )
         return TaggingResult(
@@ -296,7 +294,6 @@ def api():
                 TagPrediction(name="green", category=0, confidence=0.87),
                 TagPrediction(name="rating:general", category=9, confidence=0.99),
             ],
-            character_name=None,
             is_nsfw=False,
         )
 
