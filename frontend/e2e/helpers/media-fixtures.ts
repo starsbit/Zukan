@@ -34,10 +34,18 @@ function createPngFile(name: string, rgb: [number, number, number], variant: Var
   };
 }
 
+function perPixelNoise(seed: number, x: number, y: number): number {
+  const lo = seed >>> 0;
+  const hi = Math.floor(seed / 0x100000000) & 0x1fffff;
+  let v = (lo ^ Math.imul(hi, 1234567891) ^ Math.imul(x, 374761393) ^ Math.imul(y, 668265263)) >>> 0;
+  v = (Math.imul(v ^ (v >>> 13), 3266489909) ^ (v >>> 7)) >>> 0;
+  return v % 24;
+}
+
 function createPngBuffer(seedText: string, rgb: [number, number, number], variant: Variant): Buffer {
   const seed = hashSeed(`${seedText}:${variant}`);
   const width = 4 + (seed % 3);
-  const height = 4 + ((seed >> 3) % 3);
+  const height = 4 + (Math.floor(seed / 8) % 3);
   const rows: number[] = [];
 
   for (let y = 0; y < height; y += 1) {
@@ -49,7 +57,7 @@ function createPngBuffer(seedText: string, rgb: [number, number, number], varian
       }
 
       const bias = variant === 'secondary' ? 9 : 5;
-      const noise = (seed + (x * 17) + (y * 31)) % 24;
+      const noise = perPixelNoise(seed, x, y);
       rows.push(applyChannelNoise(rgb[0], noise, bias));
       rows.push(applyChannelNoise(rgb[1], noise, bias));
       rows.push(applyChannelNoise(rgb[2], noise, bias));
@@ -104,11 +112,17 @@ function buildCrcTable(): number[] {
 }
 
 function hashSeed(value: string): number {
-  let hash = 0;
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0;
+    const ch = value.charCodeAt(index);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
   }
-  return Math.abs(hash);
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
+  h1 = Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
+  h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
 function clamp(value: number): number {

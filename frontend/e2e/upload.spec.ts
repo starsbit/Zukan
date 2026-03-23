@@ -446,13 +446,16 @@ test('moves media to trash, restores one item from trash, and empties the remain
 test('trashes media by tag and character name through the management API, then restores and purges with existing trash flows', async ({ page, request }) => {
   const session = await createSession(request);
   await seedLocalAuth(page, session);
+  const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const blueName = `manage-trash-blue-${runId}.png`;
+  const greenName = `manage-trash-green-${runId}.png`;
 
   const blueUpload = await request.post(`${API_V1}/media`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: bluePngFile('manage-trash-blue.png')
+      files: bluePngFile(blueName)
     }
   });
   await expect(blueUpload).toBeOK();
@@ -462,13 +465,17 @@ test('trashes media by tag and character name through the management API, then r
       Authorization: `Bearer ${session.accessToken}`
     },
     multipart: {
-      files: greenPngFile('manage-trash-green.png')
+      files: greenPngFile(greenName)
     }
   });
   await expect(greenUpload).toBeOK();
 
-  const blueId = (await blueUpload.json()).results[0]?.id as string;
-  const greenId = (await greenUpload.json()).results[0]?.id as string;
+  const bluePayload = await blueUpload.json();
+  const greenPayload = await greenUpload.json();
+  const blueId = bluePayload.results[0]?.id as string;
+  const greenId = greenPayload.results[0]?.id as string;
+  expect(blueId).toBeTruthy();
+  expect(greenId).toBeTruthy();
 
   await waitForMedia(request, session.accessToken, blueId, (media) => media.tagging_status === 'done');
   await waitForMedia(request, session.accessToken, greenId, (media) => media.tagging_status === 'done');
@@ -482,22 +489,22 @@ test('trashes media by tag and character name through the management API, then r
   expect(characterTrashResult.trashed_media).toBe(1);
 
   await page.goto('/gallery/trash');
-  await expect(page.locator('img[alt="manage-trash-blue.png"]')).toBeVisible();
-  await expect(page.locator('img[alt="manage-trash-green.png"]')).toBeVisible();
+  await expect(page.locator(`img[alt="${blueName}"]`)).toBeVisible();
+  await expect(page.locator(`img[alt="${greenName}"]`)).toBeVisible();
 
   const blueCard = page.locator('app-gallery-media-card').filter({
-    has: page.locator('img[alt="manage-trash-blue.png"]')
+    has: page.locator(`img[alt="${blueName}"]`)
   }).first();
   await blueCard.hover();
-  await blueCard.getByRole('button', { name: 'Select manage-trash-blue.png' }).click();
+  await blueCard.getByRole('button', { name: `Select ${blueName}` }).click();
   await page.locator('.selection-toolbar').getByRole('button', { name: 'Restore' }).click();
 
-  await expect(page.locator('img[alt="manage-trash-blue.png"]')).toHaveCount(0);
-  await expect(page.locator('img[alt="manage-trash-green.png"]')).toBeVisible();
+  await expect(page.locator(`img[alt="${blueName}"]`)).toHaveCount(0);
+  await expect(page.locator(`img[alt="${greenName}"]`)).toBeVisible();
 
   const activeItems = await listMediaWithQuery(request, session.accessToken, 'page_size=50&nsfw=include');
-  expect(activeItems.some((item) => item.original_filename === 'manage-trash-blue.png')).toBe(true);
-  expect(activeItems.some((item) => item.original_filename === 'manage-trash-green.png')).toBe(false);
+  expect(activeItems.some((item) => item.original_filename === blueName)).toBe(true);
+  expect(activeItems.some((item) => item.original_filename === greenName)).toBe(false);
 
   await page.getByRole('button', { name: 'Empty trash' }).click();
   await expect(page.getByText('Trash is empty')).toBeVisible();
