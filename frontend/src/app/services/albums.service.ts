@@ -3,6 +3,7 @@ import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Obser
 
 import {
   AlbumCreateDto,
+  AlbumListResponse,
   AlbumMediaBatchUpdateDto,
   AlbumRead,
   AlbumShareCreateDto,
@@ -88,6 +89,7 @@ export class AlbumsService {
     });
 
     return this.albumsClient.listAlbums().pipe(
+      map((response: AlbumListResponse) => response.items),
       tap((albums) => {
         this.patchState({
           albums,

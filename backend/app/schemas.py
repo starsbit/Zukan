@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
-from backend.app.models import MediaType
+from backend.app.models import MediaType, TaggingStatus, ProcessingStatus
 
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 
@@ -41,6 +41,7 @@ class UserRead(BaseModel):
     is_admin: bool
     show_nsfw: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
+    version: int
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -50,6 +51,7 @@ class UserUpdate(BaseModel):
     show_nsfw: bool | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
+    version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
 
 class TokenResponse(BaseModel):
@@ -77,6 +79,7 @@ class TagRead(BaseModel):
     name: str = Field(description="Canonical tag name.")
     category: int = Field(description="Numeric tag category from the tagging backend.")
     category_name: str = Field(description="Human-readable tag category name.")
+    category_key: str = Field(description="Stable string key for the tag category.")
     media_count: int = Field(description="Number of media items currently associated with this tag.")
 
     model_config = {"from_attributes": True}
@@ -91,6 +94,7 @@ class TagWithConfidence(BaseModel):
     name: str = Field(description="Canonical tag name.")
     category: int = Field(description="Numeric tag category from the tagging backend.")
     category_name: str = Field(description="Human-readable tag category name.")
+    category_key: str = Field(description="Stable string key for the tag category.")
     confidence: float = Field(description="Model confidence score for this tag.")
 
 
@@ -134,27 +138,51 @@ class MediaMetadataFilter(BaseModel):
         return self
 
 
+class ExternalRefRead(BaseModel):
+    id: uuid.UUID
+    provider: str = Field(description="External provider identifier (e.g. 'pixiv', 'danbooru', 'anilist').")
+    external_id: str | None = Field(default=None, description="Provider-specific entity ID.")
+    url: str | None = Field(default=None, description="Direct URL to the external resource.")
+
+    model_config = {"from_attributes": True}
+
+
+class ExternalRefCreate(BaseModel):
+    provider: str = Field(min_length=1, max_length=64, description="External provider identifier.")
+    external_id: str | None = Field(default=None, max_length=256, description="Provider-specific entity ID.")
+    url: str | None = Field(default=None, max_length=2048, description="Direct URL to the external resource.")
+
+
 class MediaRead(BaseModel):
+    # core
     id: uuid.UUID
     uploader_id: uuid.UUID | None
     filename: str
     original_filename: str | None
     media_type: MediaType = MediaType.IMAGE
     metadata: MediaMetadata
+    version: int
+    created_at: datetime
+    deleted_at: datetime | None
+    # annotations
     tags: list[str] = Field(description="All tags currently stored for the media.")
     character_name: str | None = Field(
         default=None,
         description="Highest-confidence character tag selected by the active tagging backend, if any.",
     )
+    source_url: str | None = Field(default=None, description="Optional source URL for the media.")
+    ocr_text_override: str | None = Field(
+        default=None,
+        description="User-supplied transcript or OCR correction. Takes precedence over system-derived ocr_text.",
+    )
+    # analysis
     is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
-    tagging_status: str = Field(description="Current AI tagging lifecycle state.")
+    tagging_status: TaggingStatus = Field(description="Current AI tagging lifecycle state. One of: pending, processing, done, failed.")
     tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
-    thumbnail_status: str = Field(description="Current thumbnail generation lifecycle state.")
-    poster_status: str = Field(default="done", description="Current poster generation lifecycle state for animated media.")
-    source_url: str | None = Field(default=None, description="Optional source URL for the media, used to link to external anime/character entities.")
-    ocr_text: str | None = Field(default=None, description="Text extracted from the media via OCR. Null if not yet processed or not applicable.")
-    created_at: datetime
-    deleted_at: datetime | None
+    thumbnail_status: ProcessingStatus = Field(description="Current thumbnail generation lifecycle state. One of: pending, processing, done, failed, not_applicable.")
+    poster_status: ProcessingStatus = Field(default=ProcessingStatus.PENDING, description="Current poster generation lifecycle state for animated media.")
+    ocr_text: str | None = Field(default=None, description="System-derived OCR text. Read-only; set by the OCR pipeline.")
+    # viewer state
     is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
 
 
@@ -162,6 +190,10 @@ class MediaDetail(MediaRead):
     tag_details: list[TagWithConfidence] = Field(
         default_factory=list,
         description="Detailed tag payload including category metadata and confidence scores.",
+    )
+    external_refs: list[ExternalRefRead] = Field(
+        default_factory=list,
+        description="External references linking this media to known providers.",
     )
 
 
@@ -192,10 +224,15 @@ class MediaUpdate(BaseModel):
         default=None,
         description="Whether the media should be favorited for the current user. Omit to keep favorite state unchanged.",
     )
-    ocr_text: str | None = Field(
+    ocr_text_override: str | None = Field(
         default=None,
-        description="OCR text extracted from the media. Send null to clear. Omit to keep unchanged.",
+        description="User-supplied transcript or OCR correction. Send null to clear. Omit to keep unchanged.",
     )
+    external_refs: list[ExternalRefCreate] | None = Field(
+        default=None,
+        description="Complete replacement list of external references. Omit to keep unchanged.",
+    )
+    version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
     @model_validator(mode="after")
     def validate_non_empty(self):
@@ -215,7 +252,10 @@ class MediaListResponse(BaseModel):
 
 
 class MediaCursorPage(BaseModel):
-    total: int = Field(description="Total number of media items matching the current filters.")
+    total: int | None = Field(
+        default=None,
+        description="Total number of media items matching the current filters. Null when include_total=false.",
+    )
     next_cursor: str | None = Field(description="Opaque cursor for fetching the next page. Null if no more items.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[MediaRead] = Field(description="Media returned for the current page.")
@@ -241,6 +281,7 @@ class AlbumUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     cover_media_id: uuid.UUID | None = None
+    version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
 
 class AlbumRead(BaseModel):
@@ -250,10 +291,19 @@ class AlbumRead(BaseModel):
     description: str | None
     cover_media_id: uuid.UUID | None
     media_count: int = 0
+    version: int
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AlbumListResponse(BaseModel):
+    total: int = Field(description="Total number of albums matching the current filters.")
+    page: int = Field(description="Current page number.")
+    page_size: int = Field(description="Number of albums returned per page.")
+    items: list[AlbumRead]
+
 
 class AlbumShareCreate(BaseModel):
     user_id: uuid.UUID
@@ -326,6 +376,7 @@ class AdminStatsResponse(BaseModel):
     pending_tagging: int
     failed_tagging: int
     trashed_media: int
+
 
 class UserListResponse(BaseModel):
     total: int

@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from unittest.mock import Mock
 
+import uuid
 import numpy as np
 import pandas as pd
 from PIL import Image
@@ -247,3 +248,40 @@ def test_create_tagger_rejects_unknown_backend(monkeypatch):
         assert str(exc) == "Unsupported tagger backend: unknown"
     else:
         raise AssertionError("Expected ValueError for unsupported tagger backend")
+
+def test_retag_returns_409_when_already_pending(api):
+    user = api.register_and_login("retag-queued-user")
+    headers = api.auth_headers(user["access_token"])
+
+    blue = api.upload_media(user["access_token"], "retag-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    first = api.client.post(f"/media/{blue['id']}/tagging-jobs", headers=headers)
+    assert first.status_code == 202
+
+    second = api.client.post(f"/media/{blue['id']}/tagging-jobs", headers=headers)
+    assert second.status_code == 409
+    assert second.json()["code"] == "tagging_job_already_queued"
+
+
+def test_retag_allowed_after_failure(api):
+    user = api.register_and_login("retag-failed-user")
+    headers = api.auth_headers(user["access_token"])
+    blue_id_str = None
+
+    blue = api.upload_media(user["access_token"], "retag-fail-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+    blue_id = uuid.UUID(str(blue["id"]))
+    blue_id_str = str(blue["id"])
+
+    async def _set_failed(session):
+        from backend.app.models import Media
+        media = await session.get(Media, blue_id)
+        media.tagging_status = "failed"
+        await session.commit()
+
+    api.run_db(_set_failed)
+
+    retry = api.client.post(f"/media/{blue_id_str}/tagging-jobs", headers=headers)
+    assert retry.status_code == 202
+

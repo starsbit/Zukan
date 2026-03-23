@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import settings
-from backend.app.errors import AppError, duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token
+from backend.app.errors import AppError, duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token, version_conflict
 from backend.app.models import RefreshToken, User
 from backend.app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
@@ -155,6 +155,8 @@ async def refresh_access_token(db: AsyncSession, raw_refresh_token: str) -> Acce
 
 
 async def update_current_user(db: AsyncSession, user: User, body: UserUpdate) -> User:
+    if "version" in body.model_fields_set and body.version is not None and body.version != user.version:
+        raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
     if body.show_nsfw is not None:
         user.show_nsfw = body.show_nsfw
     if body.tag_confidence_threshold is not None:

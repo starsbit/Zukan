@@ -96,6 +96,7 @@ describe('GalleryPageComponent', () => {
     description: null,
     cover_media_id: null,
     media_count: 2,
+    version: 1,
     created_at: '2026-03-21T00:00:00Z',
     updated_at: '2026-03-21T00:00:00Z'
   };

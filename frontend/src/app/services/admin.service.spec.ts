@@ -52,6 +52,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -85,6 +86,7 @@ describe('AdminService', () => {
       is_admin: false,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -103,6 +105,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -122,6 +125,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -138,6 +142,7 @@ describe('AdminService', () => {
         is_admin: false,
         show_nsfw: false,
         tag_confidence_threshold: 0.35,
+        version: 1,
         created_at: '2026-03-21T00:00:00Z'
       }]
     });
@@ -152,6 +157,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -167,6 +173,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -179,6 +186,7 @@ describe('AdminService', () => {
       is_admin: false,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z',
       media_count: 10,
       storage_used_bytes: 2048
@@ -204,6 +212,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -228,6 +237,7 @@ describe('AdminService', () => {
           is_admin: false,
           show_nsfw: false,
           tag_confidence_threshold: 0.35,
+          version: 1,
           created_at: '2026-03-21T00:00:00Z'
         }]
       }
@@ -260,6 +270,7 @@ describe('AdminService', () => {
       is_admin: true,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 

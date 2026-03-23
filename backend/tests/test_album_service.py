@@ -111,10 +111,10 @@ def test_album_service_crud_and_sharing_flow(api):
         assert created.description == "Summer plans"
 
         owner_albums = await album_service.list_albums(session, owner_user)
-        assert [album.id for album in owner_albums] == [created.id]
+        assert [album.id for album in owner_albums.items] == [created.id]
 
         viewer_albums = await album_service.list_albums(session, viewer_user)
-        assert viewer_albums == []
+        assert viewer_albums.items == []
 
         updated = await album_service.update_album(
             session,
@@ -207,3 +207,65 @@ def test_album_service_lists_media_and_downloads_in_album_order(api):
         assert [item.id for item in refreshed.items] == [second_id]
 
     api.run_db(_exercise)
+
+def test_album_list_returns_paginated_structure(api):
+    user = api.register_and_login("album-pagination-user")
+    headers = api.auth_headers(user["access_token"])
+
+    for name in ("Alpha", "Beta", "Gamma"):
+        r = api.client.post("/albums", headers=headers, json={"name": name})
+        assert r.status_code == 201
+
+    resp = api.client.get("/albums", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "total" in body
+    assert "page" in body
+    assert "page_size" in body
+    assert "items" in body
+    assert body["total"] == 3
+    assert body["page"] == 1
+    assert len(body["items"]) == 3
+
+
+def test_album_list_pagination_page_size(api):
+    user = api.register_and_login("album-page-size-user")
+    headers = api.auth_headers(user["access_token"])
+
+    for name in ("P1", "P2", "P3"):
+        api.client.post("/albums", headers=headers, json={"name": name})
+
+    page1 = api.client.get("/albums", headers=headers, params={"page": 1, "page_size": 2})
+    assert page1.status_code == 200
+    assert len(page1.json()["items"]) == 2
+    assert page1.json()["total"] == 3
+
+    page2 = api.client.get("/albums", headers=headers, params={"page": 2, "page_size": 2})
+    assert page2.status_code == 200
+    assert len(page2.json()["items"]) == 1
+
+
+def test_album_list_sort_by_name(api):
+    user = api.register_and_login("album-sort-user")
+    headers = api.auth_headers(user["access_token"])
+
+    for name in ("Zebra", "Apple", "Mango"):
+        api.client.post("/albums", headers=headers, json={"name": name})
+
+    asc = api.client.get("/albums", headers=headers, params={"sort_by": "name", "sort_order": "asc"})
+    names = [item["name"] for item in asc.json()["items"]]
+    assert names == sorted(names)
+
+    desc = api.client.get("/albums", headers=headers, params={"sort_by": "name", "sort_order": "desc"})
+    names_desc = [item["name"] for item in desc.json()["items"]]
+    assert names_desc == sorted(names_desc, reverse=True)
+
+
+def test_album_list_empty_returns_zero_total(api):
+    user = api.register_and_login("album-empty-user")
+    headers = api.auth_headers(user["access_token"])
+
+    resp = api.client.get("/albums", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["total"] == 0
+    assert resp.json()["items"] == []

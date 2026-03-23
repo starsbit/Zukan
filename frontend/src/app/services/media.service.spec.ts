@@ -23,6 +23,7 @@ const createMedia = (id: string, overrides: Partial<Record<string, unknown>> = {
   is_nsfw: false,
   tagging_status: 'done',
   thumbnail_status: 'ready',
+  version: 1,
   created_at: '2026-03-21T00:00:00Z',
   deleted_at: null,
   is_favorited: false,

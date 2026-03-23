@@ -4,19 +4,39 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.errors import AppError, tag_not_found
 from backend.app.models import Media, MediaTag, Tag, User
 from backend.app.schemas import CATEGORY_NAMES, TagListResponse, TagManagementResult, TagRead
 from backend.app.services import media as media_service
 
 
 def _to_tag_read(tag: Tag) -> TagRead:
+    category_key = CATEGORY_NAMES.get(tag.category, "unknown")
     return TagRead(
         id=tag.id,
         name=tag.name,
         category=tag.category,
-        category_name=CATEGORY_NAMES.get(tag.category, "unknown"),
+        category_name=category_key,
+        category_key=category_key,
         media_count=tag.media_count,
     )
+
+
+async def get_tag_by_id(db: AsyncSession, tag_id: int) -> Tag:
+    tag = (await db.execute(select(Tag).where(Tag.id == tag_id))).scalar_one_or_none()
+    if tag is None:
+        raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
+    return tag
+
+
+async def remove_tag_from_media_by_id(db: AsyncSession, user: User, *, tag_id: int) -> TagManagementResult:
+    tag = await get_tag_by_id(db, tag_id)
+    return await remove_tag_from_media(db, user, tag_name=tag.name)
+
+
+async def trash_media_by_tag_id(db: AsyncSession, user: User, *, tag_id: int) -> TagManagementResult:
+    tag = await get_tag_by_id(db, tag_id)
+    return await trash_media_by_tag(db, user, tag_name=tag.name)
 
 
 def _accessible_media_stmt(user: User):

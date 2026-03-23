@@ -20,6 +20,19 @@ export interface MediaMetadataUpdateDto {
   captured_at?: string | null;
 }
 
+export interface ExternalRefRead {
+  id: Uuid;
+  provider: string;
+  external_id: string | null;
+  url: string | null;
+}
+
+export interface ExternalRefCreateDto {
+  provider: string;
+  external_id?: string | null;
+  url?: string | null;
+}
+
 export interface MediaRead {
   id: Uuid;
   uploader_id: Uuid | null;
@@ -35,6 +48,8 @@ export interface MediaRead {
   thumbnail_status: string;
   poster_status?: string;
   ocr_text?: string | null;
+  ocr_text_override?: string | null;
+  version: number;
   created_at: string;
   deleted_at: string | null;
   is_favorited?: boolean;
@@ -42,6 +57,7 @@ export interface MediaRead {
 
 export interface MediaDetail extends MediaRead {
   tag_details?: TagWithConfidence[];
+  external_refs?: ExternalRefRead[];
 }
 
 export interface MediaUpdateDto {
@@ -50,7 +66,9 @@ export interface MediaUpdateDto {
   metadata?: MediaMetadataUpdateDto | null;
   deleted?: boolean | null;
   favorited?: boolean | null;
-  ocr_text?: string | null;
+  ocr_text_override?: string | null;
+  external_refs?: ExternalRefCreateDto[] | null;
+  version?: number | null;
 }
 
 export interface MediaBatchUpdateDto {
@@ -100,7 +118,7 @@ export interface MediaListResponse {
 }
 
 export interface MediaCursorPage {
-  total: number;
+  total: number | null;
   next_cursor: string | null;
   page_size: number;
   items: MediaRead[];

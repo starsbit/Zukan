@@ -17,6 +17,7 @@ export interface TagListItem {
   id: number;
   name: string;
   category: number;
+  category_key: string;
   category_name: string;
   media_count: number;
 }
@@ -115,12 +116,30 @@ export async function listCharacterSuggestions(
   return await response.json() as CharacterSuggestionItem[];
 }
 
+async function resolveTagId(
+  request: APIRequestContext,
+  accessToken: string,
+  tagName: string
+): Promise<number> {
+  const response = await request.get(`${API_V1}/tags?q=${encodeURIComponent(tagName)}&page_size=1`, {
+    headers: authHeaders(accessToken)
+  });
+  await expect(response).toBeOK();
+  const payload = await response.json();
+  const tag = (payload.items as TagListItem[]).find((t) => t.name === tagName);
+  if (!tag) {
+    throw new Error(`Tag not found: ${tagName}`);
+  }
+  return tag.id;
+}
+
 export async function removeTag(
   request: APIRequestContext,
   accessToken: string,
   tagName: string
 ): Promise<TagManagementResult> {
-  const response = await request.post(`${API_V1}/tags/${encodeURIComponent(tagName)}/actions/remove-from-media`, {
+  const tagId = await resolveTagId(request, accessToken, tagName);
+  const response = await request.post(`${API_V1}/tags/${tagId}/actions/remove-from-media`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();
@@ -132,7 +151,8 @@ export async function trashMediaByTag(
   accessToken: string,
   tagName: string
 ): Promise<TagManagementResult> {
-  const response = await request.post(`${API_V1}/tags/${encodeURIComponent(tagName)}/actions/trash-media`, {
+  const tagId = await resolveTagId(request, accessToken, tagName);
+  const response = await request.post(`${API_V1}/tags/${tagId}/actions/trash-media`, {
     headers: authHeaders(accessToken)
   });
   await expect(response).toBeOK();

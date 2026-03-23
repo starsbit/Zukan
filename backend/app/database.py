@@ -30,6 +30,8 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+        # Indexes
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_media_tags ON media USING GIN(tags)")
         )
@@ -42,6 +44,17 @@ async def init_db():
         await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_media_captured_at ON media (captured_at)")
         )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_media_entities_media_id ON media_entities (media_id)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_media_entities_type_name ON media_entities (entity_type, name)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_media_external_refs_media_id ON media_external_refs (media_id)")
+        )
+
+        # Column additions (idempotent)
         await conn.execute(
             text("ALTER TABLE media ADD COLUMN IF NOT EXISTS tagging_error VARCHAR(1024)")
         )
@@ -57,6 +70,37 @@ async def init_db():
         await conn.execute(
             text("ALTER TABLE media ADD COLUMN IF NOT EXISTS ocr_text TEXT")
         )
+        await conn.execute(
+            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS ocr_text_override TEXT")
+        )
+        await conn.execute(
+            text("ALTER TABLE media ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1")
+        )
+        await conn.execute(
+            text("ALTER TABLE albums ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1")
+        )
+        await conn.execute(
+            text("ALTER TABLE users ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1")
+        )
+
+        # Version bump trigger (auto-increments version on every UPDATE)
+        await conn.execute(text("""
+            CREATE OR REPLACE FUNCTION fn_bump_version() RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.version = OLD.version + 1;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql
+        """))
+        for table in ("media", "albums", "users"):
+            await conn.execute(text(f"DROP TRIGGER IF EXISTS trg_{table}_version ON {table}"))
+            await conn.execute(text(f"""
+                CREATE TRIGGER trg_{table}_version
+                BEFORE UPDATE ON {table} FOR EACH ROW
+                EXECUTE FUNCTION fn_bump_version()
+            """))
+
+        # Tag count triggers
         await conn.execute(text("""
             CREATE OR REPLACE FUNCTION fn_media_tag_after_delete() RETURNS TRIGGER AS $$
             BEGIN

@@ -2,6 +2,7 @@ export interface TagRead {
   id: number;
   name: string;
   category: number;
+  category_key: string;
   category_name: string;
   media_count: number;
 }
@@ -17,6 +18,7 @@ export interface TagManagementResult {
 export interface TagWithConfidence {
   name: string;
   category: number;
+  category_key: string;
   category_name: string;
   confidence: number;
 }

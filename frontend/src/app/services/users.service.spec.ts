@@ -50,6 +50,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: true,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -66,6 +67,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -81,6 +83,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: true,
       tag_confidence_threshold: 0.65,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -100,6 +103,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -115,6 +119,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: true,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 
@@ -141,6 +146,7 @@ describe('UsersService', () => {
       is_admin: false,
       show_nsfw: false,
       tag_confidence_threshold: 0.35,
+      version: 1,
       created_at: '2026-03-21T00:00:00Z'
     });
 

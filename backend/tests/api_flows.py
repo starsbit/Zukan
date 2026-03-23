@@ -833,7 +833,7 @@ def assert_album_endpoints(api):
 
     listed = api.client.get("/albums", headers=api.auth_headers(owner["access_token"]))
     assert listed.status_code == 200
-    assert listed.json()[0]["media_count"] == 2
+    assert listed.json()["items"][0]["media_count"] == 2
 
     fetched = api.client.get(f"/albums/{album['id']}", headers=api.auth_headers(owner["access_token"]))
     assert fetched.status_code == 200
@@ -872,7 +872,7 @@ def assert_album_endpoints(api):
 
     shared_albums = api.client.get("/albums", headers=api.auth_headers(viewer["access_token"]))
     assert shared_albums.status_code == 200
-    assert [item["id"] for item in shared_albums.json()] == [album["id"]]
+    assert [item["id"] for item in shared_albums.json()["items"]] == [album["id"]]
 
     assert api.client.get(f"/albums/{album['id']}", headers=api.auth_headers(viewer["access_token"])).status_code == 200
     shared_album_query = api.client.get(

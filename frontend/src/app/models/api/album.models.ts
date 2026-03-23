@@ -10,6 +10,7 @@ export interface AlbumUpdateDto {
   name?: string | null;
   description?: string | null;
   cover_media_id?: Uuid | null;
+  version?: number | null;
 }
 
 export interface AlbumRead {
@@ -19,8 +20,16 @@ export interface AlbumRead {
   description: string | null;
   cover_media_id: Uuid | null;
   media_count?: number;
+  version: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface AlbumListResponse {
+  total: number;
+  page: number;
+  page_size: number;
+  items: AlbumRead[];
 }
 
 export interface AlbumShareCreateDto {

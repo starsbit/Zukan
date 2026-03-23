@@ -12,12 +12,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.config import settings
-from backend.app.errors import AppError, album_not_found, media_not_found, nsfw_hidden, nsfw_disabled, upload_limit_exceeded
-from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaTag, MediaType, Tag, User, UserFavorite
+from backend.app.errors import AppError, album_not_found, media_not_found, nsfw_hidden, nsfw_disabled, tagging_job_already_queued, upload_limit_exceeded, version_conflict
+from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaExternalRef, MediaTag, MediaType, Tag, User, UserFavorite
 from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
     CATEGORY_NAMES,
+    ExternalRefRead,
     MediaBatchDelete,
     MediaBatchUpdate,
     MediaCursorPage,
@@ -117,7 +118,13 @@ def _parse_csv_values(value: str | None) -> list[str]:
 
 def _apply_ocr_text_filter(stmt, ocr_text: str | None):
     if ocr_text and ocr_text.strip():
-        stmt = stmt.where(func.lower(func.coalesce(Media.ocr_text, "")).contains(ocr_text.strip().lower()))
+        term = ocr_text.strip().lower()
+        stmt = stmt.where(
+            or_(
+                func.lower(func.coalesce(Media.ocr_text, "")).contains(term),
+                func.lower(func.coalesce(Media.ocr_text_override, "")).contains(term),
+            )
+        )
     return stmt
 
 
@@ -231,10 +238,12 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         original_filename=media.original_filename,
         media_type=media.media_type,
         metadata=_build_media_metadata(media),
+        version=media.version,
         tags=media.tags,
         character_name=media.character_name,
         source_url=media.source_url,
         ocr_text=media.ocr_text,
+        ocr_text_override=media.ocr_text_override,
         is_nsfw=media.is_nsfw,
         tagging_status=media.tagging_status,
         tagging_error=media.tagging_error,
@@ -361,6 +370,7 @@ async def list_media(
     sort_by: str = "captured_at",
     sort_order: str = "desc",
     ocr_text: str | None = None,
+    include_total: bool = True,
 ) -> MediaCursorPage:
     await purge_expired_trash(db)
     stmt = select(Media)
@@ -386,7 +396,7 @@ async def list_media(
     stmt = _apply_captured_at_filters(stmt, metadata)
     stmt = _apply_ocr_text_filter(stmt, ocr_text)
 
-    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one() if include_total else None
 
     if after is not None:
         decoded = _decode_cursor(after, sort_by)
@@ -667,11 +677,14 @@ async def get_media_detail(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
     await purge_expired_trash(db)
     metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
-    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "source_url", "metadata", "deleted", "ocr_text"})
+    needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "character_name", "source_url", "metadata", "deleted", "ocr_text_override", "external_refs"})
     if needs_owner_access:
         media = await get_owned_or_admin_media(db, media_id, user, trashed=None)
     else:
         media = await get_active_media(db, media_id)
+
+    if "version" in payload.model_fields_set and payload.version is not None and payload.version != media.version:
+        raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
 
     if "tags" in payload.model_fields_set and payload.tags is not None:
         normalized_tags = _normalize_manual_tags(payload.tags)
@@ -686,8 +699,15 @@ async def update_media_metadata(db: AsyncSession, media_id: uuid.UUID, user: Use
         media.captured_at = payload.metadata.captured_at or media.created_at
     if "deleted" in payload.model_fields_set:
         media.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
-    if "ocr_text" in payload.model_fields_set:
-        media.ocr_text = payload.ocr_text or None
+    if "ocr_text_override" in payload.model_fields_set:
+        media.ocr_text_override = payload.ocr_text_override or None
+    if "external_refs" in payload.model_fields_set and payload.external_refs is not None:
+        existing = (await db.execute(select(MediaExternalRef).where(MediaExternalRef.media_id == media.id))).scalars().all()
+        for ref in existing:
+            await db.delete(ref)
+        await db.flush()
+        for ref_create in payload.external_refs:
+            db.add(MediaExternalRef(media_id=media.id, provider=ref_create.provider, external_id=ref_create.external_id, url=ref_create.url))
     if "favorited" in payload.model_fields_set:
         await set_favorite_state(db, media.id, user, payload.favorited)
 
@@ -739,6 +759,8 @@ async def unfavorite_media(db: AsyncSession, media_id: uuid.UUID, user: User) ->
 async def retag_media(db: AsyncSession, media_id: uuid.UUID, user: User) -> int:
     await purge_expired_trash(db)
     media = await get_owned_or_admin_media(db, media_id, user, trashed=False)
+    if media.tagging_status in ("pending", "processing"):
+        raise AppError(status_code=409, code=tagging_job_already_queued, detail="Tagging job is already queued or running")
     media.tagging_status = "pending"
     media.tagging_error = None
     await db.commit()
@@ -823,7 +845,10 @@ async def set_favorite_state(db: AsyncSession, media_id: uuid.UUID, user: User, 
 async def _get_media_with_tags(db: AsyncSession, media_id: uuid.UUID, deleted: bool | None) -> Media | None:
     stmt = (
         select(Media)
-        .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
+        .options(
+            selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            selectinload(Media.external_refs),
+        )
         .where(Media.id == media_id)
         .execution_options(populate_existing=True)
     )
@@ -841,12 +866,17 @@ async def build_media_detail(db: AsyncSession, media: Media, user_id: uuid.UUID)
             name=item.tag.name,
             category=item.tag.category,
             category_name=CATEGORY_NAMES.get(item.tag.category, "unknown"),
+            category_key=CATEGORY_NAMES.get(item.tag.category, "unknown"),
             confidence=item.confidence,
         )
         for item in sorted(media.media_tags, key=lambda item: item.confidence, reverse=True)
     ]
+    external_refs = [
+        ExternalRefRead(id=ref.id, provider=ref.provider, external_id=ref.external_id, url=ref.url)
+        for ref in media.external_refs
+    ]
     base = _build_media_read(media, is_favorited)
-    return MediaDetail(**base.model_dump(), tag_details=tag_details)
+    return MediaDetail(**base.model_dump(), tag_details=tag_details, external_refs=external_refs)
 
 
 async def _batch_update_deleted_state(db: AsyncSession, media_ids: list[uuid.UUID], deleted: bool, user: User) -> tuple[int, int]:

@@ -7,8 +7,8 @@ import { CLIENT_API_BASE_URL } from './web/api.config';
 import { TagsClientService } from './web/tags-client.service';
 import { TagsService } from './tags.service';
 
-const forestTag = { id: 1, name: 'forest', category: 0, category_name: 'general', media_count: 2 };
-const skyTag = { id: 2, name: 'sky', category: 0, category_name: 'general', media_count: 3 };
+const forestTag = { id: 1, name: 'forest', category: 0, category_key: 'general', category_name: 'general', media_count: 2 };
+const skyTag = { id: 2, name: 'sky', category: 0, category_key: 'general', category_name: 'general', media_count: 3 };
 
 describe('TagsService', () => {
   let service: TagsService;
@@ -71,10 +71,10 @@ describe('TagsService', () => {
     searchRequest.flush({ total: 2, page: 1, page_size: 20, items: [forestTag, skyTag] });
     await expect(searchPromise).resolves.toEqual([forestTag, skyTag]);
 
-    const deletePromise = firstValueFrom(service.deleteTag('forest'));
+    const deletePromise = firstValueFrom(service.deleteTag(1, 'forest'));
     expect(service.snapshot.mutationPending).toBe(true);
 
-    const deleteRequest = httpTesting.expectOne('http://api.example.test/tags/forest/actions/remove-from-media');
+    const deleteRequest = httpTesting.expectOne('http://api.example.test/tags/1/actions/remove-from-media');
     expect(deleteRequest.request.method).toBe('POST');
     deleteRequest.flush({
       matched_media: 1,
@@ -98,8 +98,8 @@ describe('TagsService', () => {
   });
 
   it('maps tag and character management mutations and records failures', async () => {
-    const trashTagPromise = firstValueFrom(service.trashMediaByTag('rating:general'));
-    const trashTagRequest = httpTesting.expectOne('http://api.example.test/tags/rating%3Ageneral/actions/trash-media');
+    const trashTagPromise = firstValueFrom(service.trashMediaByTag(99));
+    const trashTagRequest = httpTesting.expectOne('http://api.example.test/tags/99/actions/trash-media');
     expect(trashTagRequest.request.method).toBe('POST');
     expect(trashTagRequest.request.body).toEqual({});
     trashTagRequest.flush({

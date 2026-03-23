@@ -260,7 +260,7 @@ export class MediaService {
             page: {
               ...this.stateSubject.value.page,
               items: this.stateSubject.value.page.items.filter((item) => !body.media_ids.includes(item.id)),
-              total: Math.max(0, this.stateSubject.value.page.total - body.media_ids.length)
+              total: this.stateSubject.value.page.total != null ? Math.max(0, this.stateSubject.value.page.total - body.media_ids.length) : null
             }
           });
         }
@@ -288,7 +288,7 @@ export class MediaService {
               page: {
                 ...page,
                 items: removeItemById(page.items, mediaId),
-                total: Math.max(0, page.total - 1)
+                total: page.total != null ? Math.max(0, page.total - 1) : null
               }
             });
           }
@@ -394,7 +394,7 @@ export class MediaService {
       page: {
         ...page,
         items: nextItems,
-        total: removedCount > 0 ? Math.max(0, page.total - removedCount) : page.total
+        total: removedCount > 0 && page.total != null ? Math.max(0, page.total - removedCount) : page.total
       }
     });
   }
@@ -410,7 +410,7 @@ export class MediaService {
         page: {
           ...page,
           items: removeItemById(page.items, media.id),
-          total: Math.max(0, page.total - 1)
+          total: page.total != null ? Math.max(0, page.total - 1) : null
         }
       });
       return;

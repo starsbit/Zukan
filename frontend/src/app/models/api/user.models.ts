@@ -7,6 +7,7 @@ export interface UserRead {
   is_admin: boolean;
   show_nsfw: boolean;
   tag_confidence_threshold: number;
+  version: number;
   created_at: string;
 }
 
@@ -14,6 +15,7 @@ export interface UserUpdateDto {
   show_nsfw?: boolean | null;
   tag_confidence_threshold?: number | null;
   password?: string | null;
+  version?: number | null;
 }
 
 export interface AdminUserUpdateDto {

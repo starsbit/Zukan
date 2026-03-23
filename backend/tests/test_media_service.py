@@ -686,15 +686,15 @@ def test_ocr_text_can_be_set_queried_and_searched(api):
             session,
             blue_id,
             db_user,
-            MediaUpdate(ocr_text="Hello World from OCR"),
+            MediaUpdate(ocr_text_override="Hello World from OCR"),
         )
-        assert updated.ocr_text == "Hello World from OCR"
+        assert updated.ocr_text_override == "Hello World from OCR"
 
         refreshed = await media_service.get_media_detail(session, blue_id, db_user)
-        assert refreshed.ocr_text == "Hello World from OCR"
+        assert refreshed.ocr_text_override == "Hello World from OCR"
 
         media_row = await session.get(media_service.Media, blue_id)
-        assert media_row.ocr_text == "Hello World from OCR"
+        assert media_row.ocr_text_override == "Hello World from OCR"
 
         hit = await media_service.list_media(
             session,
@@ -734,8 +734,65 @@ def test_ocr_text_can_be_set_queried_and_searched(api):
             session,
             blue_id,
             db_user,
-            MediaUpdate(ocr_text=None),
+            MediaUpdate(ocr_text_override=None),
         )
-        assert cleared.ocr_text is None
+        assert cleared.ocr_text_override is None
 
     api.run_db(_exercise)
+
+def test_media_list_include_total_true_returns_count(api):
+    user = api.register_and_login("include-total-true-user")
+    headers = api.auth_headers(user["access_token"])
+    api.upload_media(user["access_token"], "total-blue.png", (0, 0, 255))
+
+    resp = api.client.get("/media", headers=headers, params={"include_total": "true"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] is not None
+    assert resp.json()["total"] >= 1
+
+
+def test_media_list_include_total_false_returns_null(api):
+    user = api.register_and_login("include-total-false-user")
+    headers = api.auth_headers(user["access_token"])
+    api.upload_media(user["access_token"], "nototal-blue.png", (0, 0, 255))
+
+    resp = api.client.get("/media", headers=headers, params={"include_total": "false"})
+    assert resp.status_code == 200
+    assert resp.json()["total"] is None
+    assert "items" in resp.json()
+
+
+def test_media_list_default_includes_total(api):
+    user = api.register_and_login("default-total-user")
+    headers = api.auth_headers(user["access_token"])
+
+    resp = api.client.get("/media", headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["total"] is not None
+
+def test_media_list_response_has_next_cursor_field(api):
+    user = api.register_and_login("cursor-shape-user")
+    headers = api.auth_headers(user["access_token"])
+
+    resp = api.client.get("/media", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "next_cursor" in body
+    assert "page_size" in body
+    assert "items" in body
+    assert "total" in body
+
+
+def test_media_detail_has_external_refs_field(api):
+    user = api.register_and_login("detail-extref-shape-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "detail-extref-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    detail = api.client.get(f"/media/{blue['id']}", headers=headers)
+    assert detail.status_code == 200
+    body = detail.json()
+    assert "external_refs" in body
+    assert "ocr_text_override" in body
+    assert "ocr_text" in body
+    assert "version" in body

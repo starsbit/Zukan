@@ -14,6 +14,7 @@ const createAlbum = (overrides: Partial<Record<string, unknown>> = {}) => ({
   description: null,
   cover_media_id: null,
   media_count: 2,
+  version: 1,
   created_at: '2026-03-21T00:00:00Z',
   updated_at: '2026-03-21T00:00:00Z',
   ...overrides
@@ -35,6 +36,7 @@ const createMedia = (id: string) => ({
   is_nsfw: false,
   tagging_status: 'done',
   thumbnail_status: 'ready',
+  version: 1,
   created_at: '2026-03-21T00:00:00Z',
   deleted_at: null
 });
@@ -101,7 +103,7 @@ describe('AlbumsService', () => {
   it('loads albums, album detail, and album media', async () => {
     const listPromise = firstValueFrom(service.loadAlbums());
     const listRequest = httpTesting.expectOne('http://api.example.test/albums');
-    listRequest.flush([createAlbum()]);
+    listRequest.flush({ total: 1, page: 1, page_size: 50, items: [createAlbum()] });
     await expect(listPromise).resolves.toHaveLength(1);
 
     const detailPromise = firstValueFrom(service.loadAlbum('album-1'));
@@ -182,10 +184,10 @@ describe('AlbumsService', () => {
   it('surfaces refresh and mutation errors', async () => {
     await expect(firstValueFrom(service.refreshAlbumMedia())).rejects.toThrow('No album selected');
 
-    const listPromise = firstValueFrom(service.loadAlbums());
+    const listPromise2 = firstValueFrom(service.loadAlbums());
     const listRequest = httpTesting.expectOne('http://api.example.test/albums');
     listRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
-    await expect(listPromise).rejects.toMatchObject({ status: 500 });
+    await expect(listPromise2).rejects.toMatchObject({ status: 500 });
     expect(service.snapshot.request.error).toMatchObject({ status: 500 });
 
     const createPromise = firstValueFrom(service.createAlbum({ name: 'Broken' }));

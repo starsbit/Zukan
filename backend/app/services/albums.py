@@ -3,9 +3,9 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.errors import AppError, album_not_found, album_read_only, album_share_forbidden, forbidden, media_not_in_album, share_not_found, share_self
+from backend.app.errors import AppError, album_not_found, album_read_only, album_share_forbidden, forbidden, media_not_in_album, share_not_found, share_self, version_conflict
 from backend.app.models import Album, AlbumMedia, AlbumShare, Media, User
-from backend.app.schemas import AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
+from backend.app.schemas import AlbumListResponse, AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
 from backend.app.services.media import _apply_tag_filters, enrich_media, favorited_ids
 
 
@@ -59,21 +59,44 @@ async def create_album(db: AsyncSession, user: User, name: str, description: str
     return await album_read(db, album)
 
 
-async def list_albums(db: AsyncSession, user: User) -> list[AlbumRead]:
-    owned = (await db.execute(select(Album).where(Album.owner_id == user.id).order_by(Album.created_at.desc()))).scalars().all()
-    shared = (
-        await db.execute(
-            select(Album)
-            .join(AlbumShare, AlbumShare.album_id == Album.id)
-            .where(AlbumShare.user_id == user.id, Album.owner_id != user.id)
-            .order_by(Album.created_at.desc())
+async def list_albums(
+    db: AsyncSession,
+    user: User,
+    page: int = 1,
+    page_size: int = 50,
+    sort_by: str = "created_at",
+    sort_order: str = "desc",
+) -> AlbumListResponse:
+    sort_col = Album.name if sort_by == "name" else Album.created_at
+    order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
+    owned_stmt = select(Album).where(Album.owner_id == user.id)
+    shared_stmt = (
+        select(Album)
+        .join(AlbumShare, AlbumShare.album_id == Album.id)
+        .where(AlbumShare.user_id == user.id, Album.owner_id != user.id)
+    )
+    from sqlalchemy import union_all
+    combined = union_all(owned_stmt, shared_stmt).subquery()
+    total_stmt = select(func.count()).select_from(combined)
+    total = (await db.execute(total_stmt)).scalar_one()
+    albums_stmt = (
+        select(Album)
+        .where(
+            Album.id.in_(select(combined.c.id))
         )
-    ).scalars().all()
-    return [await album_read(db, album) for album in [*owned, *shared]]
+        .order_by(order_expr)
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    )
+    albums = (await db.execute(albums_stmt)).scalars().all()
+    items = [await album_read(db, album) for album in albums]
+    return AlbumListResponse(total=total, page=page, page_size=page_size, items=items)
 
 
 async def update_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumUpdate, user: User) -> AlbumRead:
     album = await get_album_for_user(db, album_id, user, require_edit=True)
+    if "version" in body.model_fields_set and body.version is not None and body.version != album.version:
+        raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
     if "name" in body.model_fields_set:
         album.name = body.name
     if "description" in body.model_fields_set:

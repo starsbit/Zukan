@@ -15,6 +15,21 @@ class MediaType(str, enum.Enum):
     VIDEO = "video"
 
 
+class TaggingStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    DONE = "done"
+    FAILED = "failed"
+
+
+class ProcessingStatus(str, enum.Enum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    DONE = "done"
+    FAILED = "failed"
+    NOT_APPLICABLE = "not_applicable"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -25,6 +40,7 @@ class User(Base):
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     show_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tag_confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     media: Mapped[list["Media"]] = relationship("Media", back_populates="uploader")
@@ -77,12 +93,12 @@ class Media(Base):
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
     character_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     is_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
-    tagging_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    tagging_status: Mapped[str] = mapped_column(String(20), nullable=False, default=TaggingStatus.PENDING, index=True)
     tagging_error: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     thumbnail_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    thumbnail_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    thumbnail_status: Mapped[str] = mapped_column(String(20), nullable=False, default=ProcessingStatus.PENDING)
     poster_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    poster_status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    poster_status: Mapped[str] = mapped_column(String(20), nullable=False, default=ProcessingStatus.PENDING)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(
@@ -93,10 +109,22 @@ class Media(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     source_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ocr_text_override: Mapped[str | None] = mapped_column(Text, nullable=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     uploader: Mapped["User"] = relationship("User", back_populates="media")
     media_tags: Mapped[list["MediaTag"]] = relationship(
         "MediaTag",
+        back_populates="media",
+        cascade="all, delete-orphan",
+    )
+    entities: Mapped[list["MediaEntity"]] = relationship(
+        "MediaEntity",
+        back_populates="media",
+        cascade="all, delete-orphan",
+    )
+    external_refs: Mapped[list["MediaExternalRef"]] = relationship(
+        "MediaExternalRef",
         back_populates="media",
         cascade="all, delete-orphan",
     )
@@ -135,6 +163,7 @@ class Album(Base):
         ForeignKey("media.id", ondelete="SET NULL"),
         nullable=True,
     )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -205,3 +234,42 @@ class MediaTag(Base):
 
     media: Mapped["Media"] = relationship("Media", back_populates="media_tags")
     tag: Mapped["Tag"] = relationship("Tag", back_populates="media_tags")
+
+
+class MediaEntity(Base):
+    __tablename__ = "media_entities"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    name: Mapped[str] = mapped_column(String(512), nullable=False)
+    role: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    media: Mapped["Media"] = relationship("Media", back_populates="entities")
+
+
+class MediaExternalRef(Base):
+    __tablename__ = "media_external_refs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    provider: Mapped[str] = mapped_column(String(64), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    media: Mapped["Media"] = relationship("Media", back_populates="external_refs")

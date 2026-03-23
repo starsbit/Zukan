@@ -14,23 +14,19 @@ export class TagsClientService {
     return this.api.get<TagListResponse>('/tags', { query });
   }
 
-  removeTagFromMedia(tagName: string): Observable<TagManagementResult> {
-    return this.api.post<TagManagementResult>(`/tags/${encodePathSegment(tagName)}/actions/remove-from-media`, {});
+  removeTagFromMedia(tagId: number): Observable<TagManagementResult> {
+    return this.api.post<TagManagementResult>(`/tags/${tagId}/actions/remove-from-media`, {});
   }
 
-  trashMediaByTag(tagName: string): Observable<TagManagementResult> {
-    return this.api.post<TagManagementResult>(`/tags/${encodePathSegment(tagName)}/actions/trash-media`, {});
+  trashMediaByTag(tagId: number): Observable<TagManagementResult> {
+    return this.api.post<TagManagementResult>(`/tags/${tagId}/actions/trash-media`, {});
   }
 
   removeCharacterNameFromMedia(characterName: string): Observable<TagManagementResult> {
-    return this.api.post<TagManagementResult>(`/character-names/${encodePathSegment(characterName)}/actions/remove-from-media`, {});
+    return this.api.post<TagManagementResult>(`/character-names/${encodeURIComponent(characterName)}/actions/remove-from-media`, {});
   }
 
   trashMediaByCharacterName(characterName: string): Observable<TagManagementResult> {
-    return this.api.post<TagManagementResult>(`/character-names/${encodePathSegment(characterName)}/actions/trash-media`, {});
+    return this.api.post<TagManagementResult>(`/character-names/${encodeURIComponent(characterName)}/actions/trash-media`, {});
   }
-}
-
-function encodePathSegment(value: string): string {
-  return encodeURIComponent(value);
 }

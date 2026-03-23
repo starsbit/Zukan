@@ -26,22 +26,22 @@ async def list_tags(
     return await tag_service.list_tags(db, page=page, page_size=page_size, category=category, query=q, sort_by=sort_by, sort_order=sort_order)
 
 
-@router.post("/tags/{tag_name}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
+@router.post("/tags/{tag_id}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
 async def remove_tag_from_media(
-    tag_name: str = Path(min_length=1),
+    tag_id: int = Path(ge=1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await tag_service.remove_tag_from_media(db, user, tag_name=tag_name)
+    return await tag_service.remove_tag_from_media_by_id(db, user, tag_id=tag_id)
 
 
-@router.post("/tags/{tag_name}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
+@router.post("/tags/{tag_id}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
 async def trash_media_by_tag(
-    tag_name: str = Path(min_length=1),
+    tag_id: int = Path(ge=1),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await tag_service.trash_media_by_tag(db, user, tag_name=tag_name)
+    return await tag_service.trash_media_by_tag_id(db, user, tag_id=tag_id)
 
 
 @router.post(

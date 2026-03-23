@@ -1,5 +1,5 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
@@ -9,6 +9,7 @@ from backend.app.database import get_db
 from backend.app.deps import current_user
 from backend.app.models import User
 from backend.app.schemas import (
+    AlbumListResponse,
     AlbumMediaBatchUpdate,
     AlbumCreate,
     AlbumRead,
@@ -36,12 +37,16 @@ async def create_album(
     return await album_service.create_album(db, user, body.name, body.description)
 
 
-@router.get("", response_model=list[AlbumRead])
+@router.get("", response_model=AlbumListResponse)
 async def list_albums(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    sort_by: Literal["name", "created_at"] = Query(default="created_at"),
+    sort_order: Literal["asc", "desc"] = Query(default="desc"),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.list_albums(db, user)
+    return await album_service.list_albums(db, user, page=page, page_size=page_size, sort_by=sort_by, sort_order=sort_order)
 
 
 @router.get("/{album_id}", response_model=AlbumRead)

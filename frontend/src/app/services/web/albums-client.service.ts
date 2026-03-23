@@ -3,6 +3,7 @@ import { Observable } from 'rxjs';
 
 import {
   AlbumCreateDto,
+  AlbumListResponse,
   AlbumMediaBatchUpdateDto,
   AlbumRead,
   AlbumShareCreateDto,
@@ -21,8 +22,8 @@ import { ClientApiService } from './api.service';
 export class AlbumsClientService {
   private readonly api = inject(ClientApiService);
 
-  listAlbums(): Observable<AlbumRead[]> {
-    return this.api.get<AlbumRead[]>('/albums');
+  listAlbums(): Observable<AlbumListResponse> {
+    return this.api.get<AlbumListResponse>('/albums');
   }
 
   createAlbum(body: AlbumCreateDto): Observable<AlbumRead> {

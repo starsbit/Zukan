@@ -21,6 +21,7 @@ def _base_album_data(**overrides):
         description=None,
         cover_media_id=None,
         media_count=0,
+        version=1,
         created_at=now,
         updated_at=now,
     )

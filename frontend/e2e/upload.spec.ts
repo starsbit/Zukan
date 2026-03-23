@@ -631,17 +631,17 @@ test('stores OCR text on media via PATCH and filters by it in the list endpoint'
 
   const patchResponse = await request.patch(`${API_V1}/media/${blue}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
-    data: { ocr_text: 'Unique OCR phrase for e2e test' }
+    data: { ocr_text_override: 'Unique OCR phrase for e2e test' }
   });
   await expect(patchResponse).toBeOK();
   const patched = await patchResponse.json();
-  expect(patched.ocr_text).toBe('Unique OCR phrase for e2e test');
+  expect(patched.ocr_text_override).toBe('Unique OCR phrase for e2e test');
 
   const detailResponse = await request.get(`${API_V1}/media/${blue}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` }
   });
   await expect(detailResponse).toBeOK();
-  expect((await detailResponse.json()).ocr_text).toBe('Unique OCR phrase for e2e test');
+  expect((await detailResponse.json()).ocr_text_override).toBe('Unique OCR phrase for e2e test');
 
   const hitResponse = await request.get(`${API_V1}/media`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
@@ -654,10 +654,10 @@ test('stores OCR text on media via PATCH and filters by it in the list endpoint'
 
   const clearResponse = await request.patch(`${API_V1}/media/${blue}`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },
-    data: { ocr_text: null }
+    data: { ocr_text_override: null }
   });
   await expect(clearResponse).toBeOK();
-  expect((await clearResponse.json()).ocr_text).toBeNull();
+  expect((await clearResponse.json()).ocr_text_override).toBeNull();
 
   const afterClearResponse = await request.get(`${API_V1}/media`, {
     headers: { Authorization: `Bearer ${session.accessToken}` },

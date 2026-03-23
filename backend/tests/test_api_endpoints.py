@@ -368,7 +368,10 @@ def test_user_journey_manage_tags_and_character_names(api):
     assert trash_by_character.json()["matched_media"] == 1
     assert trash_by_character.json()["trashed_media"] == 1
 
-    trash_by_tag = api.client.post("/tags/forest/actions/trash-media", headers=headers)
+    forest_tags = api.client.get("/tags", headers=headers, params={"q": "forest"})
+    assert forest_tags.status_code == 200
+    forest_tag_id = forest_tags.json()["items"][0]["id"]
+    trash_by_tag = api.client.post(f"/tags/{forest_tag_id}/actions/trash-media", headers=headers)
     assert trash_by_tag.status_code == 200
     assert trash_by_tag.json()["matched_media"] == 1
     assert trash_by_tag.json()["trashed_media"] == 1
@@ -390,7 +393,10 @@ def test_user_journey_manage_tags_and_character_names(api):
     assert character_suggestions.status_code == 200
     assert character_suggestions.json() == []
 
-    delete_tag = api.client.post("/tags/forest/actions/remove-from-media", headers=headers)
+    forest_tags2 = api.client.get("/tags", headers=headers, params={"q": "forest"})
+    assert forest_tags2.status_code == 200
+    forest_tag_id2 = forest_tags2.json()["items"][0]["id"]
+    delete_tag = api.client.post(f"/tags/{forest_tag_id2}/actions/remove-from-media", headers=headers)
     assert delete_tag.status_code == 200
     assert delete_tag.json()["matched_media"] == 1
     assert delete_tag.json()["updated_media"] == 1
@@ -861,7 +867,7 @@ def test_user_journey_collaboration_workflow(api):
 
     viewer_album_list = api.client.get("/albums", headers=viewer_headers)
     assert viewer_album_list.status_code == 200
-    assert [item["id"] for item in viewer_album_list.json()] == [album_id]
+    assert [item["id"] for item in viewer_album_list.json()["items"]] == [album_id]
 
     viewer_album_media = api.client.get(f"/albums/{album_id}/media", headers=viewer_headers)
     assert viewer_album_media.status_code == 200
@@ -998,14 +1004,14 @@ def test_ocr_text_endpoint_set_and_search(api):
     patch = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"ocr_text": "Invoice total: $42.00"},
+        json={"ocr_text_override": "Invoice total: $42.00"},
     )
     assert patch.status_code == 200
-    assert patch.json()["ocr_text"] == "Invoice total: $42.00"
+    assert patch.json()["ocr_text_override"] == "Invoice total: $42.00"
 
     detail = api.client.get(f"/media/{blue['id']}", headers=headers)
     assert detail.status_code == 200
-    assert detail.json()["ocr_text"] == "Invoice total: $42.00"
+    assert detail.json()["ocr_text_override"] == "Invoice total: $42.00"
 
     hit = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
     assert hit.status_code == 200
@@ -1020,10 +1026,10 @@ def test_ocr_text_endpoint_set_and_search(api):
     clear = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"ocr_text": None},
+        json={"ocr_text_override": None},
     )
     assert clear.status_code == 200
-    assert clear.json()["ocr_text"] is None
+    assert clear.json()["ocr_text_override"] is None
 
     after_clear = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
     assert after_clear.status_code == 200

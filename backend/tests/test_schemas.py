@@ -23,6 +23,7 @@ def _base_media_data(**overrides):
         is_nsfw=False,
         tagging_status="done",
         thumbnail_status="done",
+        version=1,
         created_at=now,
         deleted_at=None,
     )

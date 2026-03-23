@@ -59,8 +59,8 @@ describe('resource clients', () => {
     const mePromise = firstValueFrom(usersClient.getMe());
     const updateMePromise = firstValueFrom(usersClient.updateMe({ show_nsfw: true, tag_confidence_threshold: 0.7 }));
     const tagsPromise = firstValueFrom(tagsClient.list({ page: 1, page_size: 10, category: 4, q: 'fox' }));
-    const deleteTagPromise = firstValueFrom(tagsClient.removeTagFromMedia('rating:general'));
-    const trashTagPromise = firstValueFrom(tagsClient.trashMediaByTag('rating:general'));
+    const deleteTagPromise = firstValueFrom(tagsClient.removeTagFromMedia(42));
+    const trashTagPromise = firstValueFrom(tagsClient.trashMediaByTag(42));
     const deleteCharacterPromise = firstValueFrom(tagsClient.removeCharacterNameFromMedia('ayanami_rei'));
     const trashCharacterPromise = firstValueFrom(tagsClient.trashMediaByCharacterName('ayanami_rei'));
 
@@ -74,11 +74,11 @@ describe('resource clients', () => {
     const tagsRequest = expectRequest('GET', 'http://api.example.test/tags?page=1&page_size=10&category=4&q=fox');
     tagsRequest.flush({ total: 1, page: 1, page_size: 10, items: [{ id: 1, name: 'fox' }] });
 
-    const deleteTagRequest = expectRequest('POST', 'http://api.example.test/tags/rating%3Ageneral/actions/remove-from-media');
+    const deleteTagRequest = expectRequest('POST', 'http://api.example.test/tags/42/actions/remove-from-media');
     expect(deleteTagRequest.request.body).toEqual({});
     deleteTagRequest.flush({ matched_media: 1, updated_media: 1, trashed_media: 0, already_trashed: 0, deleted_tag: true });
 
-    const trashTagRequest = expectRequest('POST', 'http://api.example.test/tags/rating%3Ageneral/actions/trash-media');
+    const trashTagRequest = expectRequest('POST', 'http://api.example.test/tags/42/actions/trash-media');
     expect(trashTagRequest.request.body).toEqual({});
     trashTagRequest.flush({ matched_media: 2, updated_media: 0, trashed_media: 1, already_trashed: 1, deleted_tag: false });
 
@@ -249,7 +249,7 @@ describe('resource clients', () => {
     mediaDownloadRequest.flush(new Blob(['zip']));
 
     const listAlbumsRequest = expectRequest('GET', 'http://api.example.test/albums');
-    listAlbumsRequest.flush([{ id: 'album-1' }]);
+    listAlbumsRequest.flush({ total: 1, page: 1, page_size: 50, items: [{ id: 'album-1' }] });
 
     const createAlbumRequest = expectRequest('POST', 'http://api.example.test/albums');
     expect(createAlbumRequest.request.body).toEqual({ name: 'Favorites' });
@@ -289,7 +289,7 @@ describe('resource clients', () => {
 
     await expect(mediaDeletePromise).resolves.toEqual({ processed: 2, skipped: 0 });
     await expect(mediaDownloadPromise).resolves.toBeInstanceOf(Blob);
-    await expect(listAlbumsPromise).resolves.toEqual([{ id: 'album-1' }]);
+    await expect(listAlbumsPromise).resolves.toMatchObject({ total: 1, items: [{ id: 'album-1' }] });
     await expect(createAlbumPromise).resolves.toEqual({ id: 'album-2', name: 'Favorites' });
     await expect(getAlbumPromise).resolves.toEqual({ id: 'album-1' });
     await expect(updateAlbumPromise).resolves.toEqual({ id: 'album-1', name: 'Road Trip' });
@@ -352,10 +352,10 @@ describe('resource clients', () => {
     await expect(queuePromise).resolves.toEqual({ queued: 7 });
   });
 
-  it('includes ocr_text in media list query and update payload', async () => {
+  it('includes ocr_text in media list query and ocr_text_override in update payload', async () => {
     const listPromise = firstValueFrom(mediaClient.listMedia({ ocr_text: 'hello world', page_size: 10 }));
-    const updatePromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text: 'Invoice $42' }));
-    const clearPromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text: null }));
+    const updatePromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: 'Invoice $42' }));
+    const clearPromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: null }));
 
     const listRequest = expectRequest('GET', 'http://api.example.test/media?ocr_text=hello%20world&page_size=10');
     listRequest.flush({ total: 1, next_cursor: null, page_size: 10, items: [{ id: 'media-ocr', ocr_text: 'hello world' }] });
@@ -363,13 +363,13 @@ describe('resource clients', () => {
     const patchRequests = httpTesting.match(
       (req) => req.method === 'PATCH' && req.urlWithParams === 'http://api.example.test/media/media-ocr'
     );
-    expect(patchRequests[0].request.body).toEqual({ ocr_text: 'Invoice $42' });
-    patchRequests[0].flush({ id: 'media-ocr', ocr_text: 'Invoice $42', deleted_at: null });
-    expect(patchRequests[1].request.body).toEqual({ ocr_text: null });
-    patchRequests[1].flush({ id: 'media-ocr', ocr_text: null, deleted_at: null });
+    expect(patchRequests[0].request.body).toEqual({ ocr_text_override: 'Invoice $42' });
+    patchRequests[0].flush({ id: 'media-ocr', ocr_text_override: 'Invoice $42', deleted_at: null });
+    expect(patchRequests[1].request.body).toEqual({ ocr_text_override: null });
+    patchRequests[1].flush({ id: 'media-ocr', ocr_text_override: null, deleted_at: null });
 
     await expect(listPromise).resolves.toMatchObject({ total: 1 });
-    await expect(updatePromise).resolves.toMatchObject({ ocr_text: 'Invoice $42' });
-    await expect(clearPromise).resolves.toMatchObject({ ocr_text: null });
+    await expect(updatePromise).resolves.toMatchObject({ ocr_text_override: 'Invoice $42' });
+    await expect(clearPromise).resolves.toMatchObject({ ocr_text_override: null });
   });
 });

@@ -168,3 +168,145 @@ def test_trash_media_by_tag_counts_already_trashed_matches_without_touching_them
         assert second_row.deleted_at.isoformat().replace("+00:00", "Z") == original_deleted_at
 
     api.run_db(_exercise)
+
+def test_tag_read_exposes_category_key(api):
+    user = api.register_and_login("catkey-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "catkey-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    tags = api.client.get("/tags", headers=headers, params={"q": "sky"})
+    assert tags.status_code == 200
+    items = tags.json()["items"]
+    assert len(items) >= 1
+    tag = next(t for t in items if t["name"] == "sky")
+    assert tag["category_key"] == "general"
+    assert tag["category_name"] == "general"
+    assert isinstance(tag["category"], int)
+
+
+def test_tag_with_confidence_exposes_category_key(api):
+    user = api.register_and_login("catkey-detail-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "catkey-detail-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    detail = api.client.get(f"/media/{blue['id']}", headers=headers)
+    assert detail.status_code == 200
+    tag_details = detail.json()["tag_details"]
+    assert len(tag_details) > 0
+    for td in tag_details:
+        assert "category_key" in td
+        assert td["category_key"] in ("general", "artist", "copyright", "character", "meta", "rating", "unknown")
+
+def test_tag_action_with_name_returns_422(api):
+    user = api.register_and_login("tagid-422-user")
+    headers = api.auth_headers(user["access_token"])
+    resp = api.client.post("/tags/forest/actions/trash-media", headers=headers)
+    assert resp.status_code == 422
+
+
+def test_tag_action_with_unknown_id_returns_404(api):
+    user = api.register_and_login("tagid-404-user")
+    headers = api.auth_headers(user["access_token"])
+    resp = api.client.post("/tags/999999/actions/trash-media", headers=headers)
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "tag_not_found"
+
+
+def test_tag_remove_from_media_by_id(api):
+    user = api.register_and_login("tagid-remove-user")
+    headers = api.auth_headers(user["access_token"])
+    green = api.upload_media(user["access_token"], "tagid-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(green["id"]))
+
+    tags_resp = api.client.get("/tags", headers=headers, params={"q": "forest"})
+    assert tags_resp.status_code == 200
+    tag_id = tags_resp.json()["items"][0]["id"]
+
+    remove = api.client.post(f"/tags/{tag_id}/actions/remove-from-media", headers=headers)
+    assert remove.status_code == 200
+    assert remove.json()["matched_media"] == 1
+    assert remove.json()["updated_media"] == 1
+
+
+def test_tag_trash_media_by_id(api):
+    user = api.register_and_login("tagid-trash-user")
+    headers = api.auth_headers(user["access_token"])
+    green = api.upload_media(user["access_token"], "tagid-trash-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(green["id"]))
+
+    tags_resp = api.client.get("/tags", headers=headers, params={"q": "forest"})
+    tag_id = tags_resp.json()["items"][0]["id"]
+
+    trash = api.client.post(f"/tags/{tag_id}/actions/trash-media", headers=headers)
+    assert trash.status_code == 200
+    assert trash.json()["trashed_media"] == 1
+
+def test_ocr_text_field_is_read_only_in_api(api):
+    user = api.register_and_login("ocr-readonly-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "ocr-ro-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    patch = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text": "should be rejected"},
+    )
+    assert patch.status_code == 422
+
+
+def test_ocr_text_override_is_distinct_from_system_ocr(api):
+    user = api.register_and_login("ocr-distinct-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "ocr-dist-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    patch = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text_override": "My correction"},
+    )
+    assert patch.status_code == 200
+    body = patch.json()
+    assert body["ocr_text_override"] == "My correction"
+    assert body["ocr_text"] is None
+
+
+def test_ocr_text_search_matches_override(api):
+    user = api.register_and_login("ocr-search-override-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "ocr-search-blue.png", (0, 0, 255))
+    green = api.upload_media(user["access_token"], "ocr-search-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+
+    api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text_override": "invoice number 42"},
+    )
+
+    hit = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
+    assert hit.status_code == 200
+    ids = [item["id"] for item in hit.json()["items"]]
+    assert str(blue["id"]) in ids
+    assert str(green["id"]) not in ids
+
+
+def test_ocr_text_override_clear(api):
+    user = api.register_and_login("ocr-clear-user")
+    headers = api.auth_headers(user["access_token"])
+    blue = api.upload_media(user["access_token"], "ocr-clear-blue.png", (0, 0, 255))
+    api.wait_for_media_status(str(blue["id"]))
+
+    api.client.patch(f"/media/{blue['id']}", headers=headers, json={"ocr_text_override": "some text"})
+
+    cleared = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text_override": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["ocr_text_override"] is None

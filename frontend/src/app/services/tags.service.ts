@@ -97,10 +97,10 @@ export class TagsService {
     );
   }
 
-  deleteTag(tagName: string): Observable<TagManagementResult> {
+  deleteTag(tagId: number, tagName: string): Observable<TagManagementResult> {
     this.startMutation();
 
-    return this.tagsClient.removeTagFromMedia(tagName).pipe(
+    return this.tagsClient.removeTagFromMedia(tagId).pipe(
       tap((result) => {
         this.invalidateResults((tag) => tag.name !== tagName);
         this.finishMutation();
@@ -111,10 +111,10 @@ export class TagsService {
     );
   }
 
-  trashMediaByTag(tagName: string): Observable<TagManagementResult> {
+  trashMediaByTag(tagId: number): Observable<TagManagementResult> {
     this.startMutation();
 
-    return this.tagsClient.trashMediaByTag(tagName).pipe(
+    return this.tagsClient.trashMediaByTag(tagId).pipe(
       tap(() => this.finishMutation()),
       catchError((error) => this.failMutation(error)),
       finalize(() => this.ensureMutationSettled())
