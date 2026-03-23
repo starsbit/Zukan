@@ -5,7 +5,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.errors import AppError, tag_not_found
-from backend.app.models import Media, MediaTag, Tag, User
+from backend.app.models.media import Media, MediaTag, User
+from backend.app.models.tags import Tag
 from backend.app.schemas import CATEGORY_NAMES, TagListResponse, TagManagementResult, TagRead
 from backend.app.services import media as media_service
 

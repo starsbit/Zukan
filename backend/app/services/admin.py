@@ -4,7 +4,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors import AppError, user_not_found
-from backend.app.models import Media, User
+from backend.app.models.auth import User
+from backend.app.models.media import Media
 from backend.app.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
 from backend.app.services.media import get_tag_queue, purge_media_record
 

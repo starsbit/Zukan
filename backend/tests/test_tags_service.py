@@ -1,8 +1,9 @@
 import uuid
 
 from sqlalchemy import select
-
-from backend.app.models import Media, Tag, User
+from backend.app.models.auth import User
+from backend.app.models.media import Media
+from backend.app.models.tags import Tag
 from backend.app.services import media as media_service
 from backend.app.services import tags as tag_service
 
@@ -13,9 +14,6 @@ def test_to_tag_read_uses_category_name_mapping(api):
     api.wait_for_media_status(str(uploaded["id"]))
 
     async def _exercise(session):
-        from backend.app.models import Tag
-        from sqlalchemy import select
-
         tag = (await session.execute(select(Tag).where(Tag.name == "rating:general"))).scalar_one()
         mapped = tag_service._to_tag_read(tag)
         assert mapped.name == "rating:general"

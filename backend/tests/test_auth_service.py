@@ -6,7 +6,8 @@ from fastapi import HTTPException
 from jose import jwt
 from sqlalchemy import select
 
-from backend.app.models import RefreshToken
+from backend.app.models.auth import User
+from backend.app.models.auth import RefreshToken
 from backend.app.services.auth import (
     ALGORITHM,
     _hash_token,
@@ -219,8 +220,6 @@ def test_update_current_user_changes_password_and_nsfw_setting(api):
     user_id = uuid.UUID(created["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-
         user = await session.get(User, user_id)
         old_hash = user.hashed_password
         updated = await update_current_user(

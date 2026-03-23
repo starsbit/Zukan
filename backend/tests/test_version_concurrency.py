@@ -6,6 +6,11 @@ import pytest
 from fastapi import HTTPException
 
 from backend.app.schemas import AlbumRead, MediaRead, UserRead
+from backend.app.models.auth import User
+from backend.app.schemas import MediaUpdate
+from backend.app.services import media as media_service
+from backend.app.schemas import AlbumUpdate
+from backend.app.services import albums as album_service
 
 
 # --- Schema: version is exposed ---
@@ -214,10 +219,6 @@ def test_media_service_version_conflict_raises_http_exception(api):
     user_id = uuid.UUID(user["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import MediaUpdate
-        from backend.app.services import media as media_service
-
         db_user = await session.get(User, user_id)
         with pytest.raises(HTTPException) as exc:
             await media_service.update_media_metadata(
@@ -237,10 +238,6 @@ def test_album_service_version_conflict_raises_http_exception(api):
     user_id = uuid.UUID(user["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import AlbumUpdate
-        from backend.app.services import albums as album_service
-
         db_user = await session.get(User, user_id)
         with pytest.raises(HTTPException) as exc:
             await album_service.update_album(

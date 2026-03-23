@@ -13,7 +13,11 @@ from sqlalchemy.orm import selectinload
 
 from backend.app.config import settings
 from backend.app.errors import AppError, album_not_found, media_not_found, nsfw_hidden, nsfw_disabled, tagging_job_already_queued, upload_limit_exceeded, version_conflict
-from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaExternalRef, MediaTag, MediaType, Tag, User, UserFavorite
+from backend.app.models.auth import User
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.media import Media, MediaExternalRef, MediaTag, MediaType
+from backend.app.models.tags import Tag
+from backend.app.models.media_interactions import UserFavorite
 from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,

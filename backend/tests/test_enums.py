@@ -1,9 +1,9 @@
 import uuid
 
 import pytest
+from backend.app.models.media import TaggingStatus, ProcessingStatus
 
 def test_tagging_status_enum_values():
-    from backend.app.models import TaggingStatus
     assert TaggingStatus.PENDING == "pending"
     assert TaggingStatus.PROCESSING == "processing"
     assert TaggingStatus.DONE == "done"
@@ -11,7 +11,6 @@ def test_tagging_status_enum_values():
 
 
 def test_processing_status_enum_values():
-    from backend.app.models import ProcessingStatus
     assert ProcessingStatus.PENDING == "pending"
     assert ProcessingStatus.PROCESSING == "processing"
     assert ProcessingStatus.DONE == "done"

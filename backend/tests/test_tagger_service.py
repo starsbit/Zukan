@@ -9,6 +9,7 @@ from PIL import Image
 
 from backend.app.services import tagger as tagger_module
 from backend.app.services.tagger import NSFW_HINT_TAGS, NSFW_RATING_TAGS, TagPrediction, TaggingResult
+from backend.app.models.media import Media
 
 
 def test_questionable_is_nsfw():
@@ -275,7 +276,6 @@ def test_retag_allowed_after_failure(api):
     blue_id_str = str(blue["id"])
 
     async def _set_failed(session):
-        from backend.app.models import Media
         media = await session.get(Media, blue_id)
         media.tagging_status = "failed"
         await session.commit()

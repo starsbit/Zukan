@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.errors import AppError, admin_required, invalid_token, not_authenticated, user_not_found
-from backend.app.models import User
+from backend.app.models.auth import User
 from backend.app.services.auth import decode_access_token, get_user_by_id
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)

@@ -4,8 +4,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.app.errors import AppError, album_not_found, album_read_only, album_share_forbidden, forbidden, media_not_in_album, share_not_found, share_self, version_conflict
-from backend.app.models import Album, AlbumMedia, AlbumShare, Media, MediaTag, Tag, User
+from backend.app.errors import AppError, album_not_found, album_read_only, album_share_forbidden, forbidden, media_not_in_album, share_not_found, share_self, version_conflict, album_empty
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.media import Media, MediaTag, User
 from backend.app.schemas import AlbumListResponse, AlbumRead, AlbumShareCreate, AlbumUpdate, MediaListResponse, TagFilterMode
 from backend.app.services.media import _apply_tag_filters, enrich_media, favorited_ids
 

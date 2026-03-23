@@ -14,7 +14,8 @@ from backend.app.errors import AppError
 
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
-from backend.app.models import Media, User
+from backend.app.models.auth import User
+from backend.app.models.media import Media
 from backend.app.routers import admin, albums, auth, config, media, tags, users
 from backend.app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
 from backend.app.services.media import mark_tagging_failure, set_tag_queue, tag_media

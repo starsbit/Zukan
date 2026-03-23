@@ -1,4 +1,9 @@
 import uuid
+from backend.app.models.auth import User
+from backend.app.schemas import ExternalRefCreate, MediaUpdate
+from backend.app.services import media as media_service
+from backend.app.models.media import MediaEntity, MediaExternalRef
+from sqlalchemy import text
 
 def test_external_refs_default_empty_in_media_detail(api):
     user = api.register_and_login("extref-empty-user")
@@ -92,10 +97,6 @@ def test_external_refs_service_layer(api):
     user_id = uuid.UUID(user["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import ExternalRefCreate, MediaUpdate
-        from backend.app.services import media as media_service
-
         db_user = await session.get(User, user_id)
         updated = await media_service.update_media_metadata(
             session,
@@ -112,18 +113,15 @@ def test_external_refs_service_layer(api):
     api.run_db(_exercise)
 
 def test_media_entity_model_exists():
-    from backend.app.models import MediaEntity
     assert MediaEntity.__tablename__ == "media_entities"
 
 
 def test_media_external_ref_model_exists():
-    from backend.app.models import MediaExternalRef
     assert MediaExternalRef.__tablename__ == "media_external_refs"
 
 
 def test_media_entities_table_created_in_db(api):
     async def _check(session):
-        from sqlalchemy import text
         result = await session.execute(
             text("SELECT 1 FROM information_schema.tables WHERE table_name = 'media_entities'")
         )
@@ -134,7 +132,6 @@ def test_media_entities_table_created_in_db(api):
 
 def test_media_external_refs_table_created_in_db(api):
     async def _check(session):
-        from sqlalchemy import text
         result = await session.execute(
             text("SELECT 1 FROM information_schema.tables WHERE table_name = 'media_external_refs'")
         )
@@ -145,7 +142,6 @@ def test_media_external_refs_table_created_in_db(api):
 
 def test_version_column_exists_on_all_tables(api):
     async def _check(session):
-        from sqlalchemy import text
         for table, col in [("media", "version"), ("albums", "version"), ("users", "version")]:
             result = await session.execute(
                 text(

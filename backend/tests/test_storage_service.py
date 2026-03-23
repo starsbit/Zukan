@@ -8,7 +8,7 @@ from PIL import Image as PILImage
 
 from backend.tests.api_test_support import gif_bytes, mp4_bytes
 
-from backend.app.models import MediaType
+from backend.app.models.media import MediaType
 from backend.app.services.storage import (
     ALLOWED_MIME_TYPES,
     _shard_path,

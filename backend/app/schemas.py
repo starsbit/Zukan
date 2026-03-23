@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, model_validator
 
-from backend.app.models import MediaType, TaggingStatus, ProcessingStatus
+from backend.app.models.media import MediaType, TaggingStatus, ProcessingStatus
 
 CATEGORY_NAMES = {0: "general", 1: "artist", 3: "copyright", 4: "character", 5: "meta", 9: "rating"}
 

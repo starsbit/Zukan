@@ -2,7 +2,7 @@ from typing import TypeAlias
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models import User
+from backend.app.models.auth import User
 from backend.app.schemas import BulkResult, MediaBatchDelete, MediaBatchUpdate
 from backend.app.services import albums as album_service
 from backend.app.services import media as media_service

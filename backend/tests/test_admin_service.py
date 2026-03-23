@@ -1,7 +1,8 @@
 import asyncio
 import uuid
 
-from backend.app.models import Media, User
+from backend.app.models.auth import User
+from backend.app.models.media import Media
 from backend.app.services import admin as admin_service
 from backend.app.services import media as media_service
 

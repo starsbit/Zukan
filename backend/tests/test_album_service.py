@@ -3,8 +3,11 @@ import uuid
 import pytest
 from fastapi import HTTPException
 
-from backend.app.models import Album
+from backend.app.models.albums import Album
+from backend.app.models.auth import User
 from backend.app.services import albums as album_service
+from backend.app.schemas import AlbumShareCreate, AlbumUpdate
+from backend.app.schemas import TagFilterMode
 
 
 def test_album_access_returns_full_access_for_owner():
@@ -34,8 +37,6 @@ def test_get_album_for_user_raises_not_found_for_unshared_user(api):
     outsider_id = uuid.UUID(outsider["user"]["id"])
 
     async def _run(session):
-        from backend.app.models import User
-
         outsider_user = await session.get(User, outsider_id)
         await album_service.get_album_for_user(session, album_id, outsider_user)
 
@@ -65,7 +66,6 @@ def test_bulk_add_and_remove_from_album_updates_cover_image(api):
     second_id = uuid.UUID(str(second["id"]))
 
     async def _exercise(session):
-        from backend.app.models import User
 
         db_user = await session.get(User, owner_id)
         processed, skipped = await album_service.bulk_add_to_album(
@@ -100,8 +100,6 @@ def test_album_service_crud_and_sharing_flow(api):
     viewer_id = uuid.UUID(viewer["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import AlbumShareCreate, AlbumUpdate
 
         owner_user = await session.get(User, owner_id)
         viewer_user = await session.get(User, viewer_id)
@@ -169,8 +167,6 @@ def test_album_service_lists_media_and_downloads_in_album_order(api):
     second_id = uuid.UUID(str(second["id"]))
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import TagFilterMode
 
         owner_user = await session.get(User, owner_id)
         added = await album_service.add_media_to_album(session, album_id, [first_id, second_id], owner_user)

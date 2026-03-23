@@ -4,6 +4,8 @@ from datetime import datetime, timedelta, timezone
 from backend.app.config import settings
 from backend.app.services.auth import verify_password
 from backend.tests.api_test_support import gif_bytes, mov_bytes, mp4_bytes, png_bytes, webm_bytes
+from backend.app.models.auth import User
+from backend.app.models.media import Media
 
 
 def _login(api, username: str, password: str = "password123") -> dict:
@@ -54,8 +56,6 @@ def test_register_hashes_password_in_database(api):
     assert response.status_code == 201, response.text
 
     async def _fetch_user(session):
-        from backend.app.models import User
-
         return await session.get(User, uuid.UUID(response.json()["id"]))
 
     stored_user = api.run_db(_fetch_user)
@@ -103,8 +103,6 @@ def test_password_update_rehashes_password_and_invalidates_old_login(api):
     user_id = uuid.UUID(created["user"]["id"])
 
     async def _fetch_hash(session):
-        from backend.app.models import User
-
         user = await session.get(User, user_id)
         return user.hashed_password
 
@@ -680,8 +678,6 @@ def test_expired_trash_is_auto_purged_before_listing_and_reupload(api):
     assert trashed.status_code == 200
 
     async def _age_trash(session):
-        from backend.app.models import Media
-
         media = await session.get(Media, uuid.UUID(str(uploaded["id"])))
         media.deleted_at = datetime.now(timezone.utc) - timedelta(days=31)
         await session.commit()

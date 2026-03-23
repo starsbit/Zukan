@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 from docker.errors import DockerException
 from testcontainers.postgres import PostgresContainer
+from backend.app.models.media import Media
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -207,16 +208,12 @@ class ApiHarness:
         return run(_inner())
 
     def fetch_media_row(self, media_id: uuid.UUID):
-        from backend.app.models import Media
-
         async def _fetch(session: AsyncSession):
             return await session.get(Media, media_id)
 
         return self.run_db(_fetch)
 
     def set_media_created_at(self, media_id: str, created_at: datetime):
-        from backend.app.models import Media
-
         async def _update(session: AsyncSession):
             media = await session.get(Media, uuid.UUID(media_id))
             media.created_at = created_at
@@ -225,8 +222,6 @@ class ApiHarness:
         self.run_db(_update)
 
     def set_media_captured_at(self, media_id: str, captured_at: datetime):
-        from backend.app.models import Media
-
         async def _update(session: AsyncSession):
             media = await session.get(Media, uuid.UUID(media_id))
             media.captured_at = captured_at

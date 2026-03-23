@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import settings
 from backend.app.errors import AppError, duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token, version_conflict
-from backend.app.models import RefreshToken, User
+from backend.app.models.auth import RefreshToken, User
 from backend.app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
 
 ALGORITHM = "HS256"

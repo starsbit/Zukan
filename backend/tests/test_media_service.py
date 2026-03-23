@@ -12,6 +12,10 @@ from sqlalchemy.pool import NullPool
 from backend.app.services import media as media_service
 from backend.app.schemas import MediaListState, MediaUpdate
 from backend.tests.api_test_support import jpeg_bytes, png_bytes
+from backend.app.models.media import Media
+from backend.app.models.auth import User
+from backend.app.services.tagger import TagPrediction, TaggingResult
+from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode, MediaMetadataUpdate
 
 
 def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
@@ -32,9 +36,6 @@ def test_build_upload_response_restores_deleted_duplicate_and_queues_retag(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-        from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
         upload = UploadFile(
             filename="restore-me-again.png",
@@ -65,9 +66,6 @@ def test_build_upload_response_uses_embedded_capture_timestamp(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-        from backend.app.schemas import NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
         upload = UploadFile(
             filename="captured.jpg",
@@ -95,8 +93,6 @@ def test_build_upload_response_commits_before_queueing_new_uploads(api):
             session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
             try:
                 async with session_maker() as session:
-                    from backend.app.models import Media
-
                     media = (await session.execute(select(Media).where(Media.id == media_id))).scalar_one_or_none()
                     assert media is not None, "Media was queued before it was committed"
                     self.seen_ids.append(media_id)
@@ -107,8 +103,6 @@ def test_build_upload_response_commits_before_queueing_new_uploads(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from backend.app.models import User
-
         db_user = await session.get(User, user_id)
         upload = UploadFile(
             filename="commit-before-queue.png",
@@ -130,7 +124,6 @@ def test_get_visible_media_blocks_hidden_nsfw_media(api):
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
     async def _exercise(session):
-        from backend.app.models import User
 
         db_user = await session.get(User, user_id)
         await media_service.get_visible_media(session, uploaded_id, db_user)
@@ -153,8 +146,6 @@ def test_retag_media_queues_media_id(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-        from backend.app.schemas import NsfwFilter, TagFilterMode
 
         db_user = await session.get(User, user_id)
         await media_service.retag_media(session, uploaded_id, db_user)
@@ -178,7 +169,6 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
         attempts["count"] += 1
         if attempts["count"] < 3:
             raise RuntimeError("temporary inference error")
-        from backend.app.services.tagger import TagPrediction, TaggingResult
 
         return TaggingResult(
             predictions=[TagPrediction(name="sky", category=0, confidence=0.9)],
@@ -191,7 +181,6 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
     monkeypatch.setattr(media_service.settings, "tagging_retry_backoff_seconds", 0.0)
 
     async def _exercise(session):
-        from backend.app.models import User
 
         db_user = await session.get(User, user_id)
         upload = UploadFile(
@@ -218,8 +207,6 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
     user_id = uuid.UUID(user["user"]["id"])
 
     async def fake_predict(_image_path: str):
-        from backend.app.services.tagger import TagPrediction, TaggingResult
-
         return TaggingResult(
             predictions=[
                 TagPrediction(name="sky", category=0, confidence=0.91),
@@ -234,8 +221,6 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
     monkeypatch.setattr(media_service.tagger, "predict", fake_predict)
 
     async def _exercise(session):
-        from backend.app.models import User
-
         db_user = await session.get(User, user_id)
         db_user.tag_confidence_threshold = 0.75
         await session.commit()
@@ -268,8 +253,6 @@ def test_mark_tagging_failure_persists_error_and_retag_clears_it(api):
     media_service.set_tag_queue(queue)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-
         db_user = await session.get(User, user_id)
         await media_service.mark_tagging_failure(session, uploaded_id, RuntimeError("model offline"))
 
@@ -307,9 +290,6 @@ def test_media_service_listing_detail_and_favorites_flow(api):
     assert enabled.status_code == 200
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
         listing = await media_service.list_media(
             session,
@@ -465,9 +445,6 @@ def test_media_service_trash_restore_on_this_day_and_purge_flow(api):
     purged_id = uuid.UUID(str(purged["id"]))
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-        from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
 
         await media_service.soft_delete_media(session, kept_id, db_user)
@@ -521,8 +498,6 @@ def test_list_trash_auto_purges_items_older_than_thirty_days(api):
     expired_id = uuid.UUID(str(expired["id"]))
 
     async def _exercise(session):
-        from backend.app.models import Media, User
-
         db_user = await session.get(User, user_id)
         await media_service.soft_delete_media(session, fresh_id, db_user)
         await media_service.soft_delete_media(session, expired_id, db_user)
@@ -550,9 +525,6 @@ def test_update_media_metadata_replaces_tags_and_character_name(api):
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import MediaMetadataFilter, MediaMetadataUpdate, NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
         db_user.show_nsfw = True
         await session.commit()
@@ -624,8 +596,6 @@ def test_manual_retag_and_purge_cleanup_remove_dangling_tag_rows(api, monkeypatc
     uploaded_id = uuid.UUID(str(uploaded["id"]))
 
     async def fake_predict(_image_path: str):
-        from backend.app.services.tagger import TagPrediction, TaggingResult
-
         return TaggingResult(
             predictions=[
                 TagPrediction(name="forest", category=0, confidence=0.95),
@@ -639,8 +609,6 @@ def test_manual_retag_and_purge_cleanup_remove_dangling_tag_rows(api, monkeypatc
     monkeypatch.setattr(media_service.tagger, "predict", fake_predict)
 
     async def _exercise(session):
-        from backend.app.models import User
-
         db_user = await session.get(User, user_id)
         await media_service.update_media_metadata(
             session,
@@ -677,9 +645,6 @@ def test_ocr_text_can_be_set_queried_and_searched(api):
     user_id = uuid.UUID(user["user"]["id"])
 
     async def _exercise(session):
-        from backend.app.models import User
-        from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
-
         db_user = await session.get(User, user_id)
 
         updated = await media_service.update_media_metadata(

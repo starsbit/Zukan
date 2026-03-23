@@ -17,7 +17,7 @@ from fastapi import UploadFile
 from PIL import Image as PILImage, ImageOps, ImageSequence
 
 from backend.app.config import settings
-from backend.app.models import Media, MediaType
+from backend.app.models.media import Media, MediaType
 
 ALLOWED_MIME_TYPES: dict[str, tuple[str, MediaType]] = {
     "image/jpeg": (".jpg", MediaType.IMAGE),
