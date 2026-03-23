@@ -96,9 +96,16 @@ async def favorited_ids(db: AsyncSession, user_id: uuid.UUID, media_ids: list[uu
 
 def _apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | None, mode: TagFilterMode):
     if tags:
-        stmt = stmt.where(Media.tags.contains(tags) if mode == TagFilterMode.AND else Media.tags.overlap(tags))
+        if mode == TagFilterMode.AND:
+            for tag_name in tags:
+                subq = select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name)
+                stmt = stmt.where(Media.id.in_(subq))
+        else:
+            subq = select(MediaTag.media_id).join(Tag).where(Tag.name.in_(tags))
+            stmt = stmt.where(Media.id.in_(subq))
     if exclude_tags:
-        stmt = stmt.where(~Media.tags.contains(exclude_tags))
+        subq = select(MediaTag.media_id).join(Tag).where(Tag.name.in_(exclude_tags))
+        stmt = stmt.where(~Media.id.in_(subq))
     return stmt
 
 
@@ -239,7 +246,7 @@ def _build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         media_type=media.media_type,
         metadata=_build_media_metadata(media),
         version=media.version,
-        tags=media.tags,
+        tags=sorted(mt.tag.name for mt in media.media_tags),
         character_name=media.character_name,
         source_url=media.source_url,
         ocr_text=media.ocr_text,
@@ -309,8 +316,6 @@ async def _set_media_tag_links(db: AsyncSession, media: Media, tag_payloads: lis
             tag.category = category
         db.add(MediaTag(media_id=media.id, tag_id=tag.id, confidence=confidence))
 
-    media.tags = [name for name, _, _ in desired_payloads]
-
 
 def _apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     if nsfw == NsfwFilter.DEFAULT:
@@ -373,7 +378,7 @@ async def list_media(
     include_total: bool = True,
 ) -> MediaCursorPage:
     await purge_expired_trash(db)
-    stmt = select(Media)
+    stmt = select(Media).options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
     if album_id is not None:
         await _ensure_album_is_visible(db, user, album_id)
         stmt = stmt.join(AlbumMedia, AlbumMedia.media_id == Media.id).where(AlbumMedia.album_id == album_id)
@@ -518,6 +523,7 @@ async def list_favorites(
     await purge_expired_trash(db)
     stmt = (
         select(Media)
+        .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
         .join(UserFavorite, and_(UserFavorite.media_id == Media.id, UserFavorite.user_id == user.id))
         .where(Media.deleted_at.is_(None))
     )
@@ -601,7 +607,6 @@ async def build_upload_response(
             height=metadata.height,
             duration_seconds=metadata.duration_seconds,
             frame_count=metadata.frame_count,
-            tags=[],
             character_name=character_name or None,
             source_url=source_url or None,
             tagging_status="pending",

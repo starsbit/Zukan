@@ -184,7 +184,7 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
         json={"tags": ["pilot", "rating:general"], "character_name": "ikari_shinji"},
     )
     assert manual_edit.status_code == 200
-    assert manual_edit.json()["tags"] == ["pilot", "rating:general"]
+    assert set(manual_edit.json()["tags"]) == {"pilot", "rating:general"}
     assert manual_edit.json()["character_name"] == "ikari_shinji"
     assert manual_edit.json()["metadata"]["captured_at"]
 

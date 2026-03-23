@@ -106,7 +106,7 @@ def test_remove_tag_from_media_cleans_up_media_links_and_dangling_tag_rows(api):
 
         media = await media_service._get_media_with_tags(session, uploaded_id, deleted=None)
         assert media is not None
-        assert "sky" not in media.tags
+        assert "sky" not in {mt.tag.name for mt in media.media_tags}
         assert {item.tag.name for item in media.media_tags} == {"ayanami_rei", "blue", "rating:general"}
 
         assert (await session.execute(select(Tag).where(Tag.name == "sky"))).scalar_one_or_none() is None

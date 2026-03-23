@@ -191,7 +191,7 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
     monkeypatch.setattr(media_service.settings, "tagging_retry_backoff_seconds", 0.0)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
+        from backend.app.models import User
 
         db_user = await session.get(User, user_id)
         upload = UploadFile(
@@ -204,10 +204,10 @@ def test_tag_media_retries_transient_predict_failures(api, monkeypatch):
 
         await media_service.tag_media(session, media_id)
 
-        media = await session.get(Media, media_id)
+        media = await media_service._get_media_with_tags(session, media_id, deleted=None)
         assert media.tagging_status == "done"
         assert media.tagging_error is None
-        assert media.tags == ["sky"]
+        assert {mt.tag.name for mt in media.media_tags} == {"sky"}
 
     api.run_db(_exercise)
     assert attempts["count"] == 3
@@ -234,7 +234,7 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
     monkeypatch.setattr(media_service.tagger, "predict", fake_predict)
 
     async def _exercise(session):
-        from backend.app.models import Media, User
+        from backend.app.models import User
 
         db_user = await session.get(User, user_id)
         db_user.tag_confidence_threshold = 0.75
@@ -250,8 +250,8 @@ def test_tag_media_filters_persisted_tags_by_user_confidence_threshold(api, monk
 
         await media_service.tag_media(session, media_id)
 
-        media = await session.get(Media, media_id)
-        assert media.tags == ["rating:general", "sky"]
+        media = await media_service._get_media_with_tags(session, media_id, deleted=None)
+        assert {mt.tag.name for mt in media.media_tags} == {"rating:general", "sky"}
         assert media.character_name is None
 
     api.run_db(_exercise)

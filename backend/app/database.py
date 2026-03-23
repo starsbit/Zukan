@@ -33,9 +33,6 @@ async def init_db():
 
         # Indexes
         await conn.execute(
-            text("CREATE INDEX IF NOT EXISTS idx_media_tags ON media USING GIN(tags)")
-        )
-        await conn.execute(
             text("CREATE INDEX IF NOT EXISTS idx_media_character_name_lower ON media (LOWER(character_name))")
         )
         await conn.execute(

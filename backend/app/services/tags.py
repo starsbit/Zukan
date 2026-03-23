@@ -81,7 +81,7 @@ async def remove_tag_from_media(db: AsyncSession, user: User, *, tag_name: str) 
     media_rows = (
         await db.execute(
             _accessible_media_stmt(user)
-            .where(Media.tags.contains([tag_name]))
+            .where(Media.id.in_(select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name)))
             .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
         )
     ).scalars().all()
@@ -96,7 +96,7 @@ async def remove_tag_from_media(db: AsyncSession, user: User, *, tag_name: str) 
         if len(next_payloads) == len(media.media_tags):
             continue
         await media_service._set_media_tag_links(db, media, next_payloads)
-        media.is_nsfw = media_service.tag_names_mark_nsfw(media.tags)
+        media.is_nsfw = media_service.tag_names_mark_nsfw([name for name, _, _ in next_payloads])
         updated += 1
 
     await db.flush()
@@ -111,7 +111,7 @@ async def remove_tag_from_media(db: AsyncSession, user: User, *, tag_name: str) 
 
 async def trash_media_by_tag(db: AsyncSession, user: User, *, tag_name: str) -> TagManagementResult:
     await media_service.purge_expired_trash(db)
-    matches = (await db.execute(_accessible_media_stmt(user).where(Media.tags.contains([tag_name])))).scalars().all()
+    matches = (await db.execute(_accessible_media_stmt(user).where(Media.id.in_(select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name))))).scalars().all()
     trashed = 0
     already_trashed = 0
     now = datetime.now(timezone.utc)
