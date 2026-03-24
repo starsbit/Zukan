@@ -54,6 +54,7 @@ from backend.app.utils.pagination import (
 from backend.app.utils.storage import delete_media_files, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
+from backend.app.ml.ocr import TesseractOCR, ocr_backend
 
 TRASH_RETENTION_DAYS = 30
 
@@ -275,7 +276,7 @@ class MediaService:
         accepted = duplicates = errors = 0
         pending_items = done_items = failed_items = processing_items = 0
         queued_media_ids: list[uuid.UUID] = []
-        tagging_media_ids: list[uuid.UUID] = []
+        processing_media_ids: list[uuid.UUID] = []
         media_repo = MediaRepository(self._db)
         tags_repo = TagRepository(self._db)
 
@@ -345,7 +346,7 @@ class MediaService:
                 self._db.add(batch_item)
                 await self._db.flush()
                 queued_media_ids.append(existing.id)
-                tagging_media_ids.append(existing.id)
+                processing_media_ids.append(existing.id)
                 results.append(
                     UploadResult(
                         id=existing.id,
@@ -391,9 +392,10 @@ class MediaService:
                 batch_item.status = ItemStatus.done
                 batch_item.step = ProcessingStep.tag
                 batch_item.progress_percent = 100
+                processing_media_ids.append(media.id)
                 done_items += 1
             else:
-                tagging_media_ids.append(media.id)
+                processing_media_ids.append(media.id)
                 batch_item.status = ItemStatus.pending
                 batch_item.step = ProcessingStep.tag
                 batch_item.progress_percent = 0
@@ -434,8 +436,11 @@ class MediaService:
             from backend.app.services.albums import AlbumService
             await AlbumService(self._db).add_media_to_album(album_id, queued_media_ids, user)
         if queue:
-            for media_id in tagging_media_ids:
+            for media_id in processing_media_ids:
                 await queue.put(media_id)
+        elif processing_media_ids:
+            for media_id in processing_media_ids:
+                await self.run_ocr_for_media(media_id, ocr_backend)
         return BatchUploadResponse(
             batch_id=upload_batch.id,
             batch_url=f"/api/v1/me/import-batches/{upload_batch.id}",
@@ -625,6 +630,21 @@ class MediaService:
         media.tagging_status = "failed"
         media.tagging_error = _format_tagging_error(exc)
         await self._db.commit()
+
+    async def run_ocr_for_media(self, media_id: uuid.UUID, ocr_model: TesseractOCR | None) -> None:
+        if ocr_model is None:
+            return
+        media = await MediaRepository(self._db).get_by_id(media_id)
+        if media is None or media.deleted_at is not None:
+            return
+        try:
+            media.ocr_text = await ocr_model.extract_text(media.filepath, media.media_type)
+            await self._db.commit()
+        except Exception as exc:
+            # OCR is best-effort and should not fail the upload/tag pipeline.
+            media.ocr_text = None
+            await self._db.commit()
+            print(f"OCR failed for {media_id}: {exc}")
 
     async def empty_trash(self, user: User) -> None:
         await self.purge_expired_trash()

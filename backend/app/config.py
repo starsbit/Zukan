@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     model_cache_dir: Path = Path("model_cache")
     tagging_retry_attempts: int = 3
     tagging_retry_backoff_seconds: float = 0.25
+    ocr_enabled: bool = True
+    ocr_languages: str = "eng"
+    ocr_tesseract_config: str = "--psm 6"
+    ocr_max_chars: int = 4000
+    ocr_sample_frames: int = 5
 
     max_upload_size_mb: int = 50
     max_batch_size: int = 300

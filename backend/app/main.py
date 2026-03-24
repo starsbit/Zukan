@@ -24,6 +24,7 @@ from backend.app.services.media import set_tag_queue, MediaService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.ml.tagger import tagger
+from backend.app.ml.ocr import ocr_backend
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 
@@ -58,7 +59,9 @@ async def tagging_worker():
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
                     continue
-                await TagService(db, tagger).tag_media(media_id)
+                if media_item.tagging_status in ("pending", "processing"):
+                    await TagService(db, tagger).tag_media(media_id)
+                await MediaService(db).run_ocr_for_media(media_id, ocr_backend)
                 await MediaService(db).mark_upload_batch_item_done(media_id)
 
             except Exception as exc:
@@ -91,6 +94,7 @@ async def lifespan(_api: FastAPI):
     await init_db()
     await _ensure_admin_user()
     tagger.load()
+    ocr_backend.load()
     set_tag_queue(tag_queue)
     worker = asyncio.create_task(tagging_worker())
     yield
@@ -107,14 +111,9 @@ api = FastAPI(
     description=(
         "Zukan API for authentication, media management, albums, tags, and administration. "
     ),
-    terms_of_service="https://zukan.example.com/terms",
     contact={
         "name": "starsbit",
         "url": "https://github.com/starsbit/",
-    },
-    license_info={
-        "name": "MIT",
-        "identifier": "MIT",
     },
     openapi_tags=OPENAPI_TAGS,
     servers=OPENAPI_SERVERS,

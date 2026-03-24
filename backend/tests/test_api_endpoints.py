@@ -1029,3 +1029,53 @@ def test_ocr_text_endpoint_set_and_search(api):
     after_clear = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
     assert after_clear.status_code == 200
     assert after_clear.json()["items"] == []
+
+
+def test_upload_generates_system_ocr_text_for_single_upload(api, monkeypatch):
+    async def fake_extract_text(_media_path: str, _media_type):
+        return "single upload OCR text"
+
+    from backend.app.ml.ocr import ocr_backend
+
+    monkeypatch.setattr(ocr_backend, "extract_text", fake_extract_text)
+
+    user = api.register_and_login("ocr-upload-single-user")
+    headers = api.auth_headers(user["access_token"])
+
+    uploaded = api.upload_media(user["access_token"], "ocr-single.png", (0, 0, 255))
+    api.wait_for_media_status(str(uploaded["id"]))
+
+    detail = api.client.get(f"/media/{uploaded['id']}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["ocr_text"] == "single upload OCR text"
+
+
+def test_upload_generates_system_ocr_text_for_batch_upload(api, monkeypatch):
+    async def fake_extract_text(media_path: str, _media_type):
+        return f"ocr::{media_path.split('/')[-1]}"
+
+    from backend.app.ml.ocr import ocr_backend
+
+    monkeypatch.setattr(ocr_backend, "extract_text", fake_extract_text)
+
+    user = api.register_and_login("ocr-upload-batch-user")
+    headers = api.auth_headers(user["access_token"])
+
+    response = api.client.post(
+        "/media",
+        headers=headers,
+        files=[
+            ("files", ("ocr-batch-1.png", png_bytes((0, 0, 255)), "image/png")),
+            ("files", ("ocr-batch-2.png", png_bytes((0, 255, 0)), "image/png")),
+        ],
+    )
+    assert response.status_code == 202, response.text
+
+    uploaded_ids = [item["id"] for item in response.json()["results"] if item["id"] is not None]
+    assert len(uploaded_ids) == 2
+
+    for uploaded_id in uploaded_ids:
+        api.wait_for_media_status(str(uploaded_id))
+        detail = api.client.get(f"/media/{uploaded_id}", headers=headers)
+        assert detail.status_code == 200
+        assert detail.json()["ocr_text"].startswith("ocr::")
