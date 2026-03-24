@@ -21,11 +21,10 @@ from backend.app.schemas import (
     MediaListResponse,
     TagFilterMode,
 )
-from backend.app.services import albums as album_service
-from backend.app.services.storage import zip_media
+from backend.app.services.albums import AlbumService
+from backend.app.utils.storage import zip_media
 
 router = APIRouter(prefix="/albums", tags=["albums"], responses=ERROR_RESPONSES)
-album_access = album_service.album_access
 
 
 @router.post("", response_model=AlbumRead, status_code=status.HTTP_201_CREATED)
@@ -34,7 +33,7 @@ async def create_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.create_album(db, user, body.name, body.description)
+    return await AlbumService(db).create_album(user, body.name, body.description)
 
 
 @router.get("", response_model=AlbumListResponse)
@@ -46,7 +45,7 @@ async def list_albums(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.list_albums(db, user, page=page, page_size=page_size, sort_by=sort_by, sort_order=sort_order)
+    return await AlbumService(db).list_albums(user, page=page, page_size=page_size, sort_by=sort_by, sort_order=sort_order)
 
 
 @router.get("/{album_id}", response_model=AlbumRead)
@@ -55,8 +54,9 @@ async def get_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    album = await album_service.get_album_for_user(db, album_id, user)
-    return await album_service.album_read(db, album)
+    svc = AlbumService(db)
+    album = await svc.get_album_for_user(album_id, user)
+    return await svc.album_read(album)
 
 
 @router.patch("/{album_id}", response_model=AlbumRead)
@@ -66,7 +66,7 @@ async def update_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.update_album(db, album_id, body, user)
+    return await AlbumService(db).update_album(album_id, body, user)
 
 
 @router.delete("/{album_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -75,7 +75,7 @@ async def delete_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await album_service.delete_album(db, album_id, user)
+    await AlbumService(db).delete_album(album_id, user)
 
 
 @router.get("/{album_id}/media", response_model=MediaListResponse)
@@ -89,7 +89,7 @@ async def list_album_media(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.list_album_media(db, album_id, user, tag, exclude_tag, mode, page, page_size)
+    return await AlbumService(db).list_album_media(album_id, user, tag, exclude_tag, mode, page, page_size)
 
 
 @router.put("/{album_id}/media", response_model=BulkResult)
@@ -99,8 +99,7 @@ async def add_media_to_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    processed, skipped = await album_service.bulk_add_to_album(db, album_id, body.media_ids, user)
-    return BulkResult(processed=processed, skipped=skipped)
+    return await AlbumService(db).bulk_add_to_album(album_id, body.media_ids, user)
 
 
 @router.delete("/{album_id}/media", response_model=BulkResult)
@@ -110,8 +109,7 @@ async def remove_media_from_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    processed, skipped = await album_service.bulk_remove_from_album(db, album_id, body.media_ids, user)
-    return BulkResult(processed=processed, skipped=skipped)
+    return await AlbumService(db).bulk_remove_from_album(album_id, body.media_ids, user)
 
 
 @router.post("/{album_id}/shares", response_model=AlbumShareRead)
@@ -121,7 +119,7 @@ async def share_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await album_service.share_album(db, album_id, body, user)
+    return await AlbumService(db).share_album(album_id, body, user)
 
 
 @router.get(
@@ -134,7 +132,7 @@ async def download_album(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    album, rows = await album_service.get_album_download_media(db, album_id, user)
+    album, rows = await AlbumService(db).get_album_download_media(album_id, user)
     buf = zip_media(rows)
     safe_name = album.name.replace('"', "").replace("/", "-")
     return StreamingResponse(
@@ -151,4 +149,4 @@ async def revoke_share(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await album_service.revoke_share(db, album_id, shared_user_id, user)
+    await AlbumService(db).revoke_share(album_id, shared_user_id, user)

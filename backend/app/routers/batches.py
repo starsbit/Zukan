@@ -1,13 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
 from backend.app.schemas import ERROR_RESPONSES, ImportBatchItemRead, ImportBatchListResponse, ImportBatchRead
+from backend.app.services.processing import ProcessingService
 
 router = APIRouter(prefix="/me/import-batches", tags=["batches"], responses=ERROR_RESPONSES)
 
@@ -19,11 +19,7 @@ async def list_batches(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = ImportBatchRepository(db)
-    offset = (page - 1) * page_size
-    total = await repo.count_for_user(user.id)
-    items = await repo.list_for_user(user.id, offset=offset, limit=page_size)
-    return ImportBatchListResponse(total=total, page=page, page_size=page_size, items=list(items))
+    return await ProcessingService(db).list_batches(user.id, page=page, page_size=page_size)
 
 
 @router.get("/{batch_id}", response_model=ImportBatchRead)
@@ -32,10 +28,7 @@ async def get_batch(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    batch = await ImportBatchRepository(db).get_by_id_for_user(batch_id, user.id)
-    if batch is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
-    return batch
+    return await ProcessingService(db).get_batch_for_user(batch_id, user.id)
 
 
 @router.get("/{batch_id}/items", response_model=list[ImportBatchItemRead])
@@ -46,7 +39,4 @@ async def list_batch_items(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if await ImportBatchRepository(db).get_by_id_for_user(batch_id, user.id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Batch not found")
-    offset = (page - 1) * page_size
-    return await ImportBatchItemRepository(db).list_for_batch(batch_id, offset=offset, limit=page_size)
+    return await ProcessingService(db).list_batch_items(batch_id, user.id, page=page, page_size=page_size)

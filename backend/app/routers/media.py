@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
-from backend.app.errors import AppError, thumbnail_not_available
+from backend.app.errors.error import AppError
+from backend.app.errors.media import poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
 from backend.app.schemas import (
     BatchUploadResponse,
@@ -22,6 +23,7 @@ from backend.app.schemas import (
     MediaBatchUpdate,
     MediaCursorPage,
     MediaDetail,
+    MediaListResponse,
     MediaListState,
     MediaMetadataFilter,
     MediaUpdate,
@@ -29,7 +31,7 @@ from backend.app.schemas import (
     TagFilterMode,
     TaggingJobQueuedResponse,
 )
-from backend.app.services import media as media_service
+from backend.app.services.media import MediaService
 from backend.app.utils.storage import zip_media
 
 router = APIRouter(prefix="/media", tags=["media"], responses=ERROR_RESPONSES)
@@ -65,8 +67,7 @@ async def upload(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await media_service.build_upload_response(
-        db,
+    return await MediaService(db).build_upload_response(
         user,
         files,
         album_id=album_id,
@@ -97,8 +98,7 @@ async def list_media(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await media_service.list_media(
-        db,
+    return await MediaService(db).list_media(
         user,
         state,
         tag,
@@ -127,22 +127,50 @@ async def list_character_suggestions(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await media_service.list_character_suggestions(db, user, q=q, limit=limit)
+    return await MediaService(db).list_character_suggestions(user, q=q, limit=limit)
+
+
+@router.get("/trash", response_model=MediaCursorPage, summary="List Trash")
+async def list_trash(
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
+    page_size: int = Query(default=20, ge=1, le=200),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MediaService(db).list_trash(user, after, page_size)
+
+
+@router.get("/favorites", response_model=MediaListResponse, summary="List Favorited Media")
+async def list_favorites(
+    tag: Annotated[list[str] | None, Query(description="Tags that must be present. Repeat for multiple.")] = None,
+    exclude_tag: Annotated[list[str] | None, Query(description="Tags that must not be present. Repeat for multiple.")] = None,
+    mode: TagFilterMode = Query(default=TagFilterMode.AND),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=200),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MediaService(db).list_favorites(user, tag, exclude_tag, mode, page, page_size)
 
 
 @router.patch("", response_model=BulkResult, summary="Batch Update Media")
 async def batch_update_media(body: MediaBatchUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await media_service.batch_update_media(db, body, user)
+    return await MediaService(db).batch_update_media(body, user)
 
 
 @router.delete("", response_model=BulkResult, summary="Batch Delete Media")
 async def batch_delete_media(body: MediaBatchDelete, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await media_service.batch_delete_media(db, body, user)
+    return await MediaService(db).batch_delete_media(body, user)
+
+
+@router.post("/actions/purge", response_model=BulkResult, summary="Batch Purge Media")
+async def batch_purge_media(body: MediaBatchDelete, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    return await MediaService(db).batch_purge_media(body, user)
 
 
 @router.post("/actions/empty-trash", status_code=status.HTTP_204_NO_CONTENT, summary="Empty Trash")
 async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await media_service.empty_trash(db, user)
+    await MediaService(db).empty_trash(user)
 
 
 @router.post(
@@ -152,7 +180,7 @@ async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Dep
     responses={200: {"content": {"application/zip": {}}, "description": "ZIP archive of the requested media."}},
 )
 async def download_media(body: DownloadRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    rows = await media_service.get_downloadable_media(db, user, body.media_ids)
+    rows = await MediaService(db).get_downloadable_media(user, body.media_ids)
     buf = zip_media(rows)
     return StreamingResponse(
         content=iter([buf.read()]),
@@ -163,12 +191,12 @@ async def download_media(body: DownloadRequest, user: User = Depends(current_use
 
 @router.get("/{media_id}", response_model=MediaDetail, summary="Get Media Detail")
 async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await media_service.get_media_detail(db, media_id, user)
+    return await MediaService(db).get_media_detail(media_id, user)
 
 
 @router.patch("/{media_id}", response_model=MediaDetail, summary="Update Media")
 async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await media_service.update_media_metadata(db, media_id, user, body)
+    return await MediaService(db).update_media_metadata(media_id, user, body)
 
 
 @router.get(
@@ -177,7 +205,7 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
     responses={200: {"content": {"application/octet-stream": {}}, "description": "Original media file."}},
 )
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    media = await media_service.get_visible_media(db, media_id, user)
+    media = await MediaService(db).get_visible_media(media_id, user)
     return FileResponse(media.filepath, media_type=media.mime_type)
 
 
@@ -187,18 +215,40 @@ async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user)
     responses={200: {"content": {"image/webp": {}}, "description": "WebP thumbnail image."}},
 )
 async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    media = await media_service.get_visible_media(db, media_id, user)
+    media = await MediaService(db).get_visible_media(media_id, user)
     if not media.thumbnail_path:
         raise AppError(status_code=404, code=thumbnail_not_available, detail="Thumbnail not available")
     return FileResponse(media.thumbnail_path, media_type="image/webp")
 
 
+@router.get(
+    "/{media_id}/poster",
+    summary="Download Media Poster",
+    responses={200: {"content": {"image/png": {}}, "description": "Poster image."}},
+)
+async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    media = await MediaService(db).get_visible_media(media_id, user)
+    if not media.poster_path:
+        raise AppError(status_code=404, code=poster_not_available, detail="Poster not available")
+    return FileResponse(media.poster_path, media_type="image/png")
+
+
 @router.delete("/{media_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete Media")
 async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await media_service.delete_media(db, media_id, user)
+    await MediaService(db).soft_delete_media(media_id, user)
+
+
+@router.post("/{media_id}/restore", status_code=status.HTTP_204_NO_CONTENT, summary="Restore Media")
+async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await MediaService(db).restore_media(media_id, user)
+
+
+@router.delete("/{media_id}/purge", status_code=status.HTTP_204_NO_CONTENT, summary="Purge Media")
+async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    await MediaService(db).purge_media(media_id, user)
 
 
 @router.post("/{media_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse, summary="Queue Media Retagging")
 async def queue_media_tagging_job(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    queued = await media_service.retag_media(db, media_id, user)
+    queued = await MediaService(db).retag_media(media_id, user)
     return {"queued": queued}

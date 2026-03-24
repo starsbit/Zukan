@@ -1,13 +1,13 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.repositories.notifications import NotificationRepository
 from backend.app.schemas import ERROR_RESPONSES, NotificationListResponse, NotificationRead
+from backend.app.services.notifications import NotificationService
 
 router = APIRouter(prefix="/me/notifications", tags=["notifications"], responses=ERROR_RESPONSES)
 
@@ -20,11 +20,7 @@ async def list_notifications(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = NotificationRepository(db)
-    offset = (page - 1) * page_size
-    total = await repo.count_for_user(user.id, is_read=is_read)
-    items = await repo.list_for_user(user.id, is_read=is_read, offset=offset, limit=page_size)
-    return NotificationListResponse(total=total, page=page, page_size=page_size, items=list(items))
+    return await NotificationService(db).list_notifications(user.id, page=page, page_size=page_size, is_read=is_read)
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationRead)
@@ -33,14 +29,7 @@ async def mark_read(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = NotificationRepository(db)
-    notification = await repo.get_by_id_for_user(notification_id, user.id)
-    if notification is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
-    notification.is_read = True
-    await db.commit()
-    await db.refresh(notification)
-    return notification
+    return await NotificationService(db).mark_read(notification_id, user.id)
 
 
 @router.post("/read-all", status_code=status.HTTP_204_NO_CONTENT)
@@ -48,9 +37,7 @@ async def mark_all_read(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    for n in await NotificationRepository(db).get_unread_for_user(user.id):
-        n.is_read = True
-    await db.commit()
+    await NotificationService(db).mark_all_read(user.id)
 
 
 @router.delete("/{notification_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -59,9 +46,4 @@ async def delete_notification(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    repo = NotificationRepository(db)
-    notification = await repo.get_by_id_for_user(notification_id, user.id)
-    if notification is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
-    await db.delete(notification)
-    await db.commit()
+    await NotificationService(db).delete_notification(notification_id, user.id)

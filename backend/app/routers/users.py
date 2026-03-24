@@ -5,7 +5,7 @@ from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
 from backend.app.schemas import ERROR_RESPONSES, UserRead, UserUpdate
-from backend.app.services import auth as auth_service
+from backend.app.services.auth import AuthService
 
 router = APIRouter(prefix="/users", tags=["users"], responses=ERROR_RESPONSES)
 
@@ -21,4 +21,4 @@ async def update_me(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await auth_service.update_current_user(db, user, body)
+    return await AuthService(db).update_current_user(user, body)

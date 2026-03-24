@@ -3,7 +3,8 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBear
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import AsyncSessionLocal, get_db
-from backend.app.errors import AppError, admin_required, invalid_token, not_authenticated, user_not_found
+from backend.app.errors.auth import admin_required, invalid_token, not_authenticated, user_not_found
+from backend.app.errors.error import AppError
 from backend.app.models.auth import User
 from backend.app.utils.tokens import decode_access_token
 
