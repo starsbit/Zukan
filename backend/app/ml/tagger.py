@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Protocol
 
 import numpy as np
 import pandas as pd
@@ -12,54 +9,9 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 
 from backend.app.config import settings
-
-NSFW_RATING_TAGS = {"rating:questionable", "rating:explicit"}
-NSFW_HINT_TAGS = {
-    "nsfw",
-    "explicit",
-    "nude",
-    "nudity",
-    "nipples",
-    "areolae",
-    "penis",
-    "pussy",
-    "vagina",
-    "sex",
-    "censored",
-    "uncensored",
-}
+from backend.app.utils.tagging import NSFW_RATING_TAGS, TagPrediction, TaggingResult, tag_names_mark_nsfw
 
 _executor = ThreadPoolExecutor(max_workers=1)
-
-
-@dataclass(frozen=True)
-class TagPrediction:
-    name: str
-    category: int
-    confidence: float
-
-
-@dataclass(frozen=True)
-class TaggingResult:
-    predictions: list[TagPrediction]
-    is_nsfw: bool
-
-
-class TaggerBackend(Protocol):
-    def load(self) -> None: ...
-    async def predict(self, image_path: str) -> TaggingResult: ...
-
-
-def derive_character_name(predictions: list[TagPrediction]) -> str | None:
-    character_predictions = [prediction for prediction in predictions if prediction.category == 4]
-    if not character_predictions:
-        return None
-    return max(character_predictions, key=lambda prediction: prediction.confidence).name
-
-
-def tag_names_mark_nsfw(tag_names: list[str]) -> bool:
-    normalized = {tag_name.strip().lower() for tag_name in tag_names if tag_name.strip()}
-    return bool(normalized & NSFW_RATING_TAGS or normalized & NSFW_HINT_TAGS)
 
 
 class WDTagger:
@@ -123,7 +75,7 @@ class WDTagger:
             predictions.append(best_rating)
 
         rating_is_nsfw = best_rating is not None and best_rating.name in NSFW_RATING_TAGS
-        is_nsfw = rating_is_nsfw or tag_names_mark_nsfw([prediction.name for prediction in predictions])
+        is_nsfw = rating_is_nsfw or tag_names_mark_nsfw([p.name for p in predictions])
         return TaggingResult(predictions=predictions, is_nsfw=is_nsfw)
 
     async def predict(self, image_path: str) -> TaggingResult:
@@ -131,7 +83,7 @@ class WDTagger:
         return await loop.run_in_executor(_executor, self._predict_sync, image_path)
 
 
-def create_tagger() -> TaggerBackend:
+def create_tagger() -> WDTagger:
     if settings.tagger_backend == "wd_v3":
         return WDTagger()
     raise ValueError(f"Unsupported tagger backend: {settings.tagger_backend}")

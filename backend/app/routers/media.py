@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
-from backend.app.deps import current_user
+from backend.app.routers.deps import current_user
 from backend.app.errors import AppError, thumbnail_not_available
 from backend.app.models.auth import User
 from backend.app.schemas import (
@@ -30,7 +30,7 @@ from backend.app.schemas import (
     TaggingJobQueuedResponse,
 )
 from backend.app.services import media as media_service
-from backend.app.services.storage import zip_media
+from backend.app.utils.storage import zip_media
 
 router = APIRouter(prefix="/media", tags=["media"], responses=ERROR_RESPONSES)
 

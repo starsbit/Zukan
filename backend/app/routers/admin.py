@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
-from backend.app.deps import admin_user
+from backend.app.routers.deps import admin_user
 from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (

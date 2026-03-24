@@ -1,0 +1,10 @@
+not_authenticated = "not_authenticated"
+forbidden = "forbidden"
+admin_required = "admin_required"
+invalid_credentials = "invalid_credentials"
+invalid_token = "invalid_token"
+invalid_refresh_token = "invalid_refresh_token"
+
+user_not_found = "user_not_found"
+duplicate_username = "duplicate_username"
+duplicate_email = "duplicate_email"

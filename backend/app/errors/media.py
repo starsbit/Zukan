@@ -1,0 +1,7 @@
+media_not_found = "media_not_found"
+media_in_trash = "media_in_trash"
+media_not_in_trash = "media_not_in_trash"
+nsfw_hidden = "nsfw_hidden"
+nsfw_disabled = "nsfw_disabled"
+thumbnail_not_available = "thumbnail_not_available"
+poster_not_available = "poster_not_available"

@@ -1,0 +1,7 @@
+album_not_found = "album_not_found"
+album_empty = "album_empty"
+album_read_only = "album_read_only"
+album_share_forbidden = "album_share_forbidden"
+media_not_in_album = "media_not_in_album"
+share_not_found = "share_not_found"
+share_self = "share_self"

@@ -2,12 +2,11 @@ import asyncio
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from sqlalchemy import select
 
 from backend.app.errors import AppError
@@ -19,12 +18,13 @@ from backend.app.models.media import Media
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
-from backend.app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
-from backend.app.services.media import mark_tagging_failure, set_tag_queue, tag_media
-from backend.app.services.tagger import tagger
+from backend.app.routers.deps import docs_user
+from backend.app.services.media import set_tag_queue, MediaService
+from backend.app.services.auth import AuthService
+from backend.app.services.tags import TagService
+from backend.app.ml.tagger import tagger, WDTagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
-docs_basic = HTTPBasic()
 
 
 async def tagging_worker():
@@ -36,12 +36,12 @@ async def tagging_worker():
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
                     continue
-                await tag_media(db, media_id)
+                await TagService(db, WDTagger()).tag_media(db, media_id)
 
             except Exception as exc:
                 await db.rollback()
                 async with AsyncSessionLocal() as err_db:
-                    await mark_tagging_failure(err_db, media_id, exc)
+                    await MediaService(db).mark_tagging_failure(media_id, exc)
                 print(f"Tagging failed for {media_id}: {exc}")
             finally:
                 tag_queue.task_done()
@@ -49,7 +49,9 @@ async def tagging_worker():
 
 async def _ensure_admin_user():
     async with AsyncSessionLocal() as db:
-        if await get_user_by_username(db, "admin") is None:
+        svc = AuthService(db)
+        if await svc.get_user_by_username("admin") is None:
+            from backend.app.utils.passwords import hash_password
             db.add(User(
                 username="admin",
                 email="admin@localhost",
@@ -57,18 +59,6 @@ async def _ensure_admin_user():
                 is_admin=True,
             ))
             await db.commit()
-
-
-async def docs_user(credentials: HTTPBasicCredentials = Depends(docs_basic)) -> User:
-    async with AsyncSessionLocal() as db:
-        user = await authenticate_basic_user(db, credentials.username, credentials.password)
-        if user is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        return user
 
 
 @asynccontextmanager
