@@ -12,8 +12,8 @@ class UserRegister(BaseModel):
     model_config = {
         "json_schema_extra": {
             "example": {
-                "username": "asuka",
-                "email": "asuka@example.com",
+                "username": "saber",
+                "email": "saber@starsbit.space",
                 "password": "super-secret-passphrase",
             }
         }
@@ -40,8 +40,8 @@ class UserSelfReadLite(BaseModel):
         "json_schema_extra": {
             "example": {
                 "id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
-                "username": "asuka",
-                "email": "asuka@example.com",
+                "username": "saber",
+                "email": "saber@starsbit.space",
                 "show_nsfw": False,
                 "tag_confidence_threshold": 0.85,
                 "version": 1,
@@ -66,8 +66,8 @@ class UserRead(BaseModel):
         "json_schema_extra": {
             "example": {
                 "id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
-                "username": "asuka",
-                "email": "asuka@example.com",
+                "username": "saber",
+                "email": "saber@starsbit.space",
                 "is_admin": False,
                 "show_nsfw": False,
                 "tag_confidence_threshold": 0.85,

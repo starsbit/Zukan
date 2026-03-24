@@ -1,8 +1,11 @@
 import asyncio
+import logging
+import time
 import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi.openapi.utils import get_openapi
@@ -25,6 +28,23 @@ from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.ml.tagger import tagger
 from backend.app.ml.ocr import ocr_backend
+
+
+def configure_logging() -> None:
+    level_name = "INFO"
+    level = getattr(logging, level_name, logging.INFO)
+    root_logger = logging.getLogger()
+    if not root_logger.handlers:
+        logging.basicConfig(
+            level=level,
+            format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        )
+    else:
+        root_logger.setLevel(level)
+
+
+configure_logging()
+logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 
@@ -70,7 +90,7 @@ async def tagging_worker():
                     media_service = MediaService(err_db)
                     await media_service.mark_tagging_failure(media_id, exc)
                     await media_service.mark_upload_batch_item_failed(media_id, str(exc))
-                print(f"Tagging failed for {media_id}: {exc}")
+                logger.exception("Tagging failed for media_id=%s", media_id)
             finally:
                 tag_queue.task_done()
 
@@ -87,22 +107,26 @@ async def _ensure_admin_user():
                 is_admin=True,
             ))
             await db.commit()
+            logger.info("Bootstrapped default admin user")
 
 
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
+    logger.info("Application startup initiated")
     await init_db()
     await _ensure_admin_user()
     tagger.load()
     ocr_backend.load()
     set_tag_queue(tag_queue)
     worker = asyncio.create_task(tagging_worker())
+    logger.info("Background tagging worker started")
     yield
+    logger.info("Application shutdown initiated")
     worker.cancel()
     try:
         await worker
     except asyncio.CancelledError:
-        pass
+        logger.info("Background tagging worker stopped")
 
 
 api = FastAPI(
@@ -136,9 +160,24 @@ api.add_middleware(
 async def request_id_middleware(request: Request, call_next):
     request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
     request.state.request_id = request_id
-    response = await call_next(request)
-    response.headers["x-request-id"] = request_id
-    return response
+    start = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        elapsed_ms = (time.perf_counter() - start) * 1000
+        status_code = response.status_code if response is not None else 500
+        logger.info(
+            "HTTP %s %s -> %s %.2fms request_id=%s",
+            request.method,
+            request.url.path,
+            status_code,
+            elapsed_ms,
+            request_id,
+        )
+        if response is not None:
+            response.headers["x-request-id"] = request_id
 
 
 def _request_id(request: Request) -> str:
@@ -157,6 +196,13 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         trace_id=_request_id(request),
         details=detail.get("details"),
         fields=detail.get("fields"),
+    )
+    logger.warning(
+        "AppError status=%s code=%s path=%s request_id=%s",
+        exc.status_code,
+        payload.get("code"),
+        request.url.path,
+        _request_id(request),
     )
     return JSONResponse(status_code=exc.status_code, content=payload)
 
@@ -183,6 +229,12 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
         details={"error_count": len(fields)},
         fields=fields,
     )
+    logger.warning(
+        "ValidationError status=422 path=%s error_count=%s request_id=%s",
+        request.url.path,
+        len(fields),
+        _request_id(request),
+    )
     return JSONResponse(status_code=422, content=payload)
 
 
@@ -207,6 +259,14 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             request_id=_request_id(request),
             trace_id=_request_id(request),
         )
+    log_fn = logger.error if exc.status_code >= 500 else logger.warning
+    log_fn(
+        "HTTPException status=%s code=%s path=%s request_id=%s",
+        exc.status_code,
+        payload.get("code"),
+        request.url.path,
+        _request_id(request),
+    )
     return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
 
 
@@ -226,20 +286,24 @@ api.include_router(v1_router)
 @api.get("/openapi.json", include_in_schema=False)
 async def openapi_schema(_: User = Depends(docs_user)):
     if api.openapi_schema is None:
-        schema = get_openapi(
-            title=api.title,
-            version=api.version,
-            description=api.description,
-            routes=api.routes,
-            tags=OPENAPI_TAGS,
-            servers=OPENAPI_SERVERS,
-            terms_of_service=api.terms_of_service,
-            contact=api.contact,
-            license_info=api.license_info,
-        )
-        schema["externalDocs"] = OPENAPI_EXTERNAL_DOCS
-        api.openapi_schema = schema
-    return JSONResponse(api.openapi_schema)
+        try:
+            schema = get_openapi(
+                title=api.title,
+                version=api.version,
+                description=api.description,
+                routes=api.routes,
+                tags=OPENAPI_TAGS,
+                servers=OPENAPI_SERVERS,
+                terms_of_service=api.terms_of_service,
+                contact=api.contact,
+                license_info=api.license_info,
+            )
+            schema["externalDocs"] = OPENAPI_EXTERNAL_DOCS
+            api.openapi_schema = jsonable_encoder(schema)
+        except Exception:
+            logger.exception("Failed to generate OpenAPI schema")
+            raise
+    return JSONResponse(content=api.openapi_schema)
 
 
 @api.get("/docs", include_in_schema=False)

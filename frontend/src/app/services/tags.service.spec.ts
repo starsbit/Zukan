@@ -143,8 +143,8 @@ describe('TagsService', () => {
     expect(service.snapshot.mutationError).toMatchObject({ status: 500 });
     expect(service.snapshot.mutationPending).toBe(false);
 
-    const trashCharacterFailurePromise = firstValueFrom(service.trashMediaByCharacterName('shikinami_asuka')).catch((error) => error);
-    const trashCharacterFailureRequest = httpTesting.expectOne('http://api.example.test/character-names/shikinami_asuka/actions/trash-media');
+    const trashCharacterFailurePromise = firstValueFrom(service.trashMediaByCharacterName('shikinami_saber')).catch((error) => error);
+    const trashCharacterFailureRequest = httpTesting.expectOne('http://api.example.test/character-names/shikinami_saber/actions/trash-media');
     trashCharacterFailureRequest.flush({ detail: 'still broken' }, { status: 400, statusText: 'Bad Request' });
     await expect(trashCharacterFailurePromise).resolves.toMatchObject({ status: 400 });
   });

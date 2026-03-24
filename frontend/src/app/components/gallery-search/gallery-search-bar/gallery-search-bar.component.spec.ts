@@ -276,7 +276,7 @@ describe('GallerySearchBarComponent', () => {
     fixture.componentRef.setInput('searchText', 'character:ayanami_rei');
     characterSuggestionsService.search.mockReturnValue(of([
       { name: 'Ayanami Rei', media_count: 2 },
-      { name: 'Asuka Langley', media_count: 1 }
+      { name: 'saber Langley', media_count: 1 }
     ]));
 
     component.queryControl.setValue('a');
@@ -285,8 +285,8 @@ describe('GallerySearchBarComponent', () => {
 
     expect(component.characterSuggestions).toEqual([{
       kind: 'character',
-      label: 'Asuka Langley',
-      token: 'character:asuka_langley',
+      label: 'saber Langley',
+      token: 'character:saber_langley',
       secondary: '1 match'
     }]);
   });

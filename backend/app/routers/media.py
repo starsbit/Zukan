@@ -439,6 +439,55 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
         "Update a single media resource. Supports optimistic locking via `version`. "
         "For `tags`, `entities`, and `external_refs`: omitted means unchanged, empty array means clear all, populated array means replace all."
     ),
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "replace_all": {
+                            "summary": "Replace all tags/entities/external refs",
+                            "value": {
+                                "tags": ["Saber", "Sakura", "Rin"],
+                                "entities": [
+                                    {
+                                        "entity_type": "character",
+                                        "entity_id": None,
+                                        "name": "Saber",
+                                        "role": "primary",
+                                        "confidence": 0.98,
+                                    }
+                                ],
+                                "external_refs": [
+                                    {
+                                        "provider": "pixiv",
+                                        "external_id": "75453892",
+                                        "url": "https://www.pixiv.net/en/artworks/75453892",
+                                    }
+                                ],
+                                "version": 5,
+                            },
+                        },
+                        "clear_all": {
+                            "summary": "Clear all tags/entities/external refs",
+                            "value": {
+                                "tags": [],
+                                "entities": [],
+                                "external_refs": [],
+                                "version": 5,
+                            },
+                        },
+                        "omit_unchanged": {
+                            "summary": "Omit fields to leave them unchanged",
+                            "value": {
+                                "favorited": True,
+                                "version": 5,
+                            },
+                        },
+                    }
+                }
+            }
+        }
+    },
     responses=error_responses(403, 404, 409, 422),
 )
 async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):

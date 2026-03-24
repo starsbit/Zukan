@@ -160,7 +160,7 @@ def test_media_patch_version_conflict_returns_409(api):
     conflict = api.client.patch(
         f"/media/{blue['id']}",
         headers=headers,
-        json={"ocr_text_override": "asuka", "version": current_version},
+        json={"ocr_text_override": "saber", "version": current_version},
     )
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "version_conflict"

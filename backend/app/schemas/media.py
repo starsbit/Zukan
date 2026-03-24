@@ -207,49 +207,28 @@ class MediaUpdate(BaseModel):
 
     model_config = {
         "json_schema_extra": {
-            "examples": {
-                "replace_all": {
-                    "summary": "Replace all tags/entities/external refs",
-                    "value": {
-                        "tags": ["Saber", "Sakura", "Rin"],
-                        "entities": [
-                            {
-                                "entity_type": "character",
-                                "entity_id": None,
-                                "name": "Saber",
-                                "role": "primary",
-                                "confidence": 0.98,
-                            }
-                        ],
-                        "external_refs": [
-                            {
-                                "provider": "pixiv",
-                                "external_id": "75453892",
-                                "url": "https://www.pixiv.net/en/artworks/75453892",
-                            }
-                        ],
-                        "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
-                        "favorited": True,
-                        "ocr_text_override": "Other text because I did not like the one in the image",
-                        "version": 5,
-                    },
-                },
-                "clear_all": {
-                    "summary": "Clear all tags/entities/external refs",
-                    "value": {
-                        "tags": [],
-                        "entities": [],
-                        "external_refs": [],
-                        "version": 5,
-                    },
-                },
-                "omit_unchanged": {
-                    "summary": "Omit fields to leave them unchanged",
-                    "value": {
-                        "favorited": True,
-                        "version": 5,
-                    },
-                },
+            "example": {
+                "tags": ["Saber", "Sakura", "Rin"],
+                "entities": [
+                    {
+                        "entity_type": "character",
+                        "entity_id": None,
+                        "name": "Saber",
+                        "role": "primary",
+                        "confidence": 0.98,
+                    }
+                ],
+                "external_refs": [
+                    {
+                        "provider": "pixiv",
+                        "external_id": "75453892",
+                        "url": "https://www.pixiv.net/en/artworks/75453892",
+                    }
+                ],
+                "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
+                "favorited": True,
+                "ocr_text_override": "Other text because I did not like the one in the image",
+                "version": 5,
             }
         }
     }

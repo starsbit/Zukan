@@ -569,7 +569,7 @@ def assert_media_complex_query_regression(api):
         headers=headers,
         json={
             "tags": ["forest", "mecha", "support", "rating:general"],
-            "entities": [{"entity_type": "character", "name": "soryu_asuka_langley"}],
+            "entities": [{"entity_type": "character", "name": "soryu_saber_langley"}],
         },
     )
     assert green_update.status_code == 200

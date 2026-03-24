@@ -81,7 +81,7 @@ async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
             "content": {
                 "application/x-www-form-urlencoded": {
                     "example": {
-                        "username": "asuka",
+                        "username": "saber",
                         "password": "super-secret-passphrase",
                         "remember_me": False,
                     }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from fastapi import UploadFile
@@ -55,6 +56,8 @@ from backend.app.utils.storage import delete_media_files, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 from backend.app.ml.ocr import TesseractOCR, ocr_backend
+
+logger = logging.getLogger(__name__)
 
 TRASH_RETENTION_DAYS = 30
 
@@ -644,7 +647,7 @@ class MediaService:
             # OCR is best-effort and should not fail the upload/tag pipeline.
             media.ocr_text = None
             await self._db.commit()
-            print(f"OCR failed for {media_id}: {exc}")
+            logger.warning("OCR failed for media_id=%s error=%s", media_id, exc)
 
     async def empty_trash(self, user: User) -> None:
         await self.purge_expired_trash()
