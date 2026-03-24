@@ -19,6 +19,7 @@ from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.media import Media, MediaTag, MediaType
 from backend.app.models.relations import MediaEntity, MediaExternalRef
 from backend.app.models.media_interactions import UserFavorite
+from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.repositories import media_filters
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.media_interactions import UserFavoriteRepository
@@ -30,11 +31,10 @@ from backend.app.schemas import (
     CATEGORY_NAMES,
     EntityRead,
     ExternalRefRead,
-    MediaBatchDelete,
+    MediaIdsRequest,
     MediaBatchUpdate,
     MediaCursorPage,
     MediaDetail,
-    MediaListResponse,
     MediaListState,
     MediaMetadataFilter,
     MediaUpdate,
@@ -45,7 +45,12 @@ from backend.app.schemas import (
 )
 from backend.app.utils.media_metadata import extract_media_metadata
 from backend.app.utils.media_projections import build_media_read, enrich_media
-from backend.app.utils.pagination import apply_cursor_where, captured_timestamp_expr, decode_cursor, encode_cursor
+from backend.app.utils.pagination import (
+    apply_cursor_where,
+    captured_timestamp_expr,
+    decode_cursor,
+    encode_cursor,
+)
 from backend.app.utils.storage import delete_media_files, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
@@ -215,59 +220,18 @@ class MediaService:
         }[sort_by]
         order_exprs = [sort_col.desc(), Media.id.desc()] if sort_order == "desc" else [sort_col.asc(), Media.id.asc()]
 
-        rows = (await self._db.execute(stmt.order_by(*order_exprs).limit(page_size))).scalars().all()
+        rows = (await self._db.execute(stmt.order_by(*order_exprs).limit(page_size + 1))).scalars().all()
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
         favs = await UserFavoriteRepository(self._db).get_favorited_ids(user.id, [row.id for row in rows])
 
         next_cursor = None
-        if len(rows) == page_size:
+        if has_more and rows:
             last = rows[-1]
             sv = (last.captured_at or last.created_at) if sort_by == "captured_at" else getattr(last, sort_by)
             next_cursor = encode_cursor(sv, last.id)
 
-        return MediaCursorPage(total=total, next_cursor=next_cursor, page_size=page_size, items=enrich_media(rows, favs))
-
-    async def list_trash(self, user: User, after: str | None, page_size: int) -> MediaCursorPage:
-        return await self.list_media(
-            user,
-            MediaListState.TRASHED,
-            tags=None,
-            character_name=None,
-            exclude_tags=None,
-            mode=TagFilterMode.AND,
-            nsfw=NsfwFilter.DEFAULT,
-            status_filter=None,
-            metadata=MediaMetadataFilter(),
-            favorited=None,
-            media_type=None,
-            album_id=None,
-            after=after,
-            page_size=page_size,
-        )
-
-    async def list_favorites(
-        self,
-        user: User,
-        tags: list[str] | None,
-        exclude_tags: list[str] | None,
-        mode: TagFilterMode,
-        page: int,
-        page_size: int,
-    ) -> MediaListResponse:
-        await self.purge_expired_trash()
-        stmt = (
-            select(Media)
-            .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
-            .join(UserFavorite, and_(UserFavorite.media_id == Media.id, UserFavorite.user_id == user.id))
-            .where(Media.deleted_at.is_(None))
-        )
-        if not user.show_nsfw:
-            stmt = stmt.where(Media.is_nsfw == False)
-        stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
-        total = (await self._db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-        rows = (
-            await self._db.execute(stmt.order_by(captured_timestamp_expr().desc()).offset((page - 1) * page_size).limit(page_size))
-        ).scalars().all()
-        return MediaListResponse(total=total, page=page, page_size=page_size, items=[build_media_read(row, True) for row in rows])
+        return MediaCursorPage(total=total, next_cursor=next_cursor, has_more=has_more, page_size=page_size, items=enrich_media(rows, favs))
 
     async def list_character_suggestions(self, user: User, *, q: str, limit: int) -> list[dict[str, int | str]]:
         await self.purge_expired_trash()
@@ -294,9 +258,22 @@ class MediaService:
         if len(files) > settings.max_batch_size:
             raise AppError(status_code=400, code=upload_limit_exceeded, detail=f"Max {settings.max_batch_size} files per request")
 
+        now = datetime.now(timezone.utc)
+        upload_batch = ImportBatch(
+            user_id=user.id,
+            type=BatchType.upload,
+            status=BatchStatus.running,
+            total_items=len(files),
+            started_at=now,
+            last_heartbeat_at=now,
+        )
+        self._db.add(upload_batch)
+        await self._db.flush()
+
         queue = get_tag_queue()
         results: list[UploadResult] = []
         accepted = duplicates = errors = 0
+        pending_items = done_items = failed_items = processing_items = 0
         queued_media_ids: list[uuid.UUID] = []
         tagging_media_ids: list[uuid.UUID] = []
         media_repo = MediaRepository(self._db)
@@ -304,10 +281,31 @@ class MediaService:
 
         for upload in files:
             original_name = upload.filename or "unknown"
+            batch_item = ImportBatchItem(
+                batch_id=upload_batch.id,
+                source_filename=original_name,
+                status=ItemStatus.pending,
+                step=ProcessingStep.ingest,
+                progress_percent=0,
+            )
             saved = await save_upload(upload)
             if saved is None:
-                results.append(UploadResult(id=None, original_filename=original_name, status="error", message="Unsupported type or file too large"))
+                batch_item.status = ItemStatus.failed
+                batch_item.error = "Unsupported type or file too large"
+                batch_item.progress_percent = 100
+                self._db.add(batch_item)
+                await self._db.flush()
+                results.append(
+                    UploadResult(
+                        id=None,
+                        batch_item_id=batch_item.id,
+                        original_filename=original_name,
+                        status="error",
+                        message=batch_item.error,
+                    )
+                )
                 errors += 1
+                failed_items += 1
                 continue
 
             file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
@@ -316,8 +314,23 @@ class MediaService:
             if existing is not None:
                 delete_media_files(str(saved.path))
                 if existing.deleted_at is None:
-                    results.append(UploadResult(id=None, original_filename=original_name, status="duplicate", message="Media already exists"))
+                    batch_item.media_id = existing.id
+                    batch_item.status = ItemStatus.skipped
+                    batch_item.error = "Media already exists"
+                    batch_item.progress_percent = 100
+                    self._db.add(batch_item)
+                    await self._db.flush()
+                    results.append(
+                        UploadResult(
+                            id=None,
+                            batch_item_id=batch_item.id,
+                            original_filename=original_name,
+                            status="duplicate",
+                            message=batch_item.error,
+                        )
+                    )
                     duplicates += 1
+                    done_items += 1
                     continue
                 existing.deleted_at = None
                 existing.original_filename = original_name
@@ -325,10 +338,24 @@ class MediaService:
                 existing.tagging_error = None
                 existing.captured_at = existing.captured_at or captured_at
                 await self._db.flush()
+                batch_item.media_id = existing.id
+                batch_item.status = ItemStatus.pending
+                batch_item.step = ProcessingStep.tag
+                batch_item.progress_percent = 0
+                self._db.add(batch_item)
+                await self._db.flush()
                 queued_media_ids.append(existing.id)
                 tagging_media_ids.append(existing.id)
-                results.append(UploadResult(id=existing.id, original_filename=original_name, status="accepted"))
+                results.append(
+                    UploadResult(
+                        id=existing.id,
+                        batch_item_id=batch_item.id,
+                        original_filename=original_name,
+                        status="accepted",
+                    )
+                )
                 accepted += 1
+                pending_items += 1
                 continue
 
             poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
@@ -356,15 +383,51 @@ class MediaService:
             )
             self._db.add(media)
             await self._db.flush()
+            batch_item.media_id = media.id
             if normalized_tags:
                 await tags_repo.set_media_tag_links(media, _build_tag_payloads(normalized_tags))
                 media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
                 media.tagging_status = "done"
+                batch_item.status = ItemStatus.done
+                batch_item.step = ProcessingStep.tag
+                batch_item.progress_percent = 100
+                done_items += 1
             else:
                 tagging_media_ids.append(media.id)
+                batch_item.status = ItemStatus.pending
+                batch_item.step = ProcessingStep.tag
+                batch_item.progress_percent = 0
+                pending_items += 1
+            self._db.add(batch_item)
+            await self._db.flush()
             queued_media_ids.append(media.id)
-            results.append(UploadResult(id=media.id, original_filename=original_name, status="accepted"))
+            results.append(
+                UploadResult(
+                    id=media.id,
+                    batch_item_id=batch_item.id,
+                    original_filename=original_name,
+                    status="accepted",
+                )
+            )
             accepted += 1
+
+        upload_batch.queued_items = pending_items
+        upload_batch.processing_items = processing_items
+        upload_batch.done_items = done_items
+        upload_batch.failed_items = failed_items
+        upload_batch.last_heartbeat_at = datetime.now(timezone.utc)
+        if pending_items or processing_items:
+            upload_batch.status = BatchStatus.running
+            upload_batch.finished_at = None
+        elif failed_items == upload_batch.total_items and upload_batch.total_items > 0:
+            upload_batch.status = BatchStatus.failed
+            upload_batch.finished_at = datetime.now(timezone.utc)
+        elif failed_items > 0:
+            upload_batch.status = BatchStatus.partial_failed
+            upload_batch.finished_at = datetime.now(timezone.utc)
+        else:
+            upload_batch.status = BatchStatus.done
+            upload_batch.finished_at = datetime.now(timezone.utc)
 
         await self._db.commit()
         if album_id is not None and queued_media_ids:
@@ -373,7 +436,88 @@ class MediaService:
         if queue:
             for media_id in tagging_media_ids:
                 await queue.put(media_id)
-        return BatchUploadResponse(accepted=accepted, duplicates=duplicates, errors=errors, results=results)
+        return BatchUploadResponse(
+            batch_id=upload_batch.id,
+            batch_url=f"/api/v1/me/import-batches/{upload_batch.id}",
+            batch_items_url=f"/api/v1/me/import-batches/{upload_batch.id}/items",
+            accepted=accepted,
+            duplicates=duplicates,
+            errors=errors,
+            results=results,
+        )
+
+    async def mark_upload_batch_item_done(self, media_id: uuid.UUID) -> None:
+        item = (
+            await self._db.execute(
+                select(ImportBatchItem)
+                .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                .where(
+                    ImportBatch.type == BatchType.upload,
+                    ImportBatchItem.media_id == media_id,
+                    ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+                )
+                .order_by(ImportBatch.created_at.desc(), ImportBatchItem.updated_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if item is None:
+            return
+        item.status = ItemStatus.done
+        item.step = ProcessingStep.tag
+        item.progress_percent = 100
+        item.error = None
+        await self._refresh_import_batch_status(item.batch_id)
+        await self._db.commit()
+
+    async def mark_upload_batch_item_failed(self, media_id: uuid.UUID, error_message: str) -> None:
+        item = (
+            await self._db.execute(
+                select(ImportBatchItem)
+                .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                .where(
+                    ImportBatch.type == BatchType.upload,
+                    ImportBatchItem.media_id == media_id,
+                    ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+                )
+                .order_by(ImportBatch.created_at.desc(), ImportBatchItem.updated_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if item is None:
+            return
+        item.status = ItemStatus.failed
+        item.step = ProcessingStep.tag
+        item.progress_percent = 100
+        item.error = error_message
+        await self._refresh_import_batch_status(item.batch_id)
+        await self._db.commit()
+
+    async def _refresh_import_batch_status(self, batch_id: uuid.UUID) -> None:
+        batch = await self._db.get(ImportBatch, batch_id)
+        if batch is None:
+            return
+
+        statuses = (
+            await self._db.execute(select(ImportBatchItem.status).where(ImportBatchItem.batch_id == batch_id))
+        ).scalars().all()
+        batch.total_items = len(statuses)
+        batch.queued_items = sum(1 for status in statuses if status == ItemStatus.pending)
+        batch.processing_items = sum(1 for status in statuses if status == ItemStatus.processing)
+        batch.done_items = sum(1 for status in statuses if status in {ItemStatus.done, ItemStatus.skipped})
+        batch.failed_items = sum(1 for status in statuses if status == ItemStatus.failed)
+        batch.last_heartbeat_at = datetime.now(timezone.utc)
+
+        if batch.queued_items > 0 or batch.processing_items > 0:
+            batch.status = BatchStatus.running
+            batch.finished_at = None
+            return
+        if batch.failed_items == batch.total_items and batch.total_items > 0:
+            batch.status = BatchStatus.failed
+        elif batch.failed_items > 0:
+            batch.status = BatchStatus.partial_failed
+        else:
+            batch.status = BatchStatus.done
+        batch.finished_at = datetime.now(timezone.utc)
 
     async def get_downloadable_media(self, user: User, media_ids: list[uuid.UUID]) -> list[Media]:
         await self.purge_expired_trash()
@@ -395,7 +539,15 @@ class MediaService:
             media = await self.get_active_media(media_id)
 
         if "version" in payload.model_fields_set and payload.version is not None and payload.version != media.version:
-            raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
+            raise AppError(
+                status_code=409,
+                code=version_conflict,
+                detail="Version conflict: resource was modified by another request",
+                details={
+                    "current_version": media.version,
+                    "provided_version": payload.version,
+                },
+            )
 
         if "tags" in payload.model_fields_set and payload.tags is not None:
             normalized_tags = _normalize_manual_tags(payload.tags)
@@ -505,7 +657,7 @@ class MediaService:
             processed, skipped = await self._batch_update_favorite_state(payload.media_ids, payload.favorited, user)
         return BulkResult(processed=processed, skipped=skipped)
 
-    async def batch_delete_media(self, payload: MediaBatchDelete, user: User) -> BulkResult:
+    async def batch_delete_media(self, payload: MediaIdsRequest, user: User) -> BulkResult:
         await self.purge_expired_trash()
         processed, skipped = await self._batch_update_deleted_state(payload.media_ids, True, user)
         return BulkResult(processed=processed, skipped=skipped)
@@ -545,7 +697,7 @@ class MediaService:
         processed, skipped = await self._batch_update_favorite_state(media_ids, False, user)
         return BulkResult(processed=processed, skipped=skipped)
 
-    async def batch_purge_media(self, payload: MediaBatchDelete, user: User) -> BulkResult:
+    async def batch_purge_media(self, payload: MediaIdsRequest, user: User) -> BulkResult:
         await self.purge_expired_trash()
         rows = await MediaRepository(self._db).get_by_ids(payload.media_ids)
         found_ids = {row.id for row in rows}

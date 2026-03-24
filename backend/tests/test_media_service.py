@@ -281,7 +281,7 @@ def test_media_service_listing_detail_and_favorites_flow(api):
     blue_id = uuid.UUID(str(blue["id"]))
     red_id = uuid.UUID(str(red["id"]))
     enabled = api.client.patch(
-        "/users/me",
+        "/me",
         headers=api.auth_headers(user["access_token"]),
         json={"show_nsfw": True},
     )

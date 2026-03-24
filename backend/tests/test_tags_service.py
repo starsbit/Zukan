@@ -214,11 +214,11 @@ def test_tag_with_confidence_exposes_category_key(api):
         assert "category_key" in td
         assert td["category_key"] in ("general", "artist", "copyright", "character", "meta", "rating", "unknown")
 
-def test_tag_action_with_name_returns_422(api):
+def test_tag_action_with_name_route_is_not_exposed(api):
     user = api.register_and_login("tagid-422-user")
     headers = api.auth_headers(user["access_token"])
     resp = api.client.post("/tags/forest/actions/trash-media", headers=headers)
-    assert resp.status_code == 422
+    assert resp.status_code == 404
 
 
 def test_tag_action_with_unknown_id_returns_404(api):

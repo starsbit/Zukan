@@ -12,7 +12,7 @@ from backend.app.errors.auth import duplicate_email, duplicate_username, invalid
 from backend.app.errors.upload import version_conflict
 from backend.app.models.auth import RefreshToken, User
 from backend.app.repositories.auth import RefreshTokenRepository, UserRepository
-from backend.app.schemas import AccessTokenResponse, TokenResponse, UserLogin, UserRegister, UserUpdate
+from backend.app.schemas import TokenResponse, UserRegister, UserUpdate
 from backend.app.utils.passwords import hash_password, hash_token, verify_password
 from backend.app.utils.tokens import create_access_token
 
@@ -39,9 +39,9 @@ class AuthService:
     async def register_user(self, body: UserRegister) -> User:
         users = UserRepository(self._db)
         if await users.get_by_username(body.username):
-            raise AppError(status_code=400, code=duplicate_username, detail="Username already taken")
+            raise AppError(status_code=409, code=duplicate_username, detail="Username already taken")
         if await users.get_by_email(body.email):
-            raise AppError(status_code=400, code=duplicate_email, detail="Email already registered")
+            raise AppError(status_code=409, code=duplicate_email, detail="Email already registered")
         user = User(
             username=body.username,
             email=body.email,
@@ -53,21 +53,21 @@ class AuthService:
         await self._db.refresh(user)
         return user
 
-    async def login_user(self, body: UserLogin) -> TokenResponse:
-        user = await UserRepository(self._db).get_by_username(body.username)
-        if user is None or not verify_password(body.password, user.hashed_password):
+    async def login_user(self, username: str, password: str, remember_me: bool = False) -> TokenResponse:
+        user = await UserRepository(self._db).get_by_username(username)
+        if user is None or not verify_password(password, user.hashed_password):
             raise AppError(status_code=401, code=invalid_credentials, detail="Invalid credentials")
         access = create_access_token(user.id)
-        refresh = await self.create_refresh_token(user.id, remember_me=body.remember_me)
+        refresh = await self.create_refresh_token(user.id, remember_me=remember_me)
         return TokenResponse(access_token=access, refresh_token=refresh)
 
-    async def refresh_access_token(self, raw_refresh_token: str) -> AccessTokenResponse:
+    async def refresh_access_token(self, raw_refresh_token: str) -> TokenResponse:
         result = await self.rotate_refresh_token(raw_refresh_token)
         if result is None:
             raise AppError(status_code=401, code=invalid_refresh_token, detail="Invalid or expired refresh token")
         new_raw, user_id = result
         access = create_access_token(user_id)
-        return AccessTokenResponse(access_token=access, refresh_token=new_raw)
+        return TokenResponse(access_token=access, refresh_token=new_raw)
 
     async def create_refresh_token(self, user_id: uuid.UUID, *, remember_me: bool = False) -> str:
         raw = secrets.token_hex(32)
@@ -114,7 +114,15 @@ class AuthService:
 
     async def update_current_user(self, user: User, body: UserUpdate) -> User:
         if "version" in body.model_fields_set and body.version is not None and body.version != user.version:
-            raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
+            raise AppError(
+                status_code=409,
+                code=version_conflict,
+                detail="Version conflict: resource was modified by another request",
+                details={
+                    "current_version": user.version,
+                    "provided_version": body.version,
+                },
+            )
         if body.show_nsfw is not None:
             user.show_nsfw = body.show_nsfw
         if body.tag_confidence_threshold is not None:

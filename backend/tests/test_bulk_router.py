@@ -56,7 +56,7 @@ def test_bulk_album_and_delete_endpoints(api):
     owner = api.register_and_login("bulk-album-owner")
     collaborator = api.register_and_login("bulk-collaborator")
     outsider = api.register_and_login("bulk-outsider")
-    admin_login = api.client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_login = api.client.post("/auth/login", data={"username": "admin", "password": "admin"})
     assert admin_login.status_code == 200
 
     owner_headers = api.auth_headers(owner["access_token"])
@@ -79,7 +79,7 @@ def test_bulk_album_and_delete_endpoints(api):
         headers=owner_headers,
         json={"user_id": collaborator["user"]["id"], "role": "editor"},
     )
-    assert share.status_code == 200
+    assert share.status_code == 201
 
     add_to_album = api.client.put(
         f"/albums/{album_id}/media",

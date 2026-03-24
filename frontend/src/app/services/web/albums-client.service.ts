@@ -5,13 +5,14 @@ import {
   AlbumCreateDto,
   AlbumListResponse,
   AlbumMediaBatchUpdateDto,
+  AlbumOwnershipTransferDto,
   AlbumRead,
   AlbumShareCreateDto,
   AlbumShareRead,
   AlbumUpdateDto,
   BulkResult,
   ListAlbumMediaQuery,
-  MediaListResponse,
+  MediaCursorPage,
   Uuid
 } from '../../models/api';
 import { ClientApiService } from './api.service';
@@ -42,8 +43,8 @@ export class AlbumsClientService {
     return this.api.delete<void>(`/albums/${albumId}`);
   }
 
-  listAlbumMedia(albumId: Uuid, query?: ListAlbumMediaQuery): Observable<MediaListResponse> {
-    return this.api.get<MediaListResponse>(`/albums/${albumId}/media`, { query });
+  listAlbumMedia(albumId: Uuid, query?: ListAlbumMediaQuery): Observable<MediaCursorPage> {
+    return this.api.get<MediaCursorPage>(`/albums/${albumId}/media`, { query });
   }
 
   addMediaToAlbum(albumId: Uuid, body: AlbumMediaBatchUpdateDto): Observable<BulkResult> {
@@ -60,6 +61,10 @@ export class AlbumsClientService {
 
   revokeShare(albumId: Uuid, sharedUserId: Uuid): Observable<void> {
     return this.api.delete<void>(`/albums/${albumId}/shares/${sharedUserId}`);
+  }
+
+  transferOwnership(albumId: Uuid, body: AlbumOwnershipTransferDto): Observable<AlbumRead> {
+    return this.api.post<AlbumRead>(`/albums/${albumId}/owner/transfer`, body);
   }
 
   downloadAlbum(albumId: Uuid): Observable<Blob> {

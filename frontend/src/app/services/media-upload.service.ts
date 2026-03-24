@@ -55,6 +55,13 @@ export interface UploadReviewCandidate {
   issue: 'tagging_failed' | 'missing_character';
 }
 
+interface AggregatedUploadResponse {
+  accepted: number;
+  duplicates: number;
+  errors: number;
+  results: BatchUploadResponse['results'];
+}
+
 const AUTO_MINIMIZE_DELAY_MS = 4000;
 const POLL_INTERVAL_MS = 2000;
 const DEFAULT_UPLOAD_BATCH_SIZE = 100;
@@ -172,16 +179,16 @@ export class MediaUploadService {
     });
   }
 
-  private uploadInBatches(files: File[], batchSize: number): Observable<BatchUploadResponse> {
+  private uploadInBatches(files: File[], batchSize: number): Observable<AggregatedUploadResponse> {
     const normalizedBatchSize = normalizeUploadBatchSize(batchSize);
     const batches = chunkFiles(files, normalizedBatchSize);
     const totalBytes = files.reduce((sum, file) => sum + Math.max(0, file.size), 0);
 
-    return new Observable<BatchUploadResponse>((subscriber) => {
+    return new Observable<AggregatedUploadResponse>((subscriber) => {
       let currentSubscription: Subscription | null = null;
       let batchIndex = 0;
       let uploadedBytes = 0;
-      const aggregate: BatchUploadResponse = {
+      const aggregate: AggregatedUploadResponse = {
         accepted: 0,
         duplicates: 0,
         errors: 0,
@@ -268,7 +275,7 @@ export class MediaUploadService {
     this.patchSession({ expanded: !this.snapshot.expanded, visible: true });
   }
 
-  private handleUploadResponse(response: BatchUploadResponse): void {
+  private handleUploadResponse(response: AggregatedUploadResponse): void {
     const items: UploadQueueItem[] = this.snapshot.items.map((item, index) => {
       const result = response.results[index];
 

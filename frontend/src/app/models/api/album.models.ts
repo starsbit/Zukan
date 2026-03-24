@@ -1,5 +1,5 @@
 import type { BulkResult, Uuid } from './common.models';
-import type { MediaListResponse, TagFilterMode } from './media.models';
+import type { MediaCursorPage, TagFilterMode } from './media.models';
 
 export interface AlbumCreateDto {
   name: string;
@@ -27,19 +27,31 @@ export interface AlbumRead {
 
 export interface AlbumListResponse {
   total: number;
-  page: number;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  has_more: boolean;
   page_size: number;
   items: AlbumRead[];
 }
 
+export type AlbumShareRole = 'viewer' | 'editor';
+export type AlbumShareReadRole = AlbumShareRole | 'owner';
+
 export interface AlbumShareCreateDto {
   user_id: Uuid;
-  can_edit?: boolean;
+  role?: AlbumShareRole;
 }
 
 export interface AlbumShareRead {
   user_id: Uuid;
-  can_edit: boolean;
+  role: AlbumShareReadRole;
+  shared_at: string;
+  shared_by_user_id?: Uuid | null;
+}
+
+export interface AlbumOwnershipTransferDto {
+  new_owner_user_id: Uuid;
+  keep_editor_access?: boolean;
 }
 
 export interface AlbumMediaBatchUpdateDto {
@@ -50,11 +62,11 @@ export interface ListAlbumMediaQuery {
   tag?: string[] | null;
   exclude_tag?: string[] | null;
   mode?: TagFilterMode;
-  page?: number;
+  after?: string | null;
   page_size?: number;
 }
 
-export interface AlbumMediaListCache extends MediaListResponse {
+export interface AlbumMediaListCache extends MediaCursorPage {
   query?: ListAlbumMediaQuery;
 }
 

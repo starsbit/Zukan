@@ -11,10 +11,10 @@ export class UsersClientService {
   private readonly api = inject(ClientApiService);
 
   getMe(): Observable<UserRead> {
-    return this.api.get<UserRead>('/users/me');
+    return this.api.get<UserRead>('/me');
   }
 
   updateMe(body: UserUpdateDto): Observable<UserRead> {
-    return this.api.patch<UserRead>('/users/me', body);
+    return this.api.patch<UserRead>('/me', body);
   }
 }

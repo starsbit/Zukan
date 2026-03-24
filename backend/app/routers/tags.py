@@ -15,7 +15,7 @@ router = APIRouter(tags=["tags"], responses=ERROR_RESPONSES)
 
 @router.get("/tags", response_model=TagListResponse)
 async def list_tags(
-    page: int = Query(default=1, ge=1),
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
     page_size: int = Query(default=100, ge=1, le=1000),
     category: int | None = None,
     q: str | None = Query(default=None, min_length=1),
@@ -24,7 +24,7 @@ async def list_tags(
     _: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await TagService(db).list_tags(page=page, page_size=page_size, category=category, query=q, sort_by=sort_by, sort_order=sort_order)
+    return await TagService(db).list_tags(after=after, page_size=page_size, category=category, query=q, sort_by=sort_by, sort_order=sort_order)
 
 
 @router.post("/tags/{tag_id}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
@@ -43,24 +43,6 @@ async def trash_media_by_tag(
     db: AsyncSession = Depends(get_db),
 ):
     return await TagService(db).trash_media_by_tag_id(user, tag_id=tag_id)
-
-
-@router.post("/tags/{tag_name}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
-async def remove_tag_from_media_by_name(
-    tag_name: str = Path(min_length=1),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await TagService(db).remove_tag_from_media(user, tag_name=tag_name)
-
-
-@router.post("/tags/{tag_name}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
-async def trash_media_by_tag_name(
-    tag_name: str = Path(min_length=1),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await TagService(db).trash_media_by_tag(user, tag_name=tag_name)
 
 
 @router.post(

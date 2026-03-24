@@ -37,11 +37,14 @@ describe('AuthClientService', () => {
   it('stores tokens on login', async () => {
     const loginPromise = firstValueFrom(service.login({
       username: 'admin',
-      password: 'secret'
+      password: 'secret',
+      remember_me: true
     }));
 
     const request = httpTesting.expectOne('http://api.example.test/auth/login');
     expect(request.request.method).toBe('POST');
+    expect(request.request.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
+    expect(request.request.body).toBe('username=admin&password=secret&remember_me=true');
     request.flush({
       access_token: 'access-1',
       refresh_token: 'refresh-1',

@@ -5,13 +5,14 @@ import {
   AlbumCreateDto,
   AlbumListResponse,
   AlbumMediaBatchUpdateDto,
+  AlbumOwnershipTransferDto,
   AlbumRead,
   AlbumShareCreateDto,
   AlbumShareRead,
   AlbumUpdateDto,
   BulkResult,
   ListAlbumMediaQuery,
-  MediaListResponse,
+  MediaCursorPage,
   Uuid
 } from '../models/api';
 import {
@@ -29,7 +30,7 @@ import { AlbumsClientService } from './web/albums-client.service';
 export interface AlbumsState {
   albums: AlbumRead[];
   selectedAlbum: AlbumRead | null;
-  selectedAlbumMedia: MediaListResponse | null;
+  selectedAlbumMedia: MediaCursorPage | null;
   selectedAlbumMediaQuery: ListAlbumMediaQuery | null;
   request: RequestStatus;
   detailRequest: RequestStatus;
@@ -180,7 +181,7 @@ export class AlbumsService {
     );
   }
 
-  loadAlbumMedia(albumId: Uuid, query?: ListAlbumMediaQuery): Observable<MediaListResponse> {
+  loadAlbumMedia(albumId: Uuid, query?: ListAlbumMediaQuery): Observable<MediaCursorPage> {
     this.patchState({
       mediaRequest: beginRequest(this.stateSubject.value.mediaRequest),
       selectedAlbumMediaQuery: query ?? null
@@ -202,7 +203,7 @@ export class AlbumsService {
     );
   }
 
-  refreshAlbumMedia(): Observable<MediaListResponse> {
+  refreshAlbumMedia(): Observable<MediaCursorPage> {
     const selectedAlbum = this.stateSubject.value.selectedAlbum;
     if (!selectedAlbum) {
       return throwError(() => new Error('No album selected'));
@@ -231,12 +232,15 @@ export class AlbumsService {
     return this.albumsClient.removeMediaFromAlbum(albumId, body).pipe(
       tap(() => {
         this.patchSelectedAlbumCount(albumId, -body.media_ids.length);
-        if (this.stateSubject.value.selectedAlbum?.id === albumId && this.stateSubject.value.selectedAlbumMedia) {
+        const selectedAlbumMedia = this.stateSubject.value.selectedAlbumMedia;
+        if (this.stateSubject.value.selectedAlbum?.id === albumId && selectedAlbumMedia) {
           this.patchState({
             selectedAlbumMedia: {
-              ...this.stateSubject.value.selectedAlbumMedia,
-              items: this.stateSubject.value.selectedAlbumMedia.items.filter((item) => !body.media_ids.includes(item.id)),
-              total: Math.max(0, this.stateSubject.value.selectedAlbumMedia.total - body.media_ids.length)
+              ...selectedAlbumMedia,
+              items: selectedAlbumMedia.items.filter((item) => !body.media_ids.includes(item.id)),
+              total: selectedAlbumMedia.total != null
+                ? Math.max(0, selectedAlbumMedia.total - body.media_ids.length)
+                : null
             }
           });
         } else {
@@ -264,6 +268,22 @@ export class AlbumsService {
 
     return this.albumsClient.revokeShare(albumId, sharedUserId).pipe(
       tap(() => this.finishMutation()),
+      catchError((error) => this.failMutation(error)),
+      finalize(() => this.ensureMutationSettled())
+    );
+  }
+
+  transferOwnership(albumId: Uuid, body: AlbumOwnershipTransferDto): Observable<AlbumRead> {
+    this.startMutation();
+
+    return this.albumsClient.transferOwnership(albumId, body).pipe(
+      tap((album) => {
+        this.patchState({
+          albums: this.upsertAlbum(album),
+          selectedAlbum: this.stateSubject.value.selectedAlbum?.id === albumId ? album : this.stateSubject.value.selectedAlbum
+        });
+        this.finishMutation();
+      }),
       catchError((error) => this.failMutation(error)),
       finalize(() => this.ensureMutationSettled())
     );

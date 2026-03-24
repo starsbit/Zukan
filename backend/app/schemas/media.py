@@ -10,12 +10,12 @@ from backend.app.schemas.tags import TagWithConfidence
 
 
 class MediaMetadata(BaseModel):
-    file_size: int | None = Field(description="Original file size in bytes.")
-    width: int | None = Field(description="Display width in pixels.")
-    height: int | None = Field(description="Display height in pixels.")
+    file_size: int | None = Field(default=None, description="Original file size in bytes.")
+    width: int | None = Field(default=None, description="Display width in pixels.")
+    height: int | None = Field(default=None, description="Display height in pixels.")
     duration_seconds: float | None = Field(default=None, description="Duration in seconds for animated media.")
     frame_count: int | None = Field(default=None, description="Frame count for animated media when known.")
-    mime_type: str | None = Field(description="Detected MIME type for the media.")
+    mime_type: str | None = Field(default=None, description="Detected MIME type for the media.")
     captured_at: datetime = Field(description="Best-known timestamp for when the media was captured or created.")
 
 
@@ -51,16 +51,16 @@ class MediaMetadataFilter(BaseModel):
 
 class MediaRead(BaseModel):
     id: uuid.UUID
-    uploader_id: uuid.UUID | None
+    uploader_id: uuid.UUID | None = None
     owner_id: uuid.UUID | None = None
     visibility: str = "private"
     filename: str
-    original_filename: str | None
+    original_filename: str | None = None
     media_type: MediaType = MediaType.IMAGE
     metadata: MediaMetadata
     version: int
     created_at: datetime
-    deleted_at: datetime | None
+    deleted_at: datetime | None = None
     tags: list[str] = Field(description="All tags currently stored for the media.")
     ocr_text_override: str | None = Field(
         default=None,
@@ -88,6 +88,67 @@ class MediaDetail(MediaRead):
         default_factory=list,
         description="Entity annotations for this media (e.g. identified characters).",
     )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
+                "uploader_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "owner_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "visibility": "private",
+                "filename": "2026-03-24_15-07-11.webp",
+                "original_filename": "saberalterburger.webp",
+                "media_type": "image",
+                "metadata": {
+                    "file_size": 253114,
+                    "width": 1920,
+                    "height": 1080,
+                    "duration_seconds": None,
+                    "frame_count": None,
+                    "mime_type": "image/webp",
+                    "captured_at": "2026-03-24T15:07:11Z"
+                },
+                "version": 5,
+                "created_at": "2026-03-24T15:07:13Z",
+                "deleted_at": None,
+                "tags": ["Saber", "white hair", "cat", "burger"],
+                "ocr_text_override": None,
+                "is_nsfw": False,
+                "tagging_status": "done",
+                "tagging_error": None,
+                "thumbnail_status": "done",
+                "poster_status": "not_applicable",
+                "ocr_text": "Some text in the image here",
+                "is_favorited": False,
+                "tag_details": [
+                    {
+                        "name": "street",
+                        "category": 0,
+                        "category_name": "general",
+                        "category_key": "general",
+                        "confidence": 0.96
+                    }
+                ],
+                "external_refs": [
+                    {
+                        "provider": "pixiv",
+                        "external_id": "987654",
+                        "url": "https://www.pixiv.net/en/artworks/75453892"
+                    }
+                ],
+                "entities": [
+                    {
+                        "entity_type": "character",
+                        "entity_id": None,
+                        "name": "Saber (Alter)",
+                        "role": "primary",
+                        "source": "manual",
+                        "confidence": 0.93
+                    }
+                ]
+            }
+        }
+    }
 
 
 class MediaListState(str, Enum):
@@ -123,6 +184,18 @@ class MediaUpdate(BaseModel):
     )
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "tags": ["Saber", "Sakura", "Rin"],
+                "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
+                "favorited": True,
+                "ocr_text_override": "Other text because I did not like the one in the image",
+                "version": 5,
+            }
+        }
+    }
+
     @model_validator(mode="after")
     def validate_non_empty(self):
         mutable_fields = set(self.model_fields_set)
@@ -145,6 +218,8 @@ class MediaCursorPage(BaseModel):
         default=None,
         description="Total number of media items matching the current filters. Null when include_total=false.",
     )
-    next_cursor: str | None = Field(description="Opaque cursor for fetching the next page. Null if no more items.")
+    next_cursor: str | None = Field(default=None, description="Opaque cursor for fetching the next page. Null if no more items.")
+    prev_cursor: str | None = Field(default=None, description="Optional cursor for fetching the previous page.")
+    has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[MediaRead] = Field(description="Media returned for the current page.")

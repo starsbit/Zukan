@@ -41,9 +41,9 @@ describe('authInterceptor', () => {
       refreshToken: 'refresh-1'
     });
 
-    const requestPromise = firstValueFrom(api.get('/users/me'));
+    const requestPromise = firstValueFrom(api.get('/me'));
 
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     expect(request.request.headers.get('Authorization')).toBe('Bearer access-1');
     expect(request.request.context.get(AUTH_MODE)).toBe('required');
 
@@ -58,9 +58,9 @@ describe('authInterceptor', () => {
       tokenType: 'bearer'
     });
 
-    const requestPromise = firstValueFrom(api.get('/users/me'));
+    const requestPromise = firstValueFrom(api.get('/me'));
 
-    const originalRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const originalRequest = httpTesting.expectOne('http://api.example.test/me');
     expect(originalRequest.request.headers.get('Authorization')).toBe('Bearer expired-access');
     originalRequest.flush({ detail: 'Invalid token' }, { status: 401, statusText: 'Unauthorized' });
 
@@ -73,7 +73,7 @@ describe('authInterceptor', () => {
       token_type: 'bearer'
     });
 
-    const retriedRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const retriedRequest = httpTesting.expectOne('http://api.example.test/me');
     expect(retriedRequest.request.headers.get('Authorization')).toBe('Bearer fresh-access');
     retriedRequest.flush({ id: 'user-1' });
 
@@ -88,9 +88,9 @@ describe('authInterceptor', () => {
       refreshToken: 'refresh-1'
     });
 
-    const requestPromise = firstValueFrom(api.get('/users/me'));
+    const requestPromise = firstValueFrom(api.get('/me'));
 
-    const originalRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const originalRequest = httpTesting.expectOne('http://api.example.test/me');
     originalRequest.flush({ detail: 'Invalid token' }, { status: 401, statusText: 'Unauthorized' });
 
     const refreshRequest = httpTesting.expectOne('http://api.example.test/auth/refresh');

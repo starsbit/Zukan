@@ -112,12 +112,18 @@ export type UploadStatus = 'accepted' | 'duplicate' | 'error';
 
 export interface UploadResult {
   id: Uuid | null;
+  batch_item_id?: Uuid | null;
   original_filename: string;
   status: UploadStatus;
   message?: string | null;
 }
 
 export interface BatchUploadResponse {
+  batch_id: Uuid;
+  batch_url: string;
+  batch_items_url: string;
+  poll_after_seconds: number;
+  webhooks_supported: boolean;
   accepted: number;
   duplicates: number;
   errors: number;

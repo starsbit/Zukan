@@ -5,14 +5,14 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
-class NotificationTypeEnum(str, Enum):
+class NotificationType(str, Enum):
     batch_done = "batch_done"
     batch_failed = "batch_failed"
     app_update = "app_update"
     share_invite = "share_invite"
 
 
-class AnnouncementSeverityEnum(str, Enum):
+class AnnouncementSeverity(str, Enum):
     info = "info"
     warning = "warning"
     critical = "critical"
@@ -21,11 +21,11 @@ class AnnouncementSeverityEnum(str, Enum):
 class NotificationRead(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
-    type: NotificationTypeEnum
+    type: NotificationType
     title: str
     body: str
     is_read: bool
-    link_url: str | None
+    link_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -33,7 +33,9 @@ class NotificationRead(BaseModel):
 
 class NotificationListResponse(BaseModel):
     total: int
-    page: int
+    next_cursor: str | None = None
+    prev_cursor: str | None = None
+    has_more: bool
     page_size: int
     items: list[NotificationRead]
 
@@ -42,19 +44,19 @@ class AppAnnouncementCreate(BaseModel):
     version: str | None = Field(default=None, max_length=64)
     title: str = Field(min_length=1, max_length=255)
     message: str = Field(min_length=1)
-    severity: AnnouncementSeverityEnum = AnnouncementSeverityEnum.info
+    severity: AnnouncementSeverity = AnnouncementSeverity.info
     starts_at: datetime | None = None
     ends_at: datetime | None = None
 
 
 class AppAnnouncementRead(BaseModel):
     id: uuid.UUID
-    version: str | None
+    version: str | None = None
     title: str
     message: str
-    severity: AnnouncementSeverityEnum
-    starts_at: datetime | None
-    ends_at: datetime | None
+    severity: AnnouncementSeverity
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
     is_active: bool
     created_at: datetime
 

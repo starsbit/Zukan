@@ -22,6 +22,15 @@ class Settings(BaseSettings):
     max_batch_size: int = 300
     thumbnail_size: int = 512
 
+    auth_register_rate_limit_requests: int = 10
+    auth_register_rate_limit_window_seconds: int = 60
+    auth_login_rate_limit_requests: int = 30
+    auth_login_rate_limit_window_seconds: int = 60
+    auth_refresh_rate_limit_requests: int = 60
+    auth_refresh_rate_limit_window_seconds: int = 60
+    upload_rate_limit_requests: int = 30
+    upload_rate_limit_window_seconds: int = 60
+
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30

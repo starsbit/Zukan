@@ -15,6 +15,7 @@ export interface BasicAuthCredentials {
 export interface ClientRequestOptions {
   auth?: ClientAuthMode;
   basicAuth?: BasicAuthCredentials;
+  headers?: Record<string, string>;
   query?: object;
 }
 
@@ -90,11 +91,11 @@ export class ClientApiService {
   }
 
   private buildHeaders(options?: ClientRequestOptions): HttpHeaders {
-    let headers = new HttpHeaders();
+    let headers = new HttpHeaders(options?.headers ?? {});
 
     if (options?.basicAuth) {
       const encoded = btoa(`${options.basicAuth.username}:${options.basicAuth.password}`);
-      return headers.set('Authorization', `Basic ${encoded}`);
+      headers = headers.set('Authorization', `Basic ${encoded}`);
     }
 
     return headers;

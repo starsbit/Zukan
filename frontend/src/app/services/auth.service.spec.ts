@@ -47,13 +47,15 @@ describe('AuthService', () => {
     expect(service.snapshot.loginPending).toBe(true);
 
     const loginRequest = httpTesting.expectOne('http://api.example.test/auth/login');
+    expect(loginRequest.request.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
+    expect(loginRequest.request.body).toBe('username=admin&password=secret');
     loginRequest.flush({
       access_token: 'access-1',
       refresh_token: 'refresh-1',
       token_type: 'bearer'
     });
 
-    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const meRequest = httpTesting.expectOne('http://api.example.test/me');
     meRequest.flush({
       id: 'user-1',
       username: 'admin',
@@ -93,17 +95,15 @@ describe('AuthService', () => {
     });
 
     const loginRequest = httpTesting.expectOne('http://api.example.test/auth/login');
-    expect(loginRequest.request.body).toEqual({
-      username: 'new-user',
-      password: 'password123'
-    });
+    expect(loginRequest.request.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
+    expect(loginRequest.request.body).toBe('username=new-user&password=password123');
     loginRequest.flush({
       access_token: 'access-2',
       refresh_token: 'refresh-2',
       token_type: 'bearer'
     });
 
-    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const meRequest = httpTesting.expectOne('http://api.example.test/me');
     meRequest.flush({
       id: 'user-2',
       username: 'new-user',
@@ -163,7 +163,7 @@ describe('AuthService', () => {
     });
 
     const loadPromise = firstValueFrom(service.loadCurrentUser());
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     request.flush({ detail: 'Unauthorized' }, { status: 401, statusText: 'Unauthorized' });
 
     await expect(loadPromise).rejects.toMatchObject({ status: 401 });
@@ -189,7 +189,7 @@ describe('AuthService', () => {
       token_type: 'bearer'
     });
 
-    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const meRequest = httpTesting.expectOne('http://api.example.test/me');
     meRequest.flush({
       id: 'user-2',
       username: 'refreshed',
@@ -223,7 +223,7 @@ describe('AuthService', () => {
       token_type: 'bearer'
     });
 
-    const meRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const meRequest = httpTesting.expectOne('http://api.example.test/me');
     meRequest.flush({
       id: 'user-3',
       username: 'remembered',

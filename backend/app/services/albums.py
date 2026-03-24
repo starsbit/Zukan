@@ -7,17 +7,37 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.errors.error import AppError
-from backend.app.errors.albums import album_not_found, album_read_only, media_not_in_album, album_share_forbidden, album_empty, share_self, share_not_found
+from backend.app.errors.albums import (
+    album_empty,
+    album_not_found,
+    album_read_only,
+    album_share_forbidden,
+    media_not_in_album,
+    ownership_transfer_forbidden,
+    ownership_transfer_invalid_target,
+    share_not_found,
+    share_self,
+)
 from backend.app.errors.upload import version_conflict
 from backend.app.errors.auth import forbidden
-from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareRole
 from backend.app.models.media import Media, MediaTag
 from backend.app.repositories.albums import AlbumRepository
 from backend.app.repositories import media_filters
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.media_interactions import UserFavoriteRepository
-from backend.app.schemas import AlbumListResponse, AlbumRead, AlbumShareCreate, AlbumUpdate, BulkResult, MediaListResponse, TagFilterMode
+from backend.app.schemas import (
+    AlbumListResponse,
+    AlbumOwnershipTransferRequest,
+    AlbumRead,
+    AlbumShareCreate,
+    AlbumUpdate,
+    BulkResult,
+    MediaCursorPage,
+    TagFilterMode,
+)
 from backend.app.utils.media_projections import enrich_media
+from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 
 
 class AlbumService:
@@ -64,24 +84,67 @@ class AlbumService:
     async def list_albums(
         self,
         user,
-        page: int = 1,
+        after: str | None = None,
         page_size: int = 50,
         sort_by: str = "created_at",
         sort_order: str = "desc",
     ) -> AlbumListResponse:
         sort_col = Album.name if sort_by == "name" else Album.created_at
-        order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
         albums_repo = AlbumRepository(self._db)
+        stmt = albums_repo.accessible_stmt(user.id)
         total = await albums_repo.count_accessible(user.id)
-        album_list = await albums_repo.list_accessible(user.id, offset=(page - 1) * page_size, limit=page_size, order_expr=order_expr)
+
+        if after:
+            value_type = "str" if sort_by == "name" else "datetime"
+            decoded = decode_cursor_typed(after, value_type)
+            if decoded is not None:
+                cursor_val, cursor_id = decoded
+                stmt = apply_cursor_where_expr(
+                    stmt,
+                    sort_expr=sort_col,
+                    id_expr=Album.id,
+                    sort_order=sort_order,
+                    cursor_val=cursor_val,
+                    cursor_id=cursor_id,
+                )
+
+        if sort_order == "asc":
+            order_exprs = [sort_col.asc(), Album.id.asc()]
+        else:
+            order_exprs = [sort_col.desc(), Album.id.desc()]
+
+        album_list = (await self._db.execute(stmt.order_by(*order_exprs).limit(page_size + 1))).scalars().all()
+        has_more = len(album_list) > page_size
+        album_list = album_list[:page_size]
         items = [await self.album_read(album) for album in album_list]
-        return AlbumListResponse(total=total, page=page, page_size=page_size, items=items)
+
+        next_cursor = None
+        if has_more and album_list:
+            last = album_list[-1]
+            sort_val = last.name if sort_by == "name" else last.created_at
+            next_cursor = encode_cursor(sort_val, last.id)
+
+        return AlbumListResponse(
+            total=total,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=page_size,
+            items=items,
+        )
 
     async def update_album(self, album_id: uuid.UUID, body: AlbumUpdate, user) -> AlbumRead:
         albums_repo = AlbumRepository(self._db)
         album = await self.get_album_for_user(album_id, user, require_edit=True)
         if "version" in body.model_fields_set and body.version is not None and body.version != album.version:
-            raise AppError(status_code=409, code=version_conflict, detail="Version conflict: resource was modified by another request")
+            raise AppError(
+                status_code=409,
+                code=version_conflict,
+                detail="Version conflict: resource was modified by another request",
+                details={
+                    "current_version": album.version,
+                    "provided_version": body.version,
+                },
+            )
         if "name" in body.model_fields_set:
             album.name = body.name
         if "description" in body.model_fields_set:
@@ -90,7 +153,7 @@ class AlbumService:
             if body.cover_media_id is not None:
                 exists = await albums_repo.get_album_media_item(album_id, body.cover_media_id)
                 if exists is None:
-                    raise AppError(status_code=400, code=media_not_in_album, detail="Media not in album")
+                    raise AppError(status_code=422, code=media_not_in_album, detail="Media not in album")
             album.cover_media_id = body.cover_media_id
         await self._db.commit()
         await self._db.refresh(album)
@@ -110,12 +173,12 @@ class AlbumService:
         tags: list[str] | None,
         exclude_tags: list[str] | None,
         mode: TagFilterMode,
-        page: int,
+        after: str | None,
         page_size: int,
-    ) -> MediaListResponse:
+    ) -> MediaCursorPage:
         await self.get_album_for_user(album_id, user)
         stmt = (
-            select(Media)
+            select(Media, AlbumMedia.position)
             .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
             .join(AlbumMedia, AlbumMedia.media_id == Media.id)
             .where(AlbumMedia.album_id == album_id, Media.deleted_at.is_(None))
@@ -123,12 +186,39 @@ class AlbumService:
         if not user.show_nsfw:
             stmt = stmt.where(Media.is_nsfw == False)
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
+
+        if after:
+            decoded = decode_cursor_typed(after, "int")
+            if decoded is not None:
+                cursor_pos, cursor_id = decoded
+                stmt = stmt.where(
+                    (AlbumMedia.position > cursor_pos)
+                    | ((AlbumMedia.position == cursor_pos) & (Media.id > cursor_id))
+                )
+
         total = (await self._db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
-        rows = (
-            await self._db.execute(stmt.order_by(AlbumMedia.position, AlbumMedia.added_at).offset((page - 1) * page_size).limit(page_size))
-        ).scalars().all()
+
+        rows_with_pos = (
+            await self._db.execute(stmt.order_by(AlbumMedia.position.asc(), Media.id.asc()).limit(page_size + 1))
+        ).all()
+        has_more = len(rows_with_pos) > page_size
+        rows_with_pos = rows_with_pos[:page_size]
+
+        rows = [row[0] for row in rows_with_pos]
         favorites = await UserFavoriteRepository(self._db).get_favorited_ids(user.id, [row.id for row in rows])
-        return MediaListResponse(total=total, page=page, page_size=page_size, items=enrich_media(rows, favorites))
+
+        next_cursor = None
+        if has_more and rows_with_pos:
+            last_media, last_position = rows_with_pos[-1]
+            next_cursor = encode_cursor(last_position, last_media.id)
+
+        return MediaCursorPage(
+            total=total,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=page_size,
+            items=enrich_media(rows, favorites),
+        )
 
     async def add_media_to_album(self, album_id: uuid.UUID, media_ids: list[uuid.UUID], user) -> int:
         albums_repo = AlbumRepository(self._db)
@@ -161,22 +251,76 @@ class AlbumService:
             album.cover_media_id = None
         await self._db.commit()
 
-    async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> AlbumShare:
+    async def transfer_album_ownership(self, album_id: uuid.UUID, body: AlbumOwnershipTransferRequest, user) -> AlbumRead:
+        albums_repo = AlbumRepository(self._db)
+        album = await self.get_album(album_id)
+        if album.owner_id != user.id and not user.is_admin:
+            raise AppError(
+                status_code=403,
+                code=ownership_transfer_forbidden,
+                detail="Only the owner can transfer ownership",
+            )
+
+        if body.new_owner_user_id == album.owner_id:
+            raise AppError(
+                status_code=422,
+                code=ownership_transfer_invalid_target,
+                detail="New owner must be different from current owner",
+            )
+
+        incoming_share = await albums_repo.get_share(album_id, body.new_owner_user_id)
+        if incoming_share is None or incoming_share.role != AlbumShareRole.editor:
+            raise AppError(
+                status_code=422,
+                code=ownership_transfer_invalid_target,
+                detail="New owner must already have editor access",
+            )
+
+        previous_owner_id = album.owner_id
+        album.owner_id = body.new_owner_user_id
+
+        # Target owner no longer needs an explicit share row after transfer.
+        await self._db.delete(incoming_share)
+
+        previous_share = await albums_repo.get_share(album_id, previous_owner_id)
+        if body.keep_editor_access:
+            if previous_share is None:
+                self._db.add(
+                    AlbumShare(
+                        album_id=album_id,
+                        user_id=previous_owner_id,
+                        role=AlbumShareRole.editor,
+                        shared_by_user_id=body.new_owner_user_id,
+                    )
+                )
+            else:
+                previous_share.role = AlbumShareRole.editor
+                previous_share.shared_by_user_id = body.new_owner_user_id
+        elif previous_share is not None:
+            await self._db.delete(previous_share)
+
+        await self._db.commit()
+        await self._db.refresh(album)
+        return await self.album_read(album)
+
+    async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> tuple[AlbumShare, bool]:
         albums_repo = AlbumRepository(self._db)
         album = await self.get_album_for_user(album_id, user)
         if album.owner_id != user.id and not user.is_admin:
             raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
         if body.user_id == user.id:
-            raise AppError(status_code=400, code=share_self, detail="Cannot share with yourself")
+            raise AppError(status_code=422, code=share_self, detail="Cannot share with yourself")
         share = await albums_repo.get_share(album_id, body.user_id)
+        created = False
         if share:
             share.role = body.role
         else:
             share = AlbumShare(album_id=album_id, user_id=body.user_id, role=body.role, shared_by_user_id=user.id)
             self._db.add(share)
+            created = True
         await self._db.commit()
         await self._db.refresh(share)
-        return share
+        return share, created
 
     async def revoke_share(self, album_id: uuid.UUID, shared_user_id: uuid.UUID, user) -> None:
         albums_repo = AlbumRepository(self._db)

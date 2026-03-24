@@ -20,6 +20,7 @@ from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import CATEGORY_NAMES, TagListResponse, TagManagementResult, TagRead
+from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 from backend.app.utils.tagging import (
     TaggerBackend,
     TaggingResult,
@@ -44,29 +45,58 @@ class TagService:
     async def list_tags(
         self,
         *,
-        page: int = 1,
+        after: str | None = None,
         page_size: int = 100,
         category: int | None,
         query: str | None = None,
         sort_by: str = "media_count",
         sort_order: str = "desc",
-        limit: int | None = None,
-        offset: int | None = None,
     ) -> TagListResponse:
         sort_col = Tag.name if sort_by == "name" else Tag.media_count
-        order_expr = sort_col.asc() if sort_order == "asc" else sort_col.desc()
         base_stmt = select(Tag)
         if category is not None:
             base_stmt = base_stmt.where(Tag.category == category)
         if query:
             base_stmt = base_stmt.where(Tag.name.ilike(f"{query}%"))
+
+        if after:
+            value_type = "str" if sort_by == "name" else "int"
+            decoded = decode_cursor_typed(after, value_type, id_type="int")
+            if decoded is not None:
+                cursor_val, cursor_id = decoded
+                base_stmt = apply_cursor_where_expr(
+                    base_stmt,
+                    sort_expr=sort_col,
+                    id_expr=Tag.id,
+                    sort_order=sort_order,
+                    cursor_val=cursor_val,
+                    cursor_id=cursor_id,
+                )
+
+        if sort_order == "asc":
+            order_exprs = [sort_col.asc(), Tag.id.asc()]
+        else:
+            order_exprs = [sort_col.desc(), Tag.id.desc()]
+
         tags_repo = TagRepository(self._db)
         total = await tags_repo.count(base_stmt)
-        if limit is not None and offset is not None:
-            tag_list = await tags_repo.list(base_stmt=base_stmt, order_expr=order_expr, offset=offset, limit=limit)
-        else:
-            tag_list = await tags_repo.list(base_stmt=base_stmt, order_expr=order_expr, offset=(page - 1) * page_size, limit=page_size)
-        return TagListResponse(total=total, page=page, page_size=page_size, items=[_to_tag_read(tag) for tag in tag_list])
+        tag_list = (await self._db.execute(base_stmt.order_by(*order_exprs).limit(page_size + 1))).scalars().all()
+        has_more = len(tag_list) > page_size
+        tag_list = tag_list[:page_size]
+
+        next_cursor = None
+        if has_more and tag_list:
+            last = tag_list[-1]
+            sort_val = last.name if sort_by == "name" else last.media_count
+            next_cursor = encode_cursor(sort_val, last.id)
+
+        return TagListResponse(
+            total=total,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=page_size,
+            items=[_to_tag_read(tag) for tag in tag_list],
+        )
 
     async def remove_tag_from_media_by_id(self, user, *, tag_id: int) -> TagManagementResult:
         tag = await self.get_tag_by_id(tag_id)

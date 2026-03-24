@@ -63,6 +63,10 @@ class AlbumRepository:
         ).scalar_one_or_none()
 
     async def count_accessible(self, user_id: uuid.UUID) -> int:
+        stmt = self.accessible_stmt(user_id)
+        return (await self.db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+
+    def accessible_stmt(self, user_id: uuid.UUID):
         owned = select(Album).where(Album.owner_id == user_id)
         shared = (
             select(Album)
@@ -70,23 +74,10 @@ class AlbumRepository:
             .where(AlbumShare.user_id == user_id, Album.owner_id != user_id)
         )
         combined = union_all(owned, shared).subquery()
-        return (await self.db.execute(select(func.count()).select_from(combined))).scalar_one()
+        return select(Album).where(Album.id.in_(select(combined.c.id)))
 
     async def list_accessible(self, user_id: uuid.UUID, *, offset: int, limit: int, order_expr) -> list[Album]:
-        owned = select(Album).where(Album.owner_id == user_id)
-        shared = (
-            select(Album)
-            .join(AlbumShare, AlbumShare.album_id == Album.id)
-            .where(AlbumShare.user_id == user_id, Album.owner_id != user_id)
-        )
-        combined = union_all(owned, shared).subquery()
-        stmt = (
-            select(Album)
-            .where(Album.id.in_(select(combined.c.id)))
-            .order_by(order_expr)
-            .offset(offset)
-            .limit(limit)
-        )
+        stmt = self.accessible_stmt(user_id).order_by(order_expr).offset(offset).limit(limit)
         return (await self.db.execute(stmt)).scalars().all()
 
     async def get_media_for_download(self, album_id: uuid.UUID) -> list[Media]:

@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.routers.albums import album_access
-from backend.app.schemas import AlbumCreate, AlbumMediaBatchUpdate, AlbumRead, AlbumShareCreate, AlbumUpdate
+from backend.app.schemas import AlbumCreate, AlbumRead, AlbumShareCreate, AlbumUpdate, MediaIdsRequest
 
 
 def _now():
@@ -114,16 +114,16 @@ def test_album_share_create_role_editor():
     assert m.role == "editor"
 
 
-# --- AlbumMediaBatchUpdate ---
+# --- MediaIdsRequest ---
 
 def test_add_media_requires_at_least_one():
     with pytest.raises(ValidationError):
-        AlbumMediaBatchUpdate(media_ids=[])
+        MediaIdsRequest(media_ids=[])
 
 
 def test_add_media_valid():
     ids = [uuid.uuid4(), uuid.uuid4()]
-    m = AlbumMediaBatchUpdate(media_ids=ids)
+    m = MediaIdsRequest(media_ids=ids)
     assert len(m.media_ids) == 2
 
 

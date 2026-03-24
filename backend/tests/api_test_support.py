@@ -157,10 +157,10 @@ class ApiHarness:
         })
         assert register.status_code == 201, register.text
 
-        login = self.client.post("/auth/login", json={
+        login = self.client.post("/auth/login", data={
             "username": username,
             "password": password,
-            "remember_me": remember_me,
+            "remember_me": str(remember_me).lower(),
         })
         assert login.status_code == 200, login.text
         tokens = login.json()

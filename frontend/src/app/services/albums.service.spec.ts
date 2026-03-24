@@ -84,7 +84,7 @@ describe('AlbumsService', () => {
       selectedAlbum: createAlbum(),
       selectedAlbumMedia: {
         total: 2,
-        page: 1,
+        next_cursor: null,
         page_size: 20,
         items: [createMedia('media-1'), createMedia('media-2')]
       }
@@ -103,7 +103,7 @@ describe('AlbumsService', () => {
   it('loads albums, album detail, and album media', async () => {
     const listPromise = firstValueFrom(service.loadAlbums());
     const listRequest = httpTesting.expectOne('http://api.example.test/albums');
-    listRequest.flush({ total: 1, page: 1, page_size: 50, items: [createAlbum()] });
+    listRequest.flush({ total: 1, next_cursor: null, prev_cursor: null, has_more: false, page_size: 50, items: [createAlbum()] });
     await expect(listPromise).resolves.toHaveLength(1);
 
     const detailPromise = firstValueFrom(service.loadAlbum('album-1'));
@@ -111,14 +111,14 @@ describe('AlbumsService', () => {
     detailRequest.flush(createAlbum({ name: 'Detailed' }));
     await expect(detailPromise).resolves.toMatchObject({ name: 'Detailed' });
 
-    const mediaPromise = firstValueFrom(service.loadAlbumMedia('album-1', { page: 2, page_size: 10 }));
-    const mediaRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/media?page=2&page_size=10');
-    mediaRequest.flush({ total: 1, page: 2, page_size: 10, items: [createMedia('media-1')] });
-    await expect(mediaPromise).resolves.toMatchObject({ total: 1, page: 2 });
+    const mediaPromise = firstValueFrom(service.loadAlbumMedia('album-1', { after: 'cursor-2', page_size: 10 }));
+    const mediaRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/media?after=cursor-2&page_size=10');
+    mediaRequest.flush({ total: 1, next_cursor: null, page_size: 10, items: [createMedia('media-1')] });
+    await expect(mediaPromise).resolves.toMatchObject({ total: 1, next_cursor: null });
 
     const refreshPromise = firstValueFrom(service.refreshAlbumMedia());
-    const refreshRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/media?page=2&page_size=10');
-    refreshRequest.flush({ total: 0, page: 2, page_size: 10, items: [] });
+    const refreshRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/media?after=cursor-2&page_size=10');
+    refreshRequest.flush({ total: 0, next_cursor: null, page_size: 10, items: [] });
     await expect(refreshPromise).resolves.toMatchObject({ total: 0, items: [] });
   });
 
@@ -127,8 +127,8 @@ describe('AlbumsService', () => {
       ...service.snapshot,
       albums: [createAlbum()],
       selectedAlbum: createAlbum(),
-      selectedAlbumMedia: { total: 1, page: 1, page_size: 20, items: [createMedia('media-1')] },
-      selectedAlbumMediaQuery: { page: 1 }
+      selectedAlbumMedia: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1')] },
+      selectedAlbumMediaQuery: { after: 'cursor-1' }
     });
 
     const updatePromise = firstValueFrom(service.updateAlbum('album-1', { name: 'Road Trip' }));
@@ -153,7 +153,7 @@ describe('AlbumsService', () => {
       ...service.snapshot,
       albums: [createAlbum()],
       selectedAlbum: createAlbum(),
-      selectedAlbumMedia: { total: 1, page: 1, page_size: 20, items: [createMedia('media-1')] }
+      selectedAlbumMedia: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1')] }
     });
 
     const addPromise = firstValueFrom(service.addMedia('album-1', { media_ids: ['media-2', 'media-3'] }));
@@ -164,10 +164,10 @@ describe('AlbumsService', () => {
     expect(service.snapshot.selectedAlbum?.media_count).toBe(4);
     expect(service.snapshot.selectedAlbumMedia).toBeNull();
 
-    const sharePromise = firstValueFrom(service.shareAlbum('album-1', { user_id: 'user-2', can_edit: true }));
+    const sharePromise = firstValueFrom(service.shareAlbum('album-1', { user_id: 'user-2', role: 'editor' }));
     const shareRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/shares');
-    shareRequest.flush({ user_id: 'user-2', can_edit: true });
-    await expect(sharePromise).resolves.toEqual({ user_id: 'user-2', can_edit: true });
+    shareRequest.flush({ user_id: 'user-2', role: 'editor', shared_at: '2026-03-21T00:00:00Z', shared_by_user_id: 'user-1' });
+    await expect(sharePromise).resolves.toEqual({ user_id: 'user-2', role: 'editor', shared_at: '2026-03-21T00:00:00Z', shared_by_user_id: 'user-1' });
 
     const revokePromise = firstValueFrom(service.revokeShare('album-1', 'user-2'));
     const revokeRequest = httpTesting.expectOne('http://api.example.test/albums/album-1/shares/user-2');

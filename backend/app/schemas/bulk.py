@@ -15,16 +15,12 @@ class MediaBatchUpdate(BaseModel):
         return self
 
 
-class MediaBatchDelete(BaseModel):
-    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
-
-
 class BulkResult(BaseModel):
     processed: int
     skipped: int
 
 
-class DownloadRequest(BaseModel):
+class MediaIdsRequest(BaseModel):
     media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
 
 

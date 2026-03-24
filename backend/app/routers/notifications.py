@@ -14,13 +14,13 @@ router = APIRouter(prefix="/me/notifications", tags=["notifications"], responses
 
 @router.get("", response_model=NotificationListResponse)
 async def list_notifications(
-    page: int = Query(default=1, ge=1),
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
     page_size: int = Query(default=20, ge=1, le=100),
     is_read: bool | None = Query(default=None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await NotificationService(db).list_notifications(user.id, page=page, page_size=page_size, is_read=is_read)
+    return await NotificationService(db).list_notifications(user.id, after=after, page_size=page_size, is_read=is_read)
 
 
 @router.patch("/{notification_id}/read", response_model=NotificationRead)

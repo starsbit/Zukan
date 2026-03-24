@@ -5,12 +5,10 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.schemas import (
-    AlbumMediaBatchUpdate,
     AdminStatsResponse,
     AdminUserUpdate,
     BulkResult,
-    DownloadRequest,
-    MediaBatchDelete,
+    MediaIdsRequest,
     MediaBatchUpdate,
     MediaMetadataFilter,
 )
@@ -73,20 +71,20 @@ def test_image_batch_update_exactly_500():
     assert len(m.media_ids) == 500
 
 
-# --- AlbumMediaBatchUpdate / MediaBatchDelete ---
+# --- MediaIdsRequest ---
 
 def test_album_image_batch_update_valid():
-    m = AlbumMediaBatchUpdate(media_ids=[uuid.uuid4()])
+    m = MediaIdsRequest(media_ids=[uuid.uuid4()])
     assert len(m.media_ids) == 1
 
 
 def test_album_media_batch_update_empty_media_rejected():
     with pytest.raises(ValidationError):
-        AlbumMediaBatchUpdate(media_ids=[])
+        MediaIdsRequest(media_ids=[])
 
 
 def test_image_batch_delete_valid():
-    m = MediaBatchDelete(media_ids=[uuid.uuid4()])
+    m = MediaIdsRequest(media_ids=[uuid.uuid4()])
     assert len(m.media_ids) == 1
 
 
@@ -103,22 +101,22 @@ def test_bulk_result_zero_values():
     assert m.processed == 0
 
 
-# --- DownloadRequest ---
+# --- MediaIdsRequest ---
 
 def test_download_request_valid():
     ids = [uuid.uuid4()]
-    m = DownloadRequest(media_ids=ids)
+    m = MediaIdsRequest(media_ids=ids)
     assert len(m.media_ids) == 1
 
 
 def test_download_request_empty_rejected():
     with pytest.raises(ValidationError):
-        DownloadRequest(media_ids=[])
+        MediaIdsRequest(media_ids=[])
 
 
 def test_download_request_max_500():
     with pytest.raises(ValidationError):
-        DownloadRequest(media_ids=[uuid.uuid4() for _ in range(501)])
+        MediaIdsRequest(media_ids=[uuid.uuid4() for _ in range(501)])
 
 
 # --- AdminUserUpdate ---

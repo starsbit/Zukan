@@ -15,31 +15,31 @@ def assert_auth_endpoints(api):
         "email": "alice-2@example.com",
         "password": "password123",
     })
-    assert duplicate_username.status_code == 400
+        assert duplicate_username.status_code == 409
 
     duplicate_email = api.client.post("/auth/register", json={
         "username": "alice-2",
         "email": "alice@example.com",
         "password": "password123",
     })
-    assert duplicate_email.status_code == 400
+        assert duplicate_email.status_code == 409
 
-    me = api.client.get("/users/me", headers=headers)
+    me = api.client.get("/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["username"] == "alice"
     assert me.json()["show_nsfw"] is False
 
-    updated = api.client.patch("/users/me", headers=headers, json={
+    updated = api.client.patch("/me", headers=headers, json={
         "show_nsfw": True,
         "password": "newpassword123",
     })
     assert updated.status_code == 200
     assert updated.json()["show_nsfw"] is True
 
-    old_login = api.client.post("/auth/login", json={"username": "alice", "password": "password123"})
+    old_login = api.client.post("/auth/login", data={"username": "alice", "password": "password123"})
     assert old_login.status_code == 401
 
-    login = api.client.post("/auth/login", json={"username": "alice", "password": "newpassword123"})
+    login = api.client.post("/auth/login", data={"username": "alice", "password": "newpassword123"})
     assert login.status_code == 200
     login_json = login.json()
 
@@ -54,10 +54,10 @@ def assert_auth_endpoints(api):
     assert second_refresh.json()["access_token"]
     assert second_refresh.json()["refresh_token"]
 
-    remembered_login = api.client.post("/auth/login", json={
+    remembered_login = api.client.post("/auth/login", data={
         "username": "alice",
         "password": "newpassword123",
-        "remember_me": True,
+        "remember_me": "true",
     })
     assert remembered_login.status_code == 200
     remembered_json = remembered_login.json()
@@ -115,7 +115,7 @@ def assert_docs_require_authorization(api):
     assert swagger.status_code == 200
     assert "Swagger UI" in swagger.text
 
-    swagger_authenticated_me = api.client.get("/users/me", headers=api.auth_headers(user["access_token"]))
+    swagger_authenticated_me = api.client.get("/me", headers=api.auth_headers(user["access_token"]))
     assert swagger_authenticated_me.status_code == 200
     assert swagger_authenticated_me.json()["username"] == user["user"]["username"]
 
@@ -148,7 +148,7 @@ def assert_media_tag_search_and_favorite_endpoints(api):
     assert default_list.status_code == 200
     assert [item["id"] for item in default_list.json()["items"]] == [str(blue["id"])]
 
-    api.client.patch("/users/me", headers=api.auth_headers(owner["access_token"]), json={"show_nsfw": True})
+    api.client.patch("/me", headers=api.auth_headers(owner["access_token"]), json={"show_nsfw": True})
 
     nsfw_only = api.client.get("/media", headers=api.auth_headers(owner["access_token"]), params={"nsfw": "only"})
     assert nsfw_only.status_code == 200
@@ -489,7 +489,7 @@ def assert_mixed_media_endpoints(api):
     for item in (animated, movie, webm, mov):
         api.wait_for_media_status(str(item["id"]))
 
-    enabled = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    enabled = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert enabled.status_code == 200
 
     animated_detail = api.client.get(f"/media/{animated['id']}", headers=headers)
@@ -654,7 +654,7 @@ def assert_media_complex_query_regression(api):
     assert hidden_nsfw.status_code == 200
     assert {item["id"] for item in hidden_nsfw.json()["items"]} == {str(blue["id"]), str(blue_two["id"]), str(red["id"])}
 
-    show_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    show_nsfw = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert show_nsfw.status_code == 200
 
     nsfw_metadata_filter = api.client.get(
@@ -705,7 +705,7 @@ def assert_media_complex_query_regression(api):
 def assert_tag_management_endpoints(api):
     owner = api.register_and_login("tag-manager-owner")
     other = api.register_and_login("tag-manager-other")
-    admin_login = api.client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_login = api.client.post("/auth/login", data={"username": "admin", "password": "admin"})
     assert admin_login.status_code == 200
 
     owner_headers = api.auth_headers(owner["access_token"])
@@ -765,12 +765,16 @@ def assert_tag_management_endpoints(api):
     assert other_character_suggestions.status_code == 200
     assert other_character_suggestions.json()[0]["name"] == "ayanami_rei"
 
-    trash_forest = api.client.post("/tags/forest/actions/trash-media", headers=owner_headers)
+    forest_tags_owner = api.client.get("/tags", headers=owner_headers, params={"q": "forest"})
+    assert forest_tags_owner.status_code == 200
+    forest_tag_id = forest_tags_owner.json()["items"][0]["id"]
+
+    trash_forest = api.client.post(f"/tags/{forest_tag_id}/actions/trash-media", headers=owner_headers)
     assert trash_forest.status_code == 200
     assert trash_forest.json()["matched_media"] == 1
     assert trash_forest.json()["trashed_media"] == 1
 
-    delete_forest = api.client.post("/tags/forest/actions/remove-from-media", headers=owner_headers)
+    delete_forest = api.client.post(f"/tags/{forest_tag_id}/actions/remove-from-media", headers=owner_headers)
     assert delete_forest.status_code == 200
     assert delete_forest.json()["matched_media"] == 1
     assert delete_forest.json()["updated_media"] == 1
@@ -788,7 +792,11 @@ def assert_tag_management_endpoints(api):
     assert tags_after_owner_delete.status_code == 200
     assert tags_after_owner_delete.json()["items"] == []
 
-    admin_delete_sky = api.client.post("/tags/sky/actions/remove-from-media", headers=admin_headers)
+    sky_tags_before_delete = api.client.get("/tags", headers=admin_headers, params={"q": "sky"})
+    assert sky_tags_before_delete.status_code == 200
+    sky_tag_id = sky_tags_before_delete.json()["items"][0]["id"]
+
+    admin_delete_sky = api.client.post(f"/tags/{sky_tag_id}/actions/remove-from-media", headers=admin_headers)
     assert admin_delete_sky.status_code == 200
     assert admin_delete_sky.json()["matched_media"] == 2
     assert admin_delete_sky.json()["updated_media"] == 2
@@ -867,7 +875,7 @@ def assert_album_endpoints(api):
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": viewer["user"]["id"], "role": "viewer"},
     )
-    assert share_read_only.status_code == 200
+    assert share_read_only.status_code == 201
 
     shared_albums = api.client.get("/albums", headers=api.auth_headers(viewer["access_token"]))
     assert shared_albums.status_code == 200
@@ -951,7 +959,7 @@ def assert_album_edge_cases(api):
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": owner["user"]["id"], "role": "editor"},
     )
-    assert share_with_self.status_code == 400
+    assert share_with_self.status_code == 422
 
     add_image = api.client.put(
         f"/albums/{empty_album_id}/media",
@@ -973,14 +981,14 @@ def assert_album_edge_cases(api):
         headers=api.auth_headers(owner["access_token"]),
         json={"cover_media_id": str(uuid.uuid4())},
     )
-    assert invalid_cover.status_code == 400
+    assert invalid_cover.status_code == 422
 
     share_read_only = api.client.post(
         f"/albums/{empty_album_id}/shares",
         headers=api.auth_headers(owner["access_token"]),
         json={"user_id": viewer["user"]["id"], "role": "viewer"},
     )
-    assert share_read_only.status_code == 200
+    assert share_read_only.status_code == 201
 
     bulk_add_as_reader = api.client.put(
         f"/albums/{empty_album_id}/media",
@@ -1043,7 +1051,7 @@ def assert_bulk_endpoints(api):
         "deleted": False,
     }).json() == {"processed": 1, "skipped": 1}
 
-    assert api.client.request("DELETE", "/media", headers=api.auth_headers(owner["access_token"]), json={
+    assert api.client.post("/media/actions/delete", headers=api.auth_headers(owner["access_token"]), json={
         "media_ids": [str(second["id"]), str(third["id"])],
     }).json() == {"processed": 1, "skipped": 1}
 
@@ -1061,7 +1069,7 @@ def assert_admin_endpoints(api):
     image = api.upload_media(target["access_token"], "admin-blue.png", (0, 0, 255))
     api.wait_for_media_status(str(image["id"]))
 
-    admin_login = api.client.post("/auth/login", json={"username": "admin", "password": "admin"})
+    admin_login = api.client.post("/auth/login", data={"username": "admin", "password": "admin"})
     assert admin_login.status_code == 200
     admin_headers = api.auth_headers(admin_login.json()["access_token"])
 

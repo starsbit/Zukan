@@ -57,7 +57,7 @@ describe('MediaService', () => {
     const loadPromise = firstValueFrom(service.loadPage({ after: 'cursor-pg2', page_size: 10, favorited: true }));
     expect(service.snapshot.request.loading).toBe(true);
 
-    const firstRequest = httpTesting.expectOne('http://api.example.test/media?after=cursor-pg2&page_size=10&favorited=true');
+    const firstRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
     firstRequest.flush({
       total: 1,
       next_cursor: null,
@@ -69,7 +69,7 @@ describe('MediaService', () => {
     expect(service.snapshot.pageQuery).toEqual({ after: 'cursor-pg2', page_size: 10, favorited: true });
 
     const refreshPromise = firstValueFrom(service.refreshPage());
-    const refreshRequest = httpTesting.expectOne('http://api.example.test/media?after=cursor-pg2&page_size=10&favorited=true');
+    const refreshRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
     refreshRequest.flush({ total: 0, next_cursor: null, page_size: 10, items: [] });
 
     await expect(refreshPromise).resolves.toMatchObject({ total: 0, items: [] });
@@ -89,7 +89,7 @@ describe('MediaService', () => {
     });
 
     const nextPagePromise = firstValueFrom(service.loadNextPage());
-    const nextRequest = httpTesting.expectOne('http://api.example.test/media?page_size=2&tag=sky&after=cursor-next');
+    const nextRequest = httpTesting.expectOne('http://api.example.test/media/search?page_size=2&tag=sky&after=cursor-next');
     nextRequest.flush({
       total: 4,
       next_cursor: null,

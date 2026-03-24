@@ -42,7 +42,9 @@ class NsfwFilter(str, Enum):
 
 class TagListResponse(BaseModel):
     total: int = Field(description="Total number of tags matching the current filters.")
-    page: int = Field(description="Current page number.")
+    next_cursor: str | None = Field(default=None, description="Opaque cursor for fetching the next page. Null if no more items.")
+    prev_cursor: str | None = Field(default=None, description="Optional cursor for fetching the previous page.")
+    has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[TagRead] = Field(description="Tags returned for the current page.")
 

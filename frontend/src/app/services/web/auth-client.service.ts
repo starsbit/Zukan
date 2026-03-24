@@ -1,4 +1,5 @@
 import { Injectable, inject } from '@angular/core';
+import { HttpParams } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
 
 import {
@@ -25,7 +26,20 @@ export class AuthClientService {
   }
 
   login(body: UserLoginDto): Observable<TokenResponse> {
-    return this.api.post<TokenResponse>('/auth/login', body, { auth: 'none' }).pipe(
+    let form = new HttpParams()
+      .set('username', body.username)
+      .set('password', body.password);
+
+    if (body.remember_me !== undefined) {
+      form = form.set('remember_me', String(body.remember_me));
+    }
+
+    return this.api.post<TokenResponse>('/auth/login', form.toString(), {
+      auth: 'none',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      }
+    }).pipe(
       tap((response) => this.authStore.setTokens({
         accessToken: response.access_token,
         refreshToken: response.refresh_token,

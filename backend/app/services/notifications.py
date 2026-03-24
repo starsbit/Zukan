@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors.error import AppError
 from backend.app.models.notifications import Notification
 from backend.app.repositories.notifications import NotificationRepository
 from backend.app.schemas import NotificationListResponse
+from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 
 
 class NotificationService:
@@ -18,15 +20,45 @@ class NotificationService:
         self,
         user_id: uuid.UUID,
         *,
-        page: int = 1,
+        after: str | None = None,
         page_size: int = 20,
         is_read: bool | None = None,
     ) -> NotificationListResponse:
         repo = NotificationRepository(self._db)
-        offset = (page - 1) * page_size
         total = await repo.count_for_user(user_id, is_read=is_read)
-        items = await repo.list_for_user(user_id, is_read=is_read, offset=offset, limit=page_size)
-        return NotificationListResponse(total=total, page=page, page_size=page_size, items=list(items))
+        stmt = select(Notification).where(Notification.user_id == user_id)
+        if is_read is not None:
+            stmt = stmt.where(Notification.is_read == is_read)
+
+        if after:
+            decoded = decode_cursor_typed(after, "datetime")
+            if decoded is not None:
+                cursor_val, cursor_id = decoded
+                stmt = apply_cursor_where_expr(
+                    stmt,
+                    sort_expr=Notification.created_at,
+                    id_expr=Notification.id,
+                    sort_order="desc",
+                    cursor_val=cursor_val,
+                    cursor_id=cursor_id,
+                )
+
+        rows = (await self._db.execute(stmt.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(page_size + 1))).scalars().all()
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
+
+        next_cursor = None
+        if has_more and rows:
+            last = rows[-1]
+            next_cursor = encode_cursor(last.created_at, last.id)
+
+        return NotificationListResponse(
+            total=total,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=page_size,
+            items=list(rows),
+        )
 
     async def get_notification_for_user(self, notification_id: uuid.UUID, user_id: uuid.UUID) -> Notification:
         notification = await NotificationRepository(self._db).get_by_id_for_user(notification_id, user_id)

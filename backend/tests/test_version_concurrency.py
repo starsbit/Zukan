@@ -130,11 +130,11 @@ def test_user_patch_response_includes_version(api):
     user = api.register_and_login("version-user-patch")
     headers = api.auth_headers(user["access_token"])
 
-    me = api.client.get("/users/me", headers=headers)
+    me = api.client.get("/me", headers=headers)
     assert me.status_code == 200
     assert me.json()["version"] == 1
 
-    patch = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    patch = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert patch.status_code == 200
     assert patch.json()["version"] == 2
 
@@ -164,6 +164,8 @@ def test_media_patch_version_conflict_returns_409(api):
     )
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "version_conflict"
+    assert conflict.json()["details"]["current_version"] == current_version + 1
+    assert conflict.json()["details"]["provided_version"] == current_version
 
 
 def test_album_patch_version_conflict_returns_409(api):
@@ -180,18 +182,22 @@ def test_album_patch_version_conflict_returns_409(api):
     conflict = api.client.patch(f"/albums/{album_id}", headers=headers, json={"name": "Stale", "version": 1})
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "version_conflict"
+    assert conflict.json()["details"]["current_version"] == 2
+    assert conflict.json()["details"]["provided_version"] == 1
 
 
 def test_user_patch_version_conflict_returns_409(api):
     user = api.register_and_login("version-conflict-user")
     headers = api.auth_headers(user["access_token"])
 
-    first = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True, "version": 1})
+    first = api.client.patch("/me", headers=headers, json={"show_nsfw": True, "version": 1})
     assert first.status_code == 200
 
-    conflict = api.client.patch("/users/me", headers=headers, json={"show_nsfw": False, "version": 1})
+    conflict = api.client.patch("/me", headers=headers, json={"show_nsfw": False, "version": 1})
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "version_conflict"
+    assert conflict.json()["details"]["current_version"] == 2
+    assert conflict.json()["details"]["provided_version"] == 1
 
 
 def test_media_patch_without_version_always_succeeds(api):
@@ -208,9 +214,6 @@ def test_media_patch_without_version_always_succeeds(api):
         )
         assert patch.status_code == 200
 
-
-# --- Service layer: version check ---
-
 def test_media_service_version_conflict_raises_http_exception(api):
     user = api.register_and_login("version-service-media")
     blue = api.upload_media(user["access_token"], "svc-version-blue.png", (0, 0, 255))
@@ -226,6 +229,8 @@ def test_media_service_version_conflict_raises_http_exception(api):
             )
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "version_conflict"
+        assert exc.value.detail["details"]["current_version"] == 1
+        assert exc.value.detail["details"]["provided_version"] == 999
 
     api.run_db(_exercise)
 
@@ -245,5 +250,7 @@ def test_album_service_version_conflict_raises_http_exception(api):
             )
         assert exc.value.status_code == 409
         assert exc.value.detail["code"] == "version_conflict"
+        assert exc.value.detail["details"]["current_version"] == 1
+        assert exc.value.detail["details"]["provided_version"] == 999
 
     api.run_db(_exercise)

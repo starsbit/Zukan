@@ -42,7 +42,7 @@ describe('UsersService', () => {
     const loadPromise = firstValueFrom(service.loadMe());
     expect(service.snapshot.request.loading).toBe(true);
 
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     request.flush({
       id: 'user-1',
       username: 'rin',
@@ -74,7 +74,7 @@ describe('UsersService', () => {
     const updatePromise = firstValueFrom(service.updateMe({ show_nsfw: true }));
     expect(service.snapshot.updating).toBe(true);
 
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     expect(request.request.method).toBe('PATCH');
     request.flush({
       id: 'user-1',
@@ -95,7 +95,7 @@ describe('UsersService', () => {
 
   it('refreshes through loadMe and exposes loaded state', async () => {
     const refreshPromise = firstValueFrom(service.refreshMe());
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     request.flush({
       id: 'user-2',
       username: 'refreshed',
@@ -133,7 +133,7 @@ describe('UsersService', () => {
 
   it('records errors when loadMe or updateMe fail', async () => {
     const loadPromise = firstValueFrom(service.loadMe());
-    const loadRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const loadRequest = httpTesting.expectOne('http://api.example.test/me');
     loadRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
 
     await expect(loadPromise).rejects.toMatchObject({ status: 500 });
@@ -151,7 +151,7 @@ describe('UsersService', () => {
     });
 
     const updatePromise = firstValueFrom(service.updateMe({ show_nsfw: true }));
-    const updateRequest = httpTesting.expectOne('http://api.example.test/users/me');
+    const updateRequest = httpTesting.expectOne('http://api.example.test/me');
     updateRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
 
     await expect(updatePromise).rejects.toMatchObject({ status: 500 });

@@ -61,11 +61,11 @@ describe('ClientApiService', () => {
   });
 
   it('sets explicit basic auth headers when requested', async () => {
-    const requestPromise = firstValueFrom(service.get('/users/me', {
+    const requestPromise = firstValueFrom(service.get('/me', {
       basicAuth: { username: 'admin', password: 'admin' }
     }));
 
-    const request = httpTesting.expectOne('http://api.example.test/users/me');
+    const request = httpTesting.expectOne('http://api.example.test/me');
     expect(request.request.headers.get('Authorization')).toBe('Basic YWRtaW46YWRtaW4=');
 
     request.flush({ ok: true });

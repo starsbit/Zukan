@@ -23,6 +23,23 @@ import { ClientApiService } from './api.service';
 })
 export class MediaClientService {
   private readonly api = inject(ClientApiService);
+  private static readonly SEARCH_QUERY_KEYS: Array<keyof ListMediaQuery> = [
+    'tag',
+    'character_name',
+    'exclude_tag',
+    'mode',
+    'nsfw',
+    'status',
+    'favorited',
+    'media_type',
+    'captured_year',
+    'captured_month',
+    'captured_day',
+    'captured_after',
+    'captured_before',
+    'captured_before_year',
+    'ocr_text'
+  ];
 
   uploadMedia(files: File[]): Observable<BatchUploadResponse> {
     return this.api.post<BatchUploadResponse>('/media', this.buildUploadPayload(files));
@@ -43,7 +60,32 @@ export class MediaClientService {
   }
 
   listMedia(query?: ListMediaQuery): Observable<MediaCursorPage> {
-    return this.api.get<MediaCursorPage>('/media', { query });
+    const endpoint = this.shouldUseSearchEndpoint(query) ? '/media/search' : '/media';
+    return this.api.get<MediaCursorPage>(endpoint, { query });
+  }
+
+  private shouldUseSearchEndpoint(query?: ListMediaQuery): boolean {
+    if (!query) {
+      return false;
+    }
+
+    return MediaClientService.SEARCH_QUERY_KEYS.some((key) => this.hasMeaningfulValue(query[key]));
+  }
+
+  private hasMeaningfulValue(value: unknown): boolean {
+    if (value == null) {
+      return false;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    if (typeof value === 'string') {
+      return value.trim().length > 0;
+    }
+
+    return true;
   }
 
   listCharacterSuggestions(query: { q: string; limit?: number }): Observable<CharacterSuggestion[]> {
@@ -55,7 +97,7 @@ export class MediaClientService {
   }
 
   batchDeleteMedia(body: MediaBatchDeleteDto): Observable<BulkResult> {
-    return this.api.delete<BulkResult>('/media', { body });
+    return this.api.post<BulkResult>('/media/actions/delete', body);
   }
 
   emptyTrash(): Observable<void> {

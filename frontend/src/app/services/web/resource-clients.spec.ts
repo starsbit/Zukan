@@ -64,10 +64,10 @@ describe('resource clients', () => {
     const deleteCharacterPromise = firstValueFrom(tagsClient.removeCharacterNameFromMedia('ayanami_rei'));
     const trashCharacterPromise = firstValueFrom(tagsClient.trashMediaByCharacterName('ayanami_rei'));
 
-    const meRequest = expectRequest('GET', 'http://api.example.test/users/me');
+    const meRequest = expectRequest('GET', 'http://api.example.test/me');
     meRequest.flush({ id: 'user-1' });
 
-    const updateMeRequest = expectRequest('PATCH', 'http://api.example.test/users/me');
+    const updateMeRequest = expectRequest('PATCH', 'http://api.example.test/me');
     expect(updateMeRequest.request.body).toEqual({ show_nsfw: true, tag_confidence_threshold: 0.7 });
     updateMeRequest.flush({ id: 'user-1', show_nsfw: true, tag_confidence_threshold: 0.7 });
 
@@ -136,7 +136,7 @@ describe('resource clients', () => {
     progressUploadRequest.event({ type: HttpEventType.UploadProgress, loaded: 1, total: 2 });
     progressUploadRequest.flush({ accepted: 1, duplicates: 0, errors: 0, results: [] });
 
-    const listRequest = expectRequest('GET', 'http://api.example.test/media?after=cursor-abc&page_size=25&album_id=album-9&favorited=true&character_name=rin&media_type=image&media_type=video&status=done,failed&captured_after=2026-03-21T00:00:00.000Z');
+    const listRequest = expectRequest('GET', 'http://api.example.test/media/search?after=cursor-abc&page_size=25&album_id=album-9&favorited=true&character_name=rin&media_type=image&media_type=video&status=done,failed&captured_after=2026-03-21T00:00:00.000Z');
     listRequest.flush({ total: 0, next_cursor: null, page_size: 25, items: [] });
 
     const suggestionsRequest = expectRequest('GET', 'http://api.example.test/media/character-suggestions?q=aya&limit=5');
@@ -233,14 +233,14 @@ describe('resource clients', () => {
     const getAlbumPromise = firstValueFrom(albumsClient.getAlbum('album-1'));
     const updateAlbumPromise = firstValueFrom(albumsClient.updateAlbum('album-1', { name: 'Road Trip' }));
     const deleteAlbumPromise = firstValueFrom(albumsClient.deleteAlbum('album-2'));
-    const listAlbumMediaPromise = firstValueFrom(albumsClient.listAlbumMedia('album-1', { page: 2, page_size: 12 }));
+    const listAlbumMediaPromise = firstValueFrom(albumsClient.listAlbumMedia('album-1', { after: 'cursor-2', page_size: 12 }));
     const addMediaPromise = firstValueFrom(albumsClient.addMediaToAlbum('album-1', { media_ids: ['m1', 'm2'] }));
     const albumRemovePromise = firstValueFrom(albumsClient.removeMediaFromAlbum('album-1', { media_ids: ['m1'] }));
-    const shareAlbumPromise = firstValueFrom(albumsClient.shareAlbum('album-1', { user_id: 'user-2', can_edit: true }));
+    const shareAlbumPromise = firstValueFrom(albumsClient.shareAlbum('album-1', { user_id: 'user-2', role: 'editor' }));
     const revokeSharePromise = firstValueFrom(albumsClient.revokeShare('album-1', 'user-2'));
     const albumDownloadPromise = firstValueFrom(albumsClient.downloadAlbum('album-1'));
 
-    const mediaDeleteRequest = expectRequest('DELETE', 'http://api.example.test/media');
+    const mediaDeleteRequest = expectRequest('POST', 'http://api.example.test/media/actions/delete');
     expect(mediaDeleteRequest.request.body).toEqual({ media_ids: ['m1', 'm2'] });
     mediaDeleteRequest.flush({ processed: 2, skipped: 0 });
 
@@ -249,7 +249,7 @@ describe('resource clients', () => {
     mediaDownloadRequest.flush(new Blob(['zip']));
 
     const listAlbumsRequest = expectRequest('GET', 'http://api.example.test/albums');
-    listAlbumsRequest.flush({ total: 1, page: 1, page_size: 50, items: [{ id: 'album-1' }] });
+    listAlbumsRequest.flush({ total: 1, next_cursor: null, prev_cursor: null, has_more: false, page_size: 50, items: [{ id: 'album-1' }] });
 
     const createAlbumRequest = expectRequest('POST', 'http://api.example.test/albums');
     expect(createAlbumRequest.request.body).toEqual({ name: 'Favorites' });
@@ -265,8 +265,8 @@ describe('resource clients', () => {
     const deleteAlbumRequest = expectRequest('DELETE', 'http://api.example.test/albums/album-2');
     deleteAlbumRequest.flush(null, { status: 204, statusText: 'No Content' });
 
-    const listAlbumMediaRequest = expectRequest('GET', 'http://api.example.test/albums/album-1/media?page=2&page_size=12');
-    listAlbumMediaRequest.flush({ total: 1, page: 2, page_size: 12, items: [] });
+    const listAlbumMediaRequest = expectRequest('GET', 'http://api.example.test/albums/album-1/media?after=cursor-2&page_size=12');
+    listAlbumMediaRequest.flush({ total: 1, next_cursor: null, page_size: 12, items: [] });
 
     const addMediaRequest = expectRequest('PUT', 'http://api.example.test/albums/album-1/media');
     expect(addMediaRequest.request.body).toEqual({ media_ids: ['m1', 'm2'] });
@@ -277,8 +277,8 @@ describe('resource clients', () => {
     albumRemoveRequest.flush({ processed: 1, skipped: 0 });
 
     const shareAlbumRequest = expectRequest('POST', 'http://api.example.test/albums/album-1/shares');
-    expect(shareAlbumRequest.request.body).toEqual({ user_id: 'user-2', can_edit: true });
-    shareAlbumRequest.flush({ user_id: 'user-2', can_edit: true });
+    expect(shareAlbumRequest.request.body).toEqual({ user_id: 'user-2', role: 'editor' });
+    shareAlbumRequest.flush({ user_id: 'user-2', role: 'editor', shared_at: '2026-03-21T00:00:00Z', shared_by_user_id: 'user-1' });
 
     const revokeShareRequest = expectRequest('DELETE', 'http://api.example.test/albums/album-1/shares/user-2');
     revokeShareRequest.flush(null, { status: 204, statusText: 'No Content' });
@@ -294,10 +294,10 @@ describe('resource clients', () => {
     await expect(getAlbumPromise).resolves.toEqual({ id: 'album-1' });
     await expect(updateAlbumPromise).resolves.toEqual({ id: 'album-1', name: 'Road Trip' });
     await expect(deleteAlbumPromise).resolves.toBeNull();
-    await expect(listAlbumMediaPromise).resolves.toMatchObject({ total: 1, page: 2, page_size: 12, items: [] });
+    await expect(listAlbumMediaPromise).resolves.toMatchObject({ total: 1, next_cursor: null, page_size: 12, items: [] });
     await expect(addMediaPromise).resolves.toEqual({ processed: 2, skipped: 0 });
     await expect(albumRemovePromise).resolves.toEqual({ processed: 1, skipped: 0 });
-    await expect(shareAlbumPromise).resolves.toEqual({ user_id: 'user-2', can_edit: true });
+    await expect(shareAlbumPromise).resolves.toEqual({ user_id: 'user-2', role: 'editor', shared_at: '2026-03-21T00:00:00Z', shared_by_user_id: 'user-1' });
     await expect(revokeSharePromise).resolves.toBeNull();
     await expect(albumDownloadPromise).resolves.toBeInstanceOf(Blob);
   });
@@ -357,7 +357,7 @@ describe('resource clients', () => {
     const updatePromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: 'Invoice $42' }));
     const clearPromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: null }));
 
-    const listRequest = expectRequest('GET', 'http://api.example.test/media?ocr_text=hello%20world&page_size=10');
+    const listRequest = expectRequest('GET', 'http://api.example.test/media/search?ocr_text=hello%20world&page_size=10');
     listRequest.flush({ total: 1, next_cursor: null, page_size: 10, items: [{ id: 'media-ocr', ocr_text: 'hello world' }] });
 
     const patchRequests = httpTesting.match(

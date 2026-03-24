@@ -121,11 +121,11 @@ def test_register_user_rejects_duplicate_username_and_email(api):
 
     with pytest.raises(HTTPException) as username_exc:
         api.run_db(_duplicate_username)
-    assert username_exc.value.status_code == 400
+    assert username_exc.value.status_code == 409
 
     with pytest.raises(HTTPException) as email_exc:
         api.run_db(_duplicate_email)
-    assert email_exc.value.status_code == 400
+    assert email_exc.value.status_code == 409
 
 
 def test_login_user_returns_tokens_and_rejects_bad_password(api):

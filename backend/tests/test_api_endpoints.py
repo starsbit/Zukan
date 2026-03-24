@@ -9,7 +9,7 @@ from backend.app.models.media import Media
 
 
 def _login(api, username: str, password: str = "password123") -> dict:
-    response = api.client.post("/auth/login", json={"username": username, "password": password})
+    response = api.client.post("/auth/login", data={"username": username, "password": password})
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -83,7 +83,7 @@ def test_register_rejects_duplicate_username_and_email_via_api(api):
             "password": "password123",
         },
     )
-    assert duplicate_username.status_code == 400
+    assert duplicate_username.status_code == 409
     assert duplicate_username.json()["detail"] == "Username already taken"
 
     duplicate_email = api.client.post(
@@ -94,7 +94,7 @@ def test_register_rejects_duplicate_username_and_email_via_api(api):
             "password": "password123",
         },
     )
-    assert duplicate_email.status_code == 400
+    assert duplicate_email.status_code == 409
     assert duplicate_email.json()["detail"] == "Email already registered"
 
 
@@ -109,7 +109,7 @@ def test_password_update_rehashes_password_and_invalidates_old_login(api):
     old_hash = api.run_db(_fetch_hash)
 
     update = api.client.patch(
-        "/users/me",
+        "/me",
         headers=api.auth_headers(created["access_token"]),
         json={"password": "new-password123"},
     )
@@ -122,13 +122,13 @@ def test_password_update_rehashes_password_and_invalidates_old_login(api):
 
     old_login = api.client.post(
         "/auth/login",
-        json={"username": "password-update-user", "password": "password123"},
+        data={"username": "password-update-user", "password": "password123"},
     )
     assert old_login.status_code == 401
 
     new_login = api.client.post(
         "/auth/login",
-        json={"username": "password-update-user", "password": "new-password123"},
+        data={"username": "password-update-user", "password": "new-password123"},
     )
     assert new_login.status_code == 200, new_login.text
 
@@ -217,7 +217,7 @@ def test_user_journey_upload_auto_tag_and_discover_media(api):
     assert rating_tags.status_code == 200
     assert {item["name"] for item in rating_tags.json()["items"]} == {"rating:general", "rating:questionable"}
 
-    show_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    show_nsfw = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert show_nsfw.status_code == 200
 
     nsfw_search = api.client.get("/media", headers=headers, params={"tag": "rose", "nsfw": "include"})
@@ -272,7 +272,7 @@ def test_user_journey_upload_and_discover_mixed_media(api):
     for item in (gif_item, mp4_item, webm_item, mov_item):
         api.wait_for_media_status(str(item["id"]))
 
-    enabled = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    enabled = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert enabled.status_code == 200
 
     library = api.client.get("/media", headers=headers, params={"nsfw": "include"})
@@ -412,7 +412,7 @@ def test_user_journey_query_trash_and_purge_uploaded_media(api):
     logged_in = _login(api, api.register_and_login("journey-trash-purge")["user"]["username"])
     headers = api.auth_headers(logged_in["access_token"])
 
-    enable_nsfw = api.client.patch("/users/me", headers=headers, json={"show_nsfw": True})
+    enable_nsfw = api.client.patch("/me", headers=headers, json={"show_nsfw": True})
     assert enable_nsfw.status_code == 200
 
     blue_image = api.upload_media(logged_in["access_token"], "journey-blue-image.png", (0, 0, 255))
@@ -858,7 +858,7 @@ def test_user_journey_collaboration_workflow(api):
         headers=owner_headers,
         json={"user_id": collaborator["user"]["id"], "role": "viewer"},
     )
-    assert share.status_code == 200
+    assert share.status_code == 201
 
     viewer_album_list = api.client.get("/albums", headers=viewer_headers)
     assert viewer_album_list.status_code == 200
