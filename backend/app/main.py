@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
 
-from backend.app.errors import AppError
+from backend.app.errors.error import AppError
 
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
@@ -22,7 +22,7 @@ from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue, MediaService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
-from backend.app.ml.tagger import tagger, WDTagger
+from backend.app.ml.tagger import tagger
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 
@@ -36,12 +36,12 @@ async def tagging_worker():
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
                     continue
-                await TagService(db, WDTagger()).tag_media(db, media_id)
+                await TagService(db, tagger).tag_media(media_id)
 
             except Exception as exc:
                 await db.rollback()
                 async with AsyncSessionLocal() as err_db:
-                    await MediaService(db).mark_tagging_failure(media_id, exc)
+                    await MediaService(err_db).mark_tagging_failure(media_id, exc)
                 print(f"Tagging failed for {media_id}: {exc}")
             finally:
                 tag_queue.task_done()

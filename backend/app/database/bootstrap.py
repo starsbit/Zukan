@@ -15,7 +15,14 @@ async def init_db():
 
 def _upgrade_to_head() -> None:
     backend_root = Path(__file__).resolve().parents[2]
+    migrations_dir = backend_root / "migrations"
     alembic_ini = backend_root / "alembic.ini"
-    config = Config(str(alembic_ini))
+
+    if not migrations_dir.exists():
+        raise RuntimeError(f"Alembic migrations directory not found: {migrations_dir}")
+
+    config = Config(str(alembic_ini)) if alembic_ini.exists() else Config()
+    config.set_main_option("script_location", str(migrations_dir))
+    config.set_main_option("prepend_sys_path", str(backend_root))
     config.set_main_option("sqlalchemy.url", settings.database_url)
     command.upgrade(config, "head")

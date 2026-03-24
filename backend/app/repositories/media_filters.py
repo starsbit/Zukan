@@ -5,7 +5,6 @@ Its in the repository domain because it relates closely to SQL related logic.
 
 import re
 from sqlalchemy import extract, func, or_, select
-from backend.app.errors import AppError, nsfw_disabled
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaType
 from backend.app.models.relations import MediaEntity, MediaEntityType
