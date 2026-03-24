@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -13,6 +14,7 @@ from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_medi
 
 _executor = ThreadPoolExecutor(max_workers=1)
 _whitespace_re = re.compile(r"\s+")
+logger = logging.getLogger(__name__)
 
 
 class TesseractOCR:
@@ -23,9 +25,13 @@ class TesseractOCR:
         try:
             import pytesseract  # type: ignore
 
+            # Verify both Python wrapper and system binary are callable.
+            pytesseract.get_tesseract_version()
             self._pytesseract = pytesseract
+            logger.info("OCR backend initialized with Tesseract")
         except Exception:
             self._pytesseract = None
+            logger.warning("OCR backend unavailable; pytesseract import or tesseract binary check failed", exc_info=True)
 
     def _extract_text_sync(self, image_path: str) -> str | None:
         if self._pytesseract is None:
@@ -55,8 +61,10 @@ class TesseractOCR:
 
     async def extract_text(self, media_path: str, media_type: MediaType) -> str | None:
         if not settings.ocr_enabled:
+            logger.debug("OCR skipped because OCR_ENABLED is false")
             return None
         if self._pytesseract is None:
+            logger.debug("OCR skipped because backend is not initialized")
             return None
 
         loop = asyncio.get_running_loop()
