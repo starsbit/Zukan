@@ -104,14 +104,14 @@ def test_album_update_null_cover_image_in_fields_set():
 
 # --- AlbumShareCreate ---
 
-def test_album_share_create_can_edit_defaults_false():
+def test_album_share_create_role_defaults_viewer():
     m = AlbumShareCreate(user_id=uuid.uuid4())
-    assert m.can_edit is False
+    assert m.role == "viewer"
 
 
-def test_album_share_create_can_edit_true():
-    m = AlbumShareCreate(user_id=uuid.uuid4(), can_edit=True)
-    assert m.can_edit is True
+def test_album_share_create_role_editor():
+    m = AlbumShareCreate(user_id=uuid.uuid4(), role="editor")
+    assert m.role == "editor"
 
 
 # --- AlbumMediaBatchUpdate ---
@@ -131,30 +131,30 @@ def test_add_media_valid():
 
 def test_album_access_owner_has_full_access():
     owner_id = uid = uuid.uuid4()
-    can_read, can_edit = album_access(owner_id, uid, is_admin=False, share_can_edit=None)
+    can_read, can_edit = album_access(owner_id, uid, is_admin=False, share_role=None)
     assert can_read is True
     assert can_edit is True
 
 
 def test_album_access_admin_has_full_access():
-    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=True, share_can_edit=None)
+    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=True, share_role=None)
     assert can_read is True
     assert can_edit is True
 
 
 def test_album_access_no_share_no_access():
-    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_can_edit=None)
+    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_role=None)
     assert can_read is False
     assert can_edit is False
 
 
 def test_album_access_shared_read_only():
-    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_can_edit=False)
+    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_role="viewer")
     assert can_read is True
     assert can_edit is False
 
 
 def test_album_access_shared_with_edit():
-    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_can_edit=True)
+    can_read, can_edit = album_access(uuid.uuid4(), uuid.uuid4(), is_admin=False, share_role="editor")
     assert can_read is True
     assert can_edit is True

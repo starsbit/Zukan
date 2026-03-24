@@ -32,12 +32,23 @@ class ProcessingStatus(str, enum.Enum):
     FAILED = "failed"
     NOT_APPLICABLE = "not_applicable"
 
+class MediaVisibility(str, enum.Enum):
+    private = "private"
+    shared = "shared"
+    public = "public"
+
 
 class Media(Base):
     __tablename__ = "media"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     uploader_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -81,8 +92,18 @@ class Media(Base):
     )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    visibility: Mapped[MediaVisibility] = mapped_column(
+        Enum(MediaVisibility, name="media_visibility_enum"), nullable=False, default=MediaVisibility.private, server_default="private"
+    )
+    ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    phash: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    tagging_model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    tagging_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    tagging_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
-    uploader: Mapped[User] = relationship(User, back_populates="media")
+    uploader: Mapped[User] = relationship(User, foreign_keys=[uploader_id], back_populates="media")
+    owner: Mapped[User | None] = relationship(User, foreign_keys=[owner_id])
     media_tags: Mapped[list[MediaTag]] = relationship(
         MediaTag,
         back_populates="media",

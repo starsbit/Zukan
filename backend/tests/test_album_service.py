@@ -16,8 +16,8 @@ def test_album_access_returns_full_access_for_owner():
 
 
 def test_album_access_returns_shared_permissions():
-    assert album_service.album_access(uuid.uuid4(), uuid.uuid4(), False, False) == (True, False)
-    assert album_service.album_access(uuid.uuid4(), uuid.uuid4(), False, True) == (True, True)
+    assert album_service.album_access(uuid.uuid4(), uuid.uuid4(), False, "viewer") == (True, False)
+    assert album_service.album_access(uuid.uuid4(), uuid.uuid4(), False, "editor") == (True, True)
 
 
 def test_album_access_denies_unshared_user():
@@ -126,11 +126,11 @@ def test_album_service_crud_and_sharing_flow(api):
         share = await album_service.share_album(
             session,
             created.id,
-            AlbumShareCreate(user_id=viewer_id, can_edit=False),
+            AlbumShareCreate(user_id=viewer_id, role="viewer"),
             owner_user,
         )
         assert share.user_id == viewer_id
-        assert share.can_edit is False
+        assert share.role == "viewer"
 
         shared_album = await album_service.get_album_for_user(session, created.id, viewer_user)
         assert shared_album.id == created.id

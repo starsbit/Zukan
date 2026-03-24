@@ -22,12 +22,12 @@ async def get_album(db: AsyncSession, album_id: uuid.UUID) -> Album:
     return album
 
 
-def album_access(owner_id: uuid.UUID, user_id: uuid.UUID, is_admin: bool, share_can_edit: bool | None) -> tuple[bool, bool]:
+def album_access(owner_id: uuid.UUID, user_id: uuid.UUID, is_admin: bool, share_role: str | None) -> tuple[bool, bool]:
     if is_admin or user_id == owner_id:
         return True, True
-    if share_can_edit is None:
+    if share_role is None:
         return False, False
-    return True, share_can_edit
+    return True, share_role in ("editor", "owner")
 
 
 async def get_album_for_user(db: AsyncSession, album_id: uuid.UUID, user, require_edit: bool = False) -> Album:
@@ -38,7 +38,7 @@ async def get_album_for_user(db: AsyncSession, album_id: uuid.UUID, user, requir
     share = await albums_repo.get_share(album_id, user.id)
     if share is None:
         raise AppError(status_code=404, code=album_not_found, detail="Album not found")
-    if require_edit and not share.can_edit:
+    if require_edit and share.role not in ("editor", "owner"):
         raise AppError(status_code=403, code=album_read_only, detail="Read-only access")
     return album
 
@@ -49,7 +49,7 @@ async def get_album_for_edit(db: AsyncSession, album_id: uuid.UUID, user) -> Alb
     if album.owner_id == user.id or user.is_admin:
         return album
     share = await albums_repo.get_share(album_id, user.id)
-    if share is None or not share.can_edit:
+    if share is None or share.role not in ("editor", "owner"):
         raise AppError(status_code=403, code=album_read_only, detail="No edit access to album")
     return album
 
@@ -182,9 +182,9 @@ async def share_album(db: AsyncSession, album_id: uuid.UUID, body: AlbumShareCre
         raise AppError(status_code=400, code=share_self, detail="Cannot share with yourself")
     share = await albums_repo.get_share(album_id, body.user_id)
     if share:
-        share.can_edit = body.can_edit
+        share.role = body.role
     else:
-        share = AlbumShare(album_id=album_id, user_id=body.user_id, can_edit=body.can_edit)
+        share = AlbumShare(album_id=album_id, user_id=body.user_id, role=body.role, shared_by_user_id=user.id)
         db.add(share)
     await db.commit()
     await db.refresh(share)

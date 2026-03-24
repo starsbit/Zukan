@@ -77,7 +77,7 @@ def test_bulk_album_and_delete_endpoints(api):
     share = api.client.post(
         f"/albums/{album_id}/shares",
         headers=owner_headers,
-        json={"user_id": collaborator["user"]["id"], "can_edit": True},
+        json={"user_id": collaborator["user"]["id"], "role": "editor"},
     )
     assert share.status_code == 200
 

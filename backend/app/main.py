@@ -16,7 +16,9 @@ from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.models.auth import User
 from backend.app.models.media import Media
-from backend.app.routers import admin, albums, auth, config, media, tags, users
+from backend.app.models import notifications as _notifications_models  # noqa: F401
+from backend.app.models import processing as _processing_models  # noqa: F401
+from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
 from backend.app.services.auth import authenticate_basic_user, get_user_by_username, hash_password
 from backend.app.services.media import mark_tagging_failure, set_tag_queue, tag_media
 from backend.app.services.tagger import tagger
@@ -108,6 +110,8 @@ v1_router.include_router(media.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
 v1_router.include_router(admin.router)
+v1_router.include_router(batches.router)
+v1_router.include_router(notifications.router)
 api.include_router(v1_router)
 
 

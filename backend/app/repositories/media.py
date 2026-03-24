@@ -58,6 +58,23 @@ class MediaRepository:
             await self.db.execute(select(Media).where(Media.uploader_id == uploader_id, Media.deleted_at.is_(None)))
         ).scalars().all()
 
+    async def get_by_owner(self, owner_id: uuid.UUID) -> list[Media]:
+        return (await self.db.execute(select(Media).where(Media.owner_id == owner_id))).scalars().all()
+
+    async def get_active_by_owner(self, owner_id: uuid.UUID) -> list[Media]:
+        return (
+            await self.db.execute(select(Media).where(Media.owner_id == owner_id, Media.deleted_at.is_(None)))
+        ).scalars().all()
+
+    async def count_by_owner(self, owner_id: uuid.UUID) -> int:
+        return (await self.db.execute(select(func.count(Media.id)).where(Media.owner_id == owner_id))).scalar_one()
+
+    async def find_by_phash(self, phash: str, *, exclude_id: uuid.UUID | None = None) -> list[Media]:
+        stmt = select(Media).where(Media.phash == phash, Media.deleted_at.is_(None))
+        if exclude_id is not None:
+            stmt = stmt.where(Media.id != exclude_id)
+        return (await self.db.execute(stmt)).scalars().all()
+
     async def count_active(self) -> int:
         return (await self.db.execute(select(func.count(Media.id)).where(Media.deleted_at.is_(None)))).scalar_one()
 

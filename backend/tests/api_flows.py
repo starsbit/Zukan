@@ -865,7 +865,7 @@ def assert_album_endpoints(api):
     share_read_only = api.client.post(
         f"/albums/{album['id']}/shares",
         headers=api.auth_headers(owner["access_token"]),
-        json={"user_id": viewer["user"]["id"], "can_edit": False},
+        json={"user_id": viewer["user"]["id"], "role": "viewer"},
     )
     assert share_read_only.status_code == 200
 
@@ -891,7 +891,7 @@ def assert_album_endpoints(api):
     share_edit = api.client.post(
         f"/albums/{album['id']}/shares",
         headers=api.auth_headers(owner["access_token"]),
-        json={"user_id": viewer["user"]["id"], "can_edit": True},
+        json={"user_id": viewer["user"]["id"], "role": "editor"},
     )
     assert share_edit.status_code == 200
 
@@ -949,7 +949,7 @@ def assert_album_edge_cases(api):
     share_with_self = api.client.post(
         f"/albums/{empty_album_id}/shares",
         headers=api.auth_headers(owner["access_token"]),
-        json={"user_id": owner["user"]["id"], "can_edit": True},
+        json={"user_id": owner["user"]["id"], "role": "editor"},
     )
     assert share_with_self.status_code == 400
 
@@ -978,7 +978,7 @@ def assert_album_edge_cases(api):
     share_read_only = api.client.post(
         f"/albums/{empty_album_id}/shares",
         headers=api.auth_headers(owner["access_token"]),
-        json={"user_id": viewer["user"]["id"], "can_edit": False},
+        json={"user_id": viewer["user"]["id"], "role": "viewer"},
     )
     assert share_read_only.status_code == 200
 

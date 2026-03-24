@@ -178,6 +178,8 @@ class MediaRead(BaseModel):
     # core
     id: uuid.UUID
     uploader_id: uuid.UUID | None
+    owner_id: uuid.UUID | None = None
+    visibility: str = "private"
     filename: str
     original_filename: str | None
     media_type: MediaType = MediaType.IMAGE
@@ -321,14 +323,22 @@ class AlbumListResponse(BaseModel):
     items: list[AlbumRead]
 
 
+class AlbumShareRole(str, Enum):
+    viewer = "viewer"
+    editor = "editor"
+    owner = "owner"
+
+
 class AlbumShareCreate(BaseModel):
     user_id: uuid.UUID
-    can_edit: bool = False
+    role: AlbumShareRole = AlbumShareRole.viewer
 
 
 class AlbumShareRead(BaseModel):
     user_id: uuid.UUID
-    can_edit: bool
+    role: AlbumShareRole
+    shared_at: datetime
+    shared_by_user_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}
 
@@ -425,3 +435,125 @@ class TagListResponse(BaseModel):
     page: int = Field(description="Current page number.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[TagRead] = Field(description="Tags returned for the current page.")
+
+
+class BatchTypeEnum(str, Enum):
+    upload = "upload"
+    retag = "retag"
+    rethumbnail = "rethumbnail"
+    rescan = "rescan"
+
+
+class BatchStatusEnum(str, Enum):
+    pending = "pending"
+    running = "running"
+    partial_failed = "partial_failed"
+    done = "done"
+    failed = "failed"
+    cancelled = "cancelled"
+
+
+class ItemStatusEnum(str, Enum):
+    pending = "pending"
+    processing = "processing"
+    done = "done"
+    failed = "failed"
+    skipped = "skipped"
+
+
+class ImportBatchRead(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    type: BatchTypeEnum
+    status: BatchStatusEnum
+    total_items: int
+    queued_items: int
+    processing_items: int
+    done_items: int
+    failed_items: int
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+    last_heartbeat_at: datetime | None
+    app_version: str | None
+    worker_version: str | None
+    error_summary: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class ImportBatchItemRead(BaseModel):
+    id: uuid.UUID
+    batch_id: uuid.UUID
+    media_id: uuid.UUID | None
+    source_filename: str
+    status: ItemStatusEnum
+    step: str | None
+    progress_percent: int | None
+    error: str | None
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ImportBatchListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[ImportBatchRead]
+
+
+class NotificationTypeEnum(str, Enum):
+    batch_done = "batch_done"
+    batch_failed = "batch_failed"
+    app_update = "app_update"
+    share_invite = "share_invite"
+
+
+class AnnouncementSeverityEnum(str, Enum):
+    info = "info"
+    warning = "warning"
+    critical = "critical"
+
+
+class NotificationRead(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    type: NotificationTypeEnum
+    title: str
+    body: str
+    is_read: bool
+    link_url: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class NotificationListResponse(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[NotificationRead]
+
+
+class AppAnnouncementCreate(BaseModel):
+    version: str | None = Field(default=None, max_length=64)
+    title: str = Field(min_length=1, max_length=255)
+    message: str = Field(min_length=1)
+    severity: AnnouncementSeverityEnum = AnnouncementSeverityEnum.info
+    starts_at: datetime | None = None
+    ends_at: datetime | None = None
+
+
+class AppAnnouncementRead(BaseModel):
+    id: uuid.UUID
+    version: str | None
+    title: str
+    message: str
+    severity: AnnouncementSeverityEnum
+    starts_at: datetime | None
+    ends_at: datetime | None
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

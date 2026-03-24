@@ -1,10 +1,18 @@
+import enum
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Float, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database import Base
+
+
+class MediaTagSource(str, enum.Enum):
+    auto = "auto"
+    manual = "manual"
+    imported = "imported"
 
 
 class Tag(Base):
@@ -33,6 +41,16 @@ class MediaTag(Base):
         index=True,
     )
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    source: Mapped[MediaTagSource] = mapped_column(
+        Enum(MediaTagSource, name="media_tag_source_enum"), nullable=False, default=MediaTagSource.auto, server_default="auto"
+    )
+    model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     media: Mapped["Media"] = relationship("Media", back_populates="media_tags") # type: ignore
     tag: Mapped["Tag"] = relationship("Tag", back_populates="media_tags")

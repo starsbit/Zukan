@@ -856,7 +856,7 @@ def test_user_journey_collaboration_workflow(api):
     share = api.client.post(
         f"/albums/{album_id}/shares",
         headers=owner_headers,
-        json={"user_id": collaborator["user"]["id"], "can_edit": False},
+        json={"user_id": collaborator["user"]["id"], "role": "viewer"},
     )
     assert share.status_code == 200
 
@@ -879,7 +879,7 @@ def test_user_journey_collaboration_workflow(api):
     upgrade_share = api.client.post(
         f"/albums/{album_id}/shares",
         headers=owner_headers,
-        json={"user_id": collaborator["user"]["id"], "can_edit": True},
+        json={"user_id": collaborator["user"]["id"], "role": "editor"},
     )
     assert upgrade_share.status_code == 200
 

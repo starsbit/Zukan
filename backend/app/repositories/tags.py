@@ -36,7 +36,15 @@ class TagRepository:
             )
         ).scalars().all()
 
-    async def set_media_tag_links(self, media, tag_payloads: list[tuple[str, int, float]]) -> None:
+    async def set_media_tag_links(
+        self,
+        media,
+        tag_payloads: list[tuple[str, int, float]],
+        *,
+        source: str = "auto",
+        model_version: str | None = None,
+        created_by_user_id=None,
+    ) -> None:
         desired_payloads: list[tuple[str, int, float]] = []
         desired_by_name: dict[str, tuple[int, float]] = {}
         for name, category, confidence in tag_payloads:
@@ -75,4 +83,11 @@ class TagRepository:
                 existing_tags[name] = tag
             elif tag.category == 0 and category != 0:
                 tag.category = category
-            self.db.add(MediaTag(media_id=media.id, tag_id=tag.id, confidence=confidence))
+            self.db.add(MediaTag(
+                media_id=media.id,
+                tag_id=tag.id,
+                confidence=confidence,
+                source=source,
+                model_version=model_version,
+                created_by_user_id=created_by_user_id,
+            ))

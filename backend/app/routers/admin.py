@@ -6,10 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.deps import admin_user
+from backend.app.models.notifications import AppAnnouncement
+from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserUpdate,
+    AppAnnouncementCreate,
+    AppAnnouncementRead,
     ERROR_RESPONSES,
     TaggingJobQueuedResponse,
     UserListResponse,
@@ -71,3 +75,30 @@ async def retag_all(
 ):
     queued = await admin_service.retag_all_media(db, user_id)
     return {"queued": queued}
+
+
+@router.get("/announcements", response_model=list[AppAnnouncementRead])
+async def list_announcements(
+    db: AsyncSession = Depends(get_db),
+):
+    repo = AppAnnouncementRepository(db)
+    return await repo.list_all(offset=0, limit=200)
+
+
+@router.post("/announcements", response_model=AppAnnouncementRead, status_code=status.HTTP_201_CREATED)
+async def create_announcement(
+    body: AppAnnouncementCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    announcement = AppAnnouncement(
+        version=body.version,
+        title=body.title,
+        message=body.message,
+        severity=body.severity,
+        starts_at=body.starts_at,
+        ends_at=body.ends_at,
+    )
+    db.add(announcement)
+    await db.commit()
+    await db.refresh(announcement)
+    return announcement
