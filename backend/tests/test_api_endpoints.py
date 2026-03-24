@@ -1031,6 +1031,29 @@ def test_ocr_text_endpoint_set_and_search(api):
     assert after_clear.json()["items"] == []
 
 
+def test_ocr_text_search_tolerates_noisy_middle_characters(api):
+    user = api.register_and_login("ocr-api-fuzzy-user")
+    headers = api.auth_headers(user["access_token"])
+
+    blue = api.upload_media(user["access_token"], "ocr-fuzzy-blue.png", (0, 0, 255))
+    green = api.upload_media(user["access_token"], "ocr-fuzzy-green.png", (0, 255, 0))
+    api.wait_for_media_status(str(blue["id"]))
+    api.wait_for_media_status(str(green["id"]))
+
+    patch = api.client.patch(
+        f"/media/{blue['id']}",
+        headers=headers,
+        json={"ocr_text_override": "invxxoice paid"},
+    )
+    assert patch.status_code == 200
+
+    hit = api.client.get("/media", headers=headers, params={"ocr_text": "invoice"})
+    assert hit.status_code == 200
+    ids = [item["id"] for item in hit.json()["items"]]
+    assert str(blue["id"]) in ids
+    assert str(green["id"]) not in ids
+
+
 def test_upload_generates_system_ocr_text_for_single_upload(api, monkeypatch):
     async def fake_extract_text(_media_path: str, _media_type):
         return "single upload OCR text"

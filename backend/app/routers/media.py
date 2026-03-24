@@ -229,7 +229,7 @@ async def search_media(
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
     page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of items to return."),
-    ocr_text: str | None = Query(default=None, description="Case-insensitive substring search in OCR-extracted text."),
+    ocr_text: str | None = Query(default=None, description="Case-insensitive OCR text search with fuzzy matching to tolerate noisy characters inside words."),
     include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),

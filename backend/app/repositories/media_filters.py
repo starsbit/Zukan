@@ -12,6 +12,8 @@ from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
 from backend.app.utils.search import normalize_character_name_search
 
+
+
 def captured_timestamp_expr():
     return func.coalesce(Media.captured_at, Media.created_at)
 
@@ -47,12 +49,24 @@ def apply_character_name_filter(stmt, character_name: str | None):
 def apply_ocr_text_filter(stmt, ocr_text: str | None):
     if ocr_text and ocr_text.strip():
         term = ocr_text.strip().lower()
-        stmt = stmt.where(
-            or_(
-                func.lower(func.coalesce(Media.ocr_text, "")).contains(term),
-                func.lower(func.coalesce(Media.ocr_text_override, "")).contains(term),
-            )
+        ocr_text_expr = func.lower(func.coalesce(Media.ocr_text, ""))
+        ocr_override_expr = func.lower(func.coalesce(Media.ocr_text_override, ""))
+        exact_match = or_(
+            ocr_text_expr.contains(term),
+            ocr_override_expr.contains(term),
         )
+
+        fuzzy_pattern = _build_fuzzy_ocr_like_pattern(term)
+        if not fuzzy_pattern:
+            return stmt.where(exact_match)
+
+        normalized_ocr_text_expr = func.regexp_replace(ocr_text_expr, r"[^a-z0-9]+", "", "g")
+        normalized_ocr_override_expr = func.regexp_replace(ocr_override_expr, r"[^a-z0-9]+", "", "g")
+        fuzzy_match = or_(
+            normalized_ocr_text_expr.like(fuzzy_pattern),
+            normalized_ocr_override_expr.like(fuzzy_pattern),
+        )
+        stmt = stmt.where(or_(exact_match, fuzzy_match))
     return stmt
 
 def apply_media_type_filters(stmt, media_type_filter: list[str] | None):
@@ -85,3 +99,10 @@ def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     if nsfw == NsfwFilter.ONLY:
         return stmt.where(Media.is_nsfw == True)
     return stmt
+
+def _build_fuzzy_ocr_like_pattern(term: str) -> str | None:
+    normalized = re.sub(r"[^a-z0-9]+", "", term.lower())
+    if len(normalized) < 4:
+        return None
+    # Insert SQL wildcards between characters to tolerate OCR noise inside words
+    return "%" + "%".join(normalized) + "%"
