@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BatchType(str, Enum):
@@ -65,18 +65,22 @@ class ImportBatchItemRead(BaseModel):
 
 
 class ImportBatchListResponse(BaseModel):
-    total: int
-    next_cursor: str | None = None
-    prev_cursor: str | None = None
-    has_more: bool
-    page_size: int
-    items: list[ImportBatchRead]
+    total: int = Field(description="Total number of batches visible to the caller.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page. Keep filters and sort parameters unchanged between requests.",
+    )
+    has_more: bool = Field(description="Whether there are additional items after this page.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[ImportBatchRead] = Field(description="Import batches returned for the current page.")
 
 
 class ImportBatchItemListResponse(BaseModel):
-    total: int
-    next_cursor: str | None = None
-    prev_cursor: str | None = None
-    has_more: bool
-    page_size: int
-    items: list[ImportBatchItemRead]
+    total: int = Field(description="Total number of batch items for the selected batch.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page. Keep filters and sort parameters unchanged between requests.",
+    )
+    has_more: bool = Field(description="Whether there are additional items after this page.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[ImportBatchItemRead] = Field(description="Batch items returned for the current page.")

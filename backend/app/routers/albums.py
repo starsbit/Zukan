@@ -10,6 +10,7 @@ from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
 from backend.app.schemas import (
+    AUTHENTICATED_ERROR_RESPONSES,
     AlbumListResponse,
     AlbumCreate,
     AlbumOwnershipTransferRequest,
@@ -18,16 +19,27 @@ from backend.app.schemas import (
     AlbumShareRead,
     AlbumUpdate,
     BulkResult,
-    ERROR_RESPONSES,
     MediaIdsRequest,
     MediaCursorPage,
     TagFilterMode,
+    error_responses,
 )
 from backend.app.services.albums import AlbumService
 from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
 from backend.app.utils.storage import zip_media
 
-router = APIRouter(prefix="/albums", tags=["albums"], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/albums", tags=["albums"], responses=AUTHENTICATED_ERROR_RESPONSES)
+
+IDEMPOTENCY_BEHAVIOR_DOC = (
+    "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original "
+    "status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; "
+    "keys are retained for about 24 hours in process-local memory."
+)
+
+IDEMPOTENCY_HEADER_DOC = (
+    "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
+    "same key + same payload replays original status/body; same key + different payload returns 409."
+)
 
 
 @router.post(
@@ -67,6 +79,7 @@ async def list_albums(
     response_model=AlbumRead,
     summary="Get Album",
     description="Get album metadata and permissions for a single album.",
+    responses=error_responses(404),
 )
 async def get_album(
     album_id: uuid.UUID,
@@ -83,6 +96,7 @@ async def get_album(
     response_model=AlbumRead,
     summary="Update Album",
     description="Update album fields. Supports optimistic locking via the `version` field.",
+    responses=error_responses(403, 404, 409, 422),
 )
 async def update_album(
     album_id: uuid.UUID,
@@ -98,6 +112,7 @@ async def update_album(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete Album",
     description="Delete an album and remove all album share relationships.",
+    responses=error_responses(403, 404),
 )
 async def delete_album(
     album_id: uuid.UUID,
@@ -112,6 +127,7 @@ async def delete_album(
     response_model=MediaCursorPage,
     summary="List Album Media",
     description="List media in a specific album with tag filtering and cursor pagination.",
+    responses=error_responses(404),
 )
 async def list_album_media(
     album_id: uuid.UUID,
@@ -131,6 +147,7 @@ async def list_album_media(
     response_model=BulkResult,
     summary="Add Media to Album",
     description="Bulk-add media items to an album.",
+    responses=error_responses(403, 404),
 )
 async def add_media_to_album(
     album_id: uuid.UUID,
@@ -146,6 +163,7 @@ async def add_media_to_album(
     response_model=BulkResult,
     summary="Remove Media from Album",
     description="Bulk-remove media items from an album.",
+    responses=error_responses(403, 404),
 )
 async def remove_media_from_album(
     album_id: uuid.UUID,
@@ -160,14 +178,20 @@ async def remove_media_from_album(
     "/{album_id}/shares",
     response_model=AlbumShareRead,
     summary="Share Album",
-    description="Create or upsert album sharing permissions for a target user.",
-    responses={201: {"model": AlbumShareRead, "description": "Share created."}},
+    description=(
+        "Create or upsert album sharing permissions for a target user.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
+    responses={
+        201: {"model": AlbumShareRead, "description": "Share created."},
+        **error_responses(403, 404, 409, 422),
+    },
 )
 async def share_album(
     album_id: uuid.UUID,
     body: AlbumShareCreate,
     response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description="Optional key for safe retries of share creation requests."),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -196,6 +220,7 @@ async def share_album(
     response_model=AlbumRead,
     summary="Transfer Album Ownership",
     description="Transfer album ownership to an existing editor. This is distinct from sharing and requires owner privileges.",
+    responses=error_responses(403, 404, 422),
 )
 async def transfer_album_ownership(
     album_id: uuid.UUID,
@@ -219,7 +244,8 @@ async def transfer_album_ownership(
                 }
             },
             "description": "ZIP archive of all album media.",
-        }
+        },
+        **error_responses(404),
     },
 )
 async def download_album(
@@ -242,6 +268,7 @@ async def download_album(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Revoke Album Share",
     description="Revoke album access for a previously shared user.",
+    responses=error_responses(403, 404),
 )
 async def revoke_share(
     album_id: uuid.UUID,

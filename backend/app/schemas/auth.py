@@ -26,7 +26,7 @@ class UserLogin(BaseModel):
     remember_me: bool = False
 
 
-class UserPublicRead(BaseModel):
+class UserSelfReadLite(BaseModel):
     id: uuid.UUID
     username: str
     email: str

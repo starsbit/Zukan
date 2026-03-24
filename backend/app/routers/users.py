@@ -4,10 +4,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.schemas import ERROR_RESPONSES, UserRead, UserUpdate
+from backend.app.schemas import AUTHENTICATED_ERROR_RESPONSES, UserRead, UserUpdate, error_responses
 from backend.app.services.auth import AuthService
 
-router = APIRouter(prefix="/me", tags=["users"], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/me", tags=["users"], responses=AUTHENTICATED_ERROR_RESPONSES)
 
 
 @router.get(
@@ -25,6 +25,7 @@ async def me(user: User = Depends(current_user)):
     response_model=UserRead,
     summary="Update Current User",
     description="Update profile preferences and optional password for the authenticated user.",
+    responses=error_responses(409, 422),
 )
 async def update_me(
     body: UserUpdate,

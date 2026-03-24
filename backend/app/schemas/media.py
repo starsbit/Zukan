@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -52,8 +53,19 @@ class MediaMetadataFilter(BaseModel):
 class MediaRead(BaseModel):
     id: uuid.UUID
     uploader_id: uuid.UUID | None = None
-    owner_id: uuid.UUID | None = None
-    visibility: str = "private"
+    owner_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "Current owning user id for compatibility with future ownership workflows. "
+            "In the current public contract this is equivalent to uploader ownership semantics."
+        ),
+    )
+    visibility: Literal["private"] = Field(
+        default="private",
+        description=(
+            "Public API visibility contract. Currently always `private`; no public endpoints expose or mutate broader visibility modes."
+        ),
+    )
     filename: str
     original_filename: str | None = None
     media_type: MediaType = MediaType.IMAGE
@@ -159,11 +171,17 @@ class MediaListState(str, Enum):
 class MediaUpdate(BaseModel):
     tags: list[str] | None = Field(
         default=None,
-        description="Complete replacement tag list. Omit to keep tags unchanged.",
+        description=(
+            "Complete replacement tag list. Omit field to keep unchanged; send empty array to clear all tags; "
+            "send populated array to replace all tags."
+        ),
     )
     entities: list[EntityCreate] | None = Field(
         default=None,
-        description="Complete replacement entity list. Omit to keep unchanged. Send empty list to clear.",
+        description=(
+            "Complete replacement entity list. Omit field to keep unchanged; send empty array to clear all entities; "
+            "send populated array to replace all entities."
+        ),
     )
     metadata: MediaMetadataUpdate | None = None
     deleted: bool | None = Field(
@@ -180,18 +198,58 @@ class MediaUpdate(BaseModel):
     )
     external_refs: list[ExternalRefCreate] | None = Field(
         default=None,
-        description="Complete replacement list of external references. Omit to keep unchanged.",
+        description=(
+            "Complete replacement list of external references. Omit field to keep unchanged; send empty array to clear all refs; "
+            "send populated array to replace all refs."
+        ),
     )
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
     model_config = {
         "json_schema_extra": {
-            "example": {
-                "tags": ["Saber", "Sakura", "Rin"],
-                "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
-                "favorited": True,
-                "ocr_text_override": "Other text because I did not like the one in the image",
-                "version": 5,
+            "examples": {
+                "replace_all": {
+                    "summary": "Replace all tags/entities/external refs",
+                    "value": {
+                        "tags": ["Saber", "Sakura", "Rin"],
+                        "entities": [
+                            {
+                                "entity_type": "character",
+                                "entity_id": None,
+                                "name": "Saber",
+                                "role": "primary",
+                                "confidence": 0.98,
+                            }
+                        ],
+                        "external_refs": [
+                            {
+                                "provider": "pixiv",
+                                "external_id": "75453892",
+                                "url": "https://www.pixiv.net/en/artworks/75453892",
+                            }
+                        ],
+                        "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
+                        "favorited": True,
+                        "ocr_text_override": "Other text because I did not like the one in the image",
+                        "version": 5,
+                    },
+                },
+                "clear_all": {
+                    "summary": "Clear all tags/entities/external refs",
+                    "value": {
+                        "tags": [],
+                        "entities": [],
+                        "external_refs": [],
+                        "version": 5,
+                    },
+                },
+                "omit_unchanged": {
+                    "summary": "Omit fields to leave them unchanged",
+                    "value": {
+                        "favorited": True,
+                        "version": 5,
+                    },
+                },
             }
         }
     }
@@ -218,8 +276,10 @@ class MediaCursorPage(BaseModel):
         default=None,
         description="Total number of media items matching the current filters. Null when include_total=false.",
     )
-    next_cursor: str | None = Field(default=None, description="Opaque cursor for fetching the next page. Null if no more items.")
-    prev_cursor: str | None = Field(default=None, description="Optional cursor for fetching the previous page.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page. Keep filters and sort parameters unchanged between requests.",
+    )
     has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[MediaRead] = Field(description="Media returned for the current page.")

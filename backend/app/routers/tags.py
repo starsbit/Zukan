@@ -6,11 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.schemas import ERROR_RESPONSES, TagListResponse, TagManagementResult
+from backend.app.schemas import AUTHENTICATED_ERROR_RESPONSES, TagListResponse, TagManagementResult
 from backend.app.services.relations import RelationService
 from backend.app.services.tags import TagService
 
-router = APIRouter(tags=["tags"], responses=ERROR_RESPONSES)
+router = APIRouter(tags=["tags"], responses=AUTHENTICATED_ERROR_RESPONSES)
 
 
 @router.get("/tags", response_model=TagListResponse)

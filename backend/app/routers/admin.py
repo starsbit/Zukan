@@ -9,19 +9,20 @@ from backend.app.routers.deps import admin_user
 from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (
+    ADMIN_ERROR_RESPONSES,
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserUpdate,
     AppAnnouncementCreate,
     AppAnnouncementRead,
-    ERROR_RESPONSES,
     TaggingJobQueuedResponse,
     UserListResponse,
     UserRead,
+    error_responses,
 )
 from backend.app.services.admin import AdminService
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
 
 
 @router.get("/stats", response_model=AdminStatsResponse)
@@ -42,7 +43,7 @@ async def list_users(
     return await AdminService(db).list_users(page, page_size, sort_by, sort_order)
 
 
-@router.get("/users/{user_id}", response_model=AdminUserDetail)
+@router.get("/users/{user_id}", response_model=AdminUserDetail, responses=error_responses(404))
 async def get_user_detail(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -50,7 +51,7 @@ async def get_user_detail(
     return await AdminService(db).get_user_detail(user_id)
 
 
-@router.patch("/users/{user_id}", response_model=UserRead)
+@router.patch("/users/{user_id}", response_model=UserRead, responses=error_responses(404))
 async def update_user(
     user_id: uuid.UUID,
     body: AdminUserUpdate,
@@ -59,7 +60,7 @@ async def update_user(
     return await AdminService(db).update_user(user_id, body)
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, responses=error_responses(404))
 async def delete_user(
     user_id: uuid.UUID,
     delete_media: bool = Query(default=False),
@@ -68,7 +69,7 @@ async def delete_user(
     await AdminService(db).delete_user(user_id, delete_media)
 
 
-@router.post("/users/{user_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse)
+@router.post("/users/{user_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse, responses=error_responses(404))
 async def retag_all(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

@@ -15,12 +15,12 @@ from .auth import (
     TokenResponse,
     UserListResponse,
     UserLogin,
-    UserPublicRead,
+    UserSelfReadLite,
     UserRead,
     UserRegister,
     UserUpdate,
 )
-from .base import ERROR_RESPONSES, ErrorResponse
+from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
 from .bulk import BulkResult, MediaBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
 from .media import (
     MediaCursorPage,
@@ -85,11 +85,14 @@ __all__ = [
     "BatchUploadResponse",
     "BulkResult",
     "CATEGORY_NAMES",
+    "ADMIN_ERROR_RESPONSES",
+    "AUTHENTICATED_ERROR_RESPONSES",
     "CharacterSuggestion",
     "ERROR_RESPONSES",
     "EntityCreate",
     "EntityRead",
     "ErrorResponse",
+    "error_responses",
     "ExternalRefCreate",
     "ExternalRefRead",
     "ImportBatchItemRead",
@@ -124,7 +127,7 @@ __all__ = [
     "UploadResult",
     "UserListResponse",
     "UserLogin",
-    "UserPublicRead",
+    "UserSelfReadLite",
     "UserRead",
     "UserRegister",
     "UserUpdate",

@@ -32,12 +32,14 @@ class NotificationRead(BaseModel):
 
 
 class NotificationListResponse(BaseModel):
-    total: int
-    next_cursor: str | None = None
-    prev_cursor: str | None = None
-    has_more: bool
-    page_size: int
-    items: list[NotificationRead]
+    total: int = Field(description="Total number of notifications matching the current filters.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page. Keep filters and sort parameters unchanged between requests.",
+    )
+    has_more: bool = Field(description="Whether there are additional items after this page.")
+    page_size: int = Field(description="Number of items returned per page.")
+    items: list[NotificationRead] = Field(description="Notifications returned for the current page.")
 
 
 class AppAnnouncementCreate(BaseModel):

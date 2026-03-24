@@ -6,10 +6,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.schemas import ERROR_RESPONSES, ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead
+from backend.app.schemas import AUTHENTICATED_ERROR_RESPONSES, ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead, error_responses
 from backend.app.services.processing import ProcessingService
 
-router = APIRouter(prefix="/me/import-batches", tags=["batches"], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/me/import-batches", tags=["batches"], responses=AUTHENTICATED_ERROR_RESPONSES)
 
 
 @router.get("", response_model=ImportBatchListResponse)
@@ -22,7 +22,7 @@ async def list_batches(
     return await ProcessingService(db).list_batches(user.id, after=after, page_size=page_size)
 
 
-@router.get("/{batch_id}", response_model=ImportBatchRead)
+@router.get("/{batch_id}", response_model=ImportBatchRead, responses=error_responses(404))
 async def get_batch(
     batch_id: uuid.UUID,
     user: User = Depends(current_user),
@@ -31,7 +31,7 @@ async def get_batch(
     return await ProcessingService(db).get_batch_for_user(batch_id, user.id)
 
 
-@router.get("/{batch_id}/items", response_model=ImportBatchItemListResponse)
+@router.get("/{batch_id}/items", response_model=ImportBatchItemListResponse, responses=error_responses(404))
 async def list_batch_items(
     batch_id: uuid.UUID,
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),

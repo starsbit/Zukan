@@ -67,8 +67,10 @@ class AlbumRead(BaseModel):
 
 class AlbumListResponse(BaseModel):
     total: int = Field(description="Total number of albums matching the current filters.")
-    next_cursor: str | None = Field(default=None, description="Opaque cursor for fetching the next page. Null if no more items.")
-    prev_cursor: str | None = Field(default=None, description="Optional cursor for fetching the previous page.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page. Keep filters and sort parameters unchanged between requests.",
+    )
     has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of albums returned per page.")
     items: list[AlbumRead]

@@ -35,9 +35,9 @@ OPENAPI_TAGS = [
     {"name": "media", "description": "Media upload, filtering, metadata mutation, and download operations."},
     {"name": "albums", "description": "Album management, sharing, and album-scoped media operations."},
     {"name": "tags", "description": "Tag browsing, filtering utilities, and tag management actions."},
-    {"name": "admin", "description": "Administrative controls and diagnostics. Admin authentication required."},
+    {"name": "admin", "description": "Administrative controls, diagnostics, and global announcement publishing. Admin authentication required."},
     {"name": "batches", "description": "Import and processing batch visibility endpoints."},
-    {"name": "notifications", "description": "Announcement and user notification endpoints."},
+    {"name": "notifications", "description": "User-targeted inbox notification endpoints under /me/notifications."},
     {"name": "config", "description": "Client-facing runtime limits and feature configuration endpoints."},
 ]
 OPENAPI_SERVERS = [

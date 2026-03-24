@@ -19,9 +19,13 @@ def build_media_metadata(media: Media) -> MediaMetadata:
 
 
 def build_media_read(media: Media, is_favorited: bool) -> MediaRead:
+    owner_id = media.owner_id or media.uploader_id
+    visibility = "private"
     return MediaRead(
         id=media.id,
         uploader_id=media.uploader_id,
+        owner_id=owner_id,
+        visibility=visibility,
         filename=media.filename,
         original_filename=media.original_filename,
         media_type=media.media_type,

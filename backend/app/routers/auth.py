@@ -5,21 +5,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.config import settings
 from backend.app.schemas import (
-    ERROR_RESPONSES,
     RefreshTokenRequest,
     TokenResponse,
-    UserPublicRead,
+    UserSelfReadLite,
     UserRegister,
+    error_responses,
 )
 from backend.app.services.auth import AuthService
 from backend.app.utils.rate_limit import rate_limit
 
-router = APIRouter(prefix="/auth", tags=["auth"], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post(
     "/register",
-    response_model=UserPublicRead,
+    response_model=UserSelfReadLite,
     status_code=status.HTTP_201_CREATED,
     summary="Register User",
     description="Create a new end-user account. Registration is rate limited by client IP.",
@@ -39,7 +39,8 @@ router = APIRouter(prefix="/auth", tags=["auth"], responses=ERROR_RESPONSES)
                     }
                 }
             },
-        }
+        },
+        **error_responses(409, 422, 429),
     },
     dependencies=[
         Depends(
@@ -72,7 +73,8 @@ async def register(body: UserRegister, db: AsyncSession = Depends(get_db)):
                     }
                 }
             },
-        }
+        },
+        **error_responses(401, 422, 429),
     },
     openapi_extra={
         "requestBody": {
@@ -126,7 +128,8 @@ async def login(
                     }
                 }
             },
-        }
+        },
+        **error_responses(401, 422, 429),
     },
     dependencies=[
         Depends(
@@ -147,7 +150,10 @@ async def refresh(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db))
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Logout",
     description="Revoke a refresh token. Safe to repeat.",
-    responses={204: {"description": "Refresh token revoked or already invalid."}},
+    responses={
+        204: {"description": "Refresh token revoked or already invalid."},
+        **error_responses(422),
+    },
 )
 async def logout(body: RefreshTokenRequest, db: AsyncSession = Depends(get_db)):
     await AuthService(db).revoke_refresh_token(body.refresh_token)

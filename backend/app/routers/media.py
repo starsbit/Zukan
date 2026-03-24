@@ -16,10 +16,10 @@ from backend.app.errors.error import AppError
 from backend.app.errors.media import poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
 from backend.app.schemas import (
+    AUTHENTICATED_ERROR_RESPONSES,
     BatchUploadResponse,
     BulkResult,
     CharacterSuggestion,
-    ERROR_RESPONSES,
     MediaIdsRequest,
     MediaBatchUpdate,
     MediaCursorPage,
@@ -31,13 +31,25 @@ from backend.app.schemas import (
     NsfwFilter,
     TagFilterMode,
     TaggingJobQueuedResponse,
+    error_responses,
 )
 from backend.app.services.media import MediaService
 from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
 from backend.app.utils.rate_limit import rate_limit
 from backend.app.utils.storage import zip_media
 
-router = APIRouter(prefix="/media", tags=["media"], responses=ERROR_RESPONSES)
+router = APIRouter(prefix="/media", tags=["media"], responses=AUTHENTICATED_ERROR_RESPONSES)
+
+IDEMPOTENCY_BEHAVIOR_DOC = (
+    "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original "
+    "status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; "
+    "keys are retained for about 24 hours in process-local memory."
+)
+
+IDEMPOTENCY_HEADER_DOC = (
+    "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
+    "same key + same payload replays original status/body; same key + different payload returns 409."
+)
 
 
 def media_metadata_filter_query(
@@ -66,7 +78,10 @@ def media_metadata_filter_query(
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload Media",
-    description="Upload one or more media files. Returns an explicit import batch job (`batch_id`) and polling links for async progress tracking.",
+    description=(
+        "Upload one or more media files. Returns an explicit import batch job (`batch_id`) and polling links for async progress tracking.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
     responses={
         202: {
             "description": "Upload accepted and processing queued.",
@@ -93,7 +108,8 @@ def media_metadata_filter_query(
                     }
                 }
             },
-        }
+        },
+        **error_responses(400, 403, 404, 409, 422, 429),
     },
     dependencies=[
         Depends(
@@ -107,7 +123,7 @@ def media_metadata_filter_query(
 )
 async def upload(
     body: Annotated[MediaUploadRequest, Depends(MediaUploadRequest.as_form)],
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description="Optional key for safe retries of upload requests."),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -150,6 +166,7 @@ async def upload(
         "This is the lightweight browse endpoint and supports only scope + ordering parameters. "
         "For tag/name/metadata/text-driven filtering, use `GET /media/search`."
     ),
+    responses=error_responses(403, 404, 422),
 )
 async def list_media(
     state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
@@ -194,6 +211,7 @@ async def list_media(
         "and is intended for discovery-style queries that combine tags, OCR text, character names, "
         "and metadata constraints."
     ),
+    responses=error_responses(403, 404, 422),
 )
 async def search_media(
     metadata: Annotated[MediaMetadataFilter, Depends(media_metadata_filter_query)],
@@ -257,11 +275,15 @@ async def list_character_suggestions(
     "",
     response_model=BulkResult,
     summary="Batch Update Media",
-    description="Apply the same metadata/tag mutations to a set of media IDs.",
+    description=(
+        "Apply the same metadata/tag mutations to a set of media IDs.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
+    responses=error_responses(409, 422),
 )
 async def batch_update_media(
     body: MediaBatchUpdate,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description="Optional key for safe retries of batch updates."),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -290,11 +312,15 @@ async def batch_update_media(
     "/actions/delete",
     response_model=BulkResult,
     summary="Batch Delete Media",
-    description="Move media to trash in bulk.",
+    description=(
+        "Move media to trash in bulk.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
+    responses=error_responses(409, 422),
 )
 async def batch_delete_media_command(
     body: MediaIdsRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description="Optional key for safe retries of batch deletes."),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -323,11 +349,15 @@ async def batch_delete_media_command(
     "/actions/purge",
     response_model=BulkResult,
     summary="Batch Purge Media",
-    description="Permanently delete trashed media in bulk.",
+    description=(
+        "Permanently delete trashed media in bulk.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
+    responses=error_responses(409, 422),
 )
 async def batch_purge_media(
     body: MediaIdsRequest,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description="Optional key for safe retries of batch purges."),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -376,7 +406,8 @@ async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Dep
                 }
             },
             "description": "ZIP archive of the requested media.",
-        }
+        },
+        **error_responses(404),
     },
 )
 async def download_media(body: MediaIdsRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -394,6 +425,7 @@ async def download_media(body: MediaIdsRequest, user: User = Depends(current_use
     response_model=MediaDetail,
     summary="Get Media Detail",
     description="Return full media metadata, tagging details, and linked entities/references.",
+    responses=error_responses(403, 404),
 )
 async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     return await MediaService(db).get_media_detail(media_id, user)
@@ -403,7 +435,11 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
     "/{media_id}",
     response_model=MediaDetail,
     summary="Update Media",
-    description="Update a single media resource. Supports optimistic locking via `version`.",
+    description=(
+        "Update a single media resource. Supports optimistic locking via `version`. "
+        "For `tags`, `entities`, and `external_refs`: omitted means unchanged, empty array means clear all, populated array means replace all."
+    ),
+    responses=error_responses(403, 404, 409, 422),
 )
 async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     return await MediaService(db).update_media_metadata(media_id, user, body)
@@ -422,7 +458,8 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
                 }
             },
             "description": "Original media file.",
-        }
+        },
+        **error_responses(403, 404),
     },
 )
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -443,7 +480,8 @@ async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user)
                 }
             },
             "description": "WebP thumbnail image.",
-        }
+        },
+        **error_responses(403, 404),
     },
 )
 async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -466,7 +504,8 @@ async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_
                 }
             },
             "description": "Poster image.",
-        }
+        },
+        **error_responses(403, 404),
     },
 )
 async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
@@ -481,6 +520,7 @@ async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_use
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete Media",
     description="Soft-delete a media item by moving it to trash.",
+    responses=error_responses(403, 404),
 )
 async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     await MediaService(db).soft_delete_media(media_id, user)
@@ -491,6 +531,7 @@ async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), 
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Restore Media",
     description="Restore a previously trashed media item back to active state.",
+    responses=error_responses(403, 404),
 )
 async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     await MediaService(db).restore_media(media_id, user)
@@ -501,6 +542,7 @@ async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user),
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Purge Media",
     description="Permanently delete a media item and its associated files.",
+    responses=error_responses(403, 404),
 )
 async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     await MediaService(db).purge_media(media_id, user)
@@ -512,6 +554,7 @@ async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), d
     response_model=TaggingJobQueuedResponse,
     summary="Queue Media Retagging",
     description="Queue a new tagging job for the specified media item.",
+    responses=error_responses(403, 404, 409),
 )
 async def queue_media_tagging_job(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     queued = await MediaService(db).retag_media(media_id, user)
