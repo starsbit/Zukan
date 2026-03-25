@@ -23,7 +23,11 @@ from backend.app.models import notifications as _notifications_models  # noqa: F
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
 from backend.app.routers.deps import docs_user
-from backend.app.services.media import set_tag_queue, MediaService
+from backend.app.services.media import set_tag_queue
+from backend.app.services.media.lifecycle import MediaLifecycleService
+from backend.app.services.media.processing import MediaProcessingService
+from backend.app.services.media.query import MediaQueryService
+from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.ml.tagger import tagger
@@ -80,20 +84,40 @@ async def tagging_worker():
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
                     continue
+                query = MediaQueryService(db)
+                processing = MediaProcessingService(db, query)
+                upload_service = MediaUploadService(db, processing, query)
                 if media_item.tagging_status in ("pending", "processing"):
                     await TagService(db, tagger).tag_media(media_id)
-                await MediaService(db).run_ocr_for_media(media_id, ocr_backend)
-                await MediaService(db).mark_upload_batch_item_done(media_id)
+                await processing.run_ocr_for_media(media_id, ocr_backend)
+                await upload_service.mark_upload_batch_item_done(media_id)
 
             except Exception as exc:
                 await db.rollback()
                 async with AsyncSessionLocal() as err_db:
-                    media_service = MediaService(err_db)
-                    await media_service.mark_tagging_failure(media_id, exc)
-                    await media_service.mark_upload_batch_item_failed(media_id, str(exc))
+                    query = MediaQueryService(err_db)
+                    processing = MediaProcessingService(err_db, query)
+                    upload_service = MediaUploadService(err_db, processing, query)
+                    await processing.mark_tagging_failure(media_id, exc)
+                    await upload_service.mark_upload_batch_item_failed(media_id, str(exc))
                 logger.exception("Tagging failed for media_id=%s", media_id)
             finally:
                 tag_queue.task_done()
+
+
+async def trash_purge_worker() -> None:
+    interval_seconds = max(60, settings.trash_purge_interval_seconds)
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                query = MediaQueryService(db)
+                lifecycle = MediaLifecycleService(db, query)
+                purged = await lifecycle.purge_expired_trash()
+                if purged:
+                    logger.info("Purged %s expired trashed media records", purged)
+        except Exception:
+            logger.exception("Scheduled trash purge run failed")
+        await asyncio.sleep(interval_seconds)
 
 
 async def _ensure_admin_user():
@@ -120,14 +144,21 @@ async def lifespan(_api: FastAPI):
     ocr_backend.load()
     set_tag_queue(tag_queue)
     worker = asyncio.create_task(tagging_worker())
+    purge_worker = asyncio.create_task(trash_purge_worker())
     logger.info("Background tagging worker started")
+    logger.info("Background trash purge worker started")
     yield
     logger.info("Application shutdown initiated")
     worker.cancel()
+    purge_worker.cancel()
     try:
         await worker
     except asyncio.CancelledError:
         logger.info("Background tagging worker stopped")
+    try:
+        await purge_worker
+    except asyncio.CancelledError:
+        logger.info("Background trash purge worker stopped")
 
 
 api = FastAPI(

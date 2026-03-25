@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     auth_refresh_rate_limit_window_seconds: int = 60
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
+    trash_purge_interval_seconds: int = 60 * 60 * 24
 
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15

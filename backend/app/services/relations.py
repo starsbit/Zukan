@@ -46,9 +46,6 @@ class RelationService:
             ))
 
     async def clear_character_name(self, user, *, character_name: str) -> TagManagementResult:
-        from backend.app.services.media import MediaService
-        await MediaService(self._db).purge_expired_trash()
-
         char_media_ids = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == MediaEntityType.character,
             MediaEntity.name == character_name,
@@ -64,9 +61,6 @@ class RelationService:
         return TagManagementResult(matched_media=len(media_rows), updated_media=len(media_rows))
 
     async def trash_media_by_character_name(self, user, *, character_name: str) -> TagManagementResult:
-        from backend.app.services.media import MediaService
-        await MediaService(self._db).purge_expired_trash()
-
         char_media_ids = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == MediaEntityType.character,
             MediaEntity.name == character_name,

@@ -10,7 +10,9 @@ from backend.app.models.auth import User
 from backend.app.repositories.auth import UserRepository
 from backend.app.repositories.media import MediaRepository
 from backend.app.schemas import AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse, UserRead
-from backend.app.services.media import MediaService, get_tag_queue
+from backend.app.services.media import get_tag_queue
+from backend.app.services.media.lifecycle import MediaLifecycleService
+from backend.app.services.media.query import MediaQueryService
 
 
 class AdminService:
@@ -70,9 +72,10 @@ class AdminService:
         if target is None:
             raise AppError(status_code=404, code=user_not_found, detail="User not found")
         if delete_media:
-            media_svc = MediaService(self._db)
+            query = MediaQueryService(self._db)
+            lifecycle = MediaLifecycleService(self._db, query)
             for media in await MediaRepository(self._db).get_by_uploader(user_id):
-                await media_svc.purge_media_record(media)
+                await lifecycle.purge_media_record(media)
         await self._db.delete(target)
         await self._db.commit()
 

@@ -33,7 +33,12 @@ from backend.app.schemas import (
     TaggingJobQueuedResponse,
     error_responses,
 )
-from backend.app.services.media import MediaService
+from backend.app.services.media.interactions import MediaInteractionService
+from backend.app.services.media.lifecycle import MediaLifecycleService
+from backend.app.services.media.metadata import MediaMetadataService
+from backend.app.services.media.processing import MediaProcessingService
+from backend.app.services.media.query import MediaQueryService
+from backend.app.services.media.upload import MediaUploadService
 from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
 from backend.app.utils.rate_limit import rate_limit
 from backend.app.utils.storage import zip_media
@@ -50,6 +55,23 @@ IDEMPOTENCY_HEADER_DOC = (
     "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
     "same key + same payload replays original status/body; same key + different payload returns 409."
 )
+
+
+def _media_services(db: AsyncSession) -> tuple[
+    MediaQueryService,
+    MediaLifecycleService,
+    MediaInteractionService,
+    MediaProcessingService,
+    MediaUploadService,
+    MediaMetadataService,
+]:
+    query = MediaQueryService(db)
+    lifecycle = MediaLifecycleService(db, query)
+    interactions = MediaInteractionService(db, query)
+    processing = MediaProcessingService(db, query)
+    upload = MediaUploadService(db, processing, query)
+    metadata = MediaMetadataService(db, query, interactions)
+    return query, lifecycle, interactions, processing, upload, metadata
 
 
 def media_metadata_filter_query(
@@ -140,7 +162,8 @@ async def upload(
         _, payload = replay
         return payload
 
-    payload = await MediaService(db).build_upload_response(
+    _, _, _, _, upload_service, _ = _media_services(db)
+    payload = await upload_service.upload_files(
         user,
         body.files,
         album_id=body.album_id,
@@ -179,7 +202,8 @@ async def list_media(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await MediaService(db).list_media(
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.list_media(
         user,
         state,
         None,
@@ -234,7 +258,8 @@ async def search_media(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await MediaService(db).list_media(
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.list_media(
         user,
         state,
         tag,
@@ -268,7 +293,8 @@ async def list_character_suggestions(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await MediaService(db).list_character_suggestions(user, q=q, limit=limit)
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.list_character_suggestions(user, q=q, limit=limit)
 
 
 @router.patch(
@@ -297,7 +323,17 @@ async def batch_update_media(
             response.status_code = status_code
         return payload
 
-    result = await MediaService(db).batch_update_media(body, user)
+    _, lifecycle, interactions, _, _, _ = _media_services(db)
+    if body.deleted is True:
+        result = await lifecycle.bulk_delete_media(body.media_ids, user)
+    elif body.deleted is False:
+        result = await lifecycle.bulk_restore_media(body.media_ids, user)
+    elif body.favorited is True:
+        result = await interactions.bulk_favorite_media(body.media_ids, user)
+    elif body.favorited is False:
+        result = await interactions.bulk_unfavorite_media(body.media_ids, user)
+    else:
+        result = BulkResult(processed=0, skipped=0)
     await idempotency_store.remember(
         scope=scope,
         idempotency_key=idempotency_key,
@@ -334,7 +370,8 @@ async def batch_delete_media_command(
             response.status_code = status_code
         return payload
 
-    result = await MediaService(db).batch_delete_media(body, user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    result = await lifecycle.batch_delete_media(body, user)
     await idempotency_store.remember(
         scope=scope,
         idempotency_key=idempotency_key,
@@ -371,7 +408,8 @@ async def batch_purge_media(
             response.status_code = status_code
         return payload
 
-    result = await MediaService(db).batch_purge_media(body, user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    result = await lifecycle.batch_purge_media(body, user)
     await idempotency_store.remember(
         scope=scope,
         idempotency_key=idempotency_key,
@@ -389,7 +427,8 @@ async def batch_purge_media(
     description="Permanently purge all currently visible trashed media for the caller.",
 )
 async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await MediaService(db).empty_trash(user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    await lifecycle.empty_trash(user)
 
 
 @router.post(
@@ -411,7 +450,8 @@ async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Dep
     },
 )
 async def download_media(body: MediaIdsRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    rows = await MediaService(db).get_downloadable_media(user, body.media_ids)
+    query, _, _, _, _, _ = _media_services(db)
+    rows = await query.get_downloadable_media(user, body.media_ids)
     buf = zip_media(rows)
     return StreamingResponse(
         content=iter([buf.read()]),
@@ -428,7 +468,8 @@ async def download_media(body: MediaIdsRequest, user: User = Depends(current_use
     responses=error_responses(403, 404),
 )
 async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await MediaService(db).get_media_detail(media_id, user)
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.get_media_detail(media_id, user)
 
 
 @router.patch(
@@ -491,7 +532,8 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
     responses=error_responses(403, 404, 409, 422),
 )
 async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    return await MediaService(db).update_media_metadata(media_id, user, body)
+    _, _, _, _, _, metadata = _media_services(db)
+    return await metadata.update_media_metadata(media_id, user, body)
 
 
 @router.get(
@@ -512,7 +554,8 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
     },
 )
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    media = await MediaService(db).get_visible_media(media_id, user)
+    query, _, _, _, _, _ = _media_services(db)
+    media = await query.get_visible_media(media_id, user)
     return FileResponse(media.filepath, media_type=media.mime_type)
 
 
@@ -534,7 +577,8 @@ async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user)
     },
 )
 async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    media = await MediaService(db).get_visible_media(media_id, user)
+    query, _, _, _, _, _ = _media_services(db)
+    media = await query.get_visible_media(media_id, user)
     if not media.thumbnail_path:
         raise AppError(status_code=404, code=thumbnail_not_available, detail="Thumbnail not available")
     return FileResponse(media.thumbnail_path, media_type="image/webp")
@@ -558,7 +602,8 @@ async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_
     },
 )
 async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    media = await MediaService(db).get_visible_media(media_id, user)
+    query, _, _, _, _, _ = _media_services(db)
+    media = await query.get_visible_media(media_id, user)
     if not media.poster_path:
         raise AppError(status_code=404, code=poster_not_available, detail="Poster not available")
     return FileResponse(media.poster_path, media_type="image/png")
@@ -572,7 +617,8 @@ async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_use
     responses=error_responses(403, 404),
 )
 async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await MediaService(db).soft_delete_media(media_id, user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    await lifecycle.soft_delete_media(media_id, user)
 
 
 @router.post(
@@ -583,7 +629,8 @@ async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), 
     responses=error_responses(403, 404),
 )
 async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await MediaService(db).restore_media(media_id, user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    await lifecycle.restore_media(media_id, user)
 
 
 @router.delete(
@@ -594,7 +641,8 @@ async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user),
     responses=error_responses(403, 404),
 )
 async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    await MediaService(db).purge_media(media_id, user)
+    _, lifecycle, _, _, _, _ = _media_services(db)
+    await lifecycle.purge_media(media_id, user)
 
 
 @router.post(
@@ -606,5 +654,6 @@ async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), d
     responses=error_responses(403, 404, 409),
 )
 async def queue_media_tagging_job(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    queued = await MediaService(db).retag_media(media_id, user)
+    _, _, _, processing, _, _ = _media_services(db)
+    queued = await processing.retag_media(media_id, user)
     return {"queued": queued}

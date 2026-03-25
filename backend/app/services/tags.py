@@ -107,9 +107,6 @@ class TagService:
         return await self.trash_media_by_tag(user, tag_name=tag.name)
 
     async def remove_tag_from_media(self, user, *, tag_name: str) -> TagManagementResult:
-        from backend.app.services.media import MediaService
-        await MediaService(self._db).purge_expired_trash()
-
         tags_repo = TagRepository(self._db)
         tag = await tags_repo.get_by_name(tag_name)
         media_rows = (
@@ -143,9 +140,6 @@ class TagService:
         return TagManagementResult(matched_media=len(media_rows), updated_media=updated, deleted_tag=deleted_tag)
 
     async def trash_media_by_tag(self, user, *, tag_name: str) -> TagManagementResult:
-        from backend.app.services.media import MediaService
-        await MediaService(self._db).purge_expired_trash()
-
         matches = (
             await self._db.execute(
                 _accessible_media_stmt(user)

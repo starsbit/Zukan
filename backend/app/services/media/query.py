@@ -1,0 +1,467 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import Select, and_, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from backend.app.errors.albums import album_not_found
+from backend.app.errors.error import AppError
+from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.auth import User
+from backend.app.models.media import Media, MediaTag
+from backend.app.models.media_interactions import UserFavorite
+from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
+from backend.app.repositories import media_filters
+from backend.app.repositories.media import MediaRepository
+from backend.app.repositories.media_interactions import UserFavoriteRepository
+from backend.app.repositories.relations import MediaEntityRepository, MediaExternalRefRepository
+from backend.app.schemas import (
+    CATEGORY_NAMES,
+    EntityRead,
+    ExternalRefRead,
+    MediaCursorPage,
+    MediaDetail,
+    MediaListState,
+    MediaMetadataFilter,
+    NsfwFilter,
+    TagFilterMode,
+    TagWithConfidence,
+)
+from backend.app.utils.media_common import parse_csv_values
+from backend.app.utils.media_projections import build_media_read, enrich_media
+from backend.app.utils.pagination import (
+    apply_cursor_where,
+    captured_timestamp_expr,
+    decode_cursor,
+    encode_cursor,
+)
+
+
+class MediaQueryService:
+    SORT_FIELDS: dict[str, Any] = {
+        "captured_at": captured_timestamp_expr(),
+        "created_at": Media.created_at,
+        "filename": Media.filename,
+        "file_size": Media.file_size,
+    }
+
+    def __init__(self, db: AsyncSession) -> None:
+        self._db = db
+        self._media_repo = MediaRepository(db)
+        self._favorite_repo = UserFavoriteRepository(db)
+        self._entity_repo = MediaEntityRepository(db)
+        self._external_ref_repo = MediaExternalRefRepository(db)
+
+    async def get_owned_or_admin_media(
+        self,
+        media_id: uuid.UUID,
+        user: User,
+        trashed: bool | None,
+    ) -> Media:
+        media = await self._media_repo.get_by_id(media_id)
+        media = self._filter_by_trashed_state(media, trashed)
+
+        if media is None:
+            detail = "Not found in trash" if trashed is True else "Not found"
+            raise AppError(status_code=404, code=media_not_found, detail=detail)
+
+        if not self._can_manage_media(media, user):
+            raise AppError(status_code=403, code=media_not_found, detail="Forbidden")
+
+        return media
+
+    async def get_active_media(self, media_id: uuid.UUID) -> Media:
+        media = await self._media_repo.get_by_id(media_id)
+        if media is None or media.deleted_at is not None:
+            raise AppError(status_code=404, code=media_not_found, detail="Not found")
+        return media
+
+    async def get_media_by_id(self, media_id: uuid.UUID) -> Media | None:
+        return await self._media_repo.get_by_id(media_id)
+
+    async def get_media_by_sha256(self, sha256: str) -> Media | None:
+        return await self._media_repo.get_by_sha256(sha256)
+
+    async def get_media_by_ids(self, media_ids: list[uuid.UUID]) -> list[Media]:
+        return await self._media_repo.get_by_ids(media_ids)
+
+    async def get_media_with_relations(
+        self,
+        media_id: uuid.UUID,
+        *,
+        deleted: bool | None,
+    ) -> Media | None:
+        return await self._media_repo.get_by_id_with_relations(media_id, deleted=deleted)
+
+    async def get_expired_trash(self, cutoff: datetime) -> list[Media]:
+        return await self._media_repo.get_expired_trash(cutoff)
+
+    async def list_trashed_media_for_user(self, user: User) -> list[Media]:
+        stmt = select(Media).where(Media.deleted_at.is_not(None))
+        if not user.is_admin:
+            stmt = stmt.where(Media.uploader_id == user.id)
+        return (await self._db.execute(stmt)).scalars().all()
+
+    async def get_active_media_ids(self, media_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+        return await self._media_repo.get_active_ids(media_ids)
+
+    async def get_favorite(self, media_id: uuid.UUID, user_id: uuid.UUID) -> UserFavorite | None:
+        return await self._favorite_repo.get(media_id, user_id)
+
+    async def get_existing_favorites(
+        self,
+        user_id: uuid.UUID,
+        media_ids: list[uuid.UUID],
+    ) -> list[UserFavorite]:
+        return await self._favorite_repo.get_by_user_and_media_ids(user_id, media_ids)
+
+    async def get_media_entities(self, media_id: uuid.UUID):
+        return await self._entity_repo.get_by_media(media_id)
+
+    async def get_media_external_refs(self, media_id: uuid.UUID):
+        return await self._external_ref_repo.get_by_media(media_id)
+
+    async def get_upload_batch_item_for_media(self, media_id: uuid.UUID) -> ImportBatchItem | None:
+        stmt = (
+            select(ImportBatchItem)
+            .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+            .where(
+                ImportBatch.type == BatchType.upload,
+                ImportBatchItem.media_id == media_id,
+                ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+            )
+            .order_by(ImportBatch.created_at.desc(), ImportBatchItem.updated_at.desc())
+            .limit(1)
+        )
+        return (await self._db.execute(stmt)).scalar_one_or_none()
+
+    async def get_import_batch(self, batch_id: uuid.UUID) -> ImportBatch | None:
+        return await self._db.get(ImportBatch, batch_id)
+
+    async def get_import_batch_statuses(self, batch_id: uuid.UUID) -> list[ItemStatus]:
+        stmt = select(ImportBatchItem.status).where(ImportBatchItem.batch_id == batch_id)
+        return (await self._db.execute(stmt)).scalars().all()
+
+    async def get_visible_media(self, media_id: uuid.UUID, user: User) -> Media:
+        media = await self._media_repo.get_by_id(media_id)
+        if media is None:
+            raise AppError(status_code=404, code=media_not_found, detail="Not found")
+
+        self._assert_media_visible_to_user(media, user)
+        return media
+
+    async def get_media_detail(self, media_id: uuid.UUID, user: User) -> MediaDetail:
+        media = await self._media_repo.get_by_id_with_relations(media_id, deleted=False)
+        if media is None:
+            raise AppError(status_code=404, code=media_not_found, detail="Not found")
+
+        self._assert_nsfw_visible(media, user)
+        return await self.build_media_detail(media, user.id)
+
+    async def build_media_detail(self, media: Media, user_id: uuid.UUID) -> MediaDetail:
+        is_favorited = await self._favorite_repo.get(media.id, user_id) is not None
+
+        tag_details = [
+            TagWithConfidence(
+                name=item.tag.name,
+                category=item.tag.category,
+                category_name=CATEGORY_NAMES.get(item.tag.category, "unknown"),
+                category_key=CATEGORY_NAMES.get(item.tag.category, "unknown"),
+                confidence=item.confidence,
+            )
+            for item in sorted(media.media_tags, key=lambda item: item.confidence, reverse=True)
+        ]
+
+        external_refs = [
+            ExternalRefRead(
+                id=ref.id,
+                provider=ref.provider,
+                external_id=ref.external_id,
+                url=ref.url,
+            )
+            for ref in media.external_refs
+        ]
+
+        entities = [
+            EntityRead(
+                id=entity.id,
+                entity_type=entity.entity_type,
+                entity_id=entity.entity_id,
+                name=entity.name,
+                role=entity.role,
+                source=entity.source,
+                confidence=entity.confidence,
+            )
+            for entity in media.entities
+        ]
+
+        base = build_media_read(media, is_favorited)
+        return MediaDetail(
+            **base.model_dump(),
+            tag_details=tag_details,
+            external_refs=external_refs,
+            entities=entities,
+        )
+
+    async def list_media(
+        self,
+        user: User,
+        state: MediaListState,
+        tags: list[str] | None,
+        character_name: str | None,
+        exclude_tags: list[str] | None,
+        mode: TagFilterMode,
+        nsfw: NsfwFilter,
+        status_filter: str | None,
+        metadata: MediaMetadataFilter,
+        favorited: bool | None,
+        media_type: list[str] | None = None,
+        album_id: uuid.UUID | None = None,
+        after: str | None = None,
+        page_size: int = 20,
+        sort_by: str = "captured_at",
+        sort_order: str = "desc",
+        ocr_text: str | None = None,
+        include_total: bool = True,
+    ) -> MediaCursorPage:
+        stmt = self._build_base_list_stmt()
+
+        stmt = await self._apply_album_filter(stmt, user, album_id)
+        stmt = self._apply_state_and_nsfw_filters(stmt, user, state, nsfw)
+        stmt = self._apply_status_filter(stmt, status_filter)
+        stmt = self._apply_favorited_filter(stmt, user, favorited)
+
+        stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
+        stmt = media_filters.apply_character_name_filter(stmt, character_name)
+        stmt = media_filters.apply_media_type_filters(stmt, media_type)
+        stmt = media_filters.apply_captured_at_filters(stmt, metadata)
+        stmt = media_filters.apply_ocr_text_filter(stmt, ocr_text)
+
+        total = await self._count_total(stmt, include_total)
+        stmt = self._apply_cursor(stmt, after, sort_by, sort_order)
+
+        rows = await self._fetch_page_rows(stmt, page_size, sort_by, sort_order)
+        has_more = len(rows) > page_size
+        rows = rows[:page_size]
+
+        favorite_ids = await self._favorite_repo.get_favorited_ids(user.id, [row.id for row in rows])
+        next_cursor = self._build_next_cursor(rows, has_more, sort_by)
+
+        return MediaCursorPage(
+            total=total,
+            next_cursor=next_cursor,
+            has_more=has_more,
+            page_size=page_size,
+            items=enrich_media(rows, favorite_ids),
+        )
+
+    async def list_character_suggestions(
+        self,
+        user: User,
+        *,
+        q: str,
+        limit: int,
+    ) -> list[dict[str, int | str]]:
+        query = q.strip()
+        if not query:
+            return []
+
+        return await self._entity_repo.list_character_suggestions(
+            query=query,
+            limit=limit,
+            show_nsfw=user.show_nsfw,
+            is_admin=user.is_admin,
+        )
+
+    async def get_downloadable_media(self, user: User, media_ids: list[uuid.UUID]) -> list[Media]:
+        rows = await self._media_repo.get_by_ids(media_ids)
+        rows = [row for row in rows if row.deleted_at is None]
+
+        if not user.is_admin:
+            rows = [row for row in rows if row.uploader_id == user.id]
+
+        if not rows:
+            raise AppError(status_code=404, code=media_not_found, detail="No accessible media found")
+
+        return rows
+
+    async def _ensure_album_is_visible(self, user: User, album_id: uuid.UUID) -> None:
+        album = (await self._db.execute(select(Album).where(Album.id == album_id))).scalar_one_or_none()
+        if album is None:
+            raise AppError(status_code=404, code=album_not_found, detail="Album not found")
+
+        if album.owner_id == user.id or user.is_admin:
+            return
+
+        share = (
+            await self._db.execute(
+                select(AlbumShare).where(
+                    AlbumShare.album_id == album_id,
+                    AlbumShare.user_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if share is None:
+            raise AppError(status_code=404, code=album_not_found, detail="Album not found")
+
+    def _build_base_list_stmt(self) -> Select[tuple[Media]]:
+        return select(Media).options(
+            selectinload(Media.media_tags).selectinload(MediaTag.tag),
+        )
+
+    async def _apply_album_filter(
+        self,
+        stmt: Select[tuple[Media]],
+        user: User,
+        album_id: uuid.UUID | None,
+    ) -> Select[tuple[Media]]:
+        if album_id is None:
+            return stmt
+
+        await self._ensure_album_is_visible(user, album_id)
+        return stmt.join(AlbumMedia, AlbumMedia.media_id == Media.id).where(
+            AlbumMedia.album_id == album_id,
+        )
+
+    def _apply_state_and_nsfw_filters(
+        self,
+        stmt: Select[tuple[Media]],
+        user: User,
+        state: MediaListState,
+        nsfw: NsfwFilter,
+    ) -> Select[tuple[Media]]:
+        if state == MediaListState.TRASHED:
+            stmt = stmt.where(Media.deleted_at.is_not(None))
+            if not user.is_admin:
+                stmt = stmt.where(Media.uploader_id == user.id)
+            return stmt
+
+        stmt = stmt.where(Media.deleted_at.is_(None))
+        if nsfw == NsfwFilter.ONLY and not user.show_nsfw and not user.is_admin:
+            raise AppError(
+                status_code=403,
+                code=nsfw_disabled,
+                detail="Enable NSFW in your profile first",
+            )
+
+        return media_filters.apply_nsfw_list_filter(stmt, user, nsfw)
+
+    def _apply_status_filter(
+        self,
+        stmt: Select[tuple[Media]],
+        status_filter: str | None,
+    ) -> Select[tuple[Media]]:
+        status_values = [value for value in parse_csv_values(status_filter) if value != "any"]
+        if status_values:
+            stmt = stmt.where(Media.tagging_status.in_(status_values))
+        return stmt
+
+    def _apply_favorited_filter(
+        self,
+        stmt: Select[tuple[Media]],
+        user: User,
+        favorited: bool | None,
+    ) -> Select[tuple[Media]]:
+        if favorited is True:
+            stmt = stmt.join(
+                UserFavorite,
+                and_(UserFavorite.media_id == Media.id, UserFavorite.user_id == user.id),
+            )
+        return stmt
+
+    async def _count_total(self, stmt: Select[tuple[Media]], include_total: bool) -> int | None:
+        if not include_total:
+            return None
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        return (await self._db.execute(count_stmt)).scalar_one()
+
+    def _apply_cursor(
+        self,
+        stmt: Select[tuple[Media]],
+        after: str | None,
+        sort_by: str,
+        sort_order: str,
+    ) -> Select[tuple[Media]]:
+        if after is None:
+            return stmt
+
+        decoded = decode_cursor(after, sort_by)
+        if decoded is None:
+            return stmt
+
+        cursor_value, cursor_id = decoded
+        return apply_cursor_where(stmt, sort_by, sort_order, cursor_value, cursor_id)
+
+    async def _fetch_page_rows(
+        self,
+        stmt: Select[tuple[Media]],
+        page_size: int,
+        sort_by: str,
+        sort_order: str,
+    ) -> list[Media]:
+        sort_column = self._get_sort_column(sort_by)
+        order_expressions = self._build_order_expressions(sort_column, sort_order)
+
+        result = await self._db.execute(
+            stmt.order_by(*order_expressions).limit(page_size + 1),
+        )
+        return result.scalars().all()
+
+    def _build_next_cursor(
+        self,
+        rows: list[Media],
+        has_more: bool,
+        sort_by: str,
+    ) -> str | None:
+        if not has_more or not rows:
+            return None
+
+        last = rows[-1]
+        sort_value = (
+            last.captured_at or last.created_at
+            if sort_by == "captured_at"
+            else getattr(last, sort_by)
+        )
+        return encode_cursor(sort_value, last.id)
+
+    def _get_sort_column(self, sort_by: str) -> Any:
+        try:
+            return self.SORT_FIELDS[sort_by]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported sort field: {sort_by}") from exc
+
+    def _build_order_expressions(self, sort_column: Any, sort_order: str) -> list[Any]:
+        if sort_order == "asc":
+            return [sort_column.asc(), Media.id.asc()]
+        return [sort_column.desc(), Media.id.desc()]
+
+    def _filter_by_trashed_state(
+        self,
+        media: Media | None,
+        trashed: bool | None,
+    ) -> Media | None:
+        if media is None or trashed is None:
+            return media
+        if trashed is True and media.deleted_at is None:
+            return None
+        if trashed is False and media.deleted_at is not None:
+            return None
+        return media
+
+    def _can_manage_media(self, media: Media, user: User) -> bool:
+        return media.uploader_id == user.id or user.is_admin
+
+    def _assert_media_visible_to_user(self, media: Media, user: User) -> None:
+        if media.deleted_at is not None and not self._can_manage_media(media, user):
+            raise AppError(status_code=404, code=media_not_found, detail="Not found")
+        self._assert_nsfw_visible(media, user)
+
+    def _assert_nsfw_visible(self, media: Media, user: User) -> None:
+        if media.is_nsfw and not user.show_nsfw and not user.is_admin:
+            raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
