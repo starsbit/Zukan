@@ -54,7 +54,6 @@ tag_queue: asyncio.Queue = asyncio.Queue()
 
 API_VERSION = "0.1.0"
 OPENAPI_TAGS = [
-    {"name": "v1", "description": "Version 1 public API endpoints under /api/v1."},
     {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
     {"name": "users", "description": "Current-user profile read/update operations."},
     {"name": "media", "description": "Media upload, filtering, metadata mutation, and download operations."},
@@ -303,15 +302,15 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 v1_router = APIRouter(prefix="/api/v1")
-v1_router.include_router(auth.router, tags=["v1"])
-v1_router.include_router(users.router, tags=["v1"])
-v1_router.include_router(config.router, tags=["v1"])
-v1_router.include_router(media.router, tags=["v1"])
-v1_router.include_router(tags.router, tags=["v1"])
-v1_router.include_router(albums.router, tags=["v1"])
-v1_router.include_router(admin.router, tags=["v1"])
-v1_router.include_router(batches.router, tags=["v1"])
-v1_router.include_router(notifications.router, tags=["v1"])
+v1_router.include_router(auth.router)
+v1_router.include_router(users.router)
+v1_router.include_router(config.router)
+v1_router.include_router(media.router)
+v1_router.include_router(tags.router)
+v1_router.include_router(albums.router)
+v1_router.include_router(admin.router)
+v1_router.include_router(batches.router)
+v1_router.include_router(notifications.router)
 api.include_router(v1_router)
 
 
