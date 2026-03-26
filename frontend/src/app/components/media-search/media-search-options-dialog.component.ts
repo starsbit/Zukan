@@ -9,20 +9,20 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { startWith } from 'rxjs';
 
-import { GallerySearchFilters } from '../gallery-search.models';
-import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
-import { AlbumsService } from '../../../services/albums.service';
-import { formatDisplayValue } from '../../../utils/display-value.utils';
+import { MediaSearchFilters } from './media-search.models';
+import { createDefaultMediaSearchFilters } from './media-search.utils';
+import { AlbumsService } from '../../services/albums.service';
+import { formatDisplayValue } from '../../utils/display-value.utils';
 
-type SearchStatus = GallerySearchFilters['status'][number];
+type SearchStatus = MediaSearchFilters['status'][number];
 
-export interface GallerySearchOptionsDialogData {
-  filters: GallerySearchFilters;
+export interface MediaSearchOptionsDialogData {
+  filters: MediaSearchFilters;
   albumSelectionEnabled?: boolean;
 }
 
 @Component({
-  selector: 'app-gallery-search-options-dialog',
+  selector: 'app-media-search-options-dialog',
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -36,14 +36,14 @@ export interface GallerySearchOptionsDialogData {
     MatInputModule,
     MatSelectModule
   ],
-  templateUrl: './gallery-search-options-dialog.component.html',
-  styleUrl: './gallery-search-options-dialog.component.scss',
+  templateUrl: './media-search-options-dialog.component.html',
+  styleUrl: './media-search-options-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GallerySearchOptionsDialogComponent {
+export class MediaSearchOptionsDialogComponent {
   private readonly formBuilder = inject(FormBuilder);
-  private readonly dialogRef = inject(MatDialogRef<GallerySearchOptionsDialogComponent, GallerySearchFilters>);
-  private readonly data = inject<GallerySearchOptionsDialogData>(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject(MatDialogRef<MediaSearchOptionsDialogComponent, MediaSearchFilters>);
+  private readonly data = inject<MediaSearchOptionsDialogData>(MAT_DIALOG_DATA);
   private readonly albumsService = inject(AlbumsService);
 
   readonly form = this.formBuilder.nonNullable.group({
@@ -59,7 +59,7 @@ export class GallerySearchOptionsDialogComponent {
   readonly albumSelectionEnabled = this.data.albumSelectionEnabled ?? true;
 
   readonly statusOptions: SearchStatus[] = ['done', 'pending', 'processing', 'failed'];
-  readonly mediaTypeOptions: GallerySearchFilters['media_type'][number][] = ['image', 'gif', 'video'];
+  readonly mediaTypeOptions: MediaSearchFilters['media_type'][number][] = ['image', 'gif', 'video'];
 
   constructor() {
     if (this.albumsService.snapshot.albums.length === 0) {
@@ -68,7 +68,7 @@ export class GallerySearchOptionsDialogComponent {
   }
 
   clearAll(): void {
-    const defaults = createDefaultGallerySearchFilters();
+    const defaults = createDefaultMediaSearchFilters();
     this.form.setValue({
       favorited: defaults.favorited,
       album_id: '',
@@ -97,7 +97,7 @@ export class GallerySearchOptionsDialogComponent {
     this.form.controls.status.setValue(toggleValue(this.form.controls.status.getRawValue(), status));
   }
 
-  toggleMediaType(mediaType: GallerySearchFilters['media_type'][number]): void {
+  toggleMediaType(mediaType: MediaSearchFilters['media_type'][number]): void {
     this.form.controls.media_type.setValue(toggleValue(this.form.controls.media_type.getRawValue(), mediaType));
   }
 

@@ -4,35 +4,36 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 
-import { GallerySearchState } from '../gallery-search.models';
-import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-bar.component';
-import { GallerySearchOptionsDialogComponent } from '../gallery-search-options-dialog/gallery-search-options-dialog.component';
-import { GallerySettingsDialogComponent } from '../gallery-settings-dialog/gallery-settings-dialog.component';
-import { countActiveAdvancedFilters, createDefaultGallerySearchFilters } from '../gallery-search.utils';
-import { ThemeService } from '../../../services/theme.service';
+import { MediaSearchState } from './media-search.models';
+import { MediaSearchBarComponent } from './media-search-bar.component';
+import { MediaSearchOptionsDialogComponent } from './media-search-options-dialog.component';
+import { MediaSettingsDialogComponent } from './media-settings-dialog.component';
+import { countActiveAdvancedFilters, createDefaultMediaSearchFilters } from './media-search.utils';
+import { ThemeService } from '../../services/theme.service';
+import { createResponsiveDialogConfig, createResponsiveDialogConfigWithoutData } from '../../utils/dialog-config.utils';
 
 @Component({
-  selector: 'app-gallery-navbar',
+  selector: 'app-media-navbar',
   imports: [
     MatButtonModule,
     MatDialogModule,
     MatIconModule,
     MatToolbarModule,
-    GallerySearchBarComponent
+    MediaSearchBarComponent
   ],
-  templateUrl: './gallery-navbar.component.html',
-  styleUrl: './gallery-navbar.component.scss',
+  templateUrl: './media-navbar.component.html',
+  styleUrl: './media-navbar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GalleryNavbarComponent {
+export class MediaNavbarComponent {
   private readonly dialog = inject(MatDialog);
   readonly themeService = inject(ThemeService);
 
-  @Input({ required: true }) searchState!: GallerySearchState;
+  @Input({ required: true }) searchState!: MediaSearchState;
   @Input() isTrashView = false;
   @Input() albumSelectionEnabled = true;
   @Input() showPrimaryAction = true;
-  @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
+  @Output() readonly searchApplied = new EventEmitter<MediaSearchState>();
   @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
   @Output() readonly emptyTrashRequested = new EventEmitter<void>();
@@ -51,19 +52,17 @@ export class GalleryNavbarComponent {
   clearSearch(): void {
     this.searchApplied.emit({
       searchText: '',
-      filters: createDefaultGallerySearchFilters()
+      filters: createDefaultMediaSearchFilters()
     });
   }
 
   openFilters(): void {
-    const dialogRef = this.dialog.open(GallerySearchOptionsDialogComponent, {
-      width: '680px',
-      maxWidth: 'calc(100vw - 2rem)',
+    const dialogRef = this.dialog.open(MediaSearchOptionsDialogComponent, createResponsiveDialogConfig({
       data: {
         filters: this.searchState.filters,
         albumSelectionEnabled: this.albumSelectionEnabled
       }
-    });
+    }, '680px'));
 
     dialogRef.afterClosed().subscribe((filters) => {
       if (!filters) {
@@ -78,10 +77,7 @@ export class GalleryNavbarComponent {
   }
 
   openSettings(): void {
-    const dialogRef = this.dialog.open(GallerySettingsDialogComponent, {
-      width: '420px',
-      maxWidth: 'calc(100vw - 2rem)'
-    });
+    const dialogRef = this.dialog.open(MediaSettingsDialogComponent, createResponsiveDialogConfigWithoutData('420px'));
 
     dialogRef.afterClosed().subscribe((saved) => {
       if (saved) {

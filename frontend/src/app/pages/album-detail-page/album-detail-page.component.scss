@@ -4,18 +4,34 @@
 }
 
 .album-layout {
+  --album-page-padding-x: clamp(1rem, 2vw, 2rem);
+  --album-page-padding-y: clamp(1rem, 1.8vw, 1.5rem);
+  --album-page-padding-bottom: 1.25rem;
   display: grid;
   grid-template-columns: minmax(15rem, 17rem) minmax(0, 1fr);
   gap: clamp(1rem, 1.8vw, 1.75rem);
   width: 100%;
-  min-height: 100vh;
-  padding: clamp(1rem, 1.8vw, 1.5rem) clamp(1rem, 2vw, 2rem) 3rem;
+  height: 100vh;
+  padding: var(--album-page-padding-y) var(--album-page-padding-x) var(--album-page-padding-bottom);
+  overflow: hidden;
 }
 
 .album-shell {
   display: grid;
-  align-content: start;
-  gap: 1.35rem;
+  grid-template-columns: minmax(0, 1fr) clamp(3.75rem, 4vw, 5rem);
+  gap: clamp(0.75rem, 1.5vw, 1.25rem);
+  align-items: stretch;
+  height: calc(100vh - (var(--album-page-padding-y) * 2));
+  min-height: 0;
+}
+
+.album-main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 1.25rem;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
 }
 
 .album-header {
@@ -65,12 +81,113 @@
   border-radius: 999px;
 }
 
-.album-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  align-items: flex-start;
-  --gallery-row-height: 13rem;
+.album-content-scroll {
+  position: relative;
+  display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 0.35rem;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.album-content-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.album-timeline {
+  position: relative;
+  height: 100%;
+  min-height: 32rem;
+  width: clamp(3.75rem, 4vw, 5rem);
+}
+
+.album-timeline-track {
+  position: absolute;
+  top: clamp(1.15rem, 2.1vh, 1.5rem);
+  bottom: clamp(1.35rem, 2.4vh, 1.75rem);
+  left: 50%;
+  width: 2rem;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-outline-variant) 48%, transparent);
+}
+
+.album-timeline-marker,
+.album-timeline-year {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.album-timeline-marker {
+  width: 0.65rem;
+  height: 0.65rem;
+  border: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--mat-sys-on-surface-variant) 50%, transparent);
+  cursor: pointer;
+}
+
+.album-timeline-marker-active {
+  width: 0.8rem;
+  height: 0.8rem;
+  background: var(--mat-sys-primary);
+}
+
+.album-timeline-year {
+  width: max-content;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--mat-sys-on-surface-variant) 86%, transparent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.2rem 0.35rem;
+}
+
+.album-timeline-year-active {
+  color: var(--mat-sys-primary);
+}
+
+.album-timeline-readout {
+  position: absolute;
+  left: calc(50% - 0.35rem);
+  transform: translate(-100%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.album-timeline-readout-label {
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+  color: var(--mat-sys-on-surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.16rem 0.4rem;
+}
+
+.album-timeline-readout-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--mat-sys-primary);
+}
+
+.album-timeline-readout-line {
+  width: 0.55rem;
+  height: 1px;
+  background: color-mix(in srgb, var(--mat-sys-outline) 70%, transparent);
 }
 
 .album-state {
@@ -95,6 +212,28 @@
 @media (max-width: 900px) {
   .album-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .album-shell {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .album-main {
+    height: auto;
+  }
+
+  .album-content-scroll {
+    overflow: visible;
+    min-height: auto;
+    padding-right: 0;
+  }
+
+  .album-timeline {
+    display: none;
   }
 
   .album-header {

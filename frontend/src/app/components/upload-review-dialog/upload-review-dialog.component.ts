@@ -9,6 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MediaDetail } from '../../models/api';
 import { MediaTagEditorComponent, MediaTagEditorDraft } from '../media-tag-editor/media-tag-editor.component';
 import { MediaClientService } from '../../services/web/media-client.service';
+import { createObjectUrl, revokeObjectUrl } from '../../utils/object-url.utils';
 
 export interface UploadReviewCandidate {
   media: MediaDetail;
@@ -57,7 +58,7 @@ export class UploadReviewDialogComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     this.mediaClient.getMediaFile(this.data.media.id).subscribe({
       next: (blob) => {
-        this.mediaUrl = URL.createObjectURL(blob);
+        this.mediaUrl = createObjectUrl(blob);
         this.loading = false;
         this.failed = false;
         this.cdr.markForCheck();
@@ -71,9 +72,7 @@ export class UploadReviewDialogComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
-    if (this.mediaUrl) {
-      URL.revokeObjectURL(this.mediaUrl);
-    }
+    this.mediaUrl = revokeObjectUrl(this.mediaUrl);
   }
 
   updateDraft(draft: MediaTagEditorDraft): void {

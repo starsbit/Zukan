@@ -8,10 +8,10 @@ import { MatInputModule } from '@angular/material/input';
 import { MatSlideToggleModule } from '@angular/material/slide-toggle';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
-import { UsersService } from '../../../services/users.service';
+import { UsersService } from '../../services/users.service';
 
 @Component({
-  selector: 'app-gallery-settings-dialog',
+  selector: 'app-media-settings-dialog',
   imports: [
     AsyncPipe,
     ReactiveFormsModule,
@@ -24,14 +24,14 @@ import { UsersService } from '../../../services/users.service';
     MatInputModule,
     MatSlideToggleModule
   ],
-  templateUrl: './gallery-settings-dialog.component.html',
-  styleUrl: './gallery-settings-dialog.component.scss',
+  templateUrl: './media-settings-dialog.component.html',
+  styleUrl: './media-settings-dialog.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GallerySettingsDialogComponent {
+export class MediaSettingsDialogComponent {
   private readonly formBuilder = inject(FormBuilder);
   private readonly usersService = inject(UsersService);
-  private readonly dialogRef = inject(MatDialogRef<GallerySettingsDialogComponent>);
+  private readonly dialogRef = inject(MatDialogRef<MediaSettingsDialogComponent>);
   private readonly snackBar = inject(MatSnackBar);
 
   readonly saving$ = this.usersService.loading$;

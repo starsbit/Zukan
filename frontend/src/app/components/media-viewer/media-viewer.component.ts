@@ -13,16 +13,17 @@ import { MediaService } from '../../services/media.service';
 import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 import { formatDisplayValue } from '../../utils/display-value.utils';
+import { createObjectUrl, revokeObjectUrl } from '../../utils/object-url.utils';
 import { MediaTagEditorComponent, MediaTagEditorDraft } from '../media-tag-editor/media-tag-editor.component';
 
 @Component({
-  selector: 'app-gallery-viewer',
+  selector: 'app-media-viewer',
   imports: [CommonModule, DatePipe, MatButtonToggleModule, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, MatProgressSpinnerModule, MediaTagEditorComponent],
-  templateUrl: './gallery-viewer.component.html',
-  styleUrl: './gallery-viewer.component.scss',
+  templateUrl: './media-viewer.component.html',
+  styleUrl: './media-viewer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GalleryViewerComponent implements OnChanges, OnDestroy {
+export class MediaViewerComponent implements OnChanges, OnDestroy {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly document = inject(DOCUMENT);
   private readonly mediaService = inject(MediaService);
@@ -283,7 +284,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
         if (requestId !== this.mediaRequestId) {
           return;
         }
-        this.mediaUrl = URL.createObjectURL(blob);
+        this.mediaUrl = createObjectUrl(blob);
         this.loading = false;
         this.failed = false;
         this.cdr.markForCheck();
@@ -318,12 +319,7 @@ export class GalleryViewerComponent implements OnChanges, OnDestroy {
   }
 
   private revokeMediaUrl(): void {
-    if (!this.mediaUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(this.mediaUrl);
-    this.mediaUrl = null;
+    this.mediaUrl = revokeObjectUrl(this.mediaUrl);
   }
 
   private applyZoom(nextZoom: number): void {

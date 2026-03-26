@@ -19,28 +19,22 @@
     @let loading = (loading$ | async);
     @let error = (error$ | async);
 
-    @if (loading && albums.length === 0) {
-      <section class="albums-state">
-        <mat-spinner diameter="42"></mat-spinner>
-        <p>Loading albums...</p>
-      </section>
-    } @else if (error && albums.length === 0) {
-      <section class="albums-state">
-        <mat-icon>error</mat-icon>
-        <p>We could not load your albums right now.</p>
-        <button mat-stroked-button type="button" (click)="reload()">Try again</button>
-      </section>
-    } @else if (albums.length === 0) {
-      <section class="albums-state">
-        <mat-icon>collections_bookmark</mat-icon>
-        <p>No albums yet. Create one to start grouping images.</p>
-      </section>
-    } @else {
+    <app-list-state
+      containerClass="albums-state"
+      [loading]="!!loading"
+      [hasError]="!!error"
+      [itemCount]="albums.length"
+      loadingMessage="Loading albums..."
+      errorMessage="We could not load your albums right now."
+      emptyMessage="No albums yet. Create one to start grouping images."
+      emptyIcon="collections_bookmark"
+      (retryRequested)="reload()"
+    >
       <section class="albums-grid">
         @for (album of albums; track album.id) {
           <app-album-card [album]="album" />
         }
       </section>
-    }
+    </app-list-state>
   </section>
 </section>

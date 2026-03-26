@@ -12,11 +12,11 @@ import { AlbumDetailPageComponent } from './album-detail-page.component';
 import { AlbumRead, MediaCursorPage } from '../../models/api';
 import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
-import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
-import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
-import { GallerySearchState } from '../../components/gallery-search/gallery-search.models';
-import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
-import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
+import { MediaGroupedListComponent } from '../../components/media-grouped-list/media-grouped-list.component';
+import { MediaNavbarComponent } from '../../components/media-search/media-navbar.component';
+import { MediaSearchState } from '../../components/media-search/media-search.models';
+import { buildMediaListQuery, createDefaultMediaSearchFilters } from '../../components/media-search/media-search.utils';
+import { MediaViewerComponent } from '../../components/media-viewer/media-viewer.component';
 import { SelectionToolbarComponent } from '../../components/selection-toolbar/selection-toolbar.component';
 import { AlbumsService } from '../../services/albums.service';
 import { MediaService } from '../../services/media.service';
@@ -30,37 +30,42 @@ import { createMediaRead } from '../../testing/media-test.utils';
 class StubSidebarComponent {}
 
 @Component({
-  selector: 'app-gallery-navbar',
+  selector: 'app-media-navbar',
   template: '',
   standalone: true
 })
-class StubGalleryNavbarComponent {
-  @Input({ required: true }) searchState!: GallerySearchState;
+class StubMediaNavbarComponent {
+  @Input({ required: true }) searchState!: MediaSearchState;
   @Input() albumSelectionEnabled = true;
   @Input() showPrimaryAction = true;
-  @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
+  @Output() readonly searchApplied = new EventEmitter<MediaSearchState>();
   @Output() readonly settingsSaved = new EventEmitter<void>();
 }
 
 @Component({
-  selector: 'app-gallery-media-card',
+  selector: 'app-media-grouped-list',
   template: '',
   standalone: true
 })
-class StubGalleryMediaCardComponent {
-  @Input({ required: true }) media!: unknown;
+class StubMediaGroupedListComponent {
+  @Input({ required: true }) groups!: { key: string; label: string; items: unknown[] }[];
+  @Input({ required: true }) selectedIds!: Set<string>;
   @Input() selectionMode = false;
-  @Input() selected = false;
-  @Output() readonly open = new EventEmitter<unknown>();
-  @Output() readonly selectionToggled = new EventEmitter<unknown>();
+  @Input() trashMode = false;
+  @Input() regroupAnimating = false;
+  @Input() ariaLabel = 'Media list';
+  @Output() readonly groupSelected = new EventEmitter<{ key: string; label: string; items: unknown[] }>();
+  @Output() readonly mediaOpened = new EventEmitter<unknown>();
+  @Output() readonly mediaSelectionToggled = new EventEmitter<unknown>();
+  @Output() readonly mediaRestoreRequested = new EventEmitter<unknown>();
 }
 
 @Component({
-  selector: 'app-gallery-viewer',
+  selector: 'app-media-viewer',
   template: '',
   standalone: true
 })
-class StubGalleryViewerComponent {
+class StubMediaViewerComponent {
   @Input() media: unknown;
   @Input() canRestore = false;
   @Input() canDelete = false;
@@ -169,8 +174,8 @@ describe('AlbumDetailPageComponent', () => {
       ]
     })
       .overrideComponent(AlbumDetailPageComponent, {
-        remove: { imports: [AppSidebarComponent, GalleryMediaCardComponent, GalleryNavbarComponent, GalleryViewerComponent, SelectionToolbarComponent] },
-        add: { imports: [StubSidebarComponent, StubGalleryMediaCardComponent, StubGalleryNavbarComponent, StubGalleryViewerComponent, StubSelectionToolbarComponent] }
+        remove: { imports: [AppSidebarComponent, MediaGroupedListComponent, MediaNavbarComponent, MediaViewerComponent, SelectionToolbarComponent] },
+        add: { imports: [StubSidebarComponent, StubMediaGroupedListComponent, StubMediaNavbarComponent, StubMediaViewerComponent, StubSelectionToolbarComponent] }
       })
       .compileComponents();
 
@@ -182,7 +187,7 @@ describe('AlbumDetailPageComponent', () => {
   it('loads album detail and media on creation', () => {
     expect(albumsService.loadAlbum).toHaveBeenCalledWith('album-1');
     expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
-      ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
+      ...buildMediaListQuery('', createDefaultMediaSearchFilters()),
       album_id: 'album-1',
       page_size: 120
     });
@@ -221,10 +226,10 @@ describe('AlbumDetailPageComponent', () => {
   });
 
   it('applies search through the shared gallery navbar within the current album only', () => {
-    const nextState: GallerySearchState = {
+    const nextState: MediaSearchState = {
       searchText: 'tag:sky',
       filters: {
-        ...createDefaultGallerySearchFilters(),
+        ...createDefaultMediaSearchFilters(),
         nsfw: 'include'
       }
     };
@@ -232,7 +237,7 @@ describe('AlbumDetailPageComponent', () => {
     component.applySearch(nextState);
 
     expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith({
-      ...buildGalleryListQuery('tag:sky', nextState.filters),
+      ...buildMediaListQuery('tag:sky', nextState.filters),
       album_id: 'album-1',
       page_size: 120
     });
@@ -280,7 +285,7 @@ describe('AlbumDetailPageComponent', () => {
     expect(component.selectedCount).toBe(0);
     expect(albumsService.loadAlbum).toHaveBeenCalledWith('album-1');
     expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
-      ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
+      ...buildMediaListQuery('', createDefaultMediaSearchFilters()),
       album_id: 'album-1',
       page_size: 120
     });
@@ -335,5 +340,34 @@ describe('AlbumDetailPageComponent', () => {
     component.onWindowScroll();
 
     expect(mediaService.loadNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('groups media by captured day for gallery-style rendering', () => {
+    const dayOneA = createMediaRead({ id: 'media-1', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-21T08:00:00Z' } });
+    const dayOneB = createMediaRead({ id: 'media-2', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-21T12:00:00Z' } });
+    const dayTwo = createMediaRead({ id: 'media-3', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-20T09:30:00Z' } });
+
+    mediaService.items$.next([dayOneA, dayOneB, dayTwo]);
+
+    expect(component.groupedItems).toHaveLength(2);
+    expect(component.groupedItems[0]?.items.map((item) => item.id)).toEqual(['media-1', 'media-2']);
+    expect(component.groupedItems[1]?.items.map((item) => item.id)).toEqual(['media-3']);
+  });
+
+  it('selects all items in a group from the group action', () => {
+    const dayOneA = createMediaRead({ id: 'media-1', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-21T08:00:00Z' } });
+    const dayOneB = createMediaRead({ id: 'media-2', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-21T12:00:00Z' } });
+    const dayTwo = createMediaRead({ id: 'media-3', metadata: { ...createMediaRead().metadata, captured_at: '2026-03-20T09:30:00Z' } });
+
+    mediaService.items$.next([dayOneA, dayOneB, dayTwo]);
+    const firstGroup = component.groupedItems[0];
+    expect(firstGroup).toBeTruthy();
+
+    component.selectGroup(firstGroup!);
+
+    expect(component.isSelected(dayOneA.id)).toBe(true);
+    expect(component.isSelected(dayOneB.id)).toBe(true);
+    expect(component.isSelected(dayTwo.id)).toBe(false);
+    expect(component.isGroupSelected(firstGroup!)).toBe(true);
   });
 });

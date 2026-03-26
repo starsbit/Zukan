@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from typing import Any
 
 from fastapi import UploadFile
@@ -146,7 +146,11 @@ class MediaUploadWorkflow:
             return
 
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        captured_at = file_metadata.captured_at or datetime.now(timezone.utc)
+        if file_metadata.captured_at:
+            captured_at = file_metadata.captured_at
+        else:
+            file_mtime = saved.path.stat().st_mtime
+            captured_at = datetime.fromtimestamp(file_mtime, tz=UTC)
 
         existing = await self._query.get_media_by_sha256(saved.sha256)
         if existing is not None:

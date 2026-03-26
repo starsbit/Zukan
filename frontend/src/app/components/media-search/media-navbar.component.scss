@@ -2,8 +2,8 @@
   display: block;
 }
 
-.gallery-navbar,
-.gallery-navbar.mat-toolbar {
+.media-navbar,
+.media-navbar.mat-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
@@ -37,7 +37,7 @@
 }
 
 @media (max-width: 720px) {
-  .gallery-navbar {
+  .media-navbar {
     grid-template-columns: minmax(0, 1fr) auto;
   }
 

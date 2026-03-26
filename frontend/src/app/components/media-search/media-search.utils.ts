@@ -1,16 +1,16 @@
 import { ListMediaQuery } from '../../models/api';
-import { GallerySearchFilters } from './gallery-search.models';
+import { MediaSearchFilters } from './media-search.models';
 
 const DEFAULT_PAGE_SIZE = 60;
 const TAG_PREFIX = 'tag:';
 const CHARACTER_PREFIX = 'character:';
 
-export interface ParsedGallerySearchText {
+export interface ParsedMediaSearchText {
   tags: string[];
   characterName: string | null;
 }
 
-export interface GalleryAutocompleteContext {
+export interface MediaAutocompleteContext {
   mode: 'tag' | 'character' | 'all';
   query: string;
 }
@@ -23,7 +23,7 @@ export function normalizeCharacterSearchValue(value: string): string {
     .replace(/^_+|_+$/g, '');
 }
 
-export function createDefaultGallerySearchFilters(): GallerySearchFilters {
+export function createDefaultMediaSearchFilters(): MediaSearchFilters {
   return {
     favorited: 'any',
     album_id: null,
@@ -35,7 +35,7 @@ export function createDefaultGallerySearchFilters(): GallerySearchFilters {
   };
 }
 
-export function parseGallerySearchText(searchText: string): ParsedGallerySearchText {
+export function parseMediaSearchText(searchText: string): ParsedMediaSearchText {
   const tags: string[] = [];
   let characterName: string | null = null;
   const tokens = tokenizeSearchText(searchText);
@@ -70,7 +70,7 @@ export function parseGallerySearchText(searchText: string): ParsedGallerySearchT
   };
 }
 
-export function getAutocompleteContext(searchText: string): GalleryAutocompleteContext | null {
+export function getAutocompleteContext(searchText: string): MediaAutocompleteContext | null {
   const activeToken = getActiveToken(searchText);
   if (!activeToken) {
     return null;
@@ -100,8 +100,8 @@ export function replaceActiveToken(searchText: string, replacementToken: string)
   return `${parts.join(' ')} `;
 }
 
-export function buildGalleryListQuery(searchText: string, filters: GallerySearchFilters): ListMediaQuery {
-  const parsed = parseGallerySearchText(searchText);
+export function buildMediaListQuery(searchText: string, filters: MediaSearchFilters): ListMediaQuery {
+  const parsed = parseMediaSearchText(searchText);
   const capturedAfter = toIsoString(filters.captured_after);
   const capturedBefore = toIsoString(filters.captured_before);
 
@@ -119,8 +119,8 @@ export function buildGalleryListQuery(searchText: string, filters: GallerySearch
   };
 }
 
-export function countActiveAdvancedFilters(filters: GallerySearchFilters): number {
-  const defaults = createDefaultGallerySearchFilters();
+export function countActiveAdvancedFilters(filters: MediaSearchFilters): number {
+  const defaults = createDefaultMediaSearchFilters();
   return [
     filters.favorited !== defaults.favorited,
     filters.album_id !== defaults.album_id,

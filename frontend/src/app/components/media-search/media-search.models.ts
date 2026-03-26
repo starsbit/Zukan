@@ -1,6 +1,6 @@
 import { MediaType, NsfwFilter } from '../../models/api';
 
-export interface GallerySearchFilters {
+export interface MediaSearchFilters {
   favorited: 'any' | 'only';
   album_id: string | null;
   nsfw: NsfwFilter;
@@ -10,15 +10,15 @@ export interface GallerySearchFilters {
   captured_before: string | null;
 }
 
-export interface GallerySearchState {
+export interface MediaSearchState {
   searchText: string;
-  filters: GallerySearchFilters;
+  filters: MediaSearchFilters;
 }
 
-export type GallerySearchSuggestionKind = 'tag' | 'character';
+export type MediaSearchSuggestionKind = 'tag' | 'character';
 
-export interface GallerySearchSuggestion {
-  kind: GallerySearchSuggestionKind;
+export interface MediaSearchSuggestion {
+  kind: MediaSearchSuggestionKind;
   label: string;
   token: string;
   secondary: string;

@@ -8,6 +8,7 @@ import { Subscription } from 'rxjs';
 import { MediaRead } from '../../models/api';
 import { MediaUploadService } from '../../services/media-upload.service';
 import { MediaClientService } from '../../services/web/media-client.service';
+import { createObjectUrl, revokeObjectUrl } from '../../utils/object-url.utils';
 
 @Component({
   selector: 'app-gallery-media-card',
@@ -216,7 +217,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
         if (requestId !== this.thumbnailRequestId) {
           return;
         }
-        this.thumbnailUrl = URL.createObjectURL(blob);
+        this.thumbnailUrl = createObjectUrl(blob);
         this.loadingThumbnail = false;
         this.thumbnailFailed = false;
         this.cdr.markForCheck();
@@ -233,12 +234,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   }
 
   private revokeThumbnailUrl(): void {
-    if (!this.thumbnailUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(this.thumbnailUrl);
-    this.thumbnailUrl = null;
+    this.thumbnailUrl = revokeObjectUrl(this.thumbnailUrl);
   }
 
   onPreviewVideoLoaded(video: HTMLVideoElement): void {
@@ -272,7 +268,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
         }
 
         this.revokePreviewUrl();
-        this.previewUrl = URL.createObjectURL(blob);
+        this.previewUrl = createObjectUrl(blob);
         this.loadingPreview = false;
         this.previewReady = this.isGif;
         this.cdr.markForCheck();
@@ -325,12 +321,7 @@ export class GalleryMediaCardComponent implements OnChanges, OnDestroy {
   }
 
   private revokePreviewUrl(): void {
-    if (!this.previewUrl) {
-      return;
-    }
-
-    URL.revokeObjectURL(this.previewUrl);
-    this.previewUrl = null;
+    this.previewUrl = revokeObjectUrl(this.previewUrl);
   }
 
   private primeVideoPreview(video: HTMLVideoElement): void {

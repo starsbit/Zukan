@@ -175,6 +175,76 @@ describe('MediaUploadService', () => {
     }
   });
 
+  it('refreshes gallery as each image finishes processing within the batch', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const events$ = new Subject<any>();
+      const refreshSpy = vi.fn();
+      mediaClient.uploadMediaWithProgress.mockReturnValue(events$.asObservable());
+      mediaClient.getMedia
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-1',
+          media_type: 'image',
+          tagging_status: 'done',
+          thumbnail_status: 'done',
+          poster_status: 'done'
+        })))
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-2',
+          media_type: 'image',
+          tagging_status: 'processing',
+          thumbnail_status: 'done',
+          poster_status: 'done'
+        })))
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-1',
+          media_type: 'image',
+          tagging_status: 'done',
+          thumbnail_status: 'done',
+          poster_status: 'done'
+        })))
+        .mockReturnValueOnce(of(createMediaRead({
+          id: 'media-2',
+          media_type: 'image',
+          tagging_status: 'done',
+          thumbnail_status: 'done',
+          poster_status: 'done'
+        })));
+      service.refreshRequested$.subscribe(refreshSpy);
+
+      service.startUpload([
+        new File(['a'], 'a.png', { type: 'image/png' }),
+        new File(['b'], 'b.png', { type: 'image/png' })
+      ]);
+
+      events$.next({
+        type: HttpEventType.Response,
+        body: {
+          accepted: 2,
+          duplicates: 0,
+          errors: 0,
+          results: [
+            { id: 'media-1', original_filename: 'a.png', status: 'accepted' },
+            { id: 'media-2', original_filename: 'b.png', status: 'accepted' }
+          ]
+        }
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(service.snapshot.phase).toBe('processing');
+      expect(service.snapshot.processingProgress).toBe(50);
+      expect(refreshSpy).toHaveBeenCalledTimes(2);
+
+      await vi.advanceTimersByTimeAsync(2000);
+      expect(service.snapshot.phase).toBe('completed');
+      expect(service.snapshot.processingProgress).toBe(100);
+      expect(refreshSpy).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('emits review candidates only for failed tagging and missing characters once processing settles', async () => {
     vi.useFakeTimers();
 

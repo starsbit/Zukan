@@ -10,14 +10,14 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { debounceTime, distinctUntilChanged, forkJoin, of, switchMap } from 'rxjs';
 
-import { CharacterSuggestionsService } from '../../../services/character-suggestions.service';
-import { TagsService } from '../../../services/tags.service';
-import { formatDisplayValue } from '../../../utils/display-value.utils';
-import { GallerySearchSuggestion } from '../gallery-search.models';
-import { getAutocompleteContext, normalizeCharacterSearchValue } from '../gallery-search.utils';
+import { CharacterSuggestionsService } from '../../services/character-suggestions.service';
+import { TagsService } from '../../services/tags.service';
+import { formatDisplayValue } from '../../utils/display-value.utils';
+import { MediaSearchSuggestion } from './media-search.models';
+import { getAutocompleteContext, normalizeCharacterSearchValue } from './media-search.utils';
 
 @Component({
-  selector: 'app-gallery-search-bar',
+  selector: 'app-media-search-bar',
   imports: [
     CommonModule,
     ReactiveFormsModule,
@@ -28,11 +28,11 @@ import { getAutocompleteContext, normalizeCharacterSearchValue } from '../galler
     MatIconModule,
     MatInputModule
   ],
-  templateUrl: './gallery-search-bar.component.html',
-  styleUrl: './gallery-search-bar.component.scss',
+  templateUrl: './media-search-bar.component.html',
+  styleUrl: './media-search-bar.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class GallerySearchBarComponent implements OnChanges {
+export class MediaSearchBarComponent implements OnChanges {
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly tagsService = inject(TagsService);
   private readonly characterSuggestionsService = inject(CharacterSuggestionsService);
@@ -45,11 +45,11 @@ export class GallerySearchBarComponent implements OnChanges {
   @Output() readonly filtersRequested = new EventEmitter<void>();
   @Output() readonly cleared = new EventEmitter<void>();
 
-  readonly queryControl = new FormControl<string | GallerySearchSuggestion>('', { nonNullable: true });
+  readonly queryControl = new FormControl<string | MediaSearchSuggestion>('', { nonNullable: true });
 
-  committedSuggestions: GallerySearchSuggestion[] = [];
-  tagSuggestions: GallerySearchSuggestion[] = [];
-  characterSuggestions: GallerySearchSuggestion[] = [];
+  committedSuggestions: MediaSearchSuggestion[] = [];
+  tagSuggestions: MediaSearchSuggestion[] = [];
+  characterSuggestions: MediaSearchSuggestion[] = [];
   selectedCommittedSuggestionIndex: number | null = null;
   private draftTextValue = '';
   private committedSuggestionTokens = new Set<string>();
@@ -141,11 +141,11 @@ export class GallerySearchBarComponent implements OnChanges {
     this.refocusInput();
   }
 
-  displaySuggestion(value: string | GallerySearchSuggestion | null): string {
+  displaySuggestion(value: string | MediaSearchSuggestion | null): string {
     return typeof value === 'string' ? value : value?.label ?? '';
   }
 
-  selectSuggestion(suggestion: GallerySearchSuggestion): void {
+  selectSuggestion(suggestion: MediaSearchSuggestion): void {
     const nextValue = this.composeSearchText('', [...this.committedSuggestions, suggestion]);
     this.syncFromSearchText(nextValue);
     this.cdr.markForCheck();
@@ -225,7 +225,7 @@ export class GallerySearchBarComponent implements OnChanges {
     this.cleared.emit();
   }
 
-  private resolveSubmittedQuery(value: string | GallerySearchSuggestion): string {
+  private resolveSubmittedQuery(value: string | MediaSearchSuggestion): string {
     if (typeof value === 'string') {
       return value;
     }
@@ -251,8 +251,8 @@ export class GallerySearchBarComponent implements OnChanges {
     return parts.join(' ');
   }
 
-  private decomposeSearchText(searchText: string): { committedSuggestions: GallerySearchSuggestion[]; draftText: string } {
-    const committedSuggestions: GallerySearchSuggestion[] = [];
+  private decomposeSearchText(searchText: string): { committedSuggestions: MediaSearchSuggestion[]; draftText: string } {
+    const committedSuggestions: MediaSearchSuggestion[] = [];
     const draftParts: string[] = [];
     const tokens = searchText.split(/\s+/).map((token) => token.trim()).filter(Boolean);
 

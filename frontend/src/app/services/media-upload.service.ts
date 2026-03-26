@@ -363,12 +363,17 @@ export class MediaUploadService {
     ).subscribe((mediaItems) => {
       this.clearPolling();
       this.emitReviewCandidates(mediaItems);
-      this.refreshSubject.next();
       this.completeSession();
     });
   }
 
   private patchProcessing(mediaItems: MediaDetail[], totalAccepted: number): void {
+    const previousStatuses = new Map(
+      this.snapshot.items
+        .filter((item) => item.mediaId)
+        .map((item) => [item.mediaId as Uuid, item.status])
+    );
+
     const detailsById = new Map(mediaItems.map((item) => [item.id, item]));
     const items: UploadQueueItem[] = this.snapshot.items.map((item) => {
       if (!item.mediaId) {
@@ -414,6 +419,19 @@ export class MediaUploadService {
       completed: normalizedCompleted,
       items
     });
+
+    const hasNewlySettledMedia = items.some((item) => {
+      if (!item.mediaId) {
+        return false;
+      }
+
+      return item.status === 'done' && previousStatuses.get(item.mediaId) !== 'done';
+    });
+
+    if (hasNewlySettledMedia) {
+      this.refreshSubject.next();
+    }
+
     this.patchTaggingStatuses(
       mediaItems.map((media) => ({ mediaId: media.id, taggingStatus: media.tagging_status }))
     );

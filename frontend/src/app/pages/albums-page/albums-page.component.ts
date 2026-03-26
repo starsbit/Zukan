@@ -4,14 +4,15 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 
 import { AlbumRead } from '../../models/api';
 import { AlbumCardComponent } from '../../components/album-card/album-card.component';
 import { AlbumFormDialogComponent, AlbumFormDialogValue } from '../../components/album-form-dialog/album-form-dialog.component';
 import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
+import { ListStateComponent } from '../../components/list-state/list-state.component';
 import { AlbumsService } from '../../services/albums.service';
+import { createResponsiveDialogConfig } from '../../utils/dialog-config.utils';
 
 @Component({
   selector: 'app-albums-page',
@@ -19,9 +20,9 @@ import { AlbumsService } from '../../services/albums.service';
     AsyncPipe,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
     AlbumCardComponent,
-    AppSidebarComponent
+    AppSidebarComponent,
+    ListStateComponent
   ],
   templateUrl: './albums-page.component.html',
   styleUrl: './albums-page.component.scss',
@@ -42,14 +43,12 @@ export class AlbumsPageComponent {
   }
 
   createAlbum(): void {
-    this.dialog.open(AlbumFormDialogComponent, {
-      width: '420px',
-      maxWidth: 'calc(100vw - 2rem)',
+    this.dialog.open(AlbumFormDialogComponent, createResponsiveDialogConfig({
       data: {
         title: 'Create album',
         confirmLabel: 'Create'
       }
-    }).afterClosed()
+    }, '420px')).afterClosed()
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((value: AlbumFormDialogValue | undefined) => {
         if (!value) {

@@ -3,23 +3,23 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GallerySearchBarComponent } from './gallery-search-bar.component';
-import { CharacterSuggestionsService } from '../../../services/character-suggestions.service';
-import { TagsService } from '../../../services/tags.service';
+import { MediaSearchBarComponent } from './media-search-bar.component';
+import { CharacterSuggestionsService } from '../../services/character-suggestions.service';
+import { TagsService } from '../../services/tags.service';
 
 @Component({
-  selector: 'app-gallery-search-bar-host',
+  selector: 'app-media-search-bar-host',
   template: `
-    <app-gallery-search-bar
+    <app-media-search-bar
       [searchText]="searchText()"
       (searchSubmitted)="applySearch($event)"
       (cleared)="clearSearch()"
     />
   `,
-  imports: [GallerySearchBarComponent],
+  imports: [MediaSearchBarComponent],
   standalone: true
 })
-class GallerySearchBarHostComponent {
+class MediaSearchBarHostComponent {
   readonly searchText = signal('');
   readonly clearedCount = signal(0);
 
@@ -33,9 +33,9 @@ class GallerySearchBarHostComponent {
   }
 }
 
-describe('GallerySearchBarComponent', () => {
-  let fixture: ComponentFixture<GallerySearchBarComponent>;
-  let component: GallerySearchBarComponent;
+describe('MediaSearchBarComponent', () => {
+  let fixture: ComponentFixture<MediaSearchBarComponent>;
+  let component: MediaSearchBarComponent;
   let tagsService: { search: ReturnType<typeof vi.fn> };
   let characterSuggestionsService: { search: ReturnType<typeof vi.fn> };
 
@@ -48,14 +48,14 @@ describe('GallerySearchBarComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [GallerySearchBarComponent],
+      imports: [MediaSearchBarComponent],
       providers: [
         { provide: TagsService, useValue: tagsService },
         { provide: CharacterSuggestionsService, useValue: characterSuggestionsService }
       ]
     }).compileComponents();
 
-    fixture = TestBed.createComponent(GallerySearchBarComponent);
+    fixture = TestBed.createComponent(MediaSearchBarComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
@@ -566,11 +566,11 @@ describe('GallerySearchBarComponent', () => {
 
   it('does not clear committed tags when enter is pressed twice through the real input flow', async () => {
     vi.useFakeTimers();
-    const hostFixture = TestBed.createComponent(GallerySearchBarHostComponent);
+    const hostFixture = TestBed.createComponent(MediaSearchBarHostComponent);
     hostFixture.detectChanges();
 
     const hostComponent = hostFixture.componentInstance;
-    const searchBar = hostFixture.debugElement.children[0].componentInstance as GallerySearchBarComponent;
+    const searchBar = hostFixture.debugElement.children[0].componentInstance as MediaSearchBarComponent;
     const input = hostFixture.nativeElement.querySelector('input[aria-label="Search gallery"]') as HTMLInputElement;
 
     input.focus();

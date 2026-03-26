@@ -4,7 +4,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { GalleryViewerComponent } from './gallery-viewer.component';
+import { MediaViewerComponent } from './media-viewer.component';
 import { CharacterSuggestionsService } from '../../services/character-suggestions.service';
 import { MediaService } from '../../services/media.service';
 import { MediaUploadService } from '../../services/media-upload.service';
@@ -12,9 +12,9 @@ import { TagsService } from '../../services/tags.service';
 import { MediaClientService } from '../../services/web/media-client.service';
 import { createMediaRead } from '../../testing/media-test.utils';
 
-describe('GalleryViewerComponent', () => {
-  let fixture: ComponentFixture<GalleryViewerComponent>;
-  let component: GalleryViewerComponent;
+describe('MediaViewerComponent', () => {
+  let fixture: ComponentFixture<MediaViewerComponent>;
+  let component: MediaViewerComponent;
   let mediaClient: { getMediaFile: ReturnType<typeof vi.fn> };
   let mediaService: { updateMedia: ReturnType<typeof vi.fn> };
   let mediaUploadService: {
@@ -58,7 +58,7 @@ describe('GalleryViewerComponent', () => {
     revokeObjectUrlSpy = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
 
     await TestBed.configureTestingModule({
-      imports: [GalleryViewerComponent],
+      imports: [MediaViewerComponent],
       providers: [
         { provide: CharacterSuggestionsService, useValue: characterSuggestionsService },
         { provide: MediaService, useValue: mediaService },
@@ -69,7 +69,7 @@ describe('GalleryViewerComponent', () => {
       ]
     }).compileComponents();
 
-    fixture = TestBed.createComponent(GalleryViewerComponent);
+    fixture = TestBed.createComponent(MediaViewerComponent);
     component = fixture.componentInstance;
   });
 

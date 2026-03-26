@@ -3,19 +3,19 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 
-import { GalleryNavbarComponent } from './gallery-navbar.component';
-import { GallerySearchState } from '../gallery-search.models';
-import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
-import { GallerySearchBarComponent } from '../gallery-search-bar/gallery-search-bar.component';
-import { GallerySearchOptionsDialogComponent } from '../gallery-search-options-dialog/gallery-search-options-dialog.component';
-import { ThemeService } from '../../../services/theme.service';
+import { MediaNavbarComponent } from './media-navbar.component';
+import { MediaSearchState } from '../media-search.models';
+import { createDefaultMediaSearchFilters } from '../media-search.utils';
+import { MediaSearchBarComponent } from './media-search-bar.component';
+import { MediaSearchOptionsDialogComponent } from './media-search-options-dialog.component';
+import { ThemeService } from '../../services/theme.service';
 
 @Component({
-  selector: 'app-gallery-search-bar',
+  selector: 'app-media-search-bar',
   template: '',
   standalone: true
 })
-class StubGallerySearchBarComponent {
+class StubMediaSearchBarComponent {
   @Input() searchText = '';
   @Input() activeFilterCount = 0;
   @Output() readonly searchSubmitted = new EventEmitter<string>();
@@ -23,18 +23,18 @@ class StubGallerySearchBarComponent {
   @Output() readonly cleared = new EventEmitter<void>();
 }
 
-describe('GalleryNavbarComponent', () => {
-  let fixture: ComponentFixture<GalleryNavbarComponent>;
-  let component: GalleryNavbarComponent;
+describe('MediaNavbarComponent', () => {
+  let fixture: ComponentFixture<MediaNavbarComponent>;
+  let component: MediaNavbarComponent;
   let dialog: { open: ReturnType<typeof vi.fn> };
   let themeService: {
     isDarkMode: ReturnType<typeof vi.fn>;
     toggleMode: ReturnType<typeof vi.fn>;
   };
-  const searchState: GallerySearchState = {
+  const searchState: MediaSearchState = {
     searchText: 'fox',
     filters: {
-      ...createDefaultGallerySearchFilters(),
+      ...createDefaultMediaSearchFilters(),
       nsfw: 'include',
       media_type: ['image']
     }
@@ -50,7 +50,7 @@ describe('GalleryNavbarComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [GalleryNavbarComponent],
+      imports: [MediaNavbarComponent],
       providers: [
         { provide: MatDialog, useValue: dialog },
         { provide: ThemeService, useValue: themeService }
@@ -58,13 +58,13 @@ describe('GalleryNavbarComponent', () => {
     })
       .overrideProvider(MatDialog, { useValue: dialog })
       .overrideProvider(ThemeService, { useValue: themeService })
-      .overrideComponent(GalleryNavbarComponent, {
-        remove: { imports: [GallerySearchBarComponent] },
-        add: { imports: [StubGallerySearchBarComponent] }
+      .overrideComponent(MediaNavbarComponent, {
+        remove: { imports: [MediaSearchBarComponent] },
+        add: { imports: [StubMediaSearchBarComponent] }
       })
       .compileComponents();
 
-    fixture = TestBed.createComponent(GalleryNavbarComponent);
+    fixture = TestBed.createComponent(MediaNavbarComponent);
     component = fixture.componentInstance;
     fixture.componentRef.setInput('searchState', searchState);
     fixture.detectChanges();
@@ -94,13 +94,13 @@ describe('GalleryNavbarComponent', () => {
 
     expect(searchAppliedSpy).toHaveBeenCalledWith({
       searchText: '',
-      filters: createDefaultGallerySearchFilters()
+      filters: createDefaultMediaSearchFilters()
     });
   });
 
   it('opens the filters dialog and emits the chosen filters', () => {
     const nextFilters = {
-      ...createDefaultGallerySearchFilters(),
+      ...createDefaultMediaSearchFilters(),
       favorited: 'only' as const
     };
     const searchAppliedSpy = vi.fn();
@@ -111,7 +111,7 @@ describe('GalleryNavbarComponent', () => {
 
     component.openFilters();
 
-    expect(dialog.open).toHaveBeenCalledWith(GallerySearchOptionsDialogComponent, expect.objectContaining({
+    expect(dialog.open).toHaveBeenCalledWith(MediaSearchOptionsDialogComponent, expect.objectContaining({
       data: {
         filters: searchState.filters,
         albumSelectionEnabled: true

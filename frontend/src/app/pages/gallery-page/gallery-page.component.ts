@@ -8,39 +8,43 @@ import {
   HostListener,
   OnDestroy,
   NgZone,
-  QueryList,
   ViewChild,
-  ViewChildren,
   inject
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ActivatedRoute } from '@angular/router';
 
 import { MediaRead } from '../../models/api';
 import { AlbumPickerDialogComponent } from '../../components/album-picker-dialog/album-picker-dialog.component';
 import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
-import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
-import { GallerySearchState } from '../../components/gallery-search/gallery-search.models';
-import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
+import { MediaGroupedListComponent } from '../../components/media-grouped-list/media-grouped-list.component';
+import { MediaNavbarComponent } from '../../components/media-search/media-navbar.component';
+import { MediaSearchState } from '../../components/media-search/media-search.models';
+import { buildMediaListQuery, createDefaultMediaSearchFilters } from '../../components/media-search/media-search.utils';
 import { AlbumsService } from '../../services/albums.service';
 import { MediaService } from '../../services/media.service';
-import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
-import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
+import { MediaViewerComponent } from '../../components/media-viewer/media-viewer.component';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
 import { SelectionToolbarComponent } from '../../components/selection-toolbar/selection-toolbar.component';
 import { UploadReviewDialogComponent, type UploadReviewDialogResult } from '../../components/upload-review-dialog/upload-review-dialog.component';
+import { ListStateComponent } from '../../components/list-state/list-state.component';
 import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
-
-interface GalleryDayGroup {
-  key: string;
-  label: string;
-  items: MediaRead[];
-}
+import { isEditableTarget, isSelectAllShortcut } from '../../utils/dom-event.utils';
+import { createResponsiveDialogConfig } from '../../utils/dialog-config.utils';
+import { buildGalleryDayGroups, GalleryDayGroup, shouldAnimateGalleryRegroup } from '../../utils/gallery-grouping.utils';
+import { isMediaSelected, selectMediaGroup, toggleMediaSelection, clearMediaSelection } from '../../utils/media-selection.utils';
+import {
+  clampUnit,
+  formatTimelineCurrentLabel,
+  formatTimelineMarkerLabel,
+  getGroupScrollTopAdjustment,
+  getTimelineScrollOffset,
+  toTimelinePercent
+} from '../../utils/timeline.utils';
 
 interface GalleryTimelineMarker {
   key: string;
@@ -60,7 +64,6 @@ interface GalleryTimelineMetric {
   targetScrollTop: number;
 }
 
-const TIMELINE_EDGE_PERCENT = 1.5;
 const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
 const REGROUP_ANIMATION_MS = 280;
 const LOAD_MORE_THRESHOLD_PX = 640;
@@ -71,12 +74,12 @@ const LOAD_MORE_THRESHOLD_PX = 640;
     AsyncPipe,
     MatButtonModule,
     MatIconModule,
-    MatProgressSpinnerModule,
     AppSidebarComponent,
-    GalleryMediaCardComponent,
-    GalleryNavbarComponent,
-    GalleryViewerComponent,
+    MediaGroupedListComponent,
+    MediaNavbarComponent,
+    MediaViewerComponent,
     GalleryUploadStatusIslandComponent,
+    ListStateComponent,
     SelectionToolbarComponent
   ],
   templateUrl: './gallery-page.component.html',
@@ -98,7 +101,6 @@ export class GalleryPageComponent implements OnDestroy {
   @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
   @ViewChild('galleryScroller') private galleryScroller?: ElementRef<HTMLElement>;
   @ViewChild('timelineTrack') private timelineTrack?: ElementRef<HTMLElement>;
-  @ViewChildren('groupSection') private groupSections?: QueryList<ElementRef<HTMLElement>>;
 
   readonly items$ = this.mediaService.items$;
   readonly loading$ = this.mediaService.requestLoading$;
@@ -132,11 +134,11 @@ export class GalleryPageComponent implements OnDestroy {
   private timelineRefreshQueued = false;
   private pendingUploadReviews: UploadReviewCandidate[] = [];
   private reviewDialogOpen = false;
-  searchState: GallerySearchState = {
+  searchState: MediaSearchState = {
     searchText: '',
-    filters: createDefaultGallerySearchFilters()
+    filters: createDefaultMediaSearchFilters()
   };
-  private activeQuery = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
+  private activeQuery = buildMediaListQuery(this.searchState.searchText, this.searchState.filters);
 
   constructor() {
     this.setCustomScrollbarMode(true);
@@ -190,12 +192,6 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   ngAfterViewInit(): void {
-    this.groupSections?.changes
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.scheduleTimelineRefresh();
-      });
-
     this.scheduleTimelineRefresh();
   }
 
@@ -203,7 +199,7 @@ export class GalleryPageComponent implements OnDestroy {
     this.loadMedia(this.activeQuery);
   }
 
-  applySearch(searchState: GallerySearchState): void {
+  applySearch(searchState: MediaSearchState): void {
     this.searchState = searchState;
     this.activeQuery = this.buildQueryForCurrentView();
     this.clearSelection();
@@ -350,15 +346,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   toggleSelection(media: MediaRead): void {
-    const next = new Set(this.selectedMediaIds);
-
-    if (next.has(media.id)) {
-      next.delete(media.id);
-    } else {
-      next.add(media.id);
-    }
-
-    this.selectedMediaIds = next;
+    this.selectedMediaIds = toggleMediaSelection(this.selectedMediaIds, media);
 
     if (this.selectionMode) {
       this.selectedMedia = null;
@@ -366,29 +354,16 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   selectGroup(group: GalleryDayGroup): void {
-    if (group.items.length === 0) {
-      return;
-    }
-
-    const next = new Set(this.selectedMediaIds);
-    for (const item of group.items) {
-      next.add(item.id);
-    }
-
-    this.selectedMediaIds = next;
+    this.selectedMediaIds = selectMediaGroup(this.selectedMediaIds, group);
     this.selectedMedia = null;
   }
 
   clearSelection(): void {
-    this.selectedMediaIds = new Set<string>();
+    this.selectedMediaIds = clearMediaSelection();
   }
 
   isSelected(mediaId: string): boolean {
-    return this.selectedMediaIds.has(mediaId);
-  }
-
-  isGroupSelected(group: GalleryDayGroup): boolean {
-    return group.items.length > 0 && group.items.every((item) => this.selectedMediaIds.has(item.id));
+    return isMediaSelected(this.selectedMediaIds, mediaId);
   }
 
   deleteSelected(): void {
@@ -418,14 +393,12 @@ export class GalleryPageComponent implements OnDestroy {
     }
 
     const openPicker = () => {
-      this.dialog.open(AlbumPickerDialogComponent, {
-        width: '420px',
-        maxWidth: 'calc(100vw - 2rem)',
+      this.dialog.open(AlbumPickerDialogComponent, createResponsiveDialogConfig({
         data: {
           albums: this.albumsService.snapshot.albums,
           selectedCount: this.selectedMediaIds.size
         }
-      }).afterClosed()
+      }, '420px')).afterClosed()
         .pipe(takeUntilDestroyed(this.destroyRef))
         .subscribe((albumId: string | undefined) => {
           if (!albumId) {
@@ -681,7 +654,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   private buildQueryForCurrentView() {
-    const query = buildGalleryListQuery(this.searchState.searchText, this.searchState.filters);
+    const query = buildMediaListQuery(this.searchState.searchText, this.searchState.filters);
 
     return this.isTrashView ? { ...query, state: 'trashed' as const } : query;
   }
@@ -704,7 +677,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   private refreshTimeline(): void {
-    const sections = this.groupSections?.toArray() ?? [];
+    const sections = this.getGroupElements();
     const scroller = this.galleryScroller?.nativeElement;
     if (sections.length === 0 || this.groupedItems.length === 0 || !scroller) {
       this.timelineMarkers = [];
@@ -722,8 +695,7 @@ export class GalleryPageComponent implements OnDestroy {
     }
 
     const scrollerRect = scroller.getBoundingClientRect();
-    const metrics: GalleryTimelineMetric[] = sections.map((sectionRef, index) => {
-      const element = sectionRef.nativeElement;
+    const metrics: GalleryTimelineMetric[] = sections.map((element, index) => {
       const header = element.querySelector('.gallery-group-header') as HTMLElement | null;
       const anchor = header ?? element;
       const rect = anchor.getBoundingClientRect();
@@ -780,9 +752,17 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   private findGroupElement(groupKey: string): HTMLElement | null {
-    const sections = this.groupSections?.toArray() ?? [];
-    const index = this.groupedItems.findIndex((group) => group.key === groupKey);
-    return index >= 0 ? sections[index]?.nativeElement ?? null : null;
+    const sections = this.getGroupElements();
+    return sections.find((section) => section.dataset['galleryGroupKey'] === groupKey) ?? null;
+  }
+
+  private getGroupElements(): HTMLElement[] {
+    const scroller = this.galleryScroller?.nativeElement;
+    if (!scroller) {
+      return [];
+    }
+
+    return Array.from(scroller.querySelectorAll<HTMLElement>('[data-gallery-group-key]'));
   }
 
   private setCustomScrollbarMode(enabled: boolean): void {
@@ -910,133 +890,4 @@ export class GalleryPageComponent implements OnDestroy {
 
 function containsFiles(event: DragEvent): boolean {
   return Array.from(event.dataTransfer?.types ?? []).includes('Files');
-}
-
-function shouldAnimateGalleryRegroup(previousItems: MediaRead[], nextItems: MediaRead[], hasRenderedItems: boolean): boolean {
-  if (!hasRenderedItems || previousItems.length === 0 || nextItems.length === 0) {
-    return false;
-  }
-
-  if (previousItems.length !== nextItems.length) {
-    return true;
-  }
-
-  for (let index = 0; index < previousItems.length; index += 1) {
-    const previous = previousItems[index];
-    const next = nextItems[index];
-    if (!previous || !next) {
-      return true;
-    }
-
-    if (previous.id !== next.id || previous.metadata.captured_at !== next.metadata.captured_at) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function buildGalleryDayGroups(items: MediaRead[]): GalleryDayGroup[] {
-  const groups = new Map<string, GalleryDayGroup>();
-
-  for (const item of items) {
-    const key = getLocalDayKey(item.metadata.captured_at);
-    const existing = groups.get(key);
-
-    if (existing) {
-      existing.items.push(item);
-      continue;
-    }
-
-    groups.set(key, {
-      key,
-      label: formatGroupLabel(item.metadata.captured_at),
-      items: [item]
-    });
-  }
-
-  return Array.from(groups.values());
-}
-
-function isSelectAllShortcut(event: KeyboardEvent): boolean {
-  return (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a';
-}
-
-function isEditableTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) {
-    return false;
-  }
-
-  return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
-}
-
-function getLocalDayKey(value: string): string {
-  const date = new Date(value);
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-
-  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '00';
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatGroupLabel(value: string): string {
-  const date = new Date(value);
-  const now = new Date();
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  };
-
-  if (date.getFullYear() !== now.getFullYear()) {
-    options.year = 'numeric';
-  }
-
-  return new Intl.DateTimeFormat(undefined, options).format(date);
-}
-
-function formatTimelineMarkerLabel(groupKey: string): string {
-  const [year, month, day] = groupKey.split('-').map((part) => Number(part));
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  }).format(new Date(year, (month || 1) - 1, day || 1));
-}
-
-function formatTimelineCurrentLabel(groupKey: string): string {
-  const [year, month] = groupKey.split('-').map((part) => Number(part));
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    year: 'numeric'
-  }).format(new Date(year, (month || 1) - 1, 1));
-}
-
-function clampPercent(value: number): number {
-  return Math.min(100, Math.max(0, value));
-}
-
-function clampUnit(value: number): number {
-  return Math.min(1, Math.max(0, value));
-}
-
-function getTimelineScrollOffset(): number {
-  return 24;
-}
-
-function getGroupScrollTopAdjustment(section: HTMLElement): number {
-  const header = section.querySelector('.gallery-group-header') as HTMLElement | null;
-  return header ? Math.max(0, header.offsetTop) : 0;
-}
-
-function toTimelinePercent(progress: number): number {
-  const boundedProgress = clampPercent(progress * 100) / 100;
-  const safeRange = 100 - (TIMELINE_EDGE_PERCENT * 2);
-  return clampPercent(TIMELINE_EDGE_PERCENT + (boundedProgress * safeRange));
 }

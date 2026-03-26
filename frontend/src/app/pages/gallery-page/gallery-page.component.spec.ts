@@ -10,14 +10,14 @@ import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
 
 import { GalleryPageComponent } from './gallery-page.component';
-import { GalleryNavbarComponent } from '../../components/gallery-search/gallery-navbar/gallery-navbar.component';
-import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
-import { GalleryViewerComponent } from '../../components/gallery-viewer/gallery-viewer.component';
+import { MediaNavbarComponent } from '../../components/media-search/media-navbar.component';
+import { MediaGroupedListComponent } from '../../components/media-grouped-list/media-grouped-list.component';
+import { MediaViewerComponent } from '../../components/media-viewer/media-viewer.component';
 import { MediaRead } from '../../models/api';
 import { MediaService } from '../../services/media.service';
 import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
-import { GallerySearchState } from '../../components/gallery-search/gallery-search.models';
-import { buildGalleryListQuery, createDefaultGallerySearchFilters } from '../../components/gallery-search/gallery-search.utils';
+import { MediaSearchState } from '../../components/media-search/media-search.models';
+import { buildMediaListQuery, createDefaultMediaSearchFilters } from '../../components/media-search/media-search.utils';
 import { createMediaRead } from '../../testing/media-test.utils';
 import { GalleryUploadStatusIslandComponent } from '../../components/gallery-upload-status-island/gallery-upload-status-island.component';
 import { AlbumsService } from '../../services/albums.service';
@@ -25,41 +25,43 @@ import { AlbumRead } from '../../models/api';
 import { SelectionToolbarComponent } from '../../components/selection-toolbar/selection-toolbar.component';
 
 @Component({
-  selector: 'app-gallery-navbar',
+  selector: 'app-media-navbar',
   template: '',
   standalone: true
 })
-class StubGalleryNavbarComponent {
-  @Input({ required: true }) searchState!: GallerySearchState;
+class StubMediaNavbarComponent {
+  @Input({ required: true }) searchState!: MediaSearchState;
   @Input() isTrashView = false;
-  @Output() readonly searchApplied = new EventEmitter<GallerySearchState>();
+  @Output() readonly searchApplied = new EventEmitter<MediaSearchState>();
   @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
   @Output() readonly emptyTrashRequested = new EventEmitter<void>();
 }
 
 @Component({
-  selector: 'app-gallery-media-card',
+  selector: 'app-media-grouped-list',
   template: '',
   standalone: true
 })
-class StubGalleryMediaCardComponent {
-  @Input({ required: true }) media!: MediaRead;
-  @Input() tileIndex = 0;
+class StubMediaGroupedListComponent {
+  @Input({ required: true }) groups!: { key: string; label: string; items: MediaRead[] }[];
+  @Input({ required: true }) selectedIds!: Set<string>;
   @Input() selectionMode = false;
-  @Input() selected = false;
   @Input() trashMode = false;
-  @Output() readonly open = new EventEmitter<MediaRead>();
-  @Output() readonly selectionToggled = new EventEmitter<MediaRead>();
-  @Output() readonly restoreRequested = new EventEmitter<MediaRead>();
+  @Input() regroupAnimating = false;
+  @Input() ariaLabel = 'Media list';
+  @Output() readonly groupSelected = new EventEmitter<{ key: string; label: string; items: MediaRead[] }>();
+  @Output() readonly mediaOpened = new EventEmitter<MediaRead>();
+  @Output() readonly mediaSelectionToggled = new EventEmitter<MediaRead>();
+  @Output() readonly mediaRestoreRequested = new EventEmitter<MediaRead>();
 }
 
 @Component({
-  selector: 'app-gallery-viewer',
+  selector: 'app-media-viewer',
   template: '',
   standalone: true
 })
-class StubGalleryViewerComponent {
+class StubMediaViewerComponent {
   @Input() media: MediaRead | null = null;
   @Input() canRestore = false;
   @Input() canDelete = false;
@@ -184,8 +186,8 @@ describe('GalleryPageComponent', () => {
       ]
     })
       .overrideComponent(GalleryPageComponent, {
-        remove: { imports: [GalleryNavbarComponent, GalleryMediaCardComponent, GalleryViewerComponent, GalleryUploadStatusIslandComponent, SelectionToolbarComponent] },
-        add: { imports: [StubGalleryNavbarComponent, StubGalleryMediaCardComponent, StubGalleryViewerComponent, StubGalleryUploadStatusIslandComponent, StubSelectionToolbarComponent] }
+        remove: { imports: [MediaNavbarComponent, MediaGroupedListComponent, MediaViewerComponent, GalleryUploadStatusIslandComponent, SelectionToolbarComponent] },
+        add: { imports: [StubMediaNavbarComponent, StubMediaGroupedListComponent, StubMediaViewerComponent, StubGalleryUploadStatusIslandComponent, StubSelectionToolbarComponent] }
       })
       .compileComponents();
 
@@ -195,7 +197,7 @@ describe('GalleryPageComponent', () => {
   });
 
   it('loads the default gallery query on creation', () => {
-    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildMediaListQuery('', createDefaultMediaSearchFilters()));
   });
 
   it('enables the custom scrollbar mode while the gallery page is mounted', () => {
@@ -210,7 +212,7 @@ describe('GalleryPageComponent', () => {
 
     expect(component.isTrashView).toBe(true);
     expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
-      ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
+      ...buildMediaListQuery('', createDefaultMediaSearchFilters()),
       state: 'trashed'
     });
   });
@@ -220,24 +222,24 @@ describe('GalleryPageComponent', () => {
     component.reload();
 
     expect(mediaService.loadSearchPage).toHaveBeenCalledTimes(1);
-    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildMediaListQuery('', createDefaultMediaSearchFilters()));
   });
 
   it('reloads when settings are saved from the navbar', () => {
     mediaService.loadSearchPage.mockClear();
 
-    const navbar = fixture.debugElement.query(By.directive(StubGalleryNavbarComponent));
-    (navbar.componentInstance as StubGalleryNavbarComponent).settingsSaved.emit();
+    const navbar = fixture.debugElement.query(By.directive(StubMediaNavbarComponent));
+    (navbar.componentInstance as StubMediaNavbarComponent).settingsSaved.emit();
 
     expect(mediaService.loadSearchPage).toHaveBeenCalledTimes(1);
-    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildMediaListQuery('', createDefaultMediaSearchFilters()));
   });
 
   it('applies a new search state and reloads with the derived query', () => {
-    const nextState: GallerySearchState = {
+    const nextState: MediaSearchState = {
       searchText: 'tag:fox character:renamon',
       filters: {
-        ...createDefaultGallerySearchFilters(),
+        ...createDefaultMediaSearchFilters(),
         album_id: 'album-1',
         nsfw: 'include',
         media_type: ['video']
@@ -248,7 +250,7 @@ describe('GalleryPageComponent', () => {
 
     expect(component.searchState).toEqual(nextState);
     expect(component.selectedCount).toBe(0);
-    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery(nextState.searchText, nextState.filters));
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildMediaListQuery(nextState.searchText, nextState.filters));
   });
 
   it('adds selected media to an album from the selection toolbar flow', () => {
@@ -435,7 +437,7 @@ describe('GalleryPageComponent', () => {
 
   it('clears the current search text when escape is pressed in browse mode', () => {
     const filters = {
-      ...createDefaultGallerySearchFilters(),
+      ...createDefaultMediaSearchFilters(),
       nsfw: 'include' as const
     };
     component.applySearch({
@@ -456,13 +458,13 @@ describe('GalleryPageComponent', () => {
       searchText: '',
       filters
     });
-    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildGalleryListQuery('', filters));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildMediaListQuery('', filters));
   });
 
   it('does not clear the current search text from an editable target', () => {
     component.applySearch({
       searchText: 'tag:fox',
-      filters: createDefaultGallerySearchFilters()
+      filters: createDefaultMediaSearchFilters()
     });
     mediaService.loadSearchPage.mockClear();
 

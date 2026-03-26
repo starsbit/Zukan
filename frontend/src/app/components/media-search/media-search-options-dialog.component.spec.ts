@@ -4,14 +4,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { Observable } from 'rxjs';
 
-import { GallerySearchOptionsDialogComponent } from './gallery-search-options-dialog.component';
-import { createDefaultGallerySearchFilters } from '../gallery-search.utils';
-import { AlbumRead } from '../../../models/api';
-import { AlbumsService } from '../../../services/albums.service';
+import { MediaSearchOptionsDialogComponent } from './media-search-options-dialog.component';
+import { createDefaultMediaSearchFilters } from '../media-search.utils';
+import { AlbumRead } from '../../models/api';
+import { AlbumsService } from '../../services/albums.service';
 
-describe('GallerySearchOptionsDialogComponent', () => {
-  let fixture: ComponentFixture<GallerySearchOptionsDialogComponent>;
-  let component: GallerySearchOptionsDialogComponent;
+describe('MediaSearchOptionsDialogComponent', () => {
+  let fixture: ComponentFixture<MediaSearchOptionsDialogComponent>;
+  let component: MediaSearchOptionsDialogComponent;
   let dialogRef: { close: ReturnType<typeof vi.fn> };
   let albumsService: { albums$: Observable<AlbumRead[]>; snapshot: { albums: AlbumRead[] }; loadAlbums: ReturnType<typeof vi.fn> };
 
@@ -58,7 +58,7 @@ describe('GallerySearchOptionsDialogComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [GallerySearchOptionsDialogComponent],
+      imports: [MediaSearchOptionsDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: AlbumsService, useValue: albumsService },
@@ -79,7 +79,7 @@ describe('GallerySearchOptionsDialogComponent', () => {
       ]
     }).compileComponents();
 
-    fixture = TestBed.createComponent(GallerySearchOptionsDialogComponent);
+    fixture = TestBed.createComponent(MediaSearchOptionsDialogComponent);
     component = fixture.componentInstance;
     fixture.detectChanges();
   });
@@ -154,28 +154,28 @@ describe('GallerySearchOptionsDialogComponent', () => {
     expect(text).toContain('Done');
     expect(text).toContain('Failed');
     expect(text).toContain('Image');
-    expect(createDefaultGallerySearchFilters().status).toContain('done');
+    expect(createDefaultMediaSearchFilters().status).toContain('done');
   });
 
   it('can hide album selection when the dialog is opened in a locked album context', async () => {
     TestBed.resetTestingModule();
 
     await TestBed.configureTestingModule({
-      imports: [GallerySearchOptionsDialogComponent],
+      imports: [MediaSearchOptionsDialogComponent],
       providers: [
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: AlbumsService, useValue: albumsService },
         {
           provide: MAT_DIALOG_DATA,
           useValue: {
-            filters: createDefaultGallerySearchFilters(),
+            filters: createDefaultMediaSearchFilters(),
             albumSelectionEnabled: false
           }
         }
       ]
     }).compileComponents();
 
-    const hiddenAlbumFixture = TestBed.createComponent(GallerySearchOptionsDialogComponent);
+    const hiddenAlbumFixture = TestBed.createComponent(MediaSearchOptionsDialogComponent);
     hiddenAlbumFixture.detectChanges();
 
     expect(hiddenAlbumFixture.nativeElement.textContent).not.toContain('Album');

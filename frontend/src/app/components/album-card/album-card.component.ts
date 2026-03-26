@@ -7,6 +7,7 @@ import { forkJoin } from 'rxjs';
 import { AlbumRead } from '../../models/api';
 import { AlbumsClientService } from '../../services/web/albums-client.service';
 import { MediaClientService } from '../../services/web/media-client.service';
+import { createObjectUrl, revokeObjectUrls } from '../../utils/object-url.utils';
 
 @Component({
   selector: 'app-album-card',
@@ -71,7 +72,7 @@ export class AlbumCardComponent implements OnChanges, OnDestroy {
                 return;
               }
 
-              this.coverUrls = blobs.map((blob) => URL.createObjectURL(blob));
+              this.coverUrls = blobs.map((blob) => createObjectUrl(blob));
               this.cdr.markForCheck();
             },
             error: () => {
@@ -109,7 +110,7 @@ export class AlbumCardComponent implements OnChanges, OnDestroy {
           return;
         }
 
-        this.coverUrls = [URL.createObjectURL(blob)];
+        this.coverUrls = [createObjectUrl(blob)];
         this.cdr.markForCheck();
       },
       error: () => {
@@ -124,9 +125,6 @@ export class AlbumCardComponent implements OnChanges, OnDestroy {
   }
 
   private revokeCoverUrls(): void {
-    for (const coverUrl of this.coverUrls) {
-      URL.revokeObjectURL(coverUrl);
-    }
-    this.coverUrls = [];
+    this.coverUrls = revokeObjectUrls(this.coverUrls);
   }
 }
