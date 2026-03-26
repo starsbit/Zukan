@@ -3,6 +3,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatMenuModule } from '@angular/material/menu';
 
 import { MediaSearchState } from './media-search.models';
 import { MediaSearchBarComponent } from './media-search-bar.component';
@@ -19,6 +20,7 @@ import { createResponsiveDialogConfig, createResponsiveDialogConfigWithoutData }
     MatDialogModule,
     MatIconModule,
     MatToolbarModule,
+    MatMenuModule,
     MediaSearchBarComponent
   ],
   templateUrl: './media-navbar.component.html',
@@ -36,6 +38,8 @@ export class MediaNavbarComponent {
   @Output() readonly searchApplied = new EventEmitter<MediaSearchState>();
   @Output() readonly settingsSaved = new EventEmitter<void>();
   @Output() readonly uploadRequested = new EventEmitter<void>();
+  @Output() readonly uploadFilesRequested = new EventEmitter<void>();
+  @Output() readonly uploadFolderRequested = new EventEmitter<void>();
   @Output() readonly emptyTrashRequested = new EventEmitter<void>();
 
   get activeFilterCount(): number {

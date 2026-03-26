@@ -8,7 +8,12 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
   standalone: true,
   imports: [MatButtonModule, MatIconModule, MatProgressSpinnerModule],
   templateUrl: './list-state.component.html',
-  changeDetection: ChangeDetectionStrategy.OnPush
+  styleUrl: './list-state.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '[style.display]': '"block"',
+    '[style.height]': '"100%"'
+  }
 })
 export class ListStateComponent {
   @Input({ required: true }) loading = false;

@@ -6,7 +6,8 @@
   (dragleave)="onDragLeave($event)"
   (drop)="onDrop($event)"
 >
-  <input #uploadInput type="file" multiple hidden (change)="onUploadSelection($event)" />
+  <input #uploadFilesInput type="file" multiple hidden (change)="onUploadSelection($event)" />
+  <input #uploadFolderInput type="file" multiple webkitdirectory mozdirectory hidden (change)="onUploadSelection($event)" />
 
   <app-sidebar />
 
@@ -62,7 +63,8 @@
             [isTrashView]="isTrashView"
             (searchApplied)="applySearch($event)"
             (settingsSaved)="reload()"
-            (uploadRequested)="openUploadPicker()"
+            (uploadFilesRequested)="openUploadFilesPicker()"
+            (uploadFolderRequested)="openUploadFolderPicker()"
             (emptyTrashRequested)="emptyTrash()"
           />
         }

@@ -67,6 +67,15 @@ interface GalleryTimelineMetric {
 const TIMELINE_LABEL_HIDE_DELAY_MS = 1400;
 const REGROUP_ANIMATION_MS = 280;
 const LOAD_MORE_THRESHOLD_PX = 640;
+const SUPPORTED_MEDIA_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+  'video/mp4',
+  'video/webm',
+  'video/quicktime'
+]);
 
 @Component({
   selector: 'app-gallery-page',
@@ -98,7 +107,8 @@ export class GalleryPageComponent implements OnDestroy {
   private readonly albumsService = inject(AlbumsService);
   private readonly mediaUploadService = inject(MediaUploadService);
 
-  @ViewChild('uploadInput') private uploadInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('uploadFilesInput') private uploadFilesInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('uploadFolderInput') private uploadFolderInput?: ElementRef<HTMLInputElement>;
   @ViewChild('galleryScroller') private galleryScroller?: ElementRef<HTMLElement>;
   @ViewChild('timelineTrack') private timelineTrack?: ElementRef<HTMLElement>;
 
@@ -225,16 +235,21 @@ export class GalleryPageComponent implements OnDestroy {
     }
   }
 
-  openUploadPicker(): void {
-    this.uploadInput?.nativeElement.click();
+  openUploadFilesPicker(): void {
+    this.uploadFilesInput?.nativeElement.click();
+  }
+
+  openUploadFolderPicker(): void {
+    this.uploadFolderInput?.nativeElement.click();
   }
 
   onUploadSelection(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const files = Array.from(input.files ?? []);
+    const allFiles = Array.from(input.files ?? []);
+    const supportedFiles = allFiles.filter((file) => SUPPORTED_MEDIA_TYPES.has(file.type));
 
     input.value = '';
-    this.mediaUploadService.startUpload(files);
+    this.mediaUploadService.startUpload(supportedFiles);
   }
 
   onDragEnter(event: DragEvent): void {
@@ -277,7 +292,9 @@ export class GalleryPageComponent implements OnDestroy {
     event.preventDefault();
     this.dragDepth = 0;
     this.dragActive = false;
-    this.mediaUploadService.startUpload(Array.from(event.dataTransfer?.files ?? []));
+    const allFiles = Array.from(event.dataTransfer?.files ?? []);
+    const supportedFiles = allFiles.filter((file) => SUPPORTED_MEDIA_TYPES.has(file.type));
+    this.mediaUploadService.startUpload(supportedFiles);
   }
 
   @HostListener('document:keydown', ['$event'])

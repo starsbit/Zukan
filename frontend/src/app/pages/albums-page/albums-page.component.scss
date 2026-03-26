@@ -84,9 +84,11 @@ h1 {
 
 .albums-state {
   display: grid;
+  align-content: center;
   justify-items: center;
   gap: 0.85rem;
-  padding: 5rem 1rem;
+  min-height: calc(100vh - 20rem);
+  padding: 2rem 1rem;
   text-align: center;
 }
 

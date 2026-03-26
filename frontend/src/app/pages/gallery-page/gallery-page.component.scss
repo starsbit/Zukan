@@ -122,11 +122,6 @@
   padding: 0.45rem 0.7rem;
   border: 1px solid color-mix(in srgb, var(--mat-sys-error) 18%, var(--mat-sys-outline));
   border-radius: 999px;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--mat-sys-error-container) 20%, transparent),
-      color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent)
-    );
 }
 
 .trash-retention-notice mat-icon {

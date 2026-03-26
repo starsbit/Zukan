@@ -96,7 +96,39 @@ input,
 textarea,
 select,
 mat-card,
-.mat-mdc-card,
-.mat-mdc-dialog-surface {
+.mat-mdc-card {
   color: inherit;
+}
+
+.mat-mdc-dialog-container {
+  --mdc-dialog-supporting-text-color: var(--mat-sys-on-surface);
+}
+
+.mat-mdc-dialog-container .mat-mdc-dialog-surface {
+  background-color: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+}
+
+.mat-mdc-dialog-container .mat-mdc-dialog-surface h1,
+.mat-mdc-dialog-container .mat-mdc-dialog-surface h2,
+.mat-mdc-dialog-container .mat-mdc-dialog-surface h3,
+.mat-mdc-dialog-container .mat-mdc-dialog-surface h4,
+.mat-mdc-dialog-container .mat-mdc-dialog-surface p {
+  color: var(--mat-sys-on-surface);
+}
+
+.mat-mdc-dialog-container .mdc-text-field--filled .mdc-text-field__input {
+  color: var(--mat-sys-on-surface);
+}
+
+.mat-mdc-dialog-container .mat-mdc-form-field-label {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.mat-mdc-dialog-container .mat-mdc-button {
+  color: var(--mat-sys-primary);
+}
+
+.mat-mdc-dialog-container .mat-mdc-button[color="warn"] {
+  color: var(--mat-sys-error);
 }
