@@ -37,6 +37,9 @@ export class MediaClientService {
 
     for (const file of files) {
       formData.append('files', file, file.name);
+      if (Number.isFinite(file.lastModified) && file.lastModified > 0) {
+        formData.append('captured_at_values', new Date(file.lastModified).toISOString());
+      }
     }
 
     return formData;

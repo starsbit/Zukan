@@ -146,6 +146,58 @@ describe('MediaService', () => {
     expect(service.snapshot.page?.items[0]?.is_favorited).toBe(true);
   });
 
+  it('inserts refreshed media into the current active page when it is missing', async () => {
+    service['stateSubject'].next({
+      ...service.snapshot,
+      pageMode: 'search',
+      pageQuery: {
+        state: 'active',
+        page_size: 20,
+        status: 'pending,processing,done,failed'
+      },
+      page: {
+        total: 1,
+        next_cursor: null,
+        page_size: 20,
+        items: [createMedia('media-existing')]
+      }
+    });
+
+    const refreshPromise = firstValueFrom(service.refreshMediaInPage('media-new'));
+    const request = httpTesting.expectOne('http://api.example.test/media/media-new');
+    request.flush(createMedia('media-new'));
+
+    await expect(refreshPromise).resolves.toMatchObject({ id: 'media-new' });
+    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-new', 'media-existing']);
+    expect(service.snapshot.page?.total).toBe(2);
+  });
+
+  it('does not insert refreshed active media into the trash view', async () => {
+    service['stateSubject'].next({
+      ...service.snapshot,
+      pageMode: 'search',
+      pageQuery: {
+        state: 'trashed',
+        page_size: 20,
+        status: 'pending,processing,done,failed'
+      },
+      page: {
+        total: 1,
+        next_cursor: null,
+        page_size: 20,
+        items: [createMedia('media-trashed', { deleted_at: '2026-03-21T00:00:00Z' })]
+      }
+    });
+
+    const refreshPromise = firstValueFrom(service.refreshMediaInPage('media-new'));
+    const request = httpTesting.expectOne('http://api.example.test/media/media-new');
+    request.flush(createMedia('media-new', { deleted_at: null }));
+
+    await expect(refreshPromise).resolves.toMatchObject({ id: 'media-new' });
+    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-trashed']);
+    expect(service.snapshot.page?.total).toBe(1);
+  });
+
   it('removes restored media from the current trash page', async () => {
     service['stateSubject'].next({
       ...service.snapshot,

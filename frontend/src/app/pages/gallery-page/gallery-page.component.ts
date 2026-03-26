@@ -17,8 +17,9 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ActivatedRoute } from '@angular/router';
+import { catchError, forkJoin, of } from 'rxjs';
 
-import { MediaRead } from '../../models/api';
+import { MediaRead, Uuid } from '../../models/api';
 import { AlbumPickerDialogComponent } from '../../components/album-picker-dialog/album-picker-dialog.component';
 import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
 import { MediaGroupedListComponent } from '../../components/media-grouped-list/media-grouped-list.component';
@@ -165,8 +166,8 @@ export class GalleryPageComponent implements OnDestroy {
 
     this.mediaUploadService.refreshRequested$
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.reload();
+      .subscribe((mediaIds) => {
+        this.refreshCompletedUploads(mediaIds);
       });
 
     this.mediaUploadService.reviewRequested$
@@ -650,6 +651,24 @@ export class GalleryPageComponent implements OnDestroy {
       .subscribe({
         error: () => {
           // The template already renders the error state from MediaService.
+        }
+      });
+  }
+
+  private refreshCompletedUploads(mediaIds: Uuid[]): void {
+    if (mediaIds.length === 0) {
+      return;
+    }
+
+    forkJoin(
+      mediaIds.map((mediaId) => this.mediaService.refreshMediaInPage(mediaId).pipe(catchError(() => of(null))))
+    )
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((updatedMedia) => {
+        const activeMedia = updatedMedia.find((media) => media?.id === this.selectedMedia?.id) ?? null;
+        if (activeMedia) {
+          this.selectedMedia = activeMedia;
+          this.cdr.markForCheck();
         }
       });
   }

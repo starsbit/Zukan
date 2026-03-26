@@ -19,6 +19,7 @@ from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.models.auth import User
 from backend.app.models.media import Media
+from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
@@ -134,6 +135,73 @@ async def _ensure_admin_user():
             logger.info("Bootstrapped default admin user")
 
 
+async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
+    async with AsyncSessionLocal() as db:
+        pending_media = (
+            (
+                await db.execute(
+                    select(Media).where(
+                        Media.deleted_at.is_(None),
+                        Media.tagging_status.in_(["pending", "processing"]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        pending_upload_items = (
+            (
+                await db.execute(
+                    select(ImportBatchItem)
+                    .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                    .where(
+                        ImportBatch.type == BatchType.upload,
+                        ImportBatchItem.media_id.is_not(None),
+                        ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        updated = False
+        for media in pending_media:
+            if media.tagging_status == "processing":
+                media.tagging_status = "pending"
+                updated = True
+
+        for batch_item in pending_upload_items:
+            if batch_item.status == ItemStatus.processing:
+                batch_item.status = ItemStatus.pending
+                updated = True
+
+        if updated:
+            await db.commit()
+
+    ordered_media_ids: list[uuid.UUID] = []
+    seen_media_ids: set[uuid.UUID] = set()
+
+    for batch_item in pending_upload_items:
+        media_id = batch_item.media_id
+        if media_id is None or media_id in seen_media_ids:
+            continue
+        seen_media_ids.add(media_id)
+        ordered_media_ids.append(media_id)
+
+    for media in pending_media:
+        media_id = media.id
+        if media_id in seen_media_ids:
+            continue
+        seen_media_ids.add(media_id)
+        ordered_media_ids.append(media_id)
+
+    for media_id in ordered_media_ids:
+        await queue.put(media_id)
+
+    return len(ordered_media_ids)
+
+
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
@@ -142,9 +210,12 @@ async def lifespan(_api: FastAPI):
     tagger.load()
     ocr_backend.load()
     set_tag_queue(tag_queue)
+    recovered_count = await _recover_pending_media_jobs(tag_queue)
     worker = asyncio.create_task(tagging_worker())
     purge_worker = asyncio.create_task(trash_purge_worker())
     logger.info("Background tagging worker started")
+    if recovered_count:
+        logger.info("Recovered %s pending media jobs after startup", recovered_count)
     logger.info("Background trash purge worker started")
     yield
     logger.info("Application shutdown initiated")

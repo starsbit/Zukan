@@ -155,6 +155,7 @@ async def upload(
         "album_id": str(body.album_id) if body.album_id else None,
         "tags": body.tags or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
+        "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
     }
     body_hash = idempotency_body_hash(upload_signature)
     replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
@@ -169,6 +170,7 @@ async def upload(
         album_id=body.album_id,
         tags=body.tags,
         captured_at_override=body.captured_at,
+        captured_at_values=body.captured_at_values,
     )
     await idempotency_store.remember(
         scope=scope,

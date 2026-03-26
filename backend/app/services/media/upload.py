@@ -88,18 +88,22 @@ class MediaUploadWorkflow:
         album_id: uuid.UUID | None,
         tags: list[str] | None,
         captured_at_override: datetime | None,
+        captured_at_values: list[datetime] | None = None,
     ) -> BatchUploadResponse:
         self._validate_batch_size(files)
         upload_batch = await self._create_upload_batch(user, len(files))
         ctx = UploadBatchContext()
 
-        for upload in files:
+        for index, upload in enumerate(files):
+            per_file_override = captured_at_override
+            if captured_at_values and index < len(captured_at_values):
+                per_file_override = captured_at_values[index]
             await self._process_single_upload(
                 upload_batch=upload_batch,
                 upload=upload,
                 user=user,
                 tags=tags,
-                captured_at_override=captured_at_override,
+                captured_at_override=per_file_override,
                 ctx=ctx,
             )
 
@@ -146,7 +150,9 @@ class MediaUploadWorkflow:
             return
 
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        if file_metadata.captured_at:
+        if captured_at_override is not None:
+            captured_at = _normalize_utc(captured_at_override)
+        elif file_metadata.captured_at:
             captured_at = file_metadata.captured_at
         else:
             file_mtime = saved.path.stat().st_mtime
@@ -397,6 +403,7 @@ class MediaUploadService:
         album_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
+        captured_at_values: list[datetime] | None = None,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
             db=self._db,
@@ -410,6 +417,7 @@ class MediaUploadService:
             album_id=album_id,
             tags=tags,
             captured_at_override=captured_at_override,
+            captured_at_values=captured_at_values,
         )
 
     async def build_upload_response(
@@ -420,6 +428,7 @@ class MediaUploadService:
         album_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
+        captured_at_values: list[datetime] | None = None,
     ) -> BatchUploadResponse:
         return await self.upload_files(
             user,
@@ -427,6 +436,7 @@ class MediaUploadService:
             album_id=album_id,
             tags=tags,
             captured_at_override=captured_at_override,
+            captured_at_values=captured_at_values,
         )
 
     async def mark_upload_batch_item_done(self, media_id: uuid.UUID) -> None:
@@ -475,3 +485,9 @@ class MediaUploadService:
         else:
             batch.status = BatchStatus.done
         batch.finished_at = datetime.now(timezone.utc)
+
+
+def _normalize_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

@@ -36,6 +36,7 @@ class MediaUploadRequest(BaseModel):
     album_id: uuid.UUID | None = None
     tags: list[str] | None = None
     captured_at: datetime | None = None
+    captured_at_values: list[datetime] | None = None
 
     model_config = {
         "title": "MediaUploadRequest",
@@ -49,5 +50,12 @@ class MediaUploadRequest(BaseModel):
         album_id: uuid.UUID | None = Form(default=None),
         tags: list[str] | None = Form(default=None),
         captured_at: datetime | None = Form(default=None),
+        captured_at_values: list[datetime] | None = Form(default=None),
     ) -> "MediaUploadRequest":
-        return cls(files=files, album_id=album_id, tags=tags, captured_at=captured_at)
+        return cls(
+            files=files,
+            album_id=album_id,
+            tags=tags,
+            captured_at=captured_at,
+            captured_at_values=captured_at_values,
+        )

@@ -108,9 +108,11 @@ describe('resource clients', () => {
   });
 
   it('builds media upload payloads and media query params correctly', async () => {
+    const firstModified = Date.UTC(2021, 0, 2, 3, 4, 5);
+    const secondModified = Date.UTC(2020, 5, 7, 8, 9, 10);
     const uploadPromise = firstValueFrom(mediaClient.uploadMedia([
-      new File(['a'], 'a.png', { type: 'image/png' }),
-      new File(['b'], 'b.png', { type: 'image/png' })
+      new File(['a'], 'a.png', { type: 'image/png', lastModified: firstModified }),
+      new File(['b'], 'b.png', { type: 'image/png', lastModified: secondModified })
     ]));
     const progressEvents: number[] = [];
     mediaClient.uploadMediaWithProgress([
@@ -137,6 +139,11 @@ describe('resource clients', () => {
     expect(uploadRequest.request.body instanceof FormData).toBe(true);
     const files = uploadRequest.request.body.getAll('files') as File[];
     expect(files.map((file) => file.name)).toEqual(['a.png', 'b.png']);
+    const capturedAtValues = uploadRequest.request.body.getAll('captured_at_values') as string[];
+    expect(capturedAtValues).toEqual([
+      new Date(firstModified).toISOString(),
+      new Date(secondModified).toISOString()
+    ]);
     uploadRequest.flush({ accepted: 2, duplicates: 0, errors: 0, results: [] });
 
     const progressUploadRequest = uploadRequests[1];

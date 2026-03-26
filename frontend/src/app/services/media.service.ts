@@ -223,6 +223,20 @@ export class MediaService {
     );
   }
 
+  refreshMediaInPage(mediaId: Uuid): Observable<MediaDetail> {
+    return this.mediaClient.getMedia(mediaId).pipe(
+      tap((media) => {
+        this.patchState({
+          details: {
+            ...this.stateSubject.value.details,
+            [mediaId]: media
+          }
+        });
+        this.applyMediaToPage(media, { insertIfMissing: true });
+      })
+    );
+  }
+
   uploadMedia(files: File[]): Observable<BatchUploadResponse> {
     this.startMutation();
 
@@ -442,16 +456,31 @@ export class MediaService {
     });
   }
 
-  private applyMediaToPage(media: MediaRead): void {
+  private applyMediaToPage(media: MediaRead, options?: { insertIfMissing?: boolean }): void {
     const page = this.stateSubject.value.page;
-    if (!page || !page.items.some((item) => item.id === media.id)) {
+    if (!page) {
+      return;
+    }
+
+    if (page.items.some((item) => item.id === media.id)) {
+      this.patchState({
+        page: {
+          ...page,
+          items: replaceItemById(page.items, media)
+        }
+      });
+      return;
+    }
+
+    if (!options?.insertIfMissing || !shouldInsertIntoCurrentView(media, this.stateSubject.value.pageQuery)) {
       return;
     }
 
     this.patchState({
       page: {
         ...page,
-        items: replaceItemById(page.items, media)
+        items: [media, ...page.items],
+        total: page.total != null ? page.total + 1 : page.total
       }
     });
   }
@@ -539,6 +568,68 @@ function shouldRemoveFromCurrentViewForDeletedState(
   }
 
   return false;
+}
+
+function shouldInsertIntoCurrentView(media: MediaRead, query: ListMediaQuery | null): boolean {
+  if (query?.state === 'trashed') {
+    return Boolean(media.deleted_at);
+  }
+
+  if (media.deleted_at) {
+    return false;
+  }
+
+  if (query?.favorited === true && !media.is_favorited) {
+    return false;
+  }
+
+  if (query?.media_type && query.media_type.length > 0 && !query.media_type.includes(media.media_type)) {
+    return false;
+  }
+
+  if (query?.status) {
+    const allowedStatuses = new Set(query.status.split(',').map((value) => value.trim()).filter(Boolean));
+    if (allowedStatuses.size > 0 && !allowedStatuses.has(media.tagging_status)) {
+      return false;
+    }
+  }
+
+  if (query?.tag && query.tag.length > 0 && !query.tag.every((tag) => media.tags.includes(tag))) {
+    return false;
+  }
+
+  if (query?.album_id || query?.character_name || query?.ocr_text) {
+    return false;
+  }
+
+  if ((query?.captured_after || query?.captured_before) && !isWithinCaptureWindow(media.metadata.captured_at, query)) {
+    return false;
+  }
+
+  return true;
+}
+
+function isWithinCaptureWindow(capturedAt: string, query: ListMediaQuery): boolean {
+  const captured = new Date(capturedAt).getTime();
+  if (Number.isNaN(captured)) {
+    return false;
+  }
+
+  if (query.captured_after) {
+    const after = new Date(query.captured_after).getTime();
+    if (!Number.isNaN(after) && captured < after) {
+      return false;
+    }
+  }
+
+  if (query.captured_before) {
+    const before = new Date(query.captured_before).getTime();
+    if (!Number.isNaN(before) && captured > before) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function mergePageItems(existing: MediaRead[], next: MediaRead[]): MediaRead[] {

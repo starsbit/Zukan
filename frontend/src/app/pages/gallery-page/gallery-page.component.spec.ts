@@ -13,7 +13,7 @@ import { GalleryPageComponent } from './gallery-page.component';
 import { MediaNavbarComponent } from '../../components/media-search/media-navbar.component';
 import { MediaGroupedListComponent } from '../../components/media-grouped-list/media-grouped-list.component';
 import { MediaViewerComponent } from '../../components/media-viewer/media-viewer.component';
-import { MediaRead } from '../../models/api';
+import { MediaRead, Uuid } from '../../models/api';
 import { MediaService } from '../../services/media.service';
 import { MediaUploadService, type UploadReviewCandidate } from '../../services/media-upload.service';
 import { MediaSearchState } from '../../components/media-search/media-search.models';
@@ -113,6 +113,7 @@ describe('GalleryPageComponent', () => {
     mutationPending$: BehaviorSubject<boolean>;
     loadPage: ReturnType<typeof vi.fn>;
     loadSearchPage: ReturnType<typeof vi.fn>;
+    refreshMediaInPage: ReturnType<typeof vi.fn>;
     loadNextPage: ReturnType<typeof vi.fn>;
     batchUpdateMedia: ReturnType<typeof vi.fn>;
     restoreMediaBatch: ReturnType<typeof vi.fn>;
@@ -122,7 +123,7 @@ describe('GalleryPageComponent', () => {
     emptyTrash: ReturnType<typeof vi.fn>;
   };
   let mediaUploadService: {
-    refreshRequested$: Subject<void>;
+    refreshRequested$: Subject<Uuid[]>;
     reviewRequested$: Subject<UploadReviewCandidate[]>;
     startUpload: ReturnType<typeof vi.fn>;
   };
@@ -145,6 +146,7 @@ describe('GalleryPageComponent', () => {
       mutationPending$: new BehaviorSubject(false),
       loadPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
       loadSearchPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
+      refreshMediaInPage: vi.fn().mockImplementation((id: Uuid) => of(createMediaRead({ id }))),
       loadNextPage: vi.fn().mockReturnValue(of(null)),
       batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMediaBatch: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
@@ -154,7 +156,7 @@ describe('GalleryPageComponent', () => {
       emptyTrash: vi.fn().mockReturnValue(of(null))
     };
     mediaUploadService = {
-      refreshRequested$: new Subject<void>(),
+      refreshRequested$: new Subject<Uuid[]>(),
       reviewRequested$: new Subject<UploadReviewCandidate[]>(),
       startUpload: vi.fn()
     };
@@ -611,7 +613,7 @@ describe('GalleryPageComponent', () => {
     expect(component.dragActive).toBe(false);
   });
 
-  it('tracks drag state and reloads when upload processing asks for a refresh', () => {
+  it('tracks drag state and refreshes completed media in place when upload processing settles', () => {
     const dragEnter = {
       preventDefault: vi.fn(),
       dataTransfer: {
@@ -625,7 +627,7 @@ describe('GalleryPageComponent', () => {
       }
     } as unknown as DragEvent;
 
-    mediaService.loadPage.mockClear();
+    mediaService.refreshMediaInPage.mockClear();
 
     component.onDragEnter(dragEnter);
     expect(component.dragActive).toBe(true);
@@ -633,8 +635,9 @@ describe('GalleryPageComponent', () => {
     component.onDragLeave(dragLeave);
     expect(component.dragActive).toBe(false);
 
-    mediaUploadService.refreshRequested$.next();
-    expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
+    mediaUploadService.refreshRequested$.next(['media-1']);
+    expect(mediaService.refreshMediaInPage).toHaveBeenCalledTimes(1);
+    expect(mediaService.refreshMediaInPage).toHaveBeenCalledWith('media-1');
   });
 
   it('loads next media page when the gallery scroll nears the bottom', () => {

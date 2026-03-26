@@ -137,6 +137,46 @@ async def test_run_coordinates_batch_lifecycle(fake_db, stub_query, user):
 
 
 @pytest.mark.asyncio
+async def test_run_applies_per_file_captured_at_values(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    workflow._create_upload_batch = AsyncMock(
+        return_value=ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.running, total_items=2)
+    )
+
+    observed_overrides: list[datetime | None] = []
+
+    async def fake_process(**kwargs):
+        observed_overrides.append(kwargs["captured_at_override"])
+
+    workflow._process_single_upload = AsyncMock(side_effect=fake_process)
+    workflow._finalize_upload_batch = lambda upload_batch, ctx: None
+    workflow._build_response = lambda upload_batch, ctx: SimpleNamespace(accepted=0, batch_id=uuid.uuid4())
+
+    files = [
+        UploadFile(filename="a.webp", file=io.BytesIO(b"x")),
+        UploadFile(filename="b.webp", file=io.BytesIO(b"y")),
+    ]
+    per_file_1 = datetime(2023, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    per_file_2 = datetime(2022, 6, 7, 8, 9, 10, tzinfo=timezone.utc)
+
+    await workflow.run(
+        user=user,
+        files=files,
+        album_id=None,
+        tags=None,
+        captured_at_override=None,
+        captured_at_values=[per_file_1, per_file_2],
+    )
+
+    assert observed_overrides == [per_file_1, per_file_2]
+
+
+@pytest.mark.asyncio
 async def test_attach_album_if_needed_invokes_album_service(fake_db, stub_query, user):
     workflow = MediaUploadWorkflow(
         db=fake_db,

@@ -93,7 +93,7 @@ export class MediaUploadService {
   private readonly snackBar = inject(MatSnackBar);
 
   private readonly sessionSubject = new BehaviorSubject<UploadSession>(createIdleSession());
-  private readonly refreshSubject = new Subject<void>();
+  private readonly refreshSubject = new Subject<Uuid[]>();
   private readonly reviewSubject = new Subject<UploadReviewCandidate[]>();
   private readonly taggingStatusByMediaId = signal<Partial<Record<Uuid, string>>>({});
 
@@ -335,13 +335,15 @@ export class MediaUploadService {
       errorMessage: null
     });
 
+    if (acceptedIds.length > 0) {
+      this.refreshSubject.next(acceptedIds);
+    }
+
     this.patchTaggingStatuses(
       items
         .filter((item) => item.status === 'processing' && item.mediaId)
         .map((item) => ({ mediaId: item.mediaId as Uuid, taggingStatus: 'pending' }))
     );
-
-    this.refreshSubject.next();
 
     if (acceptedIds.length === 0) {
       this.completeSession();
@@ -420,16 +422,19 @@ export class MediaUploadService {
       items
     });
 
-    const hasNewlySettledMedia = items.some((item) => {
+    const newlySettledMediaIds = items.flatMap((item) => {
       if (!item.mediaId) {
-        return false;
+        return [];
       }
 
-      return item.status === 'done' && previousStatuses.get(item.mediaId) !== 'done';
+      const previousStatus = previousStatuses.get(item.mediaId);
+      const settledNow = item.status === 'done' || item.status === 'failed';
+      const wasSettledBefore = previousStatus === 'done' || previousStatus === 'failed';
+      return settledNow && !wasSettledBefore ? [item.mediaId] : [];
     });
 
-    if (hasNewlySettledMedia) {
-      this.refreshSubject.next();
+    if (newlySettledMediaIds.length > 0) {
+      this.refreshSubject.next(newlySettledMediaIds);
     }
 
     this.patchTaggingStatuses(

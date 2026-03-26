@@ -100,12 +100,14 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.phase).toBe('processing');
       expect(service.snapshot.processingProgress).toBe(0);
       expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-1']);
       expect(service.getMediaTaggingStatus('media-1')).toBe('processing');
 
       await vi.advanceTimersByTimeAsync(2000);
       expect(service.snapshot.phase).toBe('completed');
       expect(service.snapshot.processingProgress).toBe(100);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-1']);
       expect(service.getMediaTaggingStatus('media-1')).toBe('done');
       expect(reviewEvents).toEqual([]);
 
@@ -159,6 +161,7 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.processingProgress).toBe(0);
       expect(service.snapshot.items[0]?.status).toBe('processing');
       expect(refreshSpy).toHaveBeenCalledTimes(1);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-1']);
       expect(service.getMediaTaggingStatus('media-1')).toBe('pending');
 
       await vi.advanceTimersByTimeAsync(2000);
@@ -168,6 +171,7 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.processingProgress).toBe(100);
       expect(service.snapshot.items[0]?.status).toBe('done');
       expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-1']);
       expect(service.getMediaTaggingStatus('media-1')).toBe('done');
       expect(reviewEvents[0]?.[0]?.issue).toBe('missing_character');
     } finally {
@@ -235,11 +239,13 @@ describe('MediaUploadService', () => {
       expect(service.snapshot.phase).toBe('processing');
       expect(service.snapshot.processingProgress).toBe(50);
       expect(refreshSpy).toHaveBeenCalledTimes(2);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-1']);
 
       await vi.advanceTimersByTimeAsync(2000);
       expect(service.snapshot.phase).toBe('completed');
       expect(service.snapshot.processingProgress).toBe(100);
       expect(refreshSpy).toHaveBeenCalledTimes(3);
+      expect(refreshSpy).toHaveBeenLastCalledWith(['media-2']);
     } finally {
       vi.useRealTimers();
     }

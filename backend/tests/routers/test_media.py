@@ -47,7 +47,7 @@ def _media_read_payload(media_id: str) -> dict:
 
 
 def test_upload_media_contract(api_client, monkeypatch):
-    async def _fake_upload(self, user, files, album_id, tags, captured_at_override):
+    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None):
         batch_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
         media_id = str(uuid.uuid4())
