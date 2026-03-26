@@ -30,6 +30,7 @@ import { MediaClientService } from './web/media-client.service';
 export interface MediaState {
   page: MediaCursorPage | null;
   pageQuery: ListMediaQuery | null;
+  pageMode: 'list' | 'search';
   details: Record<Uuid, MediaDetail>;
   selectedMediaId: Uuid | null;
   request: RequestStatus;
@@ -40,6 +41,7 @@ export interface MediaState {
 const initialMediaState = (): MediaState => ({
   page: null,
   pageQuery: null,
+  pageMode: 'list',
   details: {},
   selectedMediaId: null,
   request: createRequestStatus(),
@@ -93,15 +95,25 @@ export class MediaService {
   }
 
   loadPage(query?: ListMediaQuery): Observable<MediaCursorPage> {
+    return this.loadPageWithMode('list', query);
+  }
+
+  loadSearchPage(query?: ListMediaQuery): Observable<MediaCursorPage> {
+    return this.loadPageWithMode('search', query);
+  }
+
+  private loadPageWithMode(pageMode: 'list' | 'search', query?: ListMediaQuery): Observable<MediaCursorPage> {
     this.patchState({
+      pageMode,
       pageQuery: query ?? null,
       request: beginRequest(this.stateSubject.value.request)
     });
 
-    return this.mediaClient.listMedia(query).pipe(
+    return this.getPageRequest(pageMode, query).pipe(
       tap((page) => {
         this.patchState({
           page,
+          pageMode,
           pageQuery: query ?? null,
           request: completeRequest(this.stateSubject.value.request)
         });
@@ -116,7 +128,10 @@ export class MediaService {
   }
 
   refreshPage(): Observable<MediaCursorPage> {
-    return this.loadPage(this.stateSubject.value.pageQuery ?? undefined);
+    const state = this.stateSubject.value;
+    return state.pageMode === 'search'
+      ? this.loadSearchPage(state.pageQuery ?? undefined)
+      : this.loadPage(state.pageQuery ?? undefined);
   }
 
   loadNextPage(): Observable<MediaCursorPage | null> {
@@ -141,7 +156,7 @@ export class MediaService {
       request: beginRequest(state.request)
     });
 
-    return this.mediaClient.listMedia(nextQuery).pipe(
+    return this.getPageRequest(state.pageMode, nextQuery).pipe(
       tap((next) => {
         const currentPage = this.stateSubject.value.page;
         const mergedItems = mergePageItems(currentPage?.items ?? [], next.items);
@@ -163,6 +178,12 @@ export class MediaService {
     );
   }
 
+  private getPageRequest(pageMode: 'list' | 'search', query?: ListMediaQuery): Observable<MediaCursorPage> {
+    return pageMode === 'search'
+      ? this.mediaClient.searchMedia(query)
+      : this.mediaClient.listMedia(query);
+  }
+
   selectMedia(mediaId: Uuid): Observable<MediaDetail> {
     const cached = this.stateSubject.value.details[mediaId];
     this.patchState({
@@ -170,10 +191,7 @@ export class MediaService {
     });
 
     if (cached) {
-      return new Observable<MediaDetail>((subscriber) => {
-        subscriber.next(cached);
-        subscriber.complete();
-      });
+      return of(cached);
     }
 
     return this.loadMedia(mediaId);
@@ -316,7 +334,7 @@ export class MediaService {
           this.patchState({
             page: this.stateSubject.value.page
               ? { ...this.stateSubject.value.page, items: [], total: 0 }
-              : { items: [], next_cursor: null, page_size: 0, total: 0 }
+              : { items: [], next_cursor: null, has_more: false, page_size: 0, total: 0 }
           });
         } else {
           this.invalidatePage();

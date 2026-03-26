@@ -17,7 +17,7 @@ import {
   timer
 } from 'rxjs';
 
-import { BatchUploadResponse, MediaDetail, Uuid } from '../models/api';
+import { BatchUploadResponse, MediaDetail, ProcessingStatus, Uuid } from '../models/api';
 import { ConfigClientService } from './web/config-client.service';
 import { MediaClientService } from './web/media-client.service';
 
@@ -547,7 +547,7 @@ function isProcessingSettled(media: MediaDetail): boolean {
   return statuses.length > 0 && statuses.every((status) => status === 'done' || status === 'failed');
 }
 
-function getUploadProcessingStatuses(media: MediaDetail): string[] {
+function getUploadProcessingStatuses(media: MediaDetail): ProcessingStatus[] {
   const statuses = [media.tagging_status, media.thumbnail_status];
 
   if (media.media_type !== 'image') {
@@ -556,19 +556,7 @@ function getUploadProcessingStatuses(media: MediaDetail): string[] {
     statuses.push(media.poster_status);
   }
 
-  return statuses.filter((value): value is string => Boolean(value));
-}
-
-function detailsToQueueStatus(media: MediaDetail): UploadQueueItemState {
-  if (hasProcessingFailed(media)) {
-    return 'failed';
-  }
-
-  if (isProcessingSettled(media)) {
-    return 'done';
-  }
-
-  return 'processing';
+  return statuses.filter((value): value is ProcessingStatus => Boolean(value));
 }
 
 function normalizeUploadBatchSize(value: number): number {

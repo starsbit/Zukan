@@ -23,13 +23,23 @@ export interface LogoutRequestDto {
 export interface TokenResponse {
   access_token: string;
   refresh_token: string;
-  token_type?: string;
+  token_type: string;
 }
 
 export interface AccessTokenResponse {
   access_token: string;
   refresh_token: string;
-  token_type?: string;
+  token_type: string;
+}
+
+export interface UserSelfReadLite {
+  id: Uuid;
+  username: string;
+  email: string;
+  show_nsfw: boolean;
+  tag_confidence_threshold: number;
+  version: number;
+  created_at: string;
 }
 
 export interface AuthenticatedUser {
@@ -39,5 +49,6 @@ export interface AuthenticatedUser {
   is_admin: boolean;
   show_nsfw: boolean;
   tag_confidence_threshold: number;
+  version: number;
   created_at: string;
 }

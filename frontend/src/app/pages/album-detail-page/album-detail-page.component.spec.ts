@@ -9,7 +9,7 @@ import { BehaviorSubject, of } from 'rxjs';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
 
 import { AlbumDetailPageComponent } from './album-detail-page.component';
-import { AlbumRead, MediaListResponse } from '../../models/api';
+import { AlbumRead, MediaCursorPage } from '../../models/api';
 import { AppSidebarComponent } from '../../components/app-sidebar/app-sidebar.component';
 import { ConfirmDialogComponent } from '../../components/confirm-dialog/confirm-dialog.component';
 import { GalleryMediaCardComponent } from '../../components/gallery-media-card/gallery-media-card.component';
@@ -84,7 +84,7 @@ describe('AlbumDetailPageComponent', () => {
   let component: AlbumDetailPageComponent;
   let albumsService: {
     selectedAlbum$: BehaviorSubject<AlbumRead | null>;
-    selectedAlbumMedia$: BehaviorSubject<MediaListResponse | null>;
+    selectedAlbumMedia$: BehaviorSubject<MediaCursorPage | null>;
     loading$: BehaviorSubject<boolean>;
     error$: BehaviorSubject<unknown | null>;
     loadAlbum: ReturnType<typeof vi.fn>;
@@ -98,6 +98,7 @@ describe('AlbumDetailPageComponent', () => {
     loading$: BehaviorSubject<boolean>;
     error$: BehaviorSubject<unknown | null>;
     loadPage: ReturnType<typeof vi.fn>;
+    loadSearchPage: ReturnType<typeof vi.fn>;
     loadNextPage: ReturnType<typeof vi.fn>;
   };
   let dialog: { open: ReturnType<typeof vi.fn> };
@@ -114,9 +115,10 @@ describe('AlbumDetailPageComponent', () => {
     created_at: '2026-03-21T00:00:00Z',
     updated_at: '2026-03-21T00:00:00Z'
   };
-  const albumMedia: MediaListResponse = {
+  const albumMedia: MediaCursorPage = {
     total: 1,
-    page: 1,
+    next_cursor: null,
+    has_more: false,
     page_size: 20,
     items: [createMediaRead()]
   };
@@ -124,7 +126,7 @@ describe('AlbumDetailPageComponent', () => {
   beforeEach(async () => {
     albumsService = {
       selectedAlbum$: new BehaviorSubject<AlbumRead | null>(album),
-      selectedAlbumMedia$: new BehaviorSubject<MediaListResponse | null>(albumMedia),
+      selectedAlbumMedia$: new BehaviorSubject<MediaCursorPage | null>(albumMedia),
       loading$: new BehaviorSubject(false),
       error$: new BehaviorSubject<unknown | null>(null),
       loadAlbum: vi.fn().mockReturnValue(of(album)),
@@ -138,6 +140,7 @@ describe('AlbumDetailPageComponent', () => {
       loading$: new BehaviorSubject(false),
       error$: new BehaviorSubject<unknown | null>(null),
       loadPage: vi.fn().mockReturnValue(of(albumMedia)),
+      loadSearchPage: vi.fn().mockReturnValue(of(albumMedia)),
       loadNextPage: vi.fn().mockReturnValue(of(null))
     };
     dialog = {
@@ -178,7 +181,7 @@ describe('AlbumDetailPageComponent', () => {
 
   it('loads album detail and media on creation', () => {
     expect(albumsService.loadAlbum).toHaveBeenCalledWith('album-1');
-    expect(mediaService.loadPage).toHaveBeenCalledWith({
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
       ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
       album_id: 'album-1',
       page_size: 120
@@ -228,7 +231,7 @@ describe('AlbumDetailPageComponent', () => {
 
     component.applySearch(nextState);
 
-    expect(mediaService.loadPage).toHaveBeenLastCalledWith({
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith({
       ...buildGalleryListQuery('tag:sky', nextState.filters),
       album_id: 'album-1',
       page_size: 120
@@ -266,7 +269,7 @@ describe('AlbumDetailPageComponent', () => {
   it('removes the selected media from the current album and clears selection', () => {
     const [first, second] = [createMediaRead({ id: 'media-1' }), createMediaRead({ id: 'media-2' })];
     albumsService.loadAlbum.mockClear();
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
 
     component.toggleSelection(first);
     component.toggleSelection(second);
@@ -276,7 +279,7 @@ describe('AlbumDetailPageComponent', () => {
     expect(component.selectionMode).toBe(false);
     expect(component.selectedCount).toBe(0);
     expect(albumsService.loadAlbum).toHaveBeenCalledWith('album-1');
-    expect(mediaService.loadPage).toHaveBeenCalledWith({
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
       ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
       album_id: 'album-1',
       page_size: 120

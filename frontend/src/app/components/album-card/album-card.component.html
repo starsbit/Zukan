@@ -21,7 +21,7 @@
       @if (album.description) {
         <p class="album-card-description">{{ album.description }}</p>
       }
-      <p>{{ album.media_count ?? 0 }} {{ (album.media_count ?? 0) === 1 ? 'item' : 'items' }}</p>
+      <p>{{ album.media_count }} {{ album.media_count === 1 ? 'item' : 'items' }}</p>
     </mat-card-content>
   </mat-card>
 </a>

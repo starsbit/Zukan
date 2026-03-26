@@ -37,7 +37,6 @@ describe('AlbumsPageComponent', () => {
     loading$: BehaviorSubject<boolean>;
     error$: BehaviorSubject<unknown | null>;
     loadAlbums: ReturnType<typeof vi.fn>;
-    refreshAlbums: ReturnType<typeof vi.fn>;
     createAlbum: ReturnType<typeof vi.fn>;
   };
   let dialog: { open: ReturnType<typeof vi.fn> };
@@ -60,7 +59,6 @@ describe('AlbumsPageComponent', () => {
       loading$: new BehaviorSubject(false),
       error$: new BehaviorSubject<unknown | null>(null),
       loadAlbums: vi.fn().mockReturnValue(of([album])),
-      refreshAlbums: vi.fn().mockReturnValue(of([album])),
       createAlbum: vi.fn().mockReturnValue(of({ ...album, id: 'album-2', name: 'New Album', description: 'Notes' }))
     };
     dialog = {

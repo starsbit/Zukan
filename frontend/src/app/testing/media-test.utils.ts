@@ -4,6 +4,8 @@ export function createMediaRead(overrides: Partial<MediaDetail> = {}): MediaDeta
   return {
     id: 'media-1',
     uploader_id: 'user-1',
+    owner_id: 'user-1',
+    visibility: 'private',
     filename: 'image.png',
     original_filename: 'original-image.png',
     media_type: 'image',
@@ -25,7 +27,12 @@ export function createMediaRead(overrides: Partial<MediaDetail> = {}): MediaDeta
     version: 1,
     created_at: '2024-01-01T12:00:00.000Z',
     deleted_at: null,
+    ocr_text: null,
+    ocr_text_override: null,
     is_favorited: false,
+    tag_details: [],
+    external_refs: [],
+    entities: [],
     ...overrides
   };
 }

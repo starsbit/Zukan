@@ -19,7 +19,7 @@ export interface AlbumRead {
   name: string;
   description: string | null;
   cover_media_id: Uuid | null;
-  media_count?: number;
+  media_count: number;
   version: number;
   created_at: string;
   updated_at: string;
@@ -28,10 +28,16 @@ export interface AlbumRead {
 export interface AlbumListResponse {
   total: number;
   next_cursor: string | null;
-  prev_cursor: string | null;
   has_more: boolean;
   page_size: number;
   items: AlbumRead[];
+}
+
+export interface ListAlbumsQuery {
+  after?: string | null;
+  page_size?: number;
+  sort_by?: 'name' | 'created_at';
+  sort_order?: 'asc' | 'desc';
 }
 
 export type AlbumShareRole = 'viewer' | 'editor';

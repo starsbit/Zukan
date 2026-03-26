@@ -287,7 +287,7 @@ export class AlbumDetailPageComponent {
       album_id: this.albumId,
       page_size: 120
     };
-    this.mediaService.loadPage(query).subscribe({ error: () => undefined });
+    this.mediaService.loadSearchPage(query).subscribe({ error: () => undefined });
   }
 }
 

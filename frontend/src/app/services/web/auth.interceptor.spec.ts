@@ -1,7 +1,9 @@
+import '@angular/compiler';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom } from 'rxjs';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CLIENT_API_BASE_URL } from './api.config';
 import { authInterceptor, AUTH_MODE } from './auth.interceptor';

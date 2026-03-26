@@ -11,6 +11,7 @@ import {
   AlbumShareRead,
   AlbumUpdateDto,
   BulkResult,
+  ListAlbumsQuery,
   ListAlbumMediaQuery,
   MediaCursorPage,
   Uuid
@@ -84,12 +85,12 @@ export class AlbumsService {
     return this.stateSubject.value;
   }
 
-  loadAlbums(): Observable<AlbumRead[]> {
+  loadAlbums(query?: ListAlbumsQuery): Observable<AlbumRead[]> {
     this.patchState({
       request: beginRequest(this.stateSubject.value.request)
     });
 
-    return this.albumsClient.listAlbums().pipe(
+    return this.albumsClient.listAlbums(query).pipe(
       map((response: AlbumListResponse) => response.items),
       tap((albums) => {
         this.patchState({
@@ -104,10 +105,6 @@ export class AlbumsService {
         return throwError(() => error);
       })
     );
-  }
-
-  refreshAlbums(): Observable<AlbumRead[]> {
-    return this.loadAlbums();
   }
 
   createAlbum(body: AlbumCreateDto): Observable<AlbumRead> {
@@ -302,12 +299,12 @@ export class AlbumsService {
 
   private patchSelectedAlbumCount(albumId: Uuid, delta: number): void {
     const currentSelectedAlbum = this.stateSubject.value.selectedAlbum;
-    const selectedAlbum = currentSelectedAlbum?.id === albumId && typeof currentSelectedAlbum.media_count === 'number'
+    const selectedAlbum = currentSelectedAlbum?.id === albumId
       ? { ...currentSelectedAlbum, media_count: Math.max(0, currentSelectedAlbum.media_count + delta) }
       : currentSelectedAlbum;
 
     const albums = this.stateSubject.value.albums.map((album) => {
-      if (album.id !== albumId || typeof album.media_count !== 'number') {
+      if (album.id !== albumId) {
         return album;
       }
 

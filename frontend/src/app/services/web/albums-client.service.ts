@@ -11,6 +11,7 @@ import {
   AlbumShareRead,
   AlbumUpdateDto,
   BulkResult,
+  ListAlbumsQuery,
   ListAlbumMediaQuery,
   MediaCursorPage,
   Uuid
@@ -23,8 +24,8 @@ import { ClientApiService } from './api.service';
 export class AlbumsClientService {
   private readonly api = inject(ClientApiService);
 
-  listAlbums(): Observable<AlbumListResponse> {
-    return this.api.get<AlbumListResponse>('/albums');
+  listAlbums(query?: ListAlbumsQuery): Observable<AlbumListResponse> {
+    return this.api.get<AlbumListResponse>('/albums', { query });
   }
 
   createAlbum(body: AlbumCreateDto): Observable<AlbumRead> {

@@ -23,23 +23,6 @@ import { ClientApiService } from './api.service';
 })
 export class MediaClientService {
   private readonly api = inject(ClientApiService);
-  private static readonly SEARCH_QUERY_KEYS: Array<keyof ListMediaQuery> = [
-    'tag',
-    'character_name',
-    'exclude_tag',
-    'mode',
-    'nsfw',
-    'status',
-    'favorited',
-    'media_type',
-    'captured_year',
-    'captured_month',
-    'captured_day',
-    'captured_after',
-    'captured_before',
-    'captured_before_year',
-    'ocr_text'
-  ];
 
   uploadMedia(files: File[]): Observable<BatchUploadResponse> {
     return this.api.post<BatchUploadResponse>('/media', this.buildUploadPayload(files));
@@ -60,32 +43,11 @@ export class MediaClientService {
   }
 
   listMedia(query?: ListMediaQuery): Observable<MediaCursorPage> {
-    const endpoint = this.shouldUseSearchEndpoint(query) ? '/media/search' : '/media';
-    return this.api.get<MediaCursorPage>(endpoint, { query });
+    return this.api.get<MediaCursorPage>('/media', { query });
   }
 
-  private shouldUseSearchEndpoint(query?: ListMediaQuery): boolean {
-    if (!query) {
-      return false;
-    }
-
-    return MediaClientService.SEARCH_QUERY_KEYS.some((key) => this.hasMeaningfulValue(query[key]));
-  }
-
-  private hasMeaningfulValue(value: unknown): boolean {
-    if (value == null) {
-      return false;
-    }
-
-    if (Array.isArray(value)) {
-      return value.length > 0;
-    }
-
-    if (typeof value === 'string') {
-      return value.trim().length > 0;
-    }
-
-    return true;
+  searchMedia(query?: ListMediaQuery): Observable<MediaCursorPage> {
+    return this.api.get<MediaCursorPage>('/media/search', { query });
   }
 
   listCharacterSuggestions(query: { q: string; limit?: number }): Observable<CharacterSuggestion[]> {
@@ -116,16 +78,16 @@ export class MediaClientService {
     return this.api.patch<MediaDetail>(`/media/${mediaId}`, body);
   }
 
-  restoreMedia(mediaId: Uuid): Observable<MediaDetail> {
-    return this.updateMedia(mediaId, { deleted: false });
-  }
-
-  restoreMediaBatch(mediaIds: Uuid[]): Observable<BulkResult> {
-    return this.batchUpdateMedia({ media_ids: mediaIds, deleted: false });
-  }
-
   deleteMedia(mediaId: Uuid): Observable<void> {
     return this.api.delete<void>(`/media/${mediaId}`);
+  }
+
+  purgeMedia(mediaId: Uuid): Observable<void> {
+    return this.api.delete<void>(`/media/${mediaId}/purge`);
+  }
+
+  batchPurgeMedia(body: MediaBatchDeleteDto): Observable<BulkResult> {
+    return this.api.post<BulkResult>('/media/actions/purge', body);
   }
 
   queueTaggingJob(mediaId: Uuid): Observable<TaggingJobQueuedResponse> {
@@ -138,5 +100,9 @@ export class MediaClientService {
 
   getMediaThumbnail(mediaId: Uuid): Observable<Blob> {
     return this.api.getBlob(`/media/${mediaId}/thumbnail`);
+  }
+
+  getMediaPoster(mediaId: Uuid): Observable<Blob> {
+    return this.api.getBlob(`/media/${mediaId}/poster`);
   }
 }

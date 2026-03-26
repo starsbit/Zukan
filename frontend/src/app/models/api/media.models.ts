@@ -6,6 +6,9 @@ export type MediaListState = 'active' | 'trashed';
 export type TagFilterMode = 'and' | 'or';
 export type NsfwFilter = 'default' | 'only' | 'include';
 export type MediaEntityType = 'character';
+export type TaggingStatus = 'pending' | 'processing' | 'done' | 'failed';
+export type ProcessingStatus = 'pending' | 'processing' | 'done' | 'failed' | 'not_applicable';
+export type MediaVisibility = 'private';
 
 export interface EntityRead {
   id: Uuid;
@@ -29,8 +32,8 @@ export interface MediaMetadata {
   file_size: number | null;
   width: number | null;
   height: number | null;
-  duration_seconds?: number | null;
-  frame_count?: number | null;
+  duration_seconds: number | null;
+  frame_count: number | null;
   mime_type: string | null;
   captured_at: string;
 }
@@ -55,28 +58,30 @@ export interface ExternalRefCreateDto {
 export interface MediaRead {
   id: Uuid;
   uploader_id: Uuid | null;
+  owner_id: Uuid | null;
+  visibility: MediaVisibility;
   filename: string;
   original_filename: string | null;
-  media_type?: MediaType;
+  media_type: MediaType;
   metadata: MediaMetadata;
   tags: string[];
   is_nsfw: boolean;
-  tagging_status: string;
-  tagging_error?: string | null;
-  thumbnail_status: string;
-  poster_status?: string;
-  ocr_text?: string | null;
-  ocr_text_override?: string | null;
+  tagging_status: TaggingStatus;
+  tagging_error: string | null;
+  thumbnail_status: ProcessingStatus;
+  poster_status: ProcessingStatus;
+  ocr_text: string | null;
+  ocr_text_override: string | null;
   version: number;
   created_at: string;
   deleted_at: string | null;
-  is_favorited?: boolean;
+  is_favorited: boolean;
 }
 
 export interface MediaDetail extends MediaRead {
-  tag_details?: TagWithConfidence[];
-  external_refs?: ExternalRefRead[];
-  entities?: EntityRead[];
+  tag_details: TagWithConfidence[];
+  external_refs: ExternalRefRead[];
+  entities: EntityRead[];
 }
 
 export interface MediaUpdateDto {
@@ -135,16 +140,10 @@ export interface UploadConfig {
   max_upload_size_mb: number;
 }
 
-export interface MediaListResponse {
-  total: number;
-  page: number;
-  page_size: number;
-  items: MediaRead[];
-}
-
 export interface MediaCursorPage {
   total: number | null;
   next_cursor: string | null;
+  has_more: boolean;
   page_size: number;
   items: MediaRead[];
 }
@@ -167,7 +166,8 @@ export interface ListMediaQuery {
   media_type?: MediaType[] | null;
   after?: string | null;
   page_size?: number;
-  sort_by?: string;
+  include_total?: boolean;
+  sort_by?: 'captured_at' | 'created_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
   captured_year?: number | null;
   captured_month?: number | null;
@@ -177,7 +177,5 @@ export interface ListMediaQuery {
   captured_before_year?: number | null;
   ocr_text?: string | null;
 }
-
-export type MediaListCache = MediaCursorPage & { query?: ListMediaQuery };
 
 export type MediaMutationResult = BulkResult;

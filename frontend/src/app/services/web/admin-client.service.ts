@@ -2,6 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import {
+  AppAnnouncementCreateDto,
+  AppAnnouncementRead,
   AdminStatsResponse,
   AdminUserDetail,
   AdminUserUpdateDto,
@@ -43,5 +45,13 @@ export class AdminClientService {
 
   queueUserTaggingJobs(userId: Uuid): Observable<TaggingJobQueuedResponse> {
     return this.api.post<TaggingJobQueuedResponse>(`/admin/users/${userId}/tagging-jobs`, {});
+  }
+
+  listAnnouncements(): Observable<AppAnnouncementRead[]> {
+    return this.api.get<AppAnnouncementRead[]>('/admin/announcements');
+  }
+
+  createAnnouncement(body: AppAnnouncementCreateDto): Observable<AppAnnouncementRead> {
+    return this.api.post<AppAnnouncementRead>('/admin/announcements', body);
   }
 }

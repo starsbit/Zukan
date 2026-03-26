@@ -48,4 +48,6 @@ export interface UserListResponse {
 export interface ListAdminUsersQuery {
   page?: number;
   page_size?: number;
+  sort_by?: 'username' | 'created_at';
+  sort_order?: 'asc' | 'desc';
 }

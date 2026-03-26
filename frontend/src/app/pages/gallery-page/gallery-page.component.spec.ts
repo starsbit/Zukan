@@ -110,6 +110,7 @@ describe('GalleryPageComponent', () => {
     error$: BehaviorSubject<unknown | null>;
     mutationPending$: BehaviorSubject<boolean>;
     loadPage: ReturnType<typeof vi.fn>;
+    loadSearchPage: ReturnType<typeof vi.fn>;
     loadNextPage: ReturnType<typeof vi.fn>;
     batchUpdateMedia: ReturnType<typeof vi.fn>;
     restoreMediaBatch: ReturnType<typeof vi.fn>;
@@ -141,6 +142,7 @@ describe('GalleryPageComponent', () => {
       error$: new BehaviorSubject<unknown | null>(null),
       mutationPending$: new BehaviorSubject(false),
       loadPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
+      loadSearchPage: vi.fn().mockReturnValue(of({ total: 0, page: 1, page_size: 60, items: [] })),
       loadNextPage: vi.fn().mockReturnValue(of(null)),
       batchUpdateMedia: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
       restoreMediaBatch: vi.fn().mockReturnValue(of({ processed: 1, skipped: 0 })),
@@ -193,7 +195,7 @@ describe('GalleryPageComponent', () => {
   });
 
   it('loads the default gallery query on creation', () => {
-    expect(mediaService.loadPage).toHaveBeenCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
   });
 
   it('enables the custom scrollbar mode while the gallery page is mounted', () => {
@@ -202,33 +204,33 @@ describe('GalleryPageComponent', () => {
   });
 
   it('loads the trash query when the route switches to trash mode', () => {
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
 
     routeData.next({ state: 'trashed' });
 
     expect(component.isTrashView).toBe(true);
-    expect(mediaService.loadPage).toHaveBeenCalledWith({
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith({
       ...buildGalleryListQuery('', createDefaultGallerySearchFilters()),
       state: 'trashed'
     });
   });
 
   it('reloads the current query', () => {
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
     component.reload();
 
-    expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
-    expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledTimes(1);
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
   });
 
   it('reloads when settings are saved from the navbar', () => {
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
 
     const navbar = fixture.debugElement.query(By.directive(StubGalleryNavbarComponent));
     (navbar.componentInstance as StubGalleryNavbarComponent).settingsSaved.emit();
 
-    expect(mediaService.loadPage).toHaveBeenCalledTimes(1);
-    expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledTimes(1);
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery('', createDefaultGallerySearchFilters()));
   });
 
   it('applies a new search state and reloads with the derived query', () => {
@@ -246,7 +248,7 @@ describe('GalleryPageComponent', () => {
 
     expect(component.searchState).toEqual(nextState);
     expect(component.selectedCount).toBe(0);
-    expect(mediaService.loadPage).toHaveBeenLastCalledWith(buildGalleryListQuery(nextState.searchText, nextState.filters));
+    expect(mediaService.loadSearchPage).toHaveBeenLastCalledWith(buildGalleryListQuery(nextState.searchText, nextState.filters));
   });
 
   it('adds selected media to an album from the selection toolbar flow', () => {
@@ -440,7 +442,7 @@ describe('GalleryPageComponent', () => {
       searchText: 'tag:fox',
       filters
     });
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
 
     const preventDefault = vi.fn();
     component.onDocumentKeydown({
@@ -454,7 +456,7 @@ describe('GalleryPageComponent', () => {
       searchText: '',
       filters
     });
-    expect(mediaService.loadPage).toHaveBeenCalledWith(buildGalleryListQuery('', filters));
+    expect(mediaService.loadSearchPage).toHaveBeenCalledWith(buildGalleryListQuery('', filters));
   });
 
   it('does not clear the current search text from an editable target', () => {
@@ -462,7 +464,7 @@ describe('GalleryPageComponent', () => {
       searchText: 'tag:fox',
       filters: createDefaultGallerySearchFilters()
     });
-    mediaService.loadPage.mockClear();
+    mediaService.loadSearchPage.mockClear();
 
     const input = document.createElement('input');
     const preventDefault = vi.fn();
@@ -474,7 +476,7 @@ describe('GalleryPageComponent', () => {
 
     expect(preventDefault).not.toHaveBeenCalled();
     expect(component.searchState.searchText).toBe('tag:fox');
-    expect(mediaService.loadPage).not.toHaveBeenCalled();
+    expect(mediaService.loadSearchPage).not.toHaveBeenCalled();
   });
 
   it('selects all items in a date group from the group action', () => {
@@ -569,12 +571,12 @@ describe('GalleryPageComponent', () => {
   });
 
   it('swallows load errors because the template renders the service error state', () => {
-    mediaService.loadPage.mockReset();
-    mediaService.loadPage.mockReturnValue(throwError(() => new Error('broken')));
+    mediaService.loadSearchPage.mockReset();
+    mediaService.loadSearchPage.mockReturnValue(throwError(() => new Error('broken')));
 
     component.reload();
 
-    expect(mediaService.loadPage).toHaveBeenCalled();
+    expect(mediaService.loadSearchPage).toHaveBeenCalled();
   });
 
   it('starts upload from the file picker selection', () => {

@@ -52,7 +52,7 @@ export class AlbumCardComponent implements OnChanges, OnDestroy {
     const requestId = this.requestId;
     this.revokeCoverUrls();
 
-    if ((this.album.media_count ?? 0) >= 4) {
+    if (this.album.media_count >= 4) {
       this.albumsClient.listAlbumMedia(this.album.id, { page_size: 4 }).subscribe({
         next: (page) => {
           if (requestId !== this.requestId) {

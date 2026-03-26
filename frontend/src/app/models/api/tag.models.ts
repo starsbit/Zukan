@@ -25,14 +25,17 @@ export interface TagWithConfidence {
 
 export interface TagListResponse {
   total: number;
-  page: number;
+  next_cursor: string | null;
+  has_more: boolean;
   page_size: number;
   items: TagRead[];
 }
 
 export interface ListTagsQuery {
-  page?: number;
+  after?: string | null;
   page_size?: number;
   category?: number | null;
   q?: string | null;
+  sort_by?: 'name' | 'media_count';
+  sort_order?: 'asc' | 'desc';
 }

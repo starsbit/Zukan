@@ -70,6 +70,6 @@ export class AlbumsPageComponent {
   }
 
   reload(): void {
-    this.albumsService.refreshAlbums().subscribe({ error: () => undefined });
+    this.albumsService.loadAlbums().subscribe({ error: () => undefined });
   }
 }

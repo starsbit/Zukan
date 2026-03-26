@@ -58,13 +58,12 @@ export class AuthService {
   }
 
   initializeSession(): Observable<UserRead | null> {
-    const refreshToken = this.authStore.getRefreshToken();
-    if (!refreshToken) {
+    if (!this.authStore.getRefreshToken()) {
       this.clearSessionState();
       return of(null);
     }
 
-    return this.refreshSession({ refresh_token: refreshToken }).pipe(
+    return this.refreshSession().pipe(
       catchError(() => of(null))
     );
   }
@@ -115,6 +114,11 @@ export class AuthService {
     });
 
     return this.authClient.login(body).pipe(
+      tap((response) => this.authStore.setTokens({
+        accessToken: response.access_token,
+        refreshToken: response.refresh_token,
+        tokenType: response.token_type
+      })),
       switchMap(() => this.usersClient.getMe()),
       tap((user) => this.setAuthenticatedUser(user)),
       catchError((error) => {
@@ -137,7 +141,14 @@ export class AuthService {
       error: null
     });
 
-    return this.authClient.refresh(body).pipe(
+    const refreshToken = body?.refresh_token ?? this.authStore.getRefreshToken() ?? '';
+
+    return this.authClient.refresh({ refresh_token: refreshToken }).pipe(
+      tap((response) => this.authStore.setTokens({
+        accessToken: response.access_token,
+        refreshToken: response.refresh_token,
+        tokenType: response.token_type
+      })),
       switchMap(() => this.usersClient.getMe()),
       tap((user) => this.setAuthenticatedUser(user)),
       catchError((error) => {
@@ -158,7 +169,9 @@ export class AuthService {
       error: null
     });
 
-    return this.authClient.logout(body).pipe(
+    const refreshToken = body?.refresh_token ?? this.authStore.getRefreshToken() ?? '';
+
+    return this.authClient.logout({ refresh_token: refreshToken }).pipe(
       tap(() => this.clearSessionState()),
       catchError((error) => {
         this.patchState({
@@ -185,6 +198,7 @@ export class AuthService {
   }
 
   clearSessionState(error: unknown | null = null): void {
+    this.authStore.clearTokens();
     this.stateSubject.next({
       ...initialAuthState(),
       initialized: true,

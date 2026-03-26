@@ -9,8 +9,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CLIENT_API_BASE_URL } from './api.config';
 import { AdminClientService } from './admin-client.service';
 import { AlbumsClientService } from './albums-client.service';
+import { BatchesClientService } from './batches-client.service';
 import { ConfigClientService } from './config-client.service';
 import { MediaClientService } from './media-client.service';
+import { NotificationsClientService } from './notifications-client.service';
 import { TagsClientService } from './tags-client.service';
 import { UsersClientService } from './users-client.service';
 
@@ -21,6 +23,8 @@ describe('resource clients', () => {
   let configClient: ConfigClientService;
   let albumsClient: AlbumsClientService;
   let adminClient: AdminClientService;
+  let notificationsClient: NotificationsClientService;
+  let batchesClient: BatchesClientService;
   let httpTesting: HttpTestingController;
 
   beforeEach(() => {
@@ -32,6 +36,8 @@ describe('resource clients', () => {
         ConfigClientService,
         AlbumsClientService,
         AdminClientService,
+        NotificationsClientService,
+        BatchesClientService,
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: CLIENT_API_BASE_URL, useValue: 'http://api.example.test' }
@@ -44,6 +50,8 @@ describe('resource clients', () => {
     configClient = TestBed.inject(ConfigClientService);
     albumsClient = TestBed.inject(AlbumsClientService);
     adminClient = TestBed.inject(AdminClientService);
+    notificationsClient = TestBed.inject(NotificationsClientService);
+    batchesClient = TestBed.inject(BatchesClientService);
     httpTesting = TestBed.inject(HttpTestingController);
   });
 
@@ -58,7 +66,7 @@ describe('resource clients', () => {
   it('maps users and tags requests to the correct endpoints', async () => {
     const mePromise = firstValueFrom(usersClient.getMe());
     const updateMePromise = firstValueFrom(usersClient.updateMe({ show_nsfw: true, tag_confidence_threshold: 0.7 }));
-    const tagsPromise = firstValueFrom(tagsClient.list({ page: 1, page_size: 10, category: 4, q: 'fox' }));
+    const tagsPromise = firstValueFrom(tagsClient.list({ after: 'tag-cursor-1', page_size: 10, category: 4, q: 'fox', sort_by: 'name', sort_order: 'asc' }));
     const deleteTagPromise = firstValueFrom(tagsClient.removeTagFromMedia(42));
     const trashTagPromise = firstValueFrom(tagsClient.trashMediaByTag(42));
     const deleteCharacterPromise = firstValueFrom(tagsClient.removeCharacterNameFromMedia('ayanami_rei'));
@@ -71,8 +79,8 @@ describe('resource clients', () => {
     expect(updateMeRequest.request.body).toEqual({ show_nsfw: true, tag_confidence_threshold: 0.7 });
     updateMeRequest.flush({ id: 'user-1', show_nsfw: true, tag_confidence_threshold: 0.7 });
 
-    const tagsRequest = expectRequest('GET', 'http://api.example.test/tags?page=1&page_size=10&category=4&q=fox');
-    tagsRequest.flush({ total: 1, page: 1, page_size: 10, items: [{ id: 1, name: 'fox' }] });
+    const tagsRequest = expectRequest('GET', 'http://api.example.test/tags?after=tag-cursor-1&page_size=10&category=4&q=fox&sort_by=name&sort_order=asc');
+    tagsRequest.flush({ total: 1, next_cursor: null, has_more: false, page_size: 10, items: [{ id: 1, name: 'fox' }] });
 
     const deleteTagRequest = expectRequest('POST', 'http://api.example.test/tags/42/actions/remove-from-media');
     expect(deleteTagRequest.request.body).toEqual({});
@@ -110,7 +118,7 @@ describe('resource clients', () => {
     ]).subscribe((event) => {
       progressEvents.push(event.type);
     });
-    const listPromise = firstValueFrom(mediaClient.listMedia({
+    const listPromise = firstValueFrom(mediaClient.searchMedia({
       after: 'cursor-abc',
       page_size: 25,
       album_id: 'album-9',
@@ -162,8 +170,6 @@ describe('resource clients', () => {
       media_ids: ['m1', 'm2'],
       favorited: true
     }));
-    const restoreMediaPromise = firstValueFrom(mediaClient.restoreMedia('media-restore'));
-    const restoreBatchPromise = firstValueFrom(mediaClient.restoreMediaBatch(['m3', 'm4']));
     const emptyTrashPromise = firstValueFrom(mediaClient.emptyTrash());
     const getMediaPromise = firstValueFrom(mediaClient.getMedia('media-1'));
     const updateMediaPromise = firstValueFrom(mediaClient.updateMedia('media-1', { favorited: true }));
@@ -171,22 +177,19 @@ describe('resource clients', () => {
     const queueTaggingJobPromise = firstValueFrom(mediaClient.queueTaggingJob('media-1'));
     const mediaFilePromise = firstValueFrom(mediaClient.getMediaFile('media-1'));
     const thumbnailPromise = firstValueFrom(mediaClient.getMediaThumbnail('media-1'));
-
-    const restoreMediaRequest = expectRequest('PATCH', 'http://api.example.test/media/media-restore');
-    expect(restoreMediaRequest.request.body).toEqual({ deleted: false });
-    restoreMediaRequest.flush({ id: 'media-restore', deleted_at: null });
+    const posterPromise = firstValueFrom(mediaClient.getMediaPoster('media-1'));
+    const purgeMediaPromise = firstValueFrom(mediaClient.purgeMedia('media-1'));
+    const batchPurgePromise = firstValueFrom(mediaClient.batchPurgeMedia({ media_ids: ['m5'] }));
 
     const patchRequests = httpTesting.match(
       (request) => request.method === 'PATCH' && request.urlWithParams === 'http://api.example.test/media'
     );
-    expect(patchRequests).toHaveLength(2);
+    expect(patchRequests).toHaveLength(1);
     expect(patchRequests[0].request.body).toEqual({
       media_ids: ['m1', 'm2'],
       favorited: true
     });
     patchRequests[0].flush({ processed: 2, skipped: 0 });
-    expect(patchRequests[1].request.body).toEqual({ media_ids: ['m3', 'm4'], deleted: false });
-    patchRequests[1].flush({ processed: 2, skipped: 0 });
 
     const emptyTrashRequest = expectRequest('POST', 'http://api.example.test/media/actions/empty-trash');
     emptyTrashRequest.flush(null, { status: 204, statusText: 'No Content' });
@@ -213,9 +216,18 @@ describe('resource clients', () => {
     expect(thumbnailRequest.request.responseType).toBe('blob');
     thumbnailRequest.flush(new Blob(['thumb']));
 
+    const posterRequest = expectRequest('GET', 'http://api.example.test/media/media-1/poster');
+    expect(posterRequest.request.responseType).toBe('blob');
+    posterRequest.flush(new Blob(['poster']));
+
+    const purgeMediaRequest = expectRequest('DELETE', 'http://api.example.test/media/media-1/purge');
+    purgeMediaRequest.flush(null, { status: 204, statusText: 'No Content' });
+
+    const batchPurgeRequest = expectRequest('POST', 'http://api.example.test/media/actions/purge');
+    expect(batchPurgeRequest.request.body).toEqual({ media_ids: ['m5'] });
+    batchPurgeRequest.flush({ processed: 1, skipped: 0 });
+
     await expect(batchUpdatePromise).resolves.toEqual({ processed: 2, skipped: 0 });
-    await expect(restoreMediaPromise).resolves.toEqual({ id: 'media-restore', deleted_at: null });
-    await expect(restoreBatchPromise).resolves.toEqual({ processed: 2, skipped: 0 });
     await expect(emptyTrashPromise).resolves.toBeNull();
     await expect(getMediaPromise).resolves.toEqual({ id: 'media-1' });
     await expect(updateMediaPromise).resolves.toEqual({ id: 'media-1', favorited: true });
@@ -223,12 +235,15 @@ describe('resource clients', () => {
     await expect(queueTaggingJobPromise).resolves.toEqual({ queued: 1 });
     await expect(mediaFilePromise).resolves.toBeInstanceOf(Blob);
     await expect(thumbnailPromise).resolves.toBeInstanceOf(Blob);
+    await expect(posterPromise).resolves.toBeInstanceOf(Blob);
+    await expect(purgeMediaPromise).resolves.toBeNull();
+    await expect(batchPurgePromise).resolves.toEqual({ processed: 1, skipped: 0 });
   });
 
   it('uses delete bodies and blob downloads for media and albums', async () => {
     const mediaDeletePromise = firstValueFrom(mediaClient.batchDeleteMedia({ media_ids: ['m1', 'm2'] }));
     const mediaDownloadPromise = firstValueFrom(mediaClient.downloadMedia({ media_ids: ['m1'] }));
-    const listAlbumsPromise = firstValueFrom(albumsClient.listAlbums());
+    const listAlbumsPromise = firstValueFrom(albumsClient.listAlbums({ after: 'album-cursor-1', page_size: 20, sort_by: 'name', sort_order: 'asc' }));
     const createAlbumPromise = firstValueFrom(albumsClient.createAlbum({ name: 'Favorites' }));
     const getAlbumPromise = firstValueFrom(albumsClient.getAlbum('album-1'));
     const updateAlbumPromise = firstValueFrom(albumsClient.updateAlbum('album-1', { name: 'Road Trip' }));
@@ -248,8 +263,8 @@ describe('resource clients', () => {
     expect(mediaDownloadRequest.request.responseType).toBe('blob');
     mediaDownloadRequest.flush(new Blob(['zip']));
 
-    const listAlbumsRequest = expectRequest('GET', 'http://api.example.test/albums');
-    listAlbumsRequest.flush({ total: 1, next_cursor: null, prev_cursor: null, has_more: false, page_size: 50, items: [{ id: 'album-1' }] });
+    const listAlbumsRequest = expectRequest('GET', 'http://api.example.test/albums?after=album-cursor-1&page_size=20&sort_by=name&sort_order=asc');
+    listAlbumsRequest.flush({ total: 1, next_cursor: null, has_more: false, page_size: 20, items: [{ id: 'album-1' }] });
 
     const createAlbumRequest = expectRequest('POST', 'http://api.example.test/albums');
     expect(createAlbumRequest.request.body).toEqual({ name: 'Favorites' });
@@ -304,11 +319,13 @@ describe('resource clients', () => {
 
   it('maps admin requests and preserves query names', async () => {
     const statsPromise = firstValueFrom(adminClient.getStats());
-    const listUsersPromise = firstValueFrom(adminClient.listUsers({ page: 2, page_size: 40 }));
+    const listUsersPromise = firstValueFrom(adminClient.listUsers({ page: 2, page_size: 40, sort_by: 'username', sort_order: 'asc' }));
     const userDetailPromise = firstValueFrom(adminClient.getUserDetail('user-2'));
     const updateUserPromise = firstValueFrom(adminClient.updateUser('user-2', { is_admin: true }));
     const deleteUserPromise = firstValueFrom(adminClient.deleteUser('user-2', true));
     const queuePromise = firstValueFrom(adminClient.queueUserTaggingJobs('user-2'));
+    const listAnnouncementsPromise = firstValueFrom(adminClient.listAnnouncements());
+    const createAnnouncementPromise = firstValueFrom(adminClient.createAnnouncement({ title: 'Heads up', message: 'Deployment tonight' }));
 
     const statsRequest = expectRequest('GET', 'http://api.example.test/admin/stats');
     statsRequest.flush({
@@ -320,7 +337,7 @@ describe('resource clients', () => {
       trashed_media: 6
     });
 
-    const listUsersRequest = expectRequest('GET', 'http://api.example.test/admin/users?page=2&page_size=40');
+    const listUsersRequest = expectRequest('GET', 'http://api.example.test/admin/users?page=2&page_size=40&sort_by=username&sort_order=asc');
     listUsersRequest.flush({ total: 1, page: 2, page_size: 40, items: [] });
 
     const userDetailRequest = expectRequest('GET', 'http://api.example.test/admin/users/user-2');
@@ -337,6 +354,13 @@ describe('resource clients', () => {
     expect(queueRequest.request.body).toEqual({});
     queueRequest.flush({ queued: 7 });
 
+    const listAnnouncementsRequest = expectRequest('GET', 'http://api.example.test/admin/announcements');
+    listAnnouncementsRequest.flush([{ id: 'a1', title: 'Heads up', message: 'Deployment tonight', severity: 'info' }]);
+
+    const createAnnouncementRequest = expectRequest('POST', 'http://api.example.test/admin/announcements');
+    expect(createAnnouncementRequest.request.body).toEqual({ title: 'Heads up', message: 'Deployment tonight' });
+    createAnnouncementRequest.flush({ id: 'a2', title: 'Heads up', message: 'Deployment tonight', severity: 'info' });
+
     await expect(statsPromise).resolves.toEqual({
       total_users: 1,
       total_media: 2,
@@ -350,10 +374,56 @@ describe('resource clients', () => {
     await expect(updateUserPromise).resolves.toEqual({ id: 'user-2', is_admin: true });
     await expect(deleteUserPromise).resolves.toBeNull();
     await expect(queuePromise).resolves.toEqual({ queued: 7 });
+    await expect(listAnnouncementsPromise).resolves.toEqual([{ id: 'a1', title: 'Heads up', message: 'Deployment tonight', severity: 'info' }]);
+    await expect(createAnnouncementPromise).resolves.toEqual({ id: 'a2', title: 'Heads up', message: 'Deployment tonight', severity: 'info' });
+  });
+
+  it('maps notifications requests to the /me/notifications endpoints', async () => {
+    const listPromise = firstValueFrom(notificationsClient.list({ after: 'notif-cursor', page_size: 20, is_read: false }));
+    const markReadPromise = firstValueFrom(notificationsClient.markRead('n1'));
+    const markAllReadPromise = firstValueFrom(notificationsClient.markAllRead());
+    const deletePromise = firstValueFrom(notificationsClient.delete('n2'));
+
+    const listRequest = expectRequest('GET', 'http://api.example.test/me/notifications?after=notif-cursor&page_size=20&is_read=false');
+    listRequest.flush({ total: 1, next_cursor: null, has_more: false, page_size: 20, items: [{ id: 'n1' }] });
+
+    const markReadRequest = expectRequest('PATCH', 'http://api.example.test/me/notifications/n1/read');
+    expect(markReadRequest.request.body).toEqual({});
+    markReadRequest.flush({ id: 'n1', is_read: true });
+
+    const markAllReadRequest = expectRequest('POST', 'http://api.example.test/me/notifications/read-all');
+    markAllReadRequest.flush(null, { status: 204, statusText: 'No Content' });
+
+    const deleteRequest = expectRequest('DELETE', 'http://api.example.test/me/notifications/n2');
+    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
+
+    await expect(listPromise).resolves.toMatchObject({ total: 1, items: [{ id: 'n1' }] });
+    await expect(markReadPromise).resolves.toEqual({ id: 'n1', is_read: true });
+    await expect(markAllReadPromise).resolves.toBeNull();
+    await expect(deletePromise).resolves.toBeNull();
+  });
+
+  it('maps import batch requests to the /me/import-batches endpoints', async () => {
+    const listPromise = firstValueFrom(batchesClient.list({ after: 'b-cursor', page_size: 10 }));
+    const getPromise = firstValueFrom(batchesClient.get('b1'));
+    const listItemsPromise = firstValueFrom(batchesClient.listItems('b1', { after: 'i-cursor', page_size: 50 }));
+
+    const listRequest = expectRequest('GET', 'http://api.example.test/me/import-batches?after=b-cursor&page_size=10');
+    listRequest.flush({ total: 1, next_cursor: null, has_more: false, page_size: 10, items: [{ id: 'b1' }] });
+
+    const getRequest = expectRequest('GET', 'http://api.example.test/me/import-batches/b1');
+    getRequest.flush({ id: 'b1', status: 'done' });
+
+    const listItemsRequest = expectRequest('GET', 'http://api.example.test/me/import-batches/b1/items?after=i-cursor&page_size=50');
+    listItemsRequest.flush({ total: 1, next_cursor: null, has_more: false, page_size: 50, items: [{ id: 'bi1' }] });
+
+    await expect(listPromise).resolves.toMatchObject({ total: 1, items: [{ id: 'b1' }] });
+    await expect(getPromise).resolves.toEqual({ id: 'b1', status: 'done' });
+    await expect(listItemsPromise).resolves.toMatchObject({ total: 1, items: [{ id: 'bi1' }] });
   });
 
   it('includes ocr_text in media list query and ocr_text_override in update payload', async () => {
-    const listPromise = firstValueFrom(mediaClient.listMedia({ ocr_text: 'hello world', page_size: 10 }));
+    const listPromise = firstValueFrom(mediaClient.searchMedia({ ocr_text: 'hello world', page_size: 10 }));
     const updatePromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: 'Invoice $42' }));
     const clearPromise = firstValueFrom(mediaClient.updateMedia('media-ocr', { ocr_text_override: null }));
 

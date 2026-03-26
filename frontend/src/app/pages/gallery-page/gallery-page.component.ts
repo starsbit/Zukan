@@ -655,7 +655,7 @@ export class GalleryPageComponent implements OnDestroy {
   }
 
   private loadMedia(query = this.activeQuery): void {
-    this.mediaService.loadPage(query)
+    this.mediaService.loadSearchPage(query)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         error: () => {

@@ -53,8 +53,8 @@ describe('MediaService', () => {
     httpTesting.verify();
   });
 
-  it('loads a media page and refreshes it with the last query', async () => {
-    const loadPromise = firstValueFrom(service.loadPage({ after: 'cursor-pg2', page_size: 10, favorited: true }));
+  it('loads a media search page and refreshes it with the last query', async () => {
+    const loadPromise = firstValueFrom(service.loadSearchPage({ after: 'cursor-pg2', page_size: 10, favorited: true }));
     expect(service.snapshot.request.loading).toBe(true);
 
     const firstRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
@@ -67,6 +67,7 @@ describe('MediaService', () => {
 
     await expect(loadPromise).resolves.toMatchObject({ total: 1 });
     expect(service.snapshot.pageQuery).toEqual({ after: 'cursor-pg2', page_size: 10, favorited: true });
+    expect(service.snapshot.pageMode).toBe('search');
 
     const refreshPromise = firstValueFrom(service.refreshPage());
     const refreshRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
@@ -78,6 +79,7 @@ describe('MediaService', () => {
   it('loads and appends the next page of media items', async () => {
     service['stateSubject'].next({
       ...service.snapshot,
+      pageMode: 'search',
       pageQuery: { page_size: 2, tag: ['sky'] },
       page: {
         total: 4,

@@ -12,7 +12,7 @@
         <mat-label>Choose album</mat-label>
         <mat-select formControlName="albumId" cdkFocusInitial>
           @for (album of data.albums; track album.id) {
-            <mat-option [value]="album.id">{{ album.name }} ({{ album.media_count ?? 0 }})</mat-option>
+            <mat-option [value]="album.id">{{ album.name }} ({{ album.media_count }})</mat-option>
           }
         </mat-select>
       </mat-form-field>
