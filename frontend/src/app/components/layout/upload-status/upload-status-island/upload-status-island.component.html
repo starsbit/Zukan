@@ -1,0 +1,90 @@
+@if (visible()) {
+  <aside class="status-island" [class.status-island-collapsed]="!expanded()">
+    @if (expanded()) {
+      <mat-card appearance="outlined" class="status-card">
+        <mat-card-header>
+          <div mat-card-avatar class="status-avatar">
+            <mat-icon>{{ phaseIcon() }}</mat-icon>
+          </div>
+          <mat-card-title>{{ title() }}</mat-card-title>
+          <mat-card-subtitle>{{ subtitle() }}</mat-card-subtitle>
+        </mat-card-header>
+
+        <mat-card-content>
+          <p class="status-copy">{{ statusCopy() }}</p>
+
+          <mat-progress-bar
+            [mode]="progressMode()"
+            [value]="progressValue()"
+            class="progress-bar"
+          />
+
+          <div class="status-meta">
+            <span>{{ acceptedCount() }} accepted</span>
+            @if (duplicateCount() > 0) {
+              <button
+                class="inline-link"
+                type="button"
+                (click)="openDetails('duplicate', 'Duplicate files')"
+              >
+                {{ duplicateCount() }} duplicates
+              </button>
+            } @else {
+              <span>0 duplicates</span>
+            }
+            @if (issueCount() > 0) {
+              <button
+                class="inline-link"
+                type="button"
+                (click)="openIssuesDialog()"
+              >
+                {{ issueCount() }} errors
+              </button>
+            } @else {
+              <span>0 errors</span>
+            }
+          </div>
+
+          @if (hasUploadRequests()) {
+            <div class="request-summary">
+              <span>{{ summary().requestCounts.completed }} request{{ summary().requestCounts.completed === 1 ? '' : 's' }} finished</span>
+              @if (summary().requestCounts.uploading > 0) {
+                <span>{{ summary().requestCounts.uploading }} uploading</span>
+              }
+              @if (summary().requestCounts.queued > 0) {
+                <span>{{ summary().requestCounts.queued }} queued</span>
+              }
+              @if (summary().requestCounts.failed > 0) {
+                <span>{{ summary().requestCounts.failed }} failed</span>
+              }
+            </div>
+          }
+
+          <div class="count-grid">
+            @for (chip of chips(); track chip.filter) {
+              <button
+                type="button"
+                class="count-chip inline-link"
+                (click)="openDetails(chip.filter, chip.label)"
+              >
+                {{ chip.label }} {{ chip.count }}
+              </button>
+            }
+          </div>
+        </mat-card-content>
+
+        <mat-card-actions align="end">
+          <button mat-button type="button" (click)="collapse()">Minimize</button>
+          @if (!summary().hasActiveWork) {
+            <button mat-button type="button" (click)="dismiss()">Dismiss</button>
+          }
+        </mat-card-actions>
+      </mat-card>
+    } @else {
+      <button class="collapsed-trigger" mat-fab extended type="button" (click)="expand()">
+        <mat-icon>{{ collapsedIcon() }}</mat-icon>
+        {{ collapsedLabel() }}
+      </button>
+    }
+  </aside>
+}

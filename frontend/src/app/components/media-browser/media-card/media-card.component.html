@@ -1,0 +1,95 @@
+<div
+  #card
+  class="media-card"
+  [class.media-card--selected]="selectedState()"
+  role="button"
+  tabindex="0"
+  [style.aspect-ratio]="aspectRatio()"
+  (click)="onSelect()"
+  (keydown)="onCardKeydown($event)"
+  (mouseenter)="onHover(true)"
+  (mouseleave)="onHover(false)">
+  <div class="media-card__surface">
+    @if (showSelectionControl()) {
+      <button
+        mat-icon-button
+        class="media-card__selection-button"
+        [class.media-card__selection-button--visible]="selectionMode() || selectedState()"
+        [class.media-card__selection-button--selected]="selectedState()"
+        type="button"
+        [attr.aria-label]="selectedState() ? 'Unselect media' : 'Select media'"
+        [attr.aria-pressed]="selectedState()"
+        (click)="onSelectionToggle($event)">
+        <mat-icon aria-hidden="true">{{ selectedState() ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+      </button>
+    }
+
+    <div class="media-card__badge-stack media-card__badge-stack--left">
+      @if (isProcessing()) {
+        <span class="media-card__processing-indicator" aria-label="Processing" title="Processing">
+          <span class="media-card__spinner" aria-hidden="true"></span>
+        </span>
+      }
+
+      @if (isNsfw()) {
+        <span class="media-card__badge media-card__badge--nsfw">NSFW</span>
+      }
+    </div>
+
+    @if (isPublic() && showPublicBadge()) {
+      <div class="media-card__badge-stack media-card__badge-stack--bottom-left">
+        <span
+          class="media-card__badge media-card__badge--icon media-card__badge--public"
+          aria-label="Public"
+          title="Public"
+          matTooltip="This media was uploaded publicly."
+          matTooltipPosition="above">
+          <mat-icon aria-hidden="true">public</mat-icon>
+        </span>
+      </div>
+    }
+
+    @if (showVideoPreview() && animatedPreviewUrl(); as videoUrl) {
+      <video
+        #videoPreview
+        class="media-card__image"
+        [src]="videoUrl"
+        [autoplay]="true"
+        [muted]="true"
+        [loop]="true"
+        [attr.aria-label]="media().original_filename ?? media().filename"
+        playsinline
+        preload="metadata">
+      </video>
+    } @else if (displayUrl(); as url) {
+      <img class="media-card__image" [src]="url" [alt]="media().original_filename ?? media().filename">
+    } @else {
+      <div class="media-card__placeholder" [class.media-card__placeholder--loading]="loading()">
+        <span>{{ media().metadata.captured_at.slice(0, 10) }}</span>
+      </div>
+    }
+
+    @if (mediaIcon() || showFavoriteControl() || (showFavorite() && favoriteCount() > 0)) {
+      <div class="media-card__badge-stack media-card__badge-stack--right">
+        @if (mediaIcon(); as icon) {
+          <span class="media-card__badge media-card__badge--icon" [attr.aria-label]="media().media_type" [attr.title]="media().media_type">
+            <mat-icon aria-hidden="true">{{ icon }}</mat-icon>
+          </span>
+        }
+        @if (showFavoriteControl() || favoriteCount() > 0) {
+          <button
+            class="media-card__favorite-button"
+            type="button"
+            [attr.aria-label]="isFavorited() ? 'Remove from favorites' : 'Add to favorites'"
+            [attr.aria-pressed]="isFavorited()"
+            (click)="onFavoriteToggle($event)">
+            <mat-icon aria-hidden="true">{{ isFavorited() ? 'favorite' : 'favorite_border' }}</mat-icon>
+            @if (favoriteCount() > 0) {
+              <span class="media-card__favorite-count">{{ favoriteCount() }}</span>
+            }
+          </button>
+        }
+      </div>
+    }
+  </div>
+</div>

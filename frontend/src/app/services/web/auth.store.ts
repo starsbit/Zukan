@@ -1,92 +1,75 @@
-import { Injectable } from '@angular/core';
+import { computed, inject, Injectable, InjectionToken, signal } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
+import { TokenResponse } from '../../models/auth';
 
-export interface ClientAuthTokens {
-  accessToken: string;
-  refreshToken: string;
-  tokenType?: string;
-}
+export const LOCAL_STORAGE = new InjectionToken<Storage>('LOCAL_STORAGE', {
+  providedIn: 'root',
+  factory: () => window.localStorage,
+});
 
-@Injectable({
-  providedIn: 'root'
-})
-export class ClientAuthStore {
-  private readonly accessTokenKey = 'zukan.web.access_token';
-  private readonly refreshTokenKey = 'zukan.web.refresh_token';
-  private readonly tokenTypeKey = 'zukan.web.token_type';
-  private readonly memoryStorage = new Map<string, string>();
+export const SESSION_STORAGE = new InjectionToken<Storage>('SESSION_STORAGE', {
+  providedIn: 'root',
+  factory: () => window.sessionStorage,
+});
+
+const AT_KEY = 'zukan_at';
+const RT_KEY = 'zukan_rt';
+
+@Injectable({ providedIn: 'root' })
+export class AuthStore {
+  private readonly ls = inject(LOCAL_STORAGE);
+  private readonly ss = inject(SESSION_STORAGE);
+
+  private readonly _accessToken = signal<string | null>(null);
+  private readonly _refreshToken = signal<string | null>(null);
+
+  readonly isAuthenticated = computed(() => this._accessToken() !== null);
+
+  /** Used by the auth interceptor to coordinate concurrent refresh requests. */
+  isRefreshing = false;
+  readonly refreshResult$ = new BehaviorSubject<string | null>(null);
+
+  constructor() {
+    const at = this.ls.getItem(AT_KEY) ?? this.ss.getItem(AT_KEY);
+    const rt = this.ls.getItem(RT_KEY) ?? this.ss.getItem(RT_KEY);
+    this._accessToken.set(at);
+    this._refreshToken.set(rt);
+  }
+
+  setTokens(tokens: TokenResponse, persist: boolean): void {
+    if (persist) {
+      this.ss.removeItem(AT_KEY);
+      this.ss.removeItem(RT_KEY);
+      this.ls.setItem(AT_KEY, tokens.access_token);
+      this.ls.setItem(RT_KEY, tokens.refresh_token);
+    } else {
+      this.ls.removeItem(AT_KEY);
+      this.ls.removeItem(RT_KEY);
+      this.ss.setItem(AT_KEY, tokens.access_token);
+      this.ss.setItem(RT_KEY, tokens.refresh_token);
+    }
+    this._accessToken.set(tokens.access_token);
+    this._refreshToken.set(tokens.refresh_token);
+  }
 
   getAccessToken(): string | null {
-    return this.read(this.accessTokenKey);
+    return this._accessToken();
   }
 
   getRefreshToken(): string | null {
-    return this.read(this.refreshTokenKey);
+    return this._refreshToken();
   }
 
-  getTokenType(): string | null {
-    return this.read(this.tokenTypeKey);
+  isPersisted(): boolean {
+    return this.ls.getItem(AT_KEY) !== null;
   }
 
-  setTokens(tokens: ClientAuthTokens): void {
-    this.write(this.accessTokenKey, tokens.accessToken);
-    this.write(this.refreshTokenKey, tokens.refreshToken);
-
-    if (tokens.tokenType) {
-      this.write(this.tokenTypeKey, tokens.tokenType);
-      return;
-    }
-
-    this.remove(this.tokenTypeKey);
-  }
-
-  clearTokens(): void {
-    this.remove(this.accessTokenKey);
-    this.remove(this.refreshTokenKey);
-    this.remove(this.tokenTypeKey);
-  }
-
-  private read(key: string): string | null {
-    const storage = this.storage;
-    if (storage) {
-      return storage.getItem(key);
-    }
-
-    return this.memoryStorage.get(key) ?? null;
-  }
-
-  private write(key: string, value: string): void {
-    const storage = this.storage;
-    if (storage) {
-      storage.setItem(key, value);
-      return;
-    }
-
-    this.memoryStorage.set(key, value);
-  }
-
-  private remove(key: string): void {
-    const storage = this.storage;
-    if (storage) {
-      storage.removeItem(key);
-      return;
-    }
-
-    this.memoryStorage.delete(key);
-  }
-
-  private get storage(): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null {
-    if (typeof localStorage === 'undefined') {
-      return null;
-    }
-
-    if (
-      typeof localStorage.getItem !== 'function' ||
-      typeof localStorage.setItem !== 'function' ||
-      typeof localStorage.removeItem !== 'function'
-    ) {
-      return null;
-    }
-
-    return localStorage;
+  clear(): void {
+    this.ls.removeItem(AT_KEY);
+    this.ls.removeItem(RT_KEY);
+    this.ss.removeItem(AT_KEY);
+    this.ss.removeItem(RT_KEY);
+    this._accessToken.set(null);
+    this._refreshToken.set(null);
   }
 }

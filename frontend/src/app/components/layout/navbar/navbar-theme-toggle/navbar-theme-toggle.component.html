@@ -1,0 +1,8 @@
+<button
+  mat-icon-button
+  [matTooltip]="themeLabel"
+  (click)="themeService.cycle()"
+  aria-label="Toggle color theme"
+>
+  <mat-icon>{{ themeIcon }}</mat-icon>
+</button>

@@ -1,0 +1,17 @@
+<div class="layout-shell">
+  <zukan-navbar></zukan-navbar>
+
+  <mat-sidenav-container class="layout-container">
+    <mat-sidenav mode="side" opened class="layout-sidebar">
+      <zukan-sidebar></zukan-sidebar>
+    </mat-sidenav>
+
+    <mat-sidenav-content>
+      <main class="layout-content">
+        <ng-content></ng-content>
+      </main>
+    </mat-sidenav-content>
+  </mat-sidenav-container>
+
+  <zukan-upload-status-island></zukan-upload-status-island>
+</div>

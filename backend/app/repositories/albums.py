@@ -3,7 +3,8 @@ import uuid
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareInvite
+from backend.app.models.auth import User
 from backend.app.models.media import Media
 
 
@@ -19,6 +20,18 @@ class AlbumRepository:
             await self.db.execute(
                 select(AlbumShare).where(AlbumShare.album_id == album_id, AlbumShare.user_id == user_id)
             )
+        ).scalar_one_or_none()
+
+    async def get_invite(self, album_id: uuid.UUID, user_id: uuid.UUID) -> AlbumShareInvite | None:
+        return (
+            await self.db.execute(
+                select(AlbumShareInvite).where(AlbumShareInvite.album_id == album_id, AlbumShareInvite.user_id == user_id)
+            )
+        ).scalar_one_or_none()
+
+    async def get_invite_by_id(self, invite_id: uuid.UUID) -> AlbumShareInvite | None:
+        return (
+            await self.db.execute(select(AlbumShareInvite).where(AlbumShareInvite.id == invite_id))
         ).scalar_one_or_none()
 
     async def count_media(self, album_id: uuid.UUID) -> int:
@@ -89,3 +102,63 @@ class AlbumRepository:
                 .order_by(AlbumMedia.position, AlbumMedia.added_at)
             )
         ).scalars().all()
+
+    async def get_shares_for_user(self, user_id: uuid.UUID, album_ids: list[uuid.UUID]) -> list[AlbumShare]:
+        if not album_ids:
+            return []
+
+        return (
+            await self.db.execute(
+                select(AlbumShare).where(
+                    AlbumShare.user_id == user_id,
+                    AlbumShare.album_id.in_(album_ids),
+                )
+            )
+        ).scalars().all()
+
+    async def get_pending_invites_for_user(self, user_id: uuid.UUID, album_ids: list[uuid.UUID]) -> list[AlbumShareInvite]:
+        if not album_ids:
+            return []
+
+        return (
+            await self.db.execute(
+                select(AlbumShareInvite).where(
+                    AlbumShareInvite.user_id == user_id,
+                    AlbumShareInvite.album_id.in_(album_ids),
+                )
+            )
+        ).scalars().all()
+
+    async def get_album_preview_media_ids(
+        self,
+        album_ids: list[uuid.UUID],
+        *,
+        limit_per_album: int = 4,
+    ) -> dict[uuid.UUID, list[uuid.UUID]]:
+        if not album_ids:
+            return {}
+
+        rows = (
+            await self.db.execute(
+                select(AlbumMedia.album_id, AlbumMedia.media_id)
+                .where(AlbumMedia.album_id.in_(album_ids))
+                .order_by(AlbumMedia.album_id.asc(), AlbumMedia.position.asc(), AlbumMedia.media_id.asc())
+            )
+        ).all()
+
+        previews: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for album_id, media_id in rows:
+            current = previews.setdefault(album_id, [])
+            if len(current) < limit_per_album:
+                current.append(media_id)
+
+        return previews
+
+    async def get_owner_summaries(self, owner_ids: list[uuid.UUID]) -> dict[uuid.UUID, User]:
+        if not owner_ids:
+            return {}
+
+        users = (
+            await self.db.execute(select(User).where(User.id.in_(owner_ids)))
+        ).scalars().all()
+        return {user.id: user for user in users}

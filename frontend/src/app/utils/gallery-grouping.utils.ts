@@ -1,84 +1,59 @@
-import { MediaRead } from '../models/api';
+import { MediaRead } from '../models/media';
+import { TimelineBucket, TimelineYearGroup } from '../models/timeline';
 
-export interface GalleryDayGroup {
-  key: string;
+export interface DayGroup {
+  /** ISO date string: "2026-03-28" */
+  date: string;
+  /** Human-readable label, e.g. "March 28, 2026" */
   label: string;
   items: MediaRead[];
 }
 
-export function shouldAnimateGalleryRegroup(previousItems: MediaRead[], nextItems: MediaRead[], hasRenderedItems: boolean): boolean {
-  if (!hasRenderedItems || previousItems.length === 0 || nextItems.length === 0) {
-    return false;
-  }
+const DATE_FORMAT = new Intl.DateTimeFormat('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+  timeZone: 'UTC',
+});
 
-  if (previousItems.length !== nextItems.length) {
-    return true;
-  }
-
-  for (let index = 0; index < previousItems.length; index += 1) {
-    const previous = previousItems[index];
-    const next = nextItems[index];
-    if (!previous || !next) {
-      return true;
-    }
-
-    if (previous.id !== next.id || previous.metadata.captured_at !== next.metadata.captured_at) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-export function buildGalleryDayGroups(items: MediaRead[]): GalleryDayGroup[] {
-  const groups = new Map<string, GalleryDayGroup>();
+/**
+ * Groups a flat list of MediaRead items by their captured_at date (UTC day).
+ * Assumes the list is already sorted newest-first; groups preserve that order.
+ */
+export function groupByDay(items: MediaRead[]): DayGroup[] {
+  const map = new Map<string, DayGroup>();
+  const order: string[] = [];
 
   for (const item of items) {
-    const key = getLocalDayKey(item.metadata.captured_at);
-    const existing = groups.get(key);
-
-    if (existing) {
-      existing.items.push(item);
-      continue;
+    const date = item.metadata.captured_at.slice(0, 10); // "YYYY-MM-DD"
+    if (!map.has(date)) {
+      const d = new Date(`${date}T00:00:00Z`);
+      map.set(date, { date, label: DATE_FORMAT.format(d), items: [] });
+      order.push(date);
     }
-
-    groups.set(key, {
-      key,
-      label: formatGroupLabel(item.metadata.captured_at),
-      items: [item]
-    });
+    map.get(date)!.items.push(item);
   }
 
-  return Array.from(groups.values());
+  return order.map(date => map.get(date)!);
 }
 
-function getLocalDayKey(value: string): string {
-  const date = new Date(value);
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
+/**
+ * Folds a flat list of TimelineBuckets into year groups.
+ * Buckets are expected to already be sorted newest-first.
+ */
+export function groupTimelineByYear(buckets: TimelineBucket[]): TimelineYearGroup[] {
+  const map = new Map<number, TimelineYearGroup>();
+  const order: number[] = [];
 
-  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
-  const month = parts.find((part) => part.type === 'month')?.value ?? '00';
-  const day = parts.find((part) => part.type === 'day')?.value ?? '00';
-
-  return `${year}-${month}-${day}`;
-}
-
-function formatGroupLabel(value: string): string {
-  const date = new Date(value);
-  const now = new Date();
-  const options: Intl.DateTimeFormatOptions = {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  };
-
-  if (date.getFullYear() !== now.getFullYear()) {
-    options.year = 'numeric';
+  for (const bucket of buckets) {
+    if (!map.has(bucket.year)) {
+      map.set(bucket.year, { year: bucket.year, count: 0, months: [] });
+      order.push(bucket.year);
+    }
+    const group = map.get(bucket.year)!;
+    group.count += bucket.count;
+    group.months.push(bucket);
   }
 
-  return new Intl.DateTimeFormat(undefined, options).format(date);
+  return order.map(year => map.get(year)!);
 }

@@ -44,6 +44,25 @@ async def test_login_user_invalid_credentials(fake_db):
 
 
 @pytest.mark.asyncio
+async def test_login_and_basic_auth_accept_case_insensitive_username(fake_db):
+    service = AuthService(fake_db)
+    user = SimpleNamespace(id="u1", username="sakura", hashed_password="hashed")
+
+    with patch("backend.app.services.auth.UserRepository") as repo_cls, patch(
+        "backend.app.services.auth.verify_password", return_value=True
+    ), patch("backend.app.services.auth.create_access_token", return_value="access"), patch.object(
+        service, "create_refresh_token", AsyncMock(return_value="refresh")
+    ):
+        repo_cls.return_value.get_by_username = AsyncMock(return_value=user)
+
+        token = await service.login_user("SaKuRa", "password123")
+        authenticated = await service.authenticate_basic_user("SAKURA", "password123")
+
+    assert token.access_token == "access"
+    assert authenticated is user
+
+
+@pytest.mark.asyncio
 async def test_register_login_and_refresh_success_paths(fake_db):
     service = AuthService(fake_db)
     body = UserRegister(username="sakura", email="sakura@starsbit.space", password="password123")

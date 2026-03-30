@@ -1,0 +1,61 @@
+:host {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.brand-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  padding-inline: 8px 12px;
+}
+
+.brand-logo {
+  display: block;
+  max-width: 100%;
+  height: 44px;
+  width: auto;
+}
+
+.brand-logo-dark {
+  display: none;
+}
+
+:host-context(html.theme-dark) .brand-logo-light {
+  display: none;
+}
+
+:host-context(html.theme-dark) .brand-logo-dark {
+  display: block;
+}
+
+:host-context(html.theme-light) .brand-logo-light {
+  display: block;
+}
+
+:host-context(html.theme-light) .brand-logo-dark {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host-context(html:not(.theme-light)) .brand-logo-light {
+    display: none;
+  }
+
+  :host-context(html:not(.theme-light)) .brand-logo-dark {
+    display: block;
+  }
+}
+
+@media (max-width: 899px) {
+  :host {
+    flex-basis: 132px;
+  }
+
+  .brand-logo {
+    height: 36px;
+  }
+}

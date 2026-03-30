@@ -1,0 +1,64 @@
+<zukan-layout>
+  @if (album(); as album) {
+    <mat-card class="album-detail__header" appearance="outlined">
+      <mat-card-content class="album-detail__header-content">
+        <div class="album-detail__cover" [class.album-detail__cover--empty]="!headerPreviewUrl()">
+          @if (headerPreviewUrl(); as previewUrl) {
+            <img [src]="previewUrl" alt="" loading="lazy">
+          } @else if (headerPreviewLoading()) {
+            <mat-spinner diameter="32"></mat-spinner>
+          } @else {
+            <mat-icon aria-hidden="true">collections</mat-icon>
+            <span>No cover yet</span>
+          }
+        </div>
+
+        <div class="album-detail__copy">
+          <div class="album-detail__meta">
+            <mat-chip>{{ accessLabel() }}</mat-chip>
+            <span>by {{ ownerName() }}</span>
+          </div>
+          <h1>{{ album.name }}</h1>
+          <p>{{ album.description || 'No description yet.' }}</p>
+        </div>
+
+        <div class="album-detail__actions">
+          @if (canInvite()) {
+            <button mat-stroked-button type="button" (click)="inviteToAlbum()">
+              <mat-icon aria-hidden="true">person_add</mat-icon>
+              Invite
+            </button>
+          }
+          @if (canEdit()) {
+            <button mat-stroked-button type="button" (click)="editThumbnail()">
+              <mat-icon aria-hidden="true">image</mat-icon>
+              Change thumbnail
+            </button>
+            <button mat-stroked-button type="button" (click)="editAlbum()">
+              <mat-icon aria-hidden="true">edit</mat-icon>
+              Edit
+            </button>
+          }
+          @if (canDelete()) {
+            <button mat-stroked-button type="button" (click)="deleteAlbum()">
+              <mat-icon aria-hidden="true">delete</mat-icon>
+              Delete
+            </button>
+          }
+        </div>
+      </mat-card-content>
+    </mat-card>
+  } @else if (albumStore.selectedAlbumLoading()) {
+    <mat-card class="album-detail__loading" appearance="outlined">
+      <mat-spinner diameter="36"></mat-spinner>
+      <span>Loading album…</span>
+    </mat-card>
+  }
+
+  <zukan-media-browser
+    [dayGroups]="galleryStore.groupedByDay()"
+    [timeline]="galleryStore.timeline()"
+    [loading]="galleryStore.loading()"
+    [allowSelection]="false">
+  </zukan-media-browser>
+</zukan-layout>

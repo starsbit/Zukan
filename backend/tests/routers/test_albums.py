@@ -13,9 +13,15 @@ def _album_payload(album_id: str, owner_id: str, name: str = "Favorites") -> dic
     return {
         "id": album_id,
         "owner_id": owner_id,
+        "owner": {
+            "id": owner_id,
+            "username": "owner",
+        },
+        "access_role": "owner",
         "name": name,
         "description": "desc",
         "cover_media_id": None,
+        "preview_media": [],
         "media_count": 0,
         "version": 1,
         "created_at": now,
@@ -61,7 +67,7 @@ def test_get_album_contract(api_client, monkeypatch):
     async def _fake_get_for_user(self, requested_album_id, user):
         return {"id": requested_album_id}
 
-    async def _fake_read(self, album):
+    async def _fake_read(self, album, user):
         return _album_payload(str(album["id"]), str(uuid.uuid4()))
 
     monkeypatch.setattr(AlbumService, "get_album_for_user", _fake_get_for_user)
@@ -155,8 +161,9 @@ def test_share_album_contract(api_client, monkeypatch):
         now = datetime.now(timezone.utc).isoformat()
         return (
             {
-                "user_id": str(body.user_id),
+                "user_id": str(shared_user_id),
                 "role": "viewer",
+                "status": "pending",
                 "shared_at": now,
                 "shared_by_user_id": str(user.id),
             },
@@ -167,11 +174,12 @@ def test_share_album_contract(api_client, monkeypatch):
 
     response = api_client.post(
         f"/api/v1/albums/{album_id}/shares",
-        json={"user_id": str(shared_user_id), "role": "viewer"},
+        json={"username": "viewer_user", "role": "viewer"},
     )
 
     assert response.status_code == 201
     assert response.json()["user_id"] == str(shared_user_id)
+    assert response.json()["status"] == "pending"
 
 
 def test_transfer_album_owner_contract(api_client, monkeypatch):

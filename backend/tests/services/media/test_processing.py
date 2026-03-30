@@ -48,6 +48,35 @@ async def test_retag_media_queues_job_when_available(fake_db, stub_query, user):
 
 
 @pytest.mark.asyncio
+async def test_bulk_retag_media_queues_only_manageable_ready_items(fake_db, stub_query, user):
+    ready_id = uuid.uuid4()
+    skipped_pending_id = uuid.uuid4()
+    skipped_deleted_id = uuid.uuid4()
+    skipped_foreign_id = uuid.uuid4()
+    rows = [
+        SimpleNamespace(id=ready_id, uploader_id=user.id, deleted_at=None, tagging_status="done", tagging_error="old"),
+        SimpleNamespace(id=skipped_pending_id, uploader_id=user.id, deleted_at=None, tagging_status="pending", tagging_error="old"),
+        SimpleNamespace(id=skipped_deleted_id, uploader_id=user.id, deleted_at=object(), tagging_status="done", tagging_error="old"),
+        SimpleNamespace(id=skipped_foreign_id, uploader_id=uuid.uuid4(), deleted_at=None, tagging_status="done", tagging_error="old"),
+    ]
+    stub_query.get_media_by_ids.return_value = rows
+    queue = AsyncMock()
+
+    service = MediaProcessingService(fake_db, stub_query)
+
+    with patch("backend.app.services.media.processing.get_tag_queue", return_value=queue):
+        queued = await service.bulk_retag_media([row.id for row in rows], user)
+
+    assert queued == 1
+    assert rows[0].tagging_status == "pending"
+    assert rows[0].tagging_error is None
+    assert rows[1].tagging_status == "pending"
+    assert rows[1].tagging_error == "old"
+    fake_db.commit.assert_awaited_once()
+    queue.put.assert_awaited_once_with(ready_id)
+
+
+@pytest.mark.asyncio
 async def test_mark_tagging_failure_handles_missing_media(fake_db, stub_query):
     stub_query.get_media_by_id.return_value = None
     service = MediaProcessingService(fake_db, stub_query)

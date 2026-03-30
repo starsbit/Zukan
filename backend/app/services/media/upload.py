@@ -12,7 +12,7 @@ from backend.app.config import settings
 from backend.app.errors.error import AppError
 from backend.app.errors.upload import upload_limit_exceeded
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaType
+from backend.app.models.media import Media, MediaType, MediaVisibility
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, UploadResult
@@ -89,6 +89,7 @@ class MediaUploadWorkflow:
         tags: list[str] | None,
         captured_at_override: datetime | None,
         captured_at_values: list[datetime] | None = None,
+        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         self._validate_batch_size(files)
         upload_batch = await self._create_upload_batch(user, len(files))
@@ -104,6 +105,7 @@ class MediaUploadWorkflow:
                 user=user,
                 tags=tags,
                 captured_at_override=per_file_override,
+                visibility=visibility,
                 ctx=ctx,
             )
 
@@ -139,6 +141,7 @@ class MediaUploadWorkflow:
         user: User,
         tags: list[str] | None,
         captured_at_override: datetime | None,
+        visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         original_name = upload.filename or "unknown"
@@ -178,6 +181,7 @@ class MediaUploadWorkflow:
             file_metadata=file_metadata,
             tags=tags,
             captured_at=captured_at_override or captured_at,
+            visibility=visibility,
             ctx=ctx,
         )
 
@@ -286,6 +290,7 @@ class MediaUploadWorkflow:
         file_metadata: Any,
         tags: list[str] | None,
         captured_at: datetime,
+        visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
@@ -311,6 +316,7 @@ class MediaUploadWorkflow:
             poster_path=str(poster) if poster else None,
             poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
             captured_at=captured_at,
+            visibility=visibility,
         )
         self._db.add(media)
         await self._db.flush()
@@ -404,6 +410,7 @@ class MediaUploadService:
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
+        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
             db=self._db,
@@ -418,6 +425,7 @@ class MediaUploadService:
             tags=tags,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            visibility=visibility,
         )
 
     async def build_upload_response(
@@ -429,6 +437,7 @@ class MediaUploadService:
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
+        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         return await self.upload_files(
             user,
@@ -437,6 +446,7 @@ class MediaUploadService:
             tags=tags,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            visibility=visibility,
         )
 
     async def mark_upload_batch_item_done(self, media_id: uuid.UUID) -> None:

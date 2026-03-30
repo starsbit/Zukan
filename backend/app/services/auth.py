@@ -106,9 +106,8 @@ class AuthService:
 
     async def authenticate_basic_user(self, username: str, password: str) -> User | None:
         user = await UserRepository(self._db).get_by_username(username)
-        valid_user = user is not None and secrets.compare_digest(user.username, username)
         valid_password = user is not None and verify_password(password, user.hashed_password)
-        if not valid_user or not valid_password:
+        if not valid_password:
             return None
         return user
 

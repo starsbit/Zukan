@@ -1,215 +1,79 @@
-import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, of, switchMap, tap, throwError } from 'rxjs';
-
-import { LogoutRequestDto, RefreshRequestDto, UserLoginDto, UserRead, UserRegisterDto } from '../models/api';
+import { inject, Injectable } from '@angular/core';
+import { Router } from '@angular/router';
+import { Observable, of } from 'rxjs';
+import { finalize, map, switchMap, tap } from 'rxjs/operators';
 import { AuthClientService } from './web/auth-client.service';
-import { ClientAuthStore } from './web/auth.store';
 import { UsersClientService } from './web/users-client.service';
+import { AdminClientService } from './web/admin-client.service';
+import { AuthStore } from './web/auth.store';
+import { UserStore } from './user.store';
+import { UserSelfRead } from '../models/auth';
 
-export interface AuthState {
-  user: UserRead | null;
-  status: 'anonymous' | 'authenticated';
-  initialized: boolean;
-  loginPending: boolean;
-  refreshPending: boolean;
-  logoutPending: boolean;
-  error: unknown | null;
-}
-
-const initialAuthState = (): AuthState => ({
-  user: null,
-  status: 'anonymous',
-  initialized: false,
-  loginPending: false,
-  refreshPending: false,
-  logoutPending: false,
-  error: null
-});
-
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly authClient = inject(AuthClientService);
-  private readonly authStore = inject(ClientAuthStore);
   private readonly usersClient = inject(UsersClientService);
-  private readonly stateSubject = new BehaviorSubject<AuthState>(initialAuthState());
+  private readonly adminClient = inject(AdminClientService);
+  private readonly authStore = inject(AuthStore);
+  private readonly userStore = inject(UserStore);
+  private readonly router = inject(Router);
 
-  readonly state$ = this.stateSubject.asObservable();
-  readonly user$ = this.state$.pipe(
-    map((state) => state.user),
-    distinctUntilChanged()
-  );
-  readonly isAuthenticated$ = this.state$.pipe(
-    map((state) => state.status === 'authenticated'),
-    distinctUntilChanged()
-  );
-  readonly loading$ = this.state$.pipe(
-    map((state) => state.loginPending || state.refreshPending || state.logoutPending),
-    distinctUntilChanged()
-  );
-  readonly error$ = this.state$.pipe(
-    map((state) => state.error),
-    distinctUntilChanged()
-  );
-
-  get snapshot(): AuthState {
-    return this.stateSubject.value;
+  login(username: string, password: string, rememberMe: boolean): Observable<void> {
+    return this.authClient.login({ username, password, remember_me: rememberMe }).pipe(
+      tap(tokens => this.authStore.setTokens(tokens, rememberMe)),
+      switchMap(() => this.usersClient.getMe()),
+      tap(user => this.userStore.set(user)),
+      map(() => void 0),
+    );
   }
 
-  initializeSession(): Observable<UserRead | null> {
-    if (!this.authStore.getRefreshToken()) {
-      this.clearSessionState();
-      return of(null);
+  register(username: string, email: string, password: string): Observable<UserSelfRead> {
+    return this.authClient.register({ username, email, password });
+  }
+
+  logout(): Observable<void> {
+    const refreshToken = this.authStore.getRefreshToken();
+    const cleanup = () => {
+      this.authStore.clear();
+      this.userStore.clear();
+    };
+    if (!refreshToken) {
+      cleanup();
+      this.router.navigate(['/login']);
+      return of(void 0);
     }
-
-    return this.refreshSession().pipe(
-      catchError(() => of(null))
-    );
-  }
-
-  loadCurrentUser(): Observable<UserRead> {
-    this.patchState({
-      error: null
-    });
-
-    return this.usersClient.getMe().pipe(
-      tap((user) => this.setAuthenticatedUser(user)),
-      catchError((error) => {
-        this.clearSessionState(error);
-        return throwError(() => error);
-      })
-    );
-  }
-
-  register(body: UserRegisterDto): Observable<UserRead> {
-    this.patchState({
-      loginPending: true,
-      error: null
-    });
-
-    return this.authClient.register(body).pipe(
-      switchMap(() => this.login({
-        username: body.username,
-        password: body.password
-      })),
-      catchError((error) => {
-        this.patchState({
-          error
-        });
-        return throwError(() => error);
-      }),
-      finalize(() => {
-        this.patchState({
-          loginPending: false
-        });
-      })
-    );
-  }
-
-  login(body: UserLoginDto): Observable<UserRead> {
-    this.patchState({
-      loginPending: true,
-      error: null
-    });
-
-    return this.authClient.login(body).pipe(
-      tap((response) => this.authStore.setTokens({
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-        tokenType: response.token_type
-      })),
-      switchMap(() => this.usersClient.getMe()),
-      tap((user) => this.setAuthenticatedUser(user)),
-      catchError((error) => {
-        this.patchState({
-          error
-        });
-        return throwError(() => error);
-      }),
-      finalize(() => {
-        this.patchState({
-          loginPending: false
-        });
-      })
-    );
-  }
-
-  refreshSession(body?: RefreshRequestDto): Observable<UserRead> {
-    this.patchState({
-      refreshPending: true,
-      error: null
-    });
-
-    const refreshToken = body?.refresh_token ?? this.authStore.getRefreshToken() ?? '';
-
-    return this.authClient.refresh({ refresh_token: refreshToken }).pipe(
-      tap((response) => this.authStore.setTokens({
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
-        tokenType: response.token_type
-      })),
-      switchMap(() => this.usersClient.getMe()),
-      tap((user) => this.setAuthenticatedUser(user)),
-      catchError((error) => {
-        this.clearSessionState(error);
-        return throwError(() => error);
-      }),
-      finalize(() => {
-        this.patchState({
-          refreshPending: false
-        });
-      })
-    );
-  }
-
-  logout(body?: LogoutRequestDto): Observable<void> {
-    this.patchState({
-      logoutPending: true,
-      error: null
-    });
-
-    const refreshToken = body?.refresh_token ?? this.authStore.getRefreshToken() ?? '';
-
     return this.authClient.logout({ refresh_token: refreshToken }).pipe(
-      tap(() => this.clearSessionState()),
-      catchError((error) => {
-        this.patchState({
-          error
-        });
-        return throwError(() => error);
-      }),
       finalize(() => {
-        this.patchState({
-          logoutPending: false
-        });
-      })
+        cleanup();
+        this.router.navigate(['/login']);
+      }),
+      map(() => void 0),
     );
   }
 
-  setAuthenticatedUser(user: UserRead | null): void {
-    this.stateSubject.next({
-      ...this.stateSubject.value,
-      user,
-      status: user ? 'authenticated' : 'anonymous',
-      initialized: true,
-      error: null
-    });
-  }
+  /**
+   * First-time setup: registers a new admin account, promotes it via the admin API,
+   * then deletes the default admin:admin user. Logs in as the new admin on completion.
+   *
+   * Requires that the default admin:admin credentials still work.
+   */
+  setupAdmin(username: string, email: string, password: string): Observable<void> {
+    let newUserId = '';
+    let defaultAdminId = '';
 
-  clearSessionState(error: unknown | null = null): void {
-    this.authStore.clearTokens();
-    this.stateSubject.next({
-      ...initialAuthState(),
-      initialized: true,
-      error
-    });
-  }
-
-  private patchState(patch: Partial<AuthState>): void {
-    this.stateSubject.next({
-      ...this.stateSubject.value,
-      ...patch
-    });
+    return this.authClient.register({ username, email, password }).pipe(
+      tap(newUser => { newUserId = newUser.id; }),
+      switchMap(() => this.authClient.login({ username: 'admin', password: 'admin', remember_me: false })),
+      tap(tokens => this.authStore.setTokens(tokens, false)),
+      switchMap(() => this.usersClient.getMe()),
+      tap(adminUser => { defaultAdminId = adminUser.id; }),
+      switchMap(() => this.adminClient.updateUser(newUserId, { is_admin: true })),
+      switchMap(() => this.adminClient.deleteUser(defaultAdminId).pipe(map(() => null))),
+      switchMap(() => this.authClient.login({ username, password, remember_me: true })),
+      tap(tokens => this.authStore.setTokens(tokens, true)),
+      switchMap(() => this.usersClient.getMe()),
+      tap(user => this.userStore.set(user)),
+      map((): void => void 0),
+    ) as Observable<void>;
   }
 }

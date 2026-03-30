@@ -1,23 +1,21 @@
 :host {
-  display: block;
-  min-height: 100dvh;
-}
-
-.login-page {
-  min-height: 100dvh;
   display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   align-items: center;
   justify-content: center;
-  padding: 2rem;
-  background-color: var(--mat-sys-surface);
+  gap: 16px;
+  background: var(--mat-sys-surface-container-low);
+  padding: 16px;
+  box-sizing: border-box;
 }
 
-app-auth-form {
-  width: min(100%, 440px);
-}
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  overflow: hidden;
 
-@media (max-width: 900px) {
-  .login-page {
-    padding: 1rem;
+  ::ng-deep .mat-mdc-tab-body-content {
+    overflow-x: hidden;
   }
 }

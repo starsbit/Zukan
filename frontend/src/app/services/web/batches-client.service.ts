@@ -1,31 +1,48 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-
+import { API_BASE_URL } from './api.config';
 import {
   ImportBatchItemListResponse,
-  ImportBatchRead,
   ImportBatchListResponse,
-  ListImportBatchItemsQuery,
-  ListImportBatchesQuery,
-  Uuid
-} from '../../models/api';
-import { ClientApiService } from './api.service';
+  ImportBatchRead,
+} from '../../models/processing';
 
-@Injectable({
-  providedIn: 'root'
-})
+export interface BatchListParams {
+  after?: string;
+  page_size?: number;
+}
+
+export interface BatchItemListParams {
+  after?: string;
+  page_size?: number;
+}
+
+@Injectable({ providedIn: 'root' })
 export class BatchesClientService {
-  private readonly api = inject(ClientApiService);
+  private readonly http = inject(HttpClient);
+  private readonly base = inject(API_BASE_URL);
 
-  list(query?: ListImportBatchesQuery): Observable<ImportBatchListResponse> {
-    return this.api.get<ImportBatchListResponse>('/me/import-batches', { query });
+  list(p: BatchListParams = {}): Observable<ImportBatchListResponse> {
+    let params = new HttpParams();
+    if (p.after != null) params = params.set('after', p.after);
+    if (p.page_size != null) params = params.set('page_size', p.page_size);
+    return this.http.get<ImportBatchListResponse>(`${this.base}/api/v1/me/import-batches`, {
+      params,
+    });
   }
 
-  get(batchId: Uuid): Observable<ImportBatchRead> {
-    return this.api.get<ImportBatchRead>(`/me/import-batches/${batchId}`);
+  get(batchId: string): Observable<ImportBatchRead> {
+    return this.http.get<ImportBatchRead>(`${this.base}/api/v1/me/import-batches/${batchId}`);
   }
 
-  listItems(batchId: Uuid, query?: ListImportBatchItemsQuery): Observable<ImportBatchItemListResponse> {
-    return this.api.get<ImportBatchItemListResponse>(`/me/import-batches/${batchId}/items`, { query });
+  listItems(batchId: string, p: BatchItemListParams = {}): Observable<ImportBatchItemListResponse> {
+    let params = new HttpParams();
+    if (p.after != null) params = params.set('after', p.after);
+    if (p.page_size != null) params = params.set('page_size', p.page_size);
+    return this.http.get<ImportBatchItemListResponse>(
+      `${this.base}/api/v1/me/import-batches/${batchId}/items`,
+      { params },
+    );
   }
 }

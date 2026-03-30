@@ -1,0 +1,36 @@
+<h2 mat-dialog-title>{{ data.title }}</h2>
+
+<mat-dialog-content>
+  <p class="album-picker-dialog__copy">
+    Add {{ data.selectedCount }} selected item{{ data.selectedCount === 1 ? '' : 's' }} to an existing album.
+  </p>
+
+  @if (loading()) {
+    <div class="album-picker-dialog__loading">
+      <mat-spinner diameter="32"></mat-spinner>
+      <span>Loading albums…</span>
+    </div>
+  } @else if (!hasAlbums()) {
+    <p class="album-picker-dialog__empty">No albums available yet. Create one from the album page first.</p>
+  } @else {
+    <form class="album-picker-dialog__form" [formGroup]="form">
+      <mat-form-field appearance="outline">
+        <mat-label>Album</mat-label>
+        <mat-select formControlName="albumId">
+          @for (album of albums(); track album.id) {
+            <mat-option [value]="album.id">
+              {{ album.name }} · {{ album.media_count }} item{{ album.media_count === 1 ? '' : 's' }}
+            </mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+    </form>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="!hasAlbums()" (click)="save()">
+    {{ data.confirmLabel }}
+  </button>
+</mat-dialog-actions>

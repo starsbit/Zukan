@@ -1,0 +1,26 @@
+h2[mat-dialog-title] {
+  margin: 0;
+}
+
+mat-dialog-content {
+  min-width: min(480px, calc(100vw - 48px));
+}
+
+.settings-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.form-error {
+  color: var(--mat-sys-error);
+}
+
+mat-dialog-actions button[mat-flat-button] {
+  min-width: 88px;
+}

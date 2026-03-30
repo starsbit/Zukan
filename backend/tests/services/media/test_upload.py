@@ -11,6 +11,7 @@ import pytest
 from fastapi import UploadFile
 
 from backend.app.config import settings
+from backend.app.models.media import MediaVisibility
 from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.services.media.upload import (
     MediaPostProcessor,
@@ -127,6 +128,7 @@ async def test_handle_new_media_with_manual_tags_marks_done(fake_db, stub_query,
             file_metadata=file_metadata,
             tags=["nsfw"],
             captured_at=datetime.now(timezone.utc),
+            visibility=MediaVisibility.private,
             ctx=ctx,
         )
 

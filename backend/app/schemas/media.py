@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from backend.app.models.media import MediaType, ProcessingStatus, TaggingStatus
+from backend.app.models.media import MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.schemas.relations import EntityCreate, EntityRead, ExternalRefCreate, ExternalRefRead
 from backend.app.schemas.tags import TagWithConfidence
 
@@ -53,6 +52,10 @@ class MediaMetadataFilter(BaseModel):
 class MediaRead(BaseModel):
     id: uuid.UUID
     uploader_id: uuid.UUID | None = None
+    uploader_username: str | None = Field(
+        default=None,
+        description="Username of the uploading user when available.",
+    )
     owner_id: uuid.UUID | None = Field(
         default=None,
         description=(
@@ -60,12 +63,11 @@ class MediaRead(BaseModel):
             "In the current public contract this is equivalent to uploader ownership semantics."
         ),
     )
-    visibility: Literal["private"] = Field(
-        default="private",
-        description=(
-            "Public API visibility contract. Currently always `private`; no public endpoints expose or mutate broader visibility modes."
-        ),
+    owner_username: str | None = Field(
+        default=None,
+        description="Username of the current owning user when available.",
     )
+    visibility: MediaVisibility = Field(default=MediaVisibility.private, description="Visibility for this media item.")
     filename: str
     original_filename: str | None = None
     media_type: MediaType = MediaType.IMAGE
@@ -85,6 +87,7 @@ class MediaRead(BaseModel):
     poster_status: ProcessingStatus = Field(default=ProcessingStatus.PENDING, description="Current poster generation lifecycle state for animated media.")
     ocr_text: str | None = Field(default=None, description="System-derived OCR text. Read-only; set by the OCR pipeline.")
     is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
+    favorite_count: int = Field(default=0, description="Number of users who have favorited this media.")
 
 
 class MediaDetail(MediaRead):
@@ -106,7 +109,9 @@ class MediaDetail(MediaRead):
             "example": {
                 "id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
                 "uploader_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "uploader_username": "saber",
                 "owner_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "owner_username": "saber",
                 "visibility": "private",
                 "filename": "2026-03-24_15-07-11.webp",
                 "original_filename": "saberalterburger.webp",
@@ -203,6 +208,10 @@ class MediaUpdate(BaseModel):
             "send populated array to replace all refs."
         ),
     )
+    visibility: MediaVisibility | None = Field(
+        default=None,
+        description="Visibility to apply to this media item. Omit to keep the current visibility unchanged.",
+    )
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
     model_config = {
@@ -262,3 +271,15 @@ class MediaCursorPage(BaseModel):
     has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[MediaRead] = Field(description="Media returned for the current page.")
+
+
+class TimelineBucket(BaseModel):
+    year: int = Field(description="Year component of the bucket.")
+    month: int = Field(description="Month component of the bucket (1–12).")
+    count: int = Field(description="Number of media items captured in this year/month.")
+
+
+class MediaTimeline(BaseModel):
+    buckets: list[TimelineBucket] = Field(
+        description="Year/month buckets sorted newest-first. Use these to render the sidebar without loading media.",
+    )

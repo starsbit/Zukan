@@ -1,0 +1,45 @@
+<button mat-button type="button" [matMenuTriggerFor]="uploadMenu" [disabled]="loading()">
+  <mat-icon>upload</mat-icon>
+  <span>{{ loading() ? 'Uploading...' : 'Upload' }}</span>
+</button>
+
+@if (dragActive()) {
+  <mat-card class="drop-overlay" appearance="outlined">
+    <mat-icon>file_upload</mat-icon>
+    <span>Drop files or folders to upload</span>
+  </mat-card>
+}
+
+<mat-menu #uploadMenu="matMenu">
+  <button mat-menu-item type="button" (click)="openFilePicker()">
+    <mat-icon>perm_media</mat-icon>
+    <span>Upload Files</span>
+  </button>
+
+  <button mat-menu-item type="button" (click)="openFolderPicker()">
+    <mat-icon>folder_open</mat-icon>
+    <span>Upload Folder</span>
+  </button>
+</mat-menu>
+
+<input
+  #fileInput
+  hidden
+  data-upload-kind="files"
+  type="file"
+  multiple
+  [attr.accept]="accept"
+  (change)="onFileSelection(fileInput.files)"
+/>
+
+<input
+  #folderInput
+  hidden
+  data-upload-kind="folder"
+  type="file"
+  multiple
+  webkitdirectory
+  directory
+  [attr.accept]="accept"
+  (change)="onFolderSelection(folderInput.files)"
+/>

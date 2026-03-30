@@ -6,8 +6,10 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 
 from backend.app.errors.error import AppError
+from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.processing import ItemStatus
 from backend.app.schemas import MediaListState, NsfwFilter, TagFilterMode
 from backend.app.services.media.query import MediaQueryService
@@ -101,10 +103,16 @@ async def test_visibility_and_detail_methods(service, user, media):
         await service.get_visible_media(media.id, user)
 
     media.is_nsfw = False
+    media.visibility = MediaVisibility.public
     service._media_repo.get_by_id_with_relations = AsyncMock(return_value=media)
     service.build_media_detail = AsyncMock(return_value="detail")
     detail = await service.get_media_detail(media.id, user)
     assert detail == "detail"
+
+    stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False)
+    media.visibility = MediaVisibility.private
+    with pytest.raises(AppError):
+        await service.get_media_detail(media.id, stranger)
 
 
 @pytest.mark.asyncio
@@ -134,6 +142,68 @@ async def test_ensure_album_visible_requires_owner_admin_or_share(service, user)
         await service._ensure_album_is_visible(user, uuid.uuid4())
 
 
+def test_apply_visibility_scope_keeps_album_scoped_media_visible(service):
+    stmt = object()
+    user = SimpleNamespace(is_admin=False)
+
+    assert service._apply_visibility_scope(stmt, user, MediaListState.ACTIVE, None, True) is stmt
+
+
+def test_apply_visibility_scope_for_favorites_includes_public_media(service, user):
+    stmt = select(Media)
+
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        None,
+        False,
+        True,
+    )
+
+    sql = str(scoped)
+    assert "media.uploader_id" in sql
+    assert "media.visibility" in sql
+    assert " OR " in sql
+    params = scoped.compile().params
+    assert MediaVisibility.shared in params.values()
+    assert MediaVisibility.public in params.values()
+
+
+def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filter(service, user):
+    stmt = select(Media)
+
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        MediaVisibility.public,
+        False,
+        True,
+    )
+
+    sql = str(scoped)
+    assert "media.visibility" in sql
+    assert " OR " not in sql
+
+
+def test_apply_visibility_scope_for_explicit_shared_filter_uses_shared_visibility(service, user):
+    stmt = select(Media)
+
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        MediaVisibility.shared,
+        False,
+        None,
+    )
+
+    sql = str(scoped)
+    assert "WHERE media.visibility" in sql
+    assert MediaVisibility.shared in scoped.compile().params.values()
+
+
 @pytest.mark.asyncio
 async def test_list_media_orchestrates_filter_pipeline(service, user):
     user.id = uuid.uuid4()
@@ -146,14 +216,18 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     service._apply_state_and_nsfw_filters = lambda stmt, *_: f"{stmt}:state"
     service._apply_status_filter = lambda stmt, *_: f"{stmt}:status"
     service._apply_favorited_filter = lambda stmt, *_: f"{stmt}:fav"
+    service._apply_visibility_scope = lambda stmt, *_: f"{stmt}:visibility"
     service._count_total = AsyncMock(return_value=10)
     service._apply_cursor = lambda stmt, *_: f"{stmt}:cursor"
     service._fetch_page_rows = AsyncMock(return_value=[row1, row2, row3])
     service._favorite_repo.get_favorited_ids = AsyncMock(return_value={row1.id})
+    service._favorite_repo.get_favorite_counts = AsyncMock(return_value={})
 
     with patch("backend.app.services.media.query.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
-    ), patch("backend.app.services.media.query.media_filters.apply_media_type_filters", side_effect=lambda stmt, *a: stmt), patch(
+    ), patch("backend.app.services.media.query.media_filters.apply_visibility_filter", side_effect=lambda stmt, *a: stmt), patch(
+        "backend.app.services.media.query.media_filters.apply_media_type_filters", side_effect=lambda stmt, *a: stmt
+    ), patch(
         "backend.app.services.media.query.media_filters.apply_captured_at_filters", side_effect=lambda stmt, *a: stmt
     ), patch("backend.app.services.media.query.media_filters.apply_ocr_text_filter", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.enrich_media", return_value=[]
@@ -169,6 +243,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             status_filter=None,
             metadata=SimpleNamespace(),
             favorited=None,
+            visibility=MediaVisibility.public,
             page_size=2,
             include_total=True,
         )
@@ -177,3 +252,40 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     assert page.has_more is True
     assert page.next_cursor is not None
     assert page.items == []
+
+
+@pytest.mark.asyncio
+async def test_get_timeline_applies_status_filter(service, user):
+    seen = {}
+    service._apply_album_filter_for_count = AsyncMock(side_effect=lambda stmt, *_: stmt)
+    service._apply_state_and_nsfw_filters_for_count = lambda stmt, *_: stmt
+    def apply_status(stmt, status):
+        seen["status_filter"] = status
+        return stmt
+
+    service._apply_status_filter = apply_status
+    service._apply_favorited_filter_for_count = lambda stmt, *_: stmt
+    service._apply_visibility_scope = lambda stmt, *_: stmt
+    service._db.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: []))
+
+    await service.get_timeline(
+        user,
+        state=MediaListState.ACTIVE,
+        status_filter="reviewed",
+    )
+
+    assert seen["status_filter"] == "reviewed"
+
+
+@pytest.mark.asyncio
+async def test_favoritable_media_checks_public_visibility(service, user, media):
+    stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False)
+    media.visibility = MediaVisibility.public
+    service._media_repo.get_by_id = AsyncMock(return_value=media)
+
+    visible = await service.get_favoritable_media(media.id, stranger)
+    assert visible is media
+
+    media.visibility = MediaVisibility.private
+    with pytest.raises(AppError):
+        await service.get_favoritable_media(media.id, stranger)

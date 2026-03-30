@@ -1,0 +1,85 @@
+<h2 mat-dialog-title>Change album thumbnail</h2>
+
+<mat-dialog-content class="album-thumbnail-dialog">
+  <p class="album-thumbnail-dialog__copy">
+    Choose an existing album image or upload a new image for <strong>{{ data.albumName }}</strong>.
+  </p>
+
+  <section class="album-thumbnail-dialog__section">
+    <div class="album-thumbnail-dialog__section-header">
+      <h3>Upload a new image</h3>
+      <button mat-stroked-button type="button" (click)="fileInput.click()">
+        <mat-icon aria-hidden="true">upload</mat-icon>
+        Select image
+      </button>
+      <input
+        #fileInput
+        class="album-thumbnail-dialog__file-input"
+        type="file"
+        accept="image/*"
+        name="album-thumbnail-upload"
+        (change)="onFileSelected($event)">
+    </div>
+
+    @if (uploadPreviewUrl(); as previewUrl) {
+      <div class="album-thumbnail-dialog__upload-preview">
+        <img [src]="previewUrl" alt="Selected album thumbnail preview">
+      </div>
+    } @else {
+      <p class="album-thumbnail-dialog__hint">
+        Uploaded images are added to the album and then used as the cover.
+      </p>
+    }
+
+    @if (fileError(); as fileError) {
+      <p class="album-thumbnail-dialog__error">{{ fileError }}</p>
+    }
+  </section>
+
+  <section class="album-thumbnail-dialog__section">
+    <div class="album-thumbnail-dialog__section-header">
+      <h3>Pick from this album</h3>
+      @if (loading()) {
+        <mat-spinner diameter="24"></mat-spinner>
+      }
+    </div>
+
+    @if (!loading() && hasExistingOptions()) {
+      <div class="album-thumbnail-dialog__grid">
+        @for (media of mediaItems(); track media.id) {
+          <button
+            type="button"
+            class="album-thumbnail-dialog__item"
+            [class.album-thumbnail-dialog__item--selected]="selectedMediaId() === media.id"
+            (click)="selectExisting(media.id)">
+            <zukan-media-card
+              [media]="media"
+              [selected]="selectedMediaId() === media.id"
+              [selectable]="false">
+            </zukan-media-card>
+          </button>
+        }
+      </div>
+    } @else if (!loading()) {
+      <mat-card appearance="outlined" class="album-thumbnail-dialog__empty">
+        <mat-card-content>
+          No images are available in this album yet.
+        </mat-card-content>
+      </mat-card>
+    }
+  </section>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-button type="button" (click)="clearToDefault()" [disabled]="!hasCurrentCover()">
+    Use default cover
+  </button>
+  <button
+    mat-flat-button
+    type="button"
+    (click)="save()"
+    [disabled]="!hasUploadSelection() && !selectedMediaId()">
+    Save thumbnail
+  </button>
+</mat-dialog-actions>

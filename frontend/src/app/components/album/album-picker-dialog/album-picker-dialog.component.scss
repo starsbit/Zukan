@@ -1,0 +1,36 @@
+:host {
+  display: block;
+  max-width: min(560px, calc(100vw - 32px));
+  overflow-x: hidden;
+}
+
+.album-picker-dialog__copy,
+.album-picker-dialog__empty,
+.album-picker-dialog__loading span {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.album-picker-dialog__form {
+  width: min(520px, calc(100vw - 64px));
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-top: 16px;
+}
+
+.album-picker-dialog__loading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 20px 0 8px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+@media (max-width: 599px) {
+  .album-picker-dialog__form {
+    width: 100%;
+  }
+}

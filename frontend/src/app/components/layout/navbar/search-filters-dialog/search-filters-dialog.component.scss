@@ -1,0 +1,34 @@
+h2[mat-dialog-title] {
+  margin: 0;
+}
+
+mat-dialog-content {
+  min-width: min(720px, calc(100vw - 48px));
+}
+
+.filters-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 8px;
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+@media (max-width: 719px) {
+  .filters-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  mat-dialog-content {
+    min-width: min(100vw - 32px, 560px);
+  }
+}

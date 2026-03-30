@@ -11,6 +11,7 @@ import pytest
 from fastapi import UploadFile
 
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus
+from backend.app.models.media import MediaVisibility
 from backend.app.services.media.upload import MediaUploadService, MediaUploadWorkflow, UploadBatchContext
 
 
@@ -52,6 +53,7 @@ async def test_process_single_upload_routes_failed_and_existing_paths(fake_db, s
             user=user,
             tags=None,
             captured_at_override=None,
+            visibility=MediaVisibility.private,
             ctx=UploadBatchContext(),
         )
     assert failed.await_count == 1
@@ -68,6 +70,7 @@ async def test_process_single_upload_routes_failed_and_existing_paths(fake_db, s
             user=user,
             tags=None,
             captured_at_override=None,
+            visibility=MediaVisibility.private,
             ctx=UploadBatchContext(),
         )
     assert existing.await_count == 1
@@ -97,10 +100,43 @@ async def test_process_single_upload_routes_new_media_path(fake_db, stub_query, 
             user=user,
             tags=["safe"],
             captured_at_override=None,
+            visibility=MediaVisibility.private,
             ctx=UploadBatchContext(),
         )
 
     assert new_media.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_process_single_upload_prefers_os_timestamp_override_for_new_media(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    batch = ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.running, total_items=1)
+    batch.id = uuid.uuid4()
+    upload = UploadFile(filename="a.webp", file=io.BytesIO(b"x"))
+    saved = SimpleNamespace(path=Path("/tmp/a.webp"), media_type="image", sha256="x", file_size=1, mime_type="image/webp")
+    override = datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+
+    with patch("backend.app.services.media.upload.save_upload", AsyncMock(return_value=saved)), patch(
+        "backend.app.services.media.upload.extract_media_metadata",
+        return_value=SimpleNamespace(captured_at=datetime(2024, 1, 1, tzinfo=timezone.utc)),
+    ), patch.object(workflow, "_handle_new_media", AsyncMock()) as new_media:
+        stub_query.get_media_by_sha256.return_value = None
+        await workflow._process_single_upload(
+            upload_batch=batch,
+            upload=upload,
+            user=user,
+            tags=["safe"],
+            captured_at_override=override,
+            visibility=MediaVisibility.private,
+            ctx=UploadBatchContext(),
+        )
+
+    assert new_media.await_args.kwargs["captured_at"] == override
 
 
 @pytest.mark.asyncio

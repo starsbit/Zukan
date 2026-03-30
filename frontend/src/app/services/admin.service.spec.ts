@@ -1,289 +1,182 @@
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { AdminService } from './admin.service';
+import { UserStore } from './user.store';
+import { API_BASE_URL } from './web/api.config';
+import { AnnouncementSeverity } from '../models/notifications';
 
-import { AuthService } from './auth.service';
-import { CLIENT_API_BASE_URL } from './web/api.config';
-import { AdminAccessError, AdminService } from './admin.service';
-import { AdminClientService } from './web/admin-client.service';
-import { AuthClientService } from './web/auth-client.service';
-import { ClientAuthStore } from './web/auth.store';
-import { UsersClientService } from './web/users-client.service';
+function makeUser(is_admin: boolean) {
+  return {
+    id: 'u1', username: 'alice', email: 'alice@example.com',
+    is_admin, show_nsfw: false, tag_confidence_threshold: 0.5,
+    version: 1, created_at: '2026-01-01T00:00:00Z',
+  };
+}
 
 describe('AdminService', () => {
   let service: AdminService;
-  let authService: AuthService;
-  let httpTesting: HttpTestingController;
+  let userStore: UserStore;
+  let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        AdminService,
-        AuthService,
-        AdminClientService,
-        AuthClientService,
-        ClientAuthStore,
-        UsersClientService,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: CLIENT_API_BASE_URL, useValue: 'http://api.example.test' }
-      ]
+        { provide: API_BASE_URL, useValue: '' },
+      ],
     });
-
     service = TestBed.inject(AdminService);
-    authService = TestBed.inject(AuthService);
-    httpTesting = TestBed.inject(HttpTestingController);
+    userStore = TestBed.inject(UserStore);
+    http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => {
-    httpTesting.verify();
+  afterEach(() => http.verify());
+
+  describe('when user is not admin', () => {
+    beforeEach(() => userStore.set(makeUser(false)));
+
+    it('getStats throws Forbidden', () => {
+      let err: unknown;
+      service.getStats().subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+      http.expectNone('/api/v1/admin/stats');
+    });
+
+    it('listUsers throws Forbidden', () => {
+      let err: unknown;
+      service.listUsers().subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('getUser throws Forbidden', () => {
+      let err: unknown;
+      service.getUser('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('updateUser throws Forbidden', () => {
+      let err: unknown;
+      service.updateUser('u2', { is_admin: true }).subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('deleteUser throws Forbidden', () => {
+      let err: unknown;
+      service.deleteUser('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('retagAll throws Forbidden', () => {
+      let err: unknown;
+      service.retagAll('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('listAnnouncements throws Forbidden', () => {
+      let err: unknown;
+      service.listAnnouncements().subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('createAnnouncement throws Forbidden', () => {
+      let err: unknown;
+      service.createAnnouncement({ title: 'Hi', message: 'test' }).subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
   });
 
-  const expectRequest = (method: string, url: string) => httpTesting.expectOne(
-    (request) => request.method === method && request.urlWithParams === url
-  );
-
-  it('allows admins to call admin endpoints', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
-    });
-
-    const resultPromise = firstValueFrom(service.getStats());
-
-    const statsRequest = expectRequest('GET', 'http://api.example.test/admin/stats');
-    statsRequest.flush({
-      total_users: 1,
-      total_media: 2,
-      total_storage_bytes: 3,
-      pending_tagging: 4,
-      failed_tagging: 5,
-      trashed_media: 6
-    });
-
-    await expect(resultPromise).resolves.toEqual({
-      total_users: 1,
-      total_media: 2,
-      total_storage_bytes: 3,
-      pending_tagging: 4,
-      failed_tagging: 5,
-      trashed_media: 6
+  describe('when user is not loaded (null)', () => {
+    it('getStats throws Forbidden', () => {
+      let err: unknown;
+      service.getStats().subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
     });
   });
 
-  it('blocks non-admin users before the admin request is sent', async () => {
-    authService.setAuthenticatedUser({
-      id: 'user-1',
-      username: 'user',
-      email: 'user@example.test',
-      is_admin: false,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+  describe('when user is admin', () => {
+    beforeEach(() => userStore.set(makeUser(true)));
+
+    it('getStats sends GET /api/v1/admin/stats', () => {
+      const mock = { total_users: 5, total_media: 100, total_storage_bytes: 1024, pending_tagging: 0, failed_tagging: 0, trashed_media: 0 };
+      service.getStats().subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/stats');
+      expect(req.request.method).toBe('GET');
+      req.flush(mock);
     });
 
-    const resultPromise = firstValueFrom(service.listUsers({ page: 1, page_size: 20 }));
-
-    httpTesting.expectNone('http://api.example.test/admin/users?page=1&page_size=20');
-
-    await expect(resultPromise).rejects.toBeInstanceOf(AdminAccessError);
-  });
-
-  it('guards mutating admin operations too', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('listUsers sends GET /api/v1/admin/users', () => {
+      const mock = { items: [], total: 0, page: 1, page_size: 20, total_pages: 0 };
+      service.listUsers().subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users');
+      expect(req.request.method).toBe('GET');
+      req.flush(mock);
     });
 
-    const resultPromise = firstValueFrom(service.deleteUser('user-2', true));
-
-    const deleteRequest = expectRequest('DELETE', 'http://api.example.test/admin/users/user-2?delete_media=true');
-    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
-
-    await expect(resultPromise).resolves.toBeNull();
-  });
-
-  it('patches cached users after admin updates', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('listUsers passes pagination params', () => {
+      service.listUsers({ page: 2, page_size: 10 }).subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/admin/users');
+      expect(req.request.params.get('page')).toBe('2');
+      expect(req.request.params.get('page_size')).toBe('10');
+      req.flush({ items: [], total: 0, page: 2, page_size: 10, total_pages: 0 });
     });
 
-    const listUsersPromise = firstValueFrom(service.listUsers({ page: 1, page_size: 20 }));
-    const listRequest = expectRequest('GET', 'http://api.example.test/admin/users?page=1&page_size=20');
-    listRequest.flush({
-      total: 1,
-      page: 1,
-      page_size: 20,
-      items: [{
-        id: 'user-2',
-        username: 'user',
-        email: 'user@example.test',
-        is_admin: false,
-        show_nsfw: false,
-        tag_confidence_threshold: 0.35,
-        version: 1,
-        created_at: '2026-03-21T00:00:00Z'
-      }]
-    });
-    await expect(listUsersPromise).resolves.toMatchObject({ total: 1 });
-
-    const updatePromise = firstValueFrom(service.updateUser('user-2', { is_admin: true }));
-    const updateRequest = expectRequest('PATCH', 'http://api.example.test/admin/users/user-2');
-    updateRequest.flush({
-      id: 'user-2',
-      username: 'user',
-      email: 'user@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('getUser sends GET /api/v1/admin/users/{id}', () => {
+      const mock = { ...makeUser(false), media_count: 0, storage_used_bytes: 0 };
+      service.getUser('u2').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2');
+      expect(req.request.method).toBe('GET');
+      req.flush(mock);
     });
 
-    await expect(updatePromise).resolves.toMatchObject({ is_admin: true });
-    expect(service.snapshot.usersPage?.items[0]?.is_admin).toBe(true);
-  });
-
-  it('loads user detail and queues tagging jobs for admins', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('updateUser sends PATCH /api/v1/admin/users/{id}', () => {
+      const body = { is_admin: true };
+      const mock = makeUser(true);
+      service.updateUser('u2', body).subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2');
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.body).toEqual(body);
+      req.flush(mock);
     });
 
-    const detailPromise = firstValueFrom(service.getUserDetail('user-2'));
-    const detailRequest = expectRequest('GET', 'http://api.example.test/admin/users/user-2');
-    detailRequest.flush({
-      id: 'user-2',
-      username: 'user',
-      email: 'user@example.test',
-      is_admin: false,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z',
-      media_count: 10,
-      storage_used_bytes: 2048
+    it('deleteUser sends DELETE /api/v1/admin/users/{id}', () => {
+      service.deleteUser('u2').subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2');
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null, { status: 204, statusText: 'No Content' });
     });
 
-    await expect(detailPromise).resolves.toMatchObject({ media_count: 10 });
-    expect(service.snapshot.selectedUserId).toBe('user-2');
-    expect(service.snapshot.userDetails['user-2']?.storage_used_bytes).toBe(2048);
-
-    const queuePromise = firstValueFrom(service.queueUserTaggingJobs('user-2'));
-    const queueRequest = expectRequest('POST', 'http://api.example.test/admin/users/user-2/tagging-jobs');
-    queueRequest.flush({ queued: 7 });
-
-    await expect(queuePromise).resolves.toEqual({ queued: 7 });
-    expect(service.snapshot.mutationPending).toBe(false);
-  });
-
-  it('refreshes stats after deleting a user when stats are already loaded', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('deleteUser passes delete_media param', () => {
+      service.deleteUser('u2', true).subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2');
+      expect(req.request.params.get('delete_media')).toBe('true');
+      req.flush(null, { status: 204, statusText: 'No Content' });
     });
 
-    service['stateSubject'].next({
-      ...service.snapshot,
-      stats: {
-        total_users: 2,
-        total_media: 2,
-        total_storage_bytes: 3,
-        pending_tagging: 4,
-        failed_tagging: 5,
-        trashed_media: 6
-      },
-      usersPage: {
-        total: 1,
-        page: 1,
-        page_size: 20,
-        items: [{
-          id: 'user-2',
-          username: 'user',
-          email: 'user@example.test',
-          is_admin: false,
-          show_nsfw: false,
-          tag_confidence_threshold: 0.35,
-          version: 1,
-          created_at: '2026-03-21T00:00:00Z'
-        }]
-      }
+    it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {
+      const mock = { queued_count: 42 };
+      service.retagAll('u2').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2/tagging-jobs');
+      expect(req.request.method).toBe('POST');
+      req.flush(mock);
     });
 
-    const deletePromise = firstValueFrom(service.deleteUser('user-2', false));
-    const deleteRequest = expectRequest('DELETE', 'http://api.example.test/admin/users/user-2?delete_media=false');
-    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
-
-    const statsRequest = expectRequest('GET', 'http://api.example.test/admin/stats');
-    statsRequest.flush({
-      total_users: 1,
-      total_media: 2,
-      total_storage_bytes: 3,
-      pending_tagging: 4,
-      failed_tagging: 5,
-      trashed_media: 6
+    it('listAnnouncements sends GET /api/v1/admin/announcements', () => {
+      service.listAnnouncements().subscribe(res => expect(res).toEqual([]));
+      const req = http.expectOne('/api/v1/admin/announcements');
+      expect(req.request.method).toBe('GET');
+      req.flush([]);
     });
 
-    await expect(deletePromise).resolves.toBeNull();
-    expect(service.snapshot.usersPage?.total).toBe(0);
-    expect(service.snapshot.stats?.total_users).toBe(1);
-  });
-
-  it('records request and mutation errors', async () => {
-    authService.setAuthenticatedUser({
-      id: 'admin-1',
-      username: 'admin',
-      email: 'admin@example.test',
-      is_admin: true,
-      show_nsfw: false,
-      tag_confidence_threshold: 0.35,
-      version: 1,
-      created_at: '2026-03-21T00:00:00Z'
+    it('createAnnouncement sends POST /api/v1/admin/announcements', () => {
+      const body = { title: 'Hi', message: 'test', severity: AnnouncementSeverity.INFO };
+      const mock = { id: 'n1', version: null, title: 'Hi', message: 'test', severity: AnnouncementSeverity.INFO, starts_at: null, ends_at: null, is_active: true, created_at: '2026-01-01T00:00:00Z' };
+      service.createAnnouncement(body).subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/announcements');
+      expect(req.request.method).toBe('POST');
+      req.flush(mock);
     });
-
-    const statsPromise = firstValueFrom(service.getStats());
-    const statsRequest = expectRequest('GET', 'http://api.example.test/admin/stats');
-    statsRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
-    await expect(statsPromise).rejects.toMatchObject({ status: 500 });
-    expect(service.snapshot.statsRequest.error).toMatchObject({ status: 500 });
-
-    const updatePromise = firstValueFrom(service.updateUser('user-2', { is_admin: true }));
-    const updateRequest = expectRequest('PATCH', 'http://api.example.test/admin/users/user-2');
-    updateRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
-    await expect(updatePromise).rejects.toMatchObject({ status: 500 });
-    expect(service.snapshot.mutationError).toMatchObject({ status: 500 });
   });
 });

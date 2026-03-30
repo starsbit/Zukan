@@ -1,15 +1,12 @@
-// Include theming for Angular Material with `mat.theme()`.
-// This Sass mixin will define CSS variables that are used for styling Angular Material
-// components according to the Material 3 design spec.
-// Learn more about theming and how to use it for your application's
-// custom components at https://material.angular.dev/guide/theming
 @use '@angular/material' as mat;
 
-@mixin app-theme($theme-type) {
+// Default: follow system preference (light + dark variables via @media prefers-color-scheme)
+html {
+  height: 100%;
+  color-scheme: light dark;
   @include mat.theme(
     (
       color: (
-        theme-type: $theme-type,
         primary: mat.$azure-palette,
         tertiary: mat.$blue-palette,
       ),
@@ -19,10 +16,32 @@
   );
 }
 
-html {
-  height: 100%;
+// Force light regardless of system preference
+html.theme-light {
   color-scheme: light;
-  @include app-theme(light);
+  @include mat.theme(
+    (
+      color: (
+        theme-type: light,
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+    )
+  );
+}
+
+// Force dark regardless of system preference
+html.theme-dark {
+  color-scheme: dark;
+  @include mat.theme(
+    (
+      color: (
+        theme-type: dark,
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+      ),
+    )
+  );
 }
 
 body {
@@ -31,104 +50,119 @@ body {
   font: var(--mat-sys-body-medium);
   margin: 0;
   height: 100%;
-  transition:
-    background-color 180ms ease,
-    color 180ms ease;
 }
 
-html.theme-light {
-  color-scheme: light;
-  @include app-theme(light);
+.upload-confirm-dialog .mat-mdc-dialog-content {
+  overflow: hidden;
 }
 
-html.theme-dark {
-  color-scheme: dark;
-  @include app-theme(dark);
+.mat-mdc-menu-panel.zukan-notifications-menu {
+  max-width: none;
+  overflow-x: hidden;
+  --mat-list-list-item-one-line-container-height: auto;
+  --mat-list-list-item-two-line-container-height: auto;
+  --mat-list-list-item-three-line-container-height: auto;
 }
 
-@media (prefers-color-scheme: dark) {
-  html:not(.theme-light):not(.theme-dark) {
-    color-scheme: dark;
-    @include app-theme(dark);
-  }
+.mat-mdc-menu-panel.zukan-notifications-menu .mat-mdc-menu-content {
+  padding: 0;
+  overflow-x: hidden;
 }
 
-* {
+.mat-mdc-menu-panel.zukan-notifications-menu .notifications-panel {
+  width: min(360px, calc(100vw - 24px));
+  max-width: 100%;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
-html,
-body,
-app-root {
-  min-height: 100%;
+.mat-mdc-menu-panel.zukan-notifications-menu .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 55%, transparent);
 }
 
-body,
-button,
-input,
-textarea {
-  font-family: Roboto, "Helvetica Neue", sans-serif;
+.mat-mdc-menu-panel.zukan-notifications-menu .panel-title {
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
-body,
-app-root {
-  background-color: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
+.mat-mdc-menu-panel.zukan-notifications-menu .panel-count {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
-@media (min-width: 721px) {
-  html.gallery-custom-scrollbar,
-  body.gallery-custom-scrollbar {
-    overflow: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  html.gallery-custom-scrollbar::-webkit-scrollbar,
-  body.gallery-custom-scrollbar::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-  }
+.mat-mdc-menu-panel.zukan-notifications-menu .panel-state {
+  display: flex;
+  justify-content: center;
+  padding: 24px 16px;
+  text-align: center;
 }
 
-button,
-input,
-textarea,
-select,
-mat-card,
-.mat-mdc-card {
-  color: inherit;
+.mat-mdc-menu-panel.zukan-notifications-menu .notifications-list {
+  display: grid;
 }
 
-.mat-mdc-dialog-container {
-  --mdc-dialog-supporting-text-color: var(--mat-sys-on-surface);
+.mat-mdc-menu-panel.zukan-notifications-menu .notifications-list .mat-divider {
+  margin-inline: 16px;
+  border-top-color: color-mix(in srgb, var(--mat-sys-outline-variant) 45%, transparent);
 }
 
-.mat-mdc-dialog-container .mat-mdc-dialog-surface {
-  background-color: var(--mat-sys-surface-container-high);
-  color: var(--mat-sys-on-surface);
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px 16px;
 }
 
-.mat-mdc-dialog-container .mat-mdc-dialog-surface h1,
-.mat-mdc-dialog-container .mat-mdc-dialog-surface h2,
-.mat-mdc-dialog-container .mat-mdc-dialog-surface h3,
-.mat-mdc-dialog-container .mat-mdc-dialog-surface h4,
-.mat-mdc-dialog-container .mat-mdc-dialog-surface p {
-  color: var(--mat-sys-on-surface);
-}
-
-.mat-mdc-dialog-container .mdc-text-field--filled .mdc-text-field__input {
-  color: var(--mat-sys-on-surface);
-}
-
-.mat-mdc-dialog-container .mat-mdc-form-field-label {
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  line-height: 20px;
+  margin-top: 2px;
   color: var(--mat-sys-on-surface-variant);
 }
 
-.mat-mdc-dialog-container .mat-mdc-button {
-  color: var(--mat-sys-primary);
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
-.mat-mdc-dialog-container .mat-mdc-button[color="warn"] {
-  color: var(--mat-sys-error);
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-title {
+  color: var(--mat-sys-on-surface);
+  font-weight: 500;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-body {
+  color: color-mix(in srgb, var(--mat-sys-on-surface) 82%, transparent);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-meta {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.8rem;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.mat-mdc-menu-panel.zukan-notifications-menu .notification-actions button {
+  min-width: 96px;
+  border-radius: 999px;
 }

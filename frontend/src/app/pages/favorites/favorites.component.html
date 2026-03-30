@@ -1,0 +1,11 @@
+<zukan-layout>
+  <zukan-media-browser
+    [dayGroups]="galleryStore.groupedByDay()"
+    [timeline]="galleryStore.timeline()"
+    [loading]="galleryStore.loading()"
+    [allowSelection]="false"
+    [showPublicBadge]="false"
+    [emptyStateTitle]="'No favorites yet'"
+    [emptyStateMessage]="'Media you favorite will appear here.'">
+  </zukan-media-browser>
+</zukan-layout>

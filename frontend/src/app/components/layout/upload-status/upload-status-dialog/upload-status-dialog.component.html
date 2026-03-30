@@ -1,0 +1,59 @@
+<h2 mat-dialog-title>{{ title() }}</h2>
+
+<mat-dialog-content class="dialog-content">
+  <mat-button-toggle-group
+    [value]="selectedFilter()"
+    (valueChange)="selectedFilter.set($event)"
+    class="filter-toggle-group"
+  >
+    @for (filter of filters(); track filter.filter) {
+      <mat-button-toggle [value]="filter.filter">
+        {{ filter.label }} ({{ filter.count }})
+      </mat-button-toggle>
+    }
+  </mat-button-toggle-group>
+
+  @if (items().length === 0) {
+    <div class="empty-state">
+      <mat-icon>info</mat-icon>
+      <span>No media in this state.</span>
+    </div>
+  } @else {
+    <mat-list class="item-list">
+      @for (item of items(); track trackByItem($index, item)) {
+        <mat-list-item lines="3" class="item-row">
+          <zukan-upload-status-preview matListItemAvatar [mediaId]="item.previewMediaId" />
+
+          <div matListItemTitle class="item-title-row">
+            <span class="item-filename">{{ item.filename }}</span>
+            <span class="item-status">{{ item.statusLabel }}</span>
+          </div>
+
+          <div matListItemLine class="item-meta-row">
+            @if (item.stepLabel) {
+              <span>{{ item.stepLabel }}</span>
+            }
+            @if (item.progressPercent !== null && item.filter !== 'processing') {
+              <span>{{ item.progressPercent }}%</span>
+            }
+            @if (item.batchId) {
+              <span>{{ item.batchId }}</span>
+            }
+          </div>
+
+          <div matListItemLine class="item-message">
+            {{ itemMessage(item) }}
+          </div>
+        </mat-list-item>
+
+        @if (!$last) {
+          <mat-divider />
+        }
+      }
+    </mat-list>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Close</button>
+</mat-dialog-actions>

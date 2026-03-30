@@ -1,0 +1,68 @@
+<button
+  mat-icon-button
+  type="button"
+  [matMenuTriggerFor]="notificationsMenu"
+  [matBadge]="unreadCount()"
+  [matBadgeHidden]="unreadCount() === 0"
+  matBadgeSize="small"
+  aria-label="Notifications"
+>
+  <mat-icon>notifications</mat-icon>
+</button>
+
+<mat-menu #notificationsMenu="matMenu" xPosition="before" class="zukan-notifications-menu">
+  <div class="notifications-panel" (click)="$event.stopPropagation()">
+    <div class="panel-header">
+      <span class="panel-title">Notifications</span>
+      @if (unreadCount() > 0) {
+        <span class="panel-count">{{ unreadCount() }} new</span>
+      }
+    </div>
+
+    @if (loading()) {
+      <div class="panel-state">
+        <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
+      </div>
+    } @else if (error()) {
+      <div class="panel-state">Unable to load notifications.</div>
+    } @else if (notifications().length === 0) {
+      <div class="panel-state">No notifications yet.</div>
+    } @else {
+      <div class="notifications-list">
+        @for (notification of notifications(); track notification.id) {
+          <div class="notification-item">
+            <mat-icon class="notification-icon">{{ iconFor(notification.type) }}</mat-icon>
+            <div class="notification-copy">
+              <div class="notification-title">{{ notification.title }}</div>
+              <div class="notification-body">{{ notification.body }}</div>
+              <div class="notification-meta">{{ notification.created_at | date: 'medium' }}</div>
+              @if (isPendingShareInvite(notification)) {
+                <div class="notification-actions">
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="isActioning(notification.id)"
+                    (click)="acceptInvite(notification, $event)">
+                    Accept
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="isActioning(notification.id)"
+                    (click)="rejectInvite(notification, $event)">
+                    Reject
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+
+          @if (!$last) {
+            <mat-divider></mat-divider>
+          }
+        }
+      </div>
+    }
+  </div>
+</mat-menu>

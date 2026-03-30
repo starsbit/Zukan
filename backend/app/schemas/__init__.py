@@ -1,12 +1,16 @@
 from .admin import AdminStatsResponse, AdminUserDetail, AdminUserUpdate
 from .albums import (
+    AlbumAccessRole,
     AlbumCreate,
     AlbumListResponse,
     AlbumOwnershipTransferRequest,
+    AlbumOwnerSummary,
+    AlbumPreviewMedia,
     AlbumRead,
     AlbumShareCreate,
     AlbumShareRead,
     AlbumShareReadRole,
+    AlbumShareReadStatus,
     AlbumShareRole,
     AlbumUpdate,
 )
@@ -31,7 +35,9 @@ from .media import (
     MediaMetadataFilter,
     MediaMetadataUpdate,
     MediaRead,
+    MediaTimeline,
     MediaUpdate,
+    TimelineBucket,
 )
 from .notifications import (
     AnnouncementSeverity,
@@ -61,19 +67,23 @@ from .tags import (
     TagRead,
     TagWithConfidence,
 )
-from .uploads import BatchUploadResponse, MediaUploadRequest, UploadConfigResponse, UploadResult
+from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredResponse, UploadConfigResponse, UploadResult
 
 __all__ = [
     "AdminStatsResponse",
     "AdminUserDetail",
     "AdminUserUpdate",
+    "AlbumAccessRole",
     "AlbumCreate",
     "AlbumListResponse",
     "AlbumOwnershipTransferRequest",
+    "AlbumOwnerSummary",
+    "AlbumPreviewMedia",
     "AlbumRead",
     "AlbumShareCreate",
     "AlbumShareRead",
     "AlbumShareReadRole",
+    "AlbumShareReadStatus",
     "AlbumShareRole",
     "AlbumUpdate",
     "AnnouncementSeverity",
@@ -108,9 +118,11 @@ __all__ = [
     "MediaMetadata",
     "MediaMetadataFilter",
     "MediaMetadataUpdate",
+    "MediaTimeline",
     "MediaUploadRequest",
     "MediaRead",
     "MediaUpdate",
+    "TimelineBucket",
     "NotificationListResponse",
     "NotificationRead",
     "NotificationType",
@@ -123,6 +135,7 @@ __all__ = [
     "TagWithConfidence",
     "TaggingJobQueuedResponse",
     "TokenResponse",
+    "SetupRequiredResponse",
     "UploadConfigResponse",
     "UploadResult",
     "UserListResponse",

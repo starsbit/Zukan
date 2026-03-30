@@ -1,0 +1,24 @@
+<section class="sidebar-shell">
+  @for (section of navigationSections; track section.label) {
+    <div class="sidebar-section">
+      <p class="section-title">{{ section.label }}</p>
+
+      <mat-nav-list>
+        @for (item of section.items; track item.path) {
+          <a
+            mat-list-item
+            class="sidebar-link"
+            [routerLink]="item.path"
+            routerLinkActive
+            #activeLink="routerLinkActive"
+            [activated]="activeLink.isActive"
+            [routerLinkActiveOptions]="{ exact: item.path === '/' }"
+          >
+            <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
+            <span matListItemTitle>{{ item.label }}</span>
+          </a>
+        }
+      </mat-nav-list>
+    </div>
+  }
+</section>

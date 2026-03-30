@@ -2,11 +2,12 @@
   "$schema": "./node_modules/@angular/cli/lib/config/schema.json",
   "version": 1,
   "cli": {
-    "packageManager": "npm"
+    "packageManager": "npm",
+    "schematicCollections": ["@schematics/angular", "playwright-ng-schematics"]
   },
   "newProjectRoot": "projects",
   "projects": {
-    "Zukan": {
+    "zukan": {
       "projectType": "application",
       "schematics": {
         "@schematics/angular:component": {
@@ -15,7 +16,7 @@
       },
       "root": "",
       "sourceRoot": "src",
-      "prefix": "app",
+      "prefix": "zukan",
       "architect": {
         "build": {
           "builder": "@angular/build:application",
@@ -29,22 +30,26 @@
                 "input": "public"
               }
             ],
-            "styles": [
-              "src/styles.scss"
-            ]
+            "styles": ["src/styles.scss"]
           },
           "configurations": {
             "production": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.prod.ts"
+                }
+              ],
               "budgets": [
                 {
                   "type": "initial",
-                  "maximumWarning": "900kB",
-                  "maximumError": "2.00MB"
+                  "maximumWarning": "1.5MB",
+                  "maximumError": "2MB"
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "8kB",
-                  "maximumError": "12kB"
+                  "maximumWarning": "4kB",
+                  "maximumError": "8kB"
                 }
               ],
               "outputHashing": "all"
@@ -53,6 +58,17 @@
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "e2e": {
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.e2e.ts"
+                }
+              ],
+              "optimization": false,
+              "sourceMap": false,
+              "outputHashing": "none"
             }
           },
           "defaultConfiguration": "production"
@@ -61,10 +77,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "Zukan:build:production"
+              "buildTarget": "zukan:build:production"
             },
             "development": {
-              "buildTarget": "Zukan:build:development"
+              "buildTarget": "zukan:build:development"
             }
           },
           "defaultConfiguration": "development"
@@ -75,7 +91,12 @@
         "e2e": {
           "builder": "playwright-ng-schematics:playwright",
           "options": {
-            "config": "playwright.config.ts"
+            "devServerTarget": "zukan:serve"
+          },
+          "configurations": {
+            "production": {
+              "devServerTarget": "zukan:serve:production"
+            }
           }
         }
       }

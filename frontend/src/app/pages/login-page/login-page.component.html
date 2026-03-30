@@ -1,3 +1,46 @@
-<section class="login-page">
-  <app-auth-form></app-auth-form>
-</section>
+@if (setupRequired()) {
+  <mat-card appearance="outlined" class="login-card">
+    <mat-card-header>
+      <mat-card-title>First-time Setup</mat-card-title>
+      <mat-card-subtitle>Create your admin account and replace the default credentials</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-divider />
+
+    <mat-card-content>
+      <zukan-setup-wizard
+        [loading]="loading()"
+        (submitted)="onSetup($event)"
+      />
+    </mat-card-content>
+  </mat-card>
+} @else {
+  <mat-card appearance="outlined" class="login-card">
+    <mat-card-header>
+      <mat-card-title>Zukan</mat-card-title>
+      <mat-card-subtitle>Authentication</mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-divider />
+
+    <mat-card-content>
+      <mat-tab-group [(selectedIndex)]="selectedTab" animationDuration="150ms">
+        <mat-tab label="Sign In">
+          <zukan-login-form
+            [loading]="loading()"
+            [successMessage]="registerSuccess()"
+            (submitted)="onLogin($event)"
+          />
+        </mat-tab>
+
+        <mat-tab label="Register">
+          <zukan-register-form
+            [loading]="loading()"
+            (submitted)="onRegister($event)"
+            (loginRequested)="selectedTab = 0"
+          />
+        </mat-tab>
+      </mat-tab-group>
+    </mat-card-content>
+  </mat-card>
+}

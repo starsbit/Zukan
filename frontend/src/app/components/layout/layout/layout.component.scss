@@ -1,0 +1,36 @@
+:host {
+  display: block;
+  min-height: 100vh;
+}
+
+.layout-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.layout-container {
+  flex: 1;
+}
+
+.layout-sidebar {
+  width: 240px;
+}
+
+.layout-content {
+  min-height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+@media (max-width: 599px) {
+  .layout-content {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 419px) {
+  .layout-content {
+    padding: 12px;
+  }
+}

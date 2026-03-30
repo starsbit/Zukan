@@ -1,50 +1,35 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { API_BASE_URL } from './api.config';
+import { TokenResponse, UserLogin, UserRegister, UserSelfRead } from '../../models/auth';
+import { RefreshTokenRequest } from '../../models/auth';
 
-import {
-  AccessTokenResponse,
-  LogoutRequestDto,
-  RefreshRequestDto,
-  TokenResponse,
-  UserLoginDto,
-  UserSelfReadLite,
-  UserRegisterDto
-} from '../../models/api';
-import { ClientApiService } from './api.service';
-
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class AuthClientService {
-  private readonly api = inject(ClientApiService);
+  private readonly http = inject(HttpClient);
+  private readonly base = inject(API_BASE_URL);
 
-  register(body: UserRegisterDto): Observable<UserSelfReadLite> {
-    return this.api.post<UserSelfReadLite>('/auth/register', body, { auth: 'none' });
+  register(body: UserRegister): Observable<UserSelfRead> {
+    return this.http.post<UserSelfRead>(`${this.base}/api/v1/auth/register`, body);
   }
 
-  login(body: UserLoginDto): Observable<TokenResponse> {
-    let form = new HttpParams()
+  login(body: UserLogin): Observable<TokenResponse> {
+    const form = new HttpParams()
       .set('username', body.username)
-      .set('password', body.password);
-
-    if (body.remember_me !== undefined) {
-      form = form.set('remember_me', String(body.remember_me));
-    }
-
-    return this.api.post<TokenResponse>('/auth/login', form.toString(), {
-      auth: 'none',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded'
-      }
+      .set('password', body.password)
+      .set('remember_me', String(body.remember_me ?? false));
+    return this.http.post<TokenResponse>(`${this.base}/api/v1/auth/login`, form.toString(), {
+      headers: new HttpHeaders({ 'Content-Type': 'application/x-www-form-urlencoded' }),
     });
   }
 
-  refresh(body: RefreshRequestDto): Observable<AccessTokenResponse> {
-    return this.api.post<AccessTokenResponse>('/auth/refresh', body, { auth: 'none' });
+  refresh(body: RefreshTokenRequest): Observable<TokenResponse> {
+    return this.http.post<TokenResponse>(`${this.base}/api/v1/auth/refresh`, body);
   }
 
-  logout(body: LogoutRequestDto): Observable<void> {
-    return this.api.post<void>('/auth/logout', body, { auth: 'none' });
+  logout(body: RefreshTokenRequest): Observable<void> {
+    return this.http.post<void>(`${this.base}/api/v1/auth/logout`, body);
   }
 }

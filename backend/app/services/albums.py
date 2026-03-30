@@ -20,15 +20,20 @@ from backend.app.errors.albums import (
 )
 from backend.app.errors.upload import version_conflict
 from backend.app.errors.auth import forbidden
-from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareRole
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareInvite, AlbumShareInviteStatus, AlbumShareRole
 from backend.app.models.media import Media, MediaTag
+from backend.app.models.notifications import Notification, NotificationType
 from backend.app.repositories.albums import AlbumRepository
+from backend.app.repositories.auth import UserRepository
 from backend.app.repositories import media_filters
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.schemas import (
+    AlbumAccessRole,
     AlbumListResponse,
     AlbumOwnershipTransferRequest,
+    AlbumOwnerSummary,
+    AlbumPreviewMedia,
     AlbumRead,
     AlbumShareCreate,
     AlbumUpdate,
@@ -70,16 +75,16 @@ class AlbumService:
             raise AppError(status_code=403, code=album_read_only, detail="No edit access to album")
         return album
 
-    async def album_read(self, album: Album) -> AlbumRead:
-        count = await AlbumRepository(self._db).count_media(album.id)
-        return AlbumRead.model_validate(album).model_copy(update={"media_count": count})
+    async def album_read(self, album: Album, user) -> AlbumRead:
+        reads = await self._build_album_reads([album], user)
+        return reads[0]
 
     async def create_album(self, user, name: str, description: str | None) -> AlbumRead:
         album = Album(owner_id=user.id, name=name, description=description)
         self._db.add(album)
         await self._db.commit()
         await self._db.refresh(album)
-        return await self.album_read(album)
+        return await self.album_read(album, user)
 
     async def list_albums(
         self,
@@ -91,8 +96,12 @@ class AlbumService:
     ) -> AlbumListResponse:
         sort_col = Album.name if sort_by == "name" else Album.created_at
         albums_repo = AlbumRepository(self._db)
-        stmt = albums_repo.accessible_stmt(user.id)
-        total = await albums_repo.count_accessible(user.id)
+        if user.is_admin:
+            stmt = select(Album)
+            total = (await self._db.execute(select(func.count()).select_from(Album))).scalar_one()
+        else:
+            stmt = albums_repo.accessible_stmt(user.id)
+            total = await albums_repo.count_accessible(user.id)
 
         if after:
             value_type = "str" if sort_by == "name" else "datetime"
@@ -116,7 +125,7 @@ class AlbumService:
         album_list = (await self._db.execute(stmt.order_by(*order_exprs).limit(page_size + 1))).scalars().all()
         has_more = len(album_list) > page_size
         album_list = album_list[:page_size]
-        items = [await self.album_read(album) for album in album_list]
+        items = await self._build_album_reads(album_list, user)
 
         next_cursor = None
         if has_more and album_list:
@@ -157,7 +166,7 @@ class AlbumService:
             album.cover_media_id = body.cover_media_id
         await self._db.commit()
         await self._db.refresh(album)
-        return await self.album_read(album)
+        return await self.album_read(album, user)
 
     async def delete_album(self, album_id: uuid.UUID, user) -> None:
         album = await self.get_album(album_id)
@@ -301,26 +310,64 @@ class AlbumService:
 
         await self._db.commit()
         await self._db.refresh(album)
-        return await self.album_read(album)
+        return await self.album_read(album, user)
 
-    async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> tuple[AlbumShare, bool]:
+    async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> tuple[dict, bool]:
         albums_repo = AlbumRepository(self._db)
         album = await self.get_album_for_user(album_id, user)
         if album.owner_id != user.id and not user.is_admin:
             raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
-        if body.user_id == user.id:
+        target_user = await UserRepository(self._db).get_by_username(body.username)
+        if target_user is None:
+            raise AppError(status_code=404, code=album_not_found, detail="User not found")
+        if target_user.id == user.id:
             raise AppError(status_code=422, code=share_self, detail="Cannot share with yourself")
-        share = await albums_repo.get_share(album_id, body.user_id)
-        created = False
+        share = await albums_repo.get_share(album_id, target_user.id)
         if share:
             share.role = body.role
+            share.shared_by_user_id = user.id
+            await self._db.commit()
+            await self._db.refresh(share)
+            return self._share_response(
+                user_id=target_user.id,
+                role=share.role.value,
+                status="accepted",
+                shared_at=share.shared_at,
+                shared_by_user_id=share.shared_by_user_id,
+            ), False
+
+        invite = await albums_repo.get_invite(album_id, target_user.id)
+        created = invite is None
+        if invite is None:
+            invite = AlbumShareInvite(
+                album_id=album_id,
+                user_id=target_user.id,
+                role=body.role,
+                invited_by_user_id=user.id,
+            )
+            self._db.add(invite)
         else:
-            share = AlbumShare(album_id=album_id, user_id=body.user_id, role=body.role, shared_by_user_id=user.id)
-            self._db.add(share)
-            created = True
+            invite.role = body.role
+            invite.invited_by_user_id = user.id
+            invite.status = AlbumShareInviteStatus.pending
+            invite.responded_at = None
+
+        await self._db.flush()
+        invite.notification_id = await self._upsert_share_invite_notification(
+            invite=invite,
+            album=album,
+            invited_user=target_user,
+            invited_by=user,
+        )
         await self._db.commit()
-        await self._db.refresh(share)
-        return share, created
+        await self._db.refresh(invite)
+        return self._share_response(
+            user_id=target_user.id,
+            role=invite.role.value,
+            status="pending",
+            shared_at=invite.invited_at,
+            shared_by_user_id=invite.invited_by_user_id,
+        ), created
 
     async def revoke_share(self, album_id: uuid.UUID, shared_user_id: uuid.UUID, user) -> None:
         albums_repo = AlbumRepository(self._db)
@@ -328,9 +375,20 @@ class AlbumService:
         if album.owner_id != user.id and not user.is_admin:
             raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
         share = await albums_repo.get_share(album_id, shared_user_id)
-        if share is None:
+        if share is not None:
+            await self._db.delete(share)
+            await self._db.commit()
+            return
+
+        invite = await albums_repo.get_invite(album_id, shared_user_id)
+        if invite is None:
             raise AppError(status_code=404, code=share_not_found, detail="Share not found")
-        await self._db.delete(share)
+        notification = None
+        if invite.notification_id is not None:
+            notification = await self._db.get(Notification, invite.notification_id)
+        if notification is not None:
+            await self._db.delete(notification)
+        await self._db.delete(invite)
         await self._db.commit()
 
     async def get_album_download_media(self, album_id: uuid.UUID, user) -> tuple[Album, list[Media]]:
@@ -383,3 +441,98 @@ class AlbumService:
         if first_id:
             album.cover_media_id = first_id
             await self._db.commit()
+
+    async def _build_album_reads(self, albums: list[Album], user) -> list[AlbumRead]:
+        if not albums:
+            return []
+
+        repo = AlbumRepository(self._db)
+        album_ids = [album.id for album in albums]
+        owner_ids = list({album.owner_id for album in albums})
+        counts = await self._count_media_for_albums(album_ids)
+        owners = await repo.get_owner_summaries(owner_ids)
+        previews = await repo.get_album_preview_media_ids(album_ids)
+        shares = await repo.get_shares_for_user(user.id, album_ids)
+        share_roles = {share.album_id: share.role for share in shares}
+
+        reads: list[AlbumRead] = []
+        for album in albums:
+            access_role = AlbumAccessRole.owner if album.owner_id == user.id else AlbumAccessRole(
+                share_roles.get(album.id, AlbumShareRole.viewer).value,
+            )
+            owner = owners.get(album.owner_id)
+            reads.append(AlbumRead(
+                id=album.id,
+                owner_id=album.owner_id,
+                owner=AlbumOwnerSummary(
+                    id=album.owner_id,
+                    username=owner.username if owner is not None else "Unknown",
+                ),
+                access_role=access_role,
+                name=album.name,
+                description=album.description,
+                cover_media_id=album.cover_media_id,
+                preview_media=[
+                    AlbumPreviewMedia(id=media_id)
+                    for media_id in previews.get(album.id, [])
+                ],
+                media_count=counts.get(album.id, 0),
+                version=album.version,
+                created_at=album.created_at,
+                updated_at=album.updated_at,
+            ))
+
+        return reads
+
+    async def _upsert_share_invite_notification(self, invite: AlbumShareInvite, album: Album, invited_user, invited_by) -> uuid.UUID:
+        notification = None
+        if invite.notification_id is not None:
+            notification = await self._db.get(Notification, invite.notification_id)
+
+        if notification is None:
+            notification = Notification(
+                user_id=invited_user.id,
+                type=NotificationType.share_invite,
+                title="Album invite",
+                body="",
+                is_read=False,
+            )
+            self._db.add(notification)
+            await self._db.flush()
+
+        notification.title = f"{invited_by.username} invited you to {album.name}"
+        notification.body = f"Accept to join as {invite.role.value}."
+        notification.is_read = False
+        notification.link_url = f"/album/{album.id}"
+        notification.data = {
+            "album_id": str(album.id),
+            "album_name": album.name,
+            "role": invite.role.value,
+            "invited_by_user_id": str(invited_by.id),
+            "invited_by_username": invited_by.username,
+            "invite_status": AlbumShareInviteStatus.pending.value,
+            "invite_id": str(invite.id),
+        }
+        return notification.id
+
+    def _share_response(self, *, user_id: uuid.UUID, role: str, status: str, shared_at, shared_by_user_id: uuid.UUID | None) -> dict:
+        return {
+            "user_id": user_id,
+            "role": role,
+            "status": status,
+            "shared_at": shared_at,
+            "shared_by_user_id": shared_by_user_id,
+        }
+
+    async def _count_media_for_albums(self, album_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        if not album_ids:
+            return {}
+
+        rows = (
+            await self._db.execute(
+                select(AlbumMedia.album_id, func.count(AlbumMedia.media_id))
+                .where(AlbumMedia.album_id.in_(album_ids))
+                .group_by(AlbumMedia.album_id)
+            )
+        ).all()
+        return {album_id: count for album_id, count in rows}

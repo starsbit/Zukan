@@ -1,0 +1,35 @@
+:host {
+  display: block;
+}
+
+.album-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.album-page__empty p,
+.album-page__loading span {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.album-page__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 320px));
+  gap: 20px;
+  align-items: stretch;
+  justify-content: start;
+}
+
+@media (max-width: 767px) {
+  .album-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .album-page__grid {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,25 @@
+:host {
+  display: block;
+  max-width: min(560px, calc(100vw - 32px));
+  overflow-x: hidden;
+}
+
+.album-form {
+  display: grid;
+  gap: 16px;
+  width: min(520px, calc(100vw - 64px));
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-top: 8px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+@media (max-width: 599px) {
+  .album-form {
+    min-width: 0;
+  }
+}

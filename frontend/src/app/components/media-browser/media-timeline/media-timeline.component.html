@@ -1,0 +1,40 @@
+@if (hasEntries()) {
+  <aside class="media-timeline" aria-label="Gallery timeline">
+    @if (activeMonthLabel(); as label) {
+      <div
+        class="media-timeline__chip"
+        [style.top.%]="activeProgress() ?? (activeMonth() ? monthPosition(activeMonth()!) : 0)">
+        {{ label }}
+      </div>
+    }
+
+    <div class="media-timeline__years">
+      @for (entry of entries(); track entry.year) {
+        <button
+          class="media-timeline__year"
+          type="button"
+          [style.top.%]="yearPosition(entry)"
+          [class.media-timeline__year--active]="activeYear() === entry.year"
+          (click)="jumpToYear(entry)">
+          {{ entry.year }}
+        </button>
+      }
+    </div>
+
+    <div class="media-timeline__rail" aria-label="Timeline months">
+      @for (month of flatMonths(); track monthKey(month.year, month.month)) {
+        <button
+          class="media-timeline__month"
+          type="button"
+          [style.top.%]="monthPosition(month)"
+          [class.media-timeline__month--active]="activeMonthKey() === monthKey(month.year, month.month)"
+          [class.media-timeline__month--rendered]="month.rendered"
+          [attr.aria-label]="monthLabel(month.month) + ' ' + month.year"
+          [title]="monthLabel(month.month) + ' ' + month.year"
+          (click)="jumpToMonth(month.year, month.month)">
+          <span class="media-timeline__month-label">{{ monthLabel(month.month) }}</span>
+        </button>
+      }
+    </div>
+  </aside>
+}

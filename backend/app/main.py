@@ -11,7 +11,7 @@ from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagge
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
+from sqlalchemy import exists, select
 
 from backend.app.errors.error import AppError, build_error_response
 
@@ -122,8 +122,9 @@ async def trash_purge_worker() -> None:
 
 async def _ensure_admin_user():
     async with AsyncSessionLocal() as db:
-        svc = AuthService(db)
-        if await svc.get_user_by_username("admin") is None:
+        has_admin_result = await db.execute(select(exists().where(User.is_admin.is_(True))))
+        has_admin = bool(has_admin_result.scalar())
+        if not has_admin:
             from backend.app.utils.passwords import hash_password
             db.add(User(
                 username="admin",

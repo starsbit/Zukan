@@ -2,15 +2,18 @@ import uuid
 
 from pydantic import BaseModel, Field, model_validator
 
+from backend.app.models.media import MediaVisibility
+
 
 class MediaBatchUpdate(BaseModel):
     media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
     deleted: bool | None = None
     favorited: bool | None = None
+    visibility: MediaVisibility | None = None
 
     @model_validator(mode="after")
     def validate_non_empty(self):
-        if self.deleted is None and self.favorited is None:
+        if self.deleted is None and self.favorited is None and self.visibility is None:
             raise ValueError("At least one mutable field must be provided")
         return self
 

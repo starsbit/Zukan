@@ -1,47 +1,48 @@
 import { Routes } from '@angular/router';
-
-import { authGuard } from './guard/auth.guard';
-import { guestGuard } from './guard/guest.guard';
-import { AlbumDetailPageComponent } from './pages/album-detail-page/album-detail-page.component';
-import { AlbumsPageComponent } from './pages/albums-page/albums-page.component';
-import { GalleryPageComponent } from './pages/gallery-page/gallery-page.component';
+import { authGuard } from './guards/auth.guard';
+import { guestGuard } from './guards/guest.guard';
+import { AlbumComponent } from './pages/album/album.component';
+import { AlbumDetailComponent } from './pages/album-detail/album-detail.component';
+import { FavoritesComponent } from './pages/favorites/favorites.component';
+import { GalleryComponent } from './pages/gallery/gallery.component';
+import { HomeComponent } from './pages/home/home.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
+import { TrashComponent } from './pages/trash/trash.component';
 
 export const routes: Routes = [
   {
-    path: '',
-    pathMatch: 'full',
-    redirectTo: 'login'
-  },
-  {
     path: 'login',
     component: LoginPageComponent,
-    canActivate: [guestGuard]
+    canActivate: [guestGuard],
   },
   {
-    path: 'albums',
-    component: AlbumsPageComponent,
-    canActivate: [authGuard]
-  },
-  {
-    path: 'albums/:albumId',
-    component: AlbumDetailPageComponent,
-    canActivate: [authGuard]
+    path: '',
+    component: HomeComponent,
+    canActivate: [authGuard],
   },
   {
     path: 'gallery',
-    component: GalleryPageComponent,
+    component: GalleryComponent,
     canActivate: [authGuard],
-    data: { state: 'active' }
   },
   {
-    path: 'gallery/trash',
-    component: GalleryPageComponent,
+    path: 'album/:albumId',
+    component: AlbumDetailComponent,
     canActivate: [authGuard],
-    data: { state: 'trashed' }
   },
   {
-    path: '**',
-    redirectTo: 'login'
-  }
+    path: 'album',
+    component: AlbumComponent,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'favorites',
+    component: FavoritesComponent,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'trash',
+    component: TrashComponent,
+    canActivate: [authGuard],
+  },
 ];

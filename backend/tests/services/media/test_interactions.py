@@ -11,7 +11,7 @@ from backend.app.services.media.interactions import MediaInteractionService
 
 @pytest.mark.asyncio
 async def test_favorite_media_adds_new_favorite_and_commits(fake_db, stub_query, media, user):
-    stub_query.get_active_media.return_value = media
+    stub_query.get_favoritable_media.return_value = media
     stub_query.get_favorite.return_value = None
 
     service = MediaInteractionService(fake_db, stub_query)
@@ -38,7 +38,7 @@ async def test_unfavorite_media_raises_when_not_favorited(fake_db, stub_query, u
 @pytest.mark.asyncio
 async def test_bulk_favorite_processes_only_active_not_already_favorited(fake_db, stub_query, user):
     m1, m2, m3 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
-    stub_query.get_active_media_ids.return_value = {m1, m2}
+    stub_query.get_favoritable_media_ids.return_value = {m1, m2}
     stub_query.get_existing_favorites.return_value = [UserFavorite(user_id=user.id, media_id=m2)]
 
     service = MediaInteractionService(fake_db, stub_query)
@@ -55,7 +55,7 @@ async def test_bulk_unfavorite_deletes_existing_favorites(fake_db, stub_query, u
     m1, m2 = uuid.uuid4(), uuid.uuid4()
     fav1 = UserFavorite(user_id=user.id, media_id=m1)
     fav2 = UserFavorite(user_id=user.id, media_id=m2)
-    stub_query.get_active_media_ids.return_value = {m1, m2}
+    stub_query.get_favoritable_media_ids.return_value = {m1, m2}
     stub_query.get_existing_favorites.return_value = [fav1, fav2]
 
     service = MediaInteractionService(fake_db, stub_query)

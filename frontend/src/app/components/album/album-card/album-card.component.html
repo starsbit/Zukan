@@ -1,0 +1,52 @@
+<mat-card class="album-card" appearance="outlined" [routerLink]="['/album', album().id]">
+  <div class="album-card__preview" aria-hidden="true">
+    @if (previewUrls().length > 0) {
+      <div class="album-card__preview-grid" [attr.data-layout]="previewLayout()">
+        @for (url of visiblePreviewUrls(); track url; let index = $index) {
+          <div class="album-card__preview-tile" [class.album-card__preview-tile--hero]="previewLayout() === 'trio' && index === 0">
+            <img [src]="url" alt="" loading="lazy">
+          </div>
+        }
+        @if (previewOverflowCount() > 0) {
+          <div class="album-card__preview-overflow">+{{ previewOverflowCount() }}</div>
+        }
+      </div>
+    } @else {
+      <div class="album-card__preview-empty">
+        <mat-icon aria-hidden="true">collections</mat-icon>
+        <span>No previews yet</span>
+      </div>
+    }
+  </div>
+
+  <mat-card-content class="album-card__body">
+    <div class="album-card__meta">
+      <mat-chip class="album-card__chip">{{ accessLabel() }}</mat-chip>
+      <span class="album-card__owner">by {{ ownerName() }}</span>
+    </div>
+
+    <mat-card-title>{{ album().name }}</mat-card-title>
+    <p>{{ album().description || 'No description yet.' }}</p>
+  </mat-card-content>
+
+  <mat-card-actions class="album-card__footer" align="end">
+    <span>{{ album().media_count }} item{{ album().media_count === 1 ? '' : 's' }}</span>
+    <div class="album-card__actions">
+      @if (allowEdit()) {
+        <button mat-icon-button type="button" aria-label="Edit album" (click)="onEdit($event)">
+          <mat-icon aria-hidden="true">edit</mat-icon>
+        </button>
+      }
+      @if (allowInvite()) {
+        <button mat-icon-button type="button" aria-label="Invite to album" (click)="onInvite($event)">
+          <mat-icon aria-hidden="true">person_add</mat-icon>
+        </button>
+      }
+      @if (allowDelete()) {
+        <button mat-icon-button type="button" aria-label="Delete album" (click)="onDelete($event)">
+          <mat-icon aria-hidden="true">delete</mat-icon>
+        </button>
+      }
+    </div>
+  </mat-card-actions>
+</mat-card>

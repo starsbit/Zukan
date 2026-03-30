@@ -18,14 +18,16 @@ def build_media_metadata(media: Media) -> MediaMetadata:
     )
 
 
-def build_media_read(media: Media, is_favorited: bool) -> MediaRead:
+def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0) -> MediaRead:
     owner_id = media.owner_id or media.uploader_id
-    visibility = "private"
+    owner = media.owner or media.uploader
     return MediaRead(
         id=media.id,
         uploader_id=media.uploader_id,
+        uploader_username=media.uploader.username if media.uploader is not None else None,
         owner_id=owner_id,
-        visibility=visibility,
+        owner_username=owner.username if owner is not None else None,
+        visibility=media.visibility,
         filename=media.filename,
         original_filename=media.original_filename,
         media_type=media.media_type,
@@ -42,8 +44,10 @@ def build_media_read(media: Media, is_favorited: bool) -> MediaRead:
         created_at=media.created_at,
         deleted_at=media.deleted_at,
         is_favorited=is_favorited,
+        favorite_count=favorite_count,
     )
 
 
-def enrich_media(rows: list[Media], favorited: set[uuid.UUID]) -> list[MediaRead]:
-    return [build_media_read(row, row.id in favorited) for row in rows]
+def enrich_media(rows: list[Media], favorited: set[uuid.UUID], counts: dict[uuid.UUID, int] | None = None) -> list[MediaRead]:
+    counts = counts or {}
+    return [build_media_read(row, row.id in favorited, counts.get(row.id, 0)) for row in rows]

@@ -1,0 +1,101 @@
+<mat-stepper linear class="setup-stepper">
+  <!-- Step 1: New admin credentials -->
+  <mat-step [stepControl]="credentialsForm" label="New Admin Account">
+    <form [formGroup]="credentialsForm" class="auth-form">
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Username</mat-label>
+        <input matInput formControlName="username" autocomplete="username" />
+        @if (credentialsForm.controls.username.hasError('required') && credentialsForm.controls.username.touched) {
+          <mat-error>Username is required</mat-error>
+        } @else if (credentialsForm.controls.username.hasError('minlength')) {
+          <mat-error>Username must be at least 3 characters</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Email</mat-label>
+        <input matInput type="email" formControlName="email" autocomplete="email" />
+        @if (credentialsForm.controls.email.hasError('required') && credentialsForm.controls.email.touched) {
+          <mat-error>Email is required</mat-error>
+        } @else if (credentialsForm.controls.email.hasError('email')) {
+          <mat-error>Enter a valid email address</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Password</mat-label>
+        <input
+          matInput
+          [type]="hidePassword ? 'password' : 'text'"
+          formControlName="password"
+          autocomplete="new-password"
+        />
+        <button mat-icon-button matSuffix type="button" (click)="hidePassword = !hidePassword">
+          <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+        @if (credentialsForm.controls.password.hasError('minlength')) {
+          <mat-error>Password must be at least 8 characters</mat-error>
+        }
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="full-width">
+        <mat-label>Confirm Password</mat-label>
+        <input
+          matInput
+          [type]="hideConfirm ? 'password' : 'text'"
+          formControlName="confirmPassword"
+          autocomplete="new-password"
+        />
+        <button mat-icon-button matSuffix type="button" (click)="hideConfirm = !hideConfirm">
+          <mat-icon>{{ hideConfirm ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+        @if (credentialsForm.controls.confirmPassword.touched && credentialsForm.hasError('passwordMismatch')) {
+          <mat-error>Passwords do not match</mat-error>
+        }
+      </mat-form-field>
+
+      <div class="form-actions">
+        <span></span>
+        <button mat-flat-button matStepperNext type="button" [disabled]="credentialsForm.invalid">
+          Next
+        </button>
+      </div>
+    </form>
+  </mat-step>
+
+  <!-- Step 2: Confirm -->
+  <mat-step label="Confirm Setup">
+    <div class="setup-confirm auth-form">
+      <div class="setup-warning">
+        <mat-icon color="warn">warning</mat-icon>
+        <div>
+          <strong>This action is irreversible.</strong>
+          <p>
+            Completing setup will:
+          </p>
+          <ul>
+            <li>Create a new admin account for <strong>{{ credentialsForm.controls.username.value }}</strong></li>
+            <li>Log in as the default <code>admin</code> user to grant admin privileges</li>
+            <li>Permanently delete the default <code>admin</code> account</li>
+          </ul>
+          <p>Only proceed if you are setting up Zukan for the first time and the default <code>admin:admin</code> credentials are still active.</p>
+        </div>
+      </div>
+
+      @if (error()) {
+        <p class="form-error">{{ error() }}</p>
+      }
+
+      <div class="form-actions">
+        <button mat-button matStepperPrevious type="button" [disabled]="loading()">Back</button>
+        <button mat-flat-button color="warn" type="button" (click)="onSubmit()" [disabled]="loading()">
+          @if (loading()) {
+            <mat-spinner diameter="20" />
+          } @else {
+            Complete Setup
+          }
+        </button>
+      </div>
+    </div>
+  </mat-step>
+</mat-stepper>

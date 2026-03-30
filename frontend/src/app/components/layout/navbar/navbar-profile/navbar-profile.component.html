@@ -1,0 +1,53 @@
+<button
+  mat-mini-fab
+  type="button"
+  [matMenuTriggerFor]="profileMenu"
+  aria-label="Profile"
+>
+  <span>{{ avatarLetter() }}</span>
+</button>
+
+<mat-menu #profileMenu="matMenu" xPosition="before" panelClass="zukan-profile-menu">
+  <div class="profile-panel" (click)="$event.stopPropagation()">
+    <div class="profile-header">
+      <button mat-fab type="button" disabled aria-label="User avatar">
+        <span>{{ avatarLetter() }}</span>
+      </button>
+      <div class="profile-copy">
+        <div>{{ user()?.username }}</div>
+        <div>{{ user()?.email ?? '' }}</div>
+      </div>
+    </div>
+
+    <div class="profile-actions">
+      <button mat-stroked-button type="button" (click)="openSettings()">
+        <mat-icon>settings</mat-icon>
+        <span>Account Settings</span>
+      </button>
+
+      @if (isAdmin()) {
+        <a mat-stroked-button routerLink="/admin">
+          <mat-icon>build</mat-icon>
+          <span>Administration</span>
+        </a>
+      }
+    </div>
+
+    <mat-divider></mat-divider>
+
+    <button mat-button type="button" class="sign-out-button" (click)="signOut()">
+      <mat-icon>logout</mat-icon>
+      <span>Sign Out</span>
+    </button>
+
+    <a
+      mat-button
+      class="feedback-link"
+      href="https://github.com/starsbit/Zukan/issues/new"
+      target="_blank"
+      rel="noreferrer"
+    >
+      Help &amp; Feedback
+    </a>
+  </div>
+</mat-menu>

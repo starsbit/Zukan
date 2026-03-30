@@ -1,0 +1,85 @@
+<mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+  <mat-icon matPrefix class="search-prefix-icon">search</mat-icon>
+
+  <div class="search-token-row">
+    @for (chip of chips(); track chip.type + ':' + chip.value) {
+      <button
+        type="button"
+        class="search-chip"
+        [class.search-chip-character]="chip.type === 'character'"
+        [class.search-chip-ocr]="chip.type === 'ocr'"
+        [attr.aria-label]="'Remove ' + chipLabel(chip)"
+        (click)="onRemoveChip(chip)"
+      >
+        <mat-icon class="search-chip-kind-icon">{{ chipIcon(chip) }}</mat-icon>
+        <span class="search-chip-label">{{ chipLabel(chip) }}</span>
+        <mat-icon class="search-chip-remove-icon">close</mat-icon>
+      </button>
+    }
+
+    <input
+      #searchInput
+      matInput
+      class="search-input"
+      [formControl]="query"
+      [matAutocomplete]="autocomplete"
+      [placeholder]="disabled() ? 'Search available after sign in' : (chips().length > 0 ? 'Add more tags, characters, or OCR text' : 'Search by tags, character, or OCR text')"
+      aria-label="Search your photos"
+      (keydown.backspace)="onBackspace()"
+      (keydown.enter)="onEnter($event)"
+      (keydown.escape)="onEscape($event)"
+    />
+  </div>
+
+  <button
+    mat-icon-button
+    matSuffix
+    type="button"
+    aria-label="Open filters"
+    class="search-filter-button"
+    [class.search-filter-button-active]="activeAdvancedFilterCount() > 0"
+    (click)="openFilters()"
+  >
+    <mat-icon>tune</mat-icon>
+    @if (activeAdvancedFilterCount() > 0) {
+      <span class="search-filter-indicator" aria-hidden="true">
+        {{ activeAdvancedFilterCount() }}
+      </span>
+    }
+  </button>
+
+  @if (hasSearchValue()) {
+    <button mat-icon-button matSuffix type="button" aria-label="Clear search" (click)="clearAll()">
+      <mat-icon>close</mat-icon>
+    </button>
+  }
+
+  <mat-autocomplete
+    #autocomplete="matAutocomplete"
+    [displayWith]="null"
+    autoActiveFirstOption
+    (optionSelected)="onSuggestionSelected($event)"
+  >
+    @if (characterSuggestions().length > 0) {
+      <mat-optgroup label="Characters">
+        @for (suggestion of characterSuggestions(); track suggestion.type + ':' + suggestion.value) {
+          <mat-option [value]="suggestion">
+            <span>{{ suggestion.value }}</span>
+            <span class="option-secondary">{{ suggestion.subtitle }}</span>
+          </mat-option>
+        }
+      </mat-optgroup>
+    }
+
+    @if (tagSuggestions().length > 0) {
+      <mat-optgroup label="Tags">
+        @for (suggestion of tagSuggestions(); track suggestion.type + ':' + suggestion.value) {
+          <mat-option [value]="suggestion">
+            <span>{{ suggestion.value }}</span>
+            <span class="option-secondary">{{ suggestion.subtitle }}</span>
+          </mat-option>
+        }
+      </mat-optgroup>
+    }
+  </mat-autocomplete>
+</mat-form-field>

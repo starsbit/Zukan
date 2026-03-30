@@ -1,0 +1,64 @@
+:host {
+  display: block;
+  --zukan-shell-sidebar-width: 240px;
+  --zukan-shell-content-padding: 24px;
+  --zukan-navbar-inline-padding: 20px;
+}
+
+.navbar-shell {
+  display: grid;
+  grid-template-columns: var(--zukan-shell-sidebar-width) minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--zukan-shell-content-padding);
+  padding: 0 var(--zukan-navbar-inline-padding) 0 0;
+  overflow: hidden;
+}
+
+.navbar-search {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+@media (max-width: 899px) {
+  :host {
+    --zukan-shell-content-padding: 16px;
+    --zukan-navbar-inline-padding: 12px;
+  }
+
+  .navbar-shell {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 12px;
+    padding-inline: 0 var(--zukan-navbar-inline-padding);
+  }
+}
+
+@media (max-width: 599px) {
+  :host {
+    --zukan-navbar-inline-padding: 10px;
+  }
+
+  .navbar-shell {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "brand actions"
+      "search search";
+    row-gap: 10px;
+    align-items: start;
+    padding-block: 10px;
+  }
+
+  .navbar-shell > zukan-navbar-brand {
+    grid-area: brand;
+    min-width: 0;
+  }
+
+  .navbar-shell > .navbar-search {
+    grid-area: search;
+  }
+
+  .navbar-shell > zukan-navbar-actions {
+    grid-area: actions;
+    justify-self: end;
+  }
+}

@@ -1,0 +1,28 @@
+:host {
+  display: block;
+  flex: none;
+  height: 56px;
+  width: 56px;
+}
+
+.preview-shell {
+  align-items: center;
+  background: var(--mat-sys-surface-container-high);
+  border-radius: 12px;
+  display: inline-flex;
+  height: 100%;
+  justify-content: center;
+  overflow: hidden;
+  width: 100%;
+}
+
+.preview-image {
+  display: block;
+  height: 100%;
+  object-fit: cover;
+  width: 100%;
+}
+
+mat-icon {
+  color: var(--mat-sys-on-surface-variant);
+}

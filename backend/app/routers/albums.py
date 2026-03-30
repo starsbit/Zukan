@@ -88,7 +88,7 @@ async def get_album(
 ):
     svc = AlbumService(db)
     album = await svc.get_album_for_user(album_id, user)
-    return await svc.album_read(album)
+    return await svc.album_read(album, user)
 
 
 @router.patch(

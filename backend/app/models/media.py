@@ -93,7 +93,11 @@ class Media(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     visibility: Mapped[MediaVisibility] = mapped_column(
-        Enum(MediaVisibility, name="media_visibility_enum"), nullable=False, default=MediaVisibility.private, server_default="private"
+        Enum(MediaVisibility, name="media_visibility_enum"),
+        nullable=False,
+        default=MediaVisibility.private,
+        server_default="private",
+        index=True,
     )
     ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     phash: Mapped[str | None] = mapped_column(String(16), nullable=True)

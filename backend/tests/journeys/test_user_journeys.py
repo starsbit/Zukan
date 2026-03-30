@@ -169,7 +169,7 @@ async def test_journey_sharing_access_control_and_admin_announcements(journey_cl
     viewer_headers = _auth_headers(viewer_token)
 
     viewer_me = (await journey_client.get("/api/v1/me", headers=viewer_headers)).json()
-    viewer_id = viewer_me["id"]
+    viewer_username = viewer_me["username"]
 
     create_album = await journey_client.post(
         "/api/v1/albums",
@@ -184,13 +184,29 @@ async def test_journey_sharing_access_control_and_admin_announcements(journey_cl
 
     share = await journey_client.post(
         f"/api/v1/albums/{album_id}/shares",
-        json={"user_id": viewer_id, "role": "viewer"},
+        json={"username": viewer_username, "role": "viewer"},
         headers=owner_headers,
     )
     assert share.status_code in (200, 201)
+    assert share.json()["status"] == "pending"
 
     after_share = await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)
-    assert after_share.status_code == 200
+    assert after_share.status_code == 404
+
+    notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
+    assert notifications.status_code == 200
+    invite = notifications.json()["items"][0]
+    assert invite["type"] == "share_invite"
+
+    accept = await journey_client.post(
+        f"/api/v1/me/notifications/{invite['id']}/accept",
+        headers=viewer_headers,
+    )
+    assert accept.status_code == 200
+    assert accept.json()["data"]["invite_status"] == "accepted"
+
+    after_accept = await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)
+    assert after_accept.status_code == 200
 
     forbidden_delete = await journey_client.delete(f"/api/v1/albums/{album_id}", headers=viewer_headers)
     assert forbidden_delete.status_code == 403

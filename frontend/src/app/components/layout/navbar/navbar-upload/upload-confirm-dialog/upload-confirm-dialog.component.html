@@ -1,0 +1,24 @@
+<h2 mat-dialog-title>Ready to upload?</h2>
+
+<mat-dialog-content>
+  <p class="file-count">
+    {{ data.fileCount }} {{ data.fileCount === 1 ? 'file' : 'files' }} selected
+  </p>
+
+  <div class="visibility-row">
+    <mat-checkbox [checked]="isPublic()" (change)="isPublic.set($event.checked)">
+      Upload publicly
+    </mat-checkbox>
+    <mat-icon
+      class="info-icon"
+      matTooltip="Public files can be accessed by anyone with the link, without signing in."
+      matTooltipPosition="right"
+      aria-label="What does public mean?"
+    >info_outline</mat-icon>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" (click)="confirm()">Upload</button>
+</mat-dialog-actions>

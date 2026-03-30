@@ -1,0 +1,42 @@
+:host {
+  display: block;
+}
+
+.trash-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.trash-page__copy h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--mat-sys-on-surface);
+}
+
+.trash-page__copy p {
+  margin: 8px 0 0;
+  max-width: 640px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.trash-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .trash-page__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .trash-page__actions {
+    justify-content: stretch;
+  }
+}

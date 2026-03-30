@@ -37,7 +37,7 @@ class MediaInteractionService:
         return BulkResult(processed=processed, skipped=skipped)
 
     async def _set_favorite_state(self, media_id: uuid.UUID, user: User, favorited: bool | None) -> bool:
-        await self._query.get_active_media(media_id)
+        await self._query.get_favoritable_media(media_id, user)
         existing = await self._query.get_favorite(media_id, user.id)
         if favorited is True and existing is None:
             self._db.add(UserFavorite(user_id=user.id, media_id=media_id))
@@ -48,7 +48,7 @@ class MediaInteractionService:
         return False
 
     async def _batch_update_favorite_state(self, media_ids: list[uuid.UUID], favorited: bool, user: User) -> tuple[int, int]:
-        active_ids = await self._query.get_active_media_ids(media_ids)
+        active_ids = await self._query.get_favoritable_media_ids(media_ids, user)
         existing_favorites = await self._query.get_existing_favorites(user.id, media_ids)
         existing_ids = {f.media_id for f in existing_favorites}
         if favorited:

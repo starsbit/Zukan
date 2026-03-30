@@ -5,6 +5,8 @@ from typing import Literal
 from fastapi import File, Form, UploadFile
 from pydantic import BaseModel
 
+from backend.app.models.media import MediaVisibility
+
 
 class UploadResult(BaseModel):
     id: uuid.UUID | None = None
@@ -31,12 +33,17 @@ class UploadConfigResponse(BaseModel):
     max_upload_size_mb: int
 
 
+class SetupRequiredResponse(BaseModel):
+    setup_required: bool
+
+
 class MediaUploadRequest(BaseModel):
     files: list[UploadFile]
     album_id: uuid.UUID | None = None
     tags: list[str] | None = None
     captured_at: datetime | None = None
     captured_at_values: list[datetime] | None = None
+    visibility: MediaVisibility = MediaVisibility.private
 
     model_config = {
         "title": "MediaUploadRequest",
@@ -51,6 +58,7 @@ class MediaUploadRequest(BaseModel):
         tags: list[str] | None = Form(default=None),
         captured_at: datetime | None = Form(default=None),
         captured_at_values: list[datetime] | None = Form(default=None),
+        visibility: MediaVisibility = Form(default=MediaVisibility.private),
     ) -> "MediaUploadRequest":
         return cls(
             files=files,
@@ -58,4 +66,5 @@ class MediaUploadRequest(BaseModel):
             tags=tags,
             captured_at=captured_at,
             captured_at_values=captured_at_values,
+            visibility=visibility,
         )

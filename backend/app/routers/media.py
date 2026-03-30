@@ -15,6 +15,7 @@ from backend.app.routers.deps import current_user
 from backend.app.errors.error import AppError
 from backend.app.errors.media import poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
+from backend.app.models.media import MediaVisibility
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
     BatchUploadResponse,
@@ -26,6 +27,7 @@ from backend.app.schemas import (
     MediaDetail,
     MediaListState,
     MediaMetadataFilter,
+    MediaTimeline,
     MediaUploadRequest,
     MediaUpdate,
     NsfwFilter,
@@ -156,6 +158,7 @@ async def upload(
         "tags": body.tags or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
         "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "visibility": body.visibility.value,
     }
     body_hash = idempotency_body_hash(upload_signature)
     replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
@@ -171,6 +174,7 @@ async def upload(
         tags=body.tags,
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
+        visibility=body.visibility,
     )
     await idempotency_store.remember(
         scope=scope,
@@ -196,6 +200,7 @@ async def upload(
 async def list_media(
     state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
     album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
+    visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
     sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
@@ -216,6 +221,7 @@ async def list_media(
         None,
         MediaMetadataFilter(),
         None,
+        visibility,
         None,
         album_id,
         after,
@@ -250,6 +256,7 @@ async def search_media(
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."),
     status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
     favorited: bool | None = Query(default=None, description="If true, return only media favorited by the current user."),
+    visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
     media_type: Annotated[list[str] | None, Query(description="Media type filter. Repeat for multiple: ?media_type=image&media_type=gif")] = None,
     sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
@@ -272,6 +279,7 @@ async def search_media(
         status_filter,
         metadata,
         favorited,
+        visibility,
         media_type,
         album_id,
         after,
@@ -280,6 +288,52 @@ async def search_media(
         sort_order,
         ocr_text,
         include_total,
+    )
+
+
+@router.get(
+    "/timeline",
+    response_model=MediaTimeline,
+    summary="Media Timeline",
+    description=(
+        "Return year/month bucket counts for the current user's media matching the given filters. "
+        "Use this to populate a timeline sidebar without loading media items. "
+        "Date-range parameters (captured_year, captured_after, etc.) are intentionally excluded. "
+        "The timeline always reflects the full date distribution for the active filter set."
+    ),
+    responses=error_responses(403, 404, 422),
+)
+async def get_media_timeline(
+    state: MediaListState = Query(default=MediaListState.ACTIVE),
+    album_id: uuid.UUID | None = Query(default=None),
+    tag: Annotated[list[str] | None, Query(description="Tags that must be present.")] = None,
+    character_name: str | None = Query(default=None),
+    exclude_tag: Annotated[list[str] | None, Query()] = None,
+    mode: TagFilterMode = Query(default=TagFilterMode.AND),
+    nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT),
+    status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
+    favorited: bool | None = Query(default=None),
+    visibility: MediaVisibility | None = Query(default=None),
+    media_type: Annotated[list[str] | None, Query()] = None,
+    ocr_text: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> MediaTimeline:
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.get_timeline(
+        user,
+        state=state,
+        tags=tag,
+        character_name=character_name,
+        exclude_tags=exclude_tag,
+        mode=mode,
+        nsfw=nsfw,
+        status_filter=status_filter,
+        favorited=favorited,
+        visibility=visibility,
+        media_type=media_type,
+        album_id=album_id,
+        ocr_text=ocr_text,
     )
 
 
@@ -325,7 +379,7 @@ async def batch_update_media(
             response.status_code = status_code
         return payload
 
-    _, lifecycle, interactions, _, _, _ = _media_services(db)
+    _, lifecycle, interactions, _, _, metadata = _media_services(db)
     if body.deleted is True:
         result = await lifecycle.bulk_delete_media(body.media_ids, user)
     elif body.deleted is False:
@@ -334,6 +388,8 @@ async def batch_update_media(
         result = await interactions.bulk_favorite_media(body.media_ids, user)
     elif body.favorited is False:
         result = await interactions.bulk_unfavorite_media(body.media_ids, user)
+    elif body.visibility is not None:
+        result = await metadata.bulk_update_visibility(body.media_ids, user, body.visibility)
     else:
         result = BulkResult(processed=0, skipped=0)
     await idempotency_store.remember(
@@ -462,6 +518,24 @@ async def download_media(body: MediaIdsRequest, user: User = Depends(current_use
     )
 
 
+@router.post(
+    "/tagging-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TaggingJobQueuedResponse,
+    summary="Queue Bulk Media Retagging",
+    description="Queue new tagging jobs for the specified media items.",
+    responses=error_responses(409, 422),
+)
+async def queue_bulk_media_tagging_jobs(
+    body: MediaIdsRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _, _, _, processing, _, _ = _media_services(db)
+    queued = await processing.bulk_retag_media(body.media_ids, user)
+    return {"queued": queued}
+
+
 @router.get(
     "/{media_id}",
     response_model=MediaDetail,
@@ -523,6 +597,7 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
                             "summary": "Omit fields to leave them unchanged",
                             "value": {
                                 "favorited": True,
+                                "visibility": "public",
                                 "version": 5,
                             },
                         },

@@ -1,97 +1,73 @@
-import '@angular/compiler';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-
-import { CLIENT_API_BASE_URL } from './api.config';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AuthClientService } from './auth-client.service';
+import { API_BASE_URL } from './api.config';
 
 describe('AuthClientService', () => {
   let service: AuthClientService;
-  let httpTesting: HttpTestingController;
+  let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        AuthClientService,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: CLIENT_API_BASE_URL, useValue: 'http://api.example.test' }
-      ]
+        { provide: API_BASE_URL, useValue: '' },
+      ],
     });
-
     service = TestBed.inject(AuthClientService);
-    httpTesting = TestBed.inject(HttpTestingController);
+    http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => {
-    httpTesting.verify();
+  afterEach(() => http.verify());
+
+  it('register sends POST with body', () => {
+    const body = { username: 'saber', email: 'saber@test.com', password: 'password123' };
+    const mock = { id: 'u1', username: 'saber', email: 'saber@test.com', show_nsfw: false, tag_confidence_threshold: 0.35, version: 1, created_at: '2026-01-01T00:00:00Z' };
+
+    service.register(body).subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/auth/register');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush(mock);
   });
 
-  it('sends login credentials as form-encoded and returns token response', async () => {
-    const loginPromise = firstValueFrom(service.login({
-      username: 'admin',
-      password: 'secret',
-      remember_me: true
-    }));
+  it('login sends form-encoded POST', () => {
+    const body = { username: 'saber', password: 'password123', remember_me: false };
+    const mock = { access_token: 'a', refresh_token: 'r', token_type: 'bearer' };
 
-    const request = httpTesting.expectOne('http://api.example.test/auth/login');
-    expect(request.request.method).toBe('POST');
-    expect(request.request.headers.get('Content-Type')).toContain('application/x-www-form-urlencoded');
-    expect(request.request.body).toBe('username=admin&password=secret&remember_me=true');
-    request.flush({
-      access_token: 'access-1',
-      refresh_token: 'refresh-1',
-      token_type: 'bearer'
-    });
+    service.login(body).subscribe(res => expect(res).toEqual(mock));
 
-    await expect(loginPromise).resolves.toMatchObject({ access_token: 'access-1' });
+    const req = http.expectOne('/api/v1/auth/login');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.headers.get('Content-Type')).toBe('application/x-www-form-urlencoded');
+    expect(req.request.body).toContain('username=saber');
+    req.flush(mock);
   });
 
-  it('registers without auth and returns the created user', async () => {
-    const registerPromise = firstValueFrom(service.register({
-      username: 'new-user',
-      email: 'new-user@example.test',
-      password: 'secret'
-    }));
+  it('refresh sends POST with refresh token', () => {
+    const body = { refresh_token: 'old-token' };
+    const mock = { access_token: 'new-a', refresh_token: 'new-r', token_type: 'bearer' };
 
-    const request = httpTesting.expectOne('http://api.example.test/auth/register');
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({
-      username: 'new-user',
-      email: 'new-user@example.test',
-      password: 'secret'
-    });
-    request.flush({ id: 'user-2', username: 'new-user', email: 'new-user@example.test' });
+    service.refresh(body).subscribe(res => expect(res).toEqual(mock));
 
-    await expect(registerPromise).resolves.toEqual({ id: 'user-2', username: 'new-user', email: 'new-user@example.test' });
+    const req = http.expectOne('/api/v1/auth/refresh');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush(mock);
   });
 
-  it('sends the provided refresh token and returns new tokens', async () => {
-    const refreshPromise = firstValueFrom(service.refresh({ refresh_token: 'refresh-1' }));
+  it('logout sends POST with refresh token', () => {
+    const body = { refresh_token: 'old-token' };
 
-    const request = httpTesting.expectOne('http://api.example.test/auth/refresh');
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ refresh_token: 'refresh-1' });
-    request.flush({
-      access_token: 'access-2',
-      refresh_token: 'refresh-2',
-      token_type: 'bearer'
-    });
+    service.logout(body).subscribe();
 
-    await expect(refreshPromise).resolves.toMatchObject({ access_token: 'access-2' });
-  });
-
-  it('sends the provided refresh token on logout', async () => {
-    const logoutPromise = firstValueFrom(service.logout({ refresh_token: 'refresh-1' }));
-
-    const request = httpTesting.expectOne('http://api.example.test/auth/logout');
-    expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ refresh_token: 'refresh-1' });
-    request.flush(null, { status: 204, statusText: 'No Content' });
-
-    await expect(logoutPromise).resolves.toBeNull();
+    const req = http.expectOne('/api/v1/auth/logout');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual(body);
+    req.flush(null, { status: 204, statusText: 'No Content' });
   });
 });

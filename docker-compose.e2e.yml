@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zukan
+      POSTGRES_PASSWORD: zukan
+      POSTGRES_DB: zukan
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zukan"]
+      interval: 3s
+      timeout: 5s
+      retries: 15
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8001:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zukan:zukan@db:5432/zukan
+      SECRET_KEY: e2e-secret-key-do-not-use-in-production
+      STORAGE_DIR: /tmp/e2e-storage
+      MODEL_CACHE_DIR: /backend/model_cache
+      TAGGER_MODEL_REPO: SmilingWolf/wd-vit-tagger-v3
+      MAX_UPLOAD_SIZE_MB: 50
+      MAX_BATCH_SIZE: 100
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+    volumes:
+      - zukan_model_cache:/backend/model_cache:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/config/setup-required', timeout=5)"
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.e2e
+    ports:
+      - "4201:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  zukan_model_cache:
+    external: true
+    name: zukan_model_cache

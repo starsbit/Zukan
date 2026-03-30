@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,7 @@ class NotificationRead(BaseModel):
     body: str
     is_read: bool
     link_url: str | None = None
+    data: dict[str, Any] | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

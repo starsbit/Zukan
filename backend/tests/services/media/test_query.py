@@ -73,3 +73,11 @@ def test_apply_state_and_nsfw_filters_rejects_only_nsfw_when_disabled(service, u
         service._apply_state_and_nsfw_filters(service._build_base_list_stmt(), user, state="active", nsfw=NsfwFilter.ONLY)
 
     assert exc.value.status_code == 403
+
+
+def test_apply_status_filter_supports_csv_and_any(service):
+    stmt = service._apply_status_filter(service._build_base_list_stmt(), "done,any,failed")
+
+    params = stmt.compile().params
+    assert "tagging_status_1" in params
+    assert params["tagging_status_1"] == ["done", "failed"]

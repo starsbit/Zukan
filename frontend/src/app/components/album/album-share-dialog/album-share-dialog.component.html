@@ -1,0 +1,49 @@
+<h2 mat-dialog-title>Invite to album</h2>
+
+<mat-dialog-content>
+  <p class="album-share-dialog__copy">
+    Send an invite to <strong>{{ data.albumName }}</strong>. The recipient will need to accept before they join.
+  </p>
+
+  <form class="album-share-dialog__form" [formGroup]="form" autocomplete="off" data-lpignore="true" data-1p-ignore>
+    <mat-form-field appearance="outline">
+      <mat-label>Username</mat-label>
+      <input
+        matInput
+        formControlName="username"
+        type="text"
+        name="album-share-username"
+        inputmode="text"
+        autocomplete="off"
+        autocapitalize="off"
+        autocorrect="off"
+        spellcheck="false"
+        data-lpignore="true"
+        data-1p-ignore
+        data-bwignore="true"
+        placeholder="Saber">
+      <mat-hint>Usernames are unique and case-insensitive.</mat-hint>
+      @if (form.controls.username.hasError('required') && form.controls.username.touched) {
+        <mat-error>Username is required.</mat-error>
+      } @else if (form.controls.username.hasError('minlength') && form.controls.username.touched) {
+        <mat-error>Username must be at least 3 characters.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline">
+      <mat-label>Access role</mat-label>
+      <mat-select formControlName="role">
+        @for (role of roles; track role.value) {
+          <mat-option [value]="role.value">{{ role.label }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">
+    Send invite
+  </button>
+</mat-dialog-actions>

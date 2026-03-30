@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors.error import AppError
+from backend.app.models.albums import AlbumShare, AlbumShareInviteStatus
+from backend.app.models.notifications import NotificationType
 from backend.app.models.notifications import Notification
+from backend.app.repositories.albums import AlbumRepository
 from backend.app.repositories.notifications import NotificationRepository
 from backend.app.schemas import NotificationListResponse
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
@@ -82,3 +86,67 @@ class NotificationService:
         notification = await self.get_notification_for_user(notification_id, user_id)
         await self._db.delete(notification)
         await self._db.commit()
+
+    async def accept_invite(self, notification_id: uuid.UUID, user_id: uuid.UUID) -> Notification:
+        notification = await self.get_notification_for_user(notification_id, user_id)
+        invite = await self._get_pending_invite_from_notification(notification, user_id)
+
+        share = await AlbumRepository(self._db).get_share(invite.album_id, user_id)
+        if share is None:
+            share = AlbumShare(
+                album_id=invite.album_id,
+                user_id=user_id,
+                role=invite.role,
+                shared_by_user_id=invite.invited_by_user_id,
+            )
+            self._db.add(share)
+        else:
+            share.role = invite.role
+            share.shared_by_user_id = invite.invited_by_user_id
+
+        invite.status = AlbumShareInviteStatus.accepted
+        invite.responded_at = datetime.now(timezone.utc)
+        notification.is_read = True
+        notification.data = {
+            **(notification.data or {}),
+            "invite_status": AlbumShareInviteStatus.accepted.value,
+        }
+        await self._db.commit()
+        await self._db.refresh(notification)
+        return notification
+
+    async def reject_invite(self, notification_id: uuid.UUID, user_id: uuid.UUID) -> Notification:
+        notification = await self.get_notification_for_user(notification_id, user_id)
+        invite = await self._get_pending_invite_from_notification(notification, user_id)
+
+        invite.status = AlbumShareInviteStatus.rejected
+        invite.responded_at = datetime.now(timezone.utc)
+        notification.is_read = True
+        notification.data = {
+            **(notification.data or {}),
+            "invite_status": AlbumShareInviteStatus.rejected.value,
+        }
+        await self._db.commit()
+        await self._db.refresh(notification)
+        return notification
+
+    async def _get_pending_invite_from_notification(self, notification: Notification, user_id: uuid.UUID):
+        if notification.type != NotificationType.share_invite:
+            raise AppError(status_code=422, code="notification_not_actionable", detail="Notification cannot be acted on")
+
+        payload = notification.data or {}
+        invite_id = payload.get("invite_id")
+        if not invite_id:
+            raise AppError(status_code=422, code="notification_not_actionable", detail="Notification invite payload is missing")
+
+        try:
+            invite_uuid = uuid.UUID(str(invite_id))
+        except ValueError as exc:
+            raise AppError(status_code=422, code="notification_not_actionable", detail="Notification invite payload is invalid") from exc
+
+        invite = await AlbumRepository(self._db).get_invite_by_id(invite_uuid)
+        if invite is None or invite.user_id != user_id or invite.notification_id != notification.id:
+            raise AppError(status_code=404, code="invite_not_found", detail="Invite not found")
+        if invite.status != AlbumShareInviteStatus.pending:
+            raise AppError(status_code=409, code="invite_not_pending", detail="Invite has already been resolved")
+        return invite

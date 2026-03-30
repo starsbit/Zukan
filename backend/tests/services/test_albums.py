@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
-from backend.app.models.albums import Album, AlbumShareRole
+from backend.app.models.albums import Album, AlbumShareInvite, AlbumShareInviteStatus, AlbumShareRole
+from backend.app.models.notifications import Notification, NotificationType
 from backend.app.schemas import AlbumOwnershipTransferRequest, AlbumShareCreate, AlbumUpdate
 from backend.app.services.albums import AlbumService
 from backend.tests.services.conftest import RowResult, ScalarResult
@@ -61,15 +62,18 @@ async def test_list_albums_builds_cursor_response(fake_db, user):
 
     with patch("backend.app.services.albums.AlbumRepository") as repo_cls, patch.object(
         service,
-        "album_read",
+        "_build_album_reads",
         AsyncMock(
-            side_effect=[
+            return_value=[
                 {
                     "id": a1.id,
                     "owner_id": a1.owner_id,
+                    "owner": {"id": a1.owner_id, "username": "owner"},
+                    "access_role": "owner",
                     "name": a1.name,
                     "description": None,
                     "cover_media_id": None,
+                    "preview_media": [],
                     "media_count": 0,
                     "version": 1,
                     "created_at": a1.created_at,
@@ -78,9 +82,12 @@ async def test_list_albums_builds_cursor_response(fake_db, user):
                 {
                     "id": a2.id,
                     "owner_id": a2.owner_id,
+                    "owner": {"id": a2.owner_id, "username": "owner"},
+                    "access_role": "owner",
                     "name": a2.name,
                     "description": None,
                     "cover_media_id": None,
+                    "preview_media": [],
                     "media_count": 0,
                     "version": 1,
                     "created_at": a2.created_at,
@@ -167,20 +174,70 @@ async def test_share_and_revoke_album_permissions(fake_db, user):
     album = Album(owner_id=user.id, name="x")
     album.id = uuid.uuid4()
     shared_user = uuid.uuid4()
+    target_user = SimpleNamespace(id=shared_user, username="viewer_user")
+    notification = Notification(user_id=shared_user, type=NotificationType.share_invite, title="Album invite", body="")
+    notification.id = uuid.uuid4()
+    invite = AlbumShareInvite(
+        album_id=album.id,
+        user_id=shared_user,
+        role=AlbumShareRole.viewer,
+        status=AlbumShareInviteStatus.pending,
+        invited_by_user_id=user.id,
+    )
+    invite.id = uuid.uuid4()
+    invite.notification_id = notification.id
 
     with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)), patch(
         "backend.app.services.albums.AlbumRepository"
-    ) as repo_cls:
+    ) as repo_cls, patch(
+        "backend.app.services.albums.UserRepository"
+    ) as users_repo_cls:
         repo = repo_cls.return_value
-        repo.get_share = AsyncMock(side_effect=[None, SimpleNamespace()])
+        repo.get_share = AsyncMock(side_effect=[None, None, None])
+        repo.get_invite = AsyncMock(side_effect=[None, invite])
+        users_repo_cls.return_value.get_by_username = AsyncMock(return_value=target_user)
+        fake_db.get.return_value = notification
 
-        share, created = await service.share_album(album.id, AlbumShareCreate(user_id=shared_user, role="viewer"), user)
+        share, created = await service.share_album(album.id, AlbumShareCreate(username="viewer_user", role="viewer"), user)
         assert created is True
 
         await service.revoke_share(album.id, shared_user, user)
 
-    assert share.user_id == shared_user
+    assert share["user_id"] == shared_user
+    assert share["status"] == "pending"
+    assert any(isinstance(item, AlbumShareInvite) for item in fake_db.added)
+    assert any(isinstance(item, Notification) for item in fake_db.added)
+    assert notification in fake_db.deleted
     assert fake_db.commit.await_count >= 2
+
+
+@pytest.mark.asyncio
+async def test_share_album_updates_existing_share_without_invite(fake_db, user):
+    service = AlbumService(fake_db)
+    album = Album(owner_id=user.id, name="x")
+    album.id = uuid.uuid4()
+    shared_user = uuid.uuid4()
+    target_user = SimpleNamespace(id=shared_user, username="viewer_user")
+    share = SimpleNamespace(
+        role=AlbumShareRole.viewer,
+        shared_at=datetime.now(timezone.utc),
+        shared_by_user_id=user.id,
+    )
+
+    with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)), patch(
+        "backend.app.services.albums.AlbumRepository"
+    ) as repo_cls, patch(
+        "backend.app.services.albums.UserRepository"
+    ) as users_repo_cls:
+        repo = repo_cls.return_value
+        repo.get_share = AsyncMock(return_value=share)
+        users_repo_cls.return_value.get_by_username = AsyncMock(return_value=target_user)
+
+        result, created = await service.share_album(album.id, AlbumShareCreate(username="viewer_user", role="editor"), user)
+
+    assert created is False
+    assert result["status"] == "accepted"
+    assert result["role"] == "editor"
 
 
 @pytest.mark.asyncio
@@ -240,9 +297,12 @@ async def test_update_delete_remove_and_cover_behaviors(fake_db, user):
     ) as repo_cls, patch.object(service, "album_read", AsyncMock(return_value={
         "id": album.id,
         "owner_id": album.owner_id,
+        "owner": {"id": album.owner_id, "username": "owner"},
+        "access_role": "owner",
         "name": "new",
         "description": "d",
         "cover_media_id": media_id,
+        "preview_media": [],
         "media_count": 1,
         "version": 1,
         "created_at": datetime.now(timezone.utc),
@@ -324,14 +384,18 @@ async def test_transfer_share_revoke_download_error_paths(fake_db, user):
                 user,
             )
 
-    with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)):
+    with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)), patch(
+        "backend.app.services.albums.UserRepository"
+    ) as users_repo_cls:
+        users_repo_cls.return_value.get_by_username = AsyncMock(return_value=SimpleNamespace(id=user.id))
         with pytest.raises(AppError):
-            await service.share_album(album.id, AlbumShareCreate(user_id=user.id, role="viewer"), user)
+            await service.share_album(album.id, AlbumShareCreate(username="owner_name", role="viewer"), user)
 
     with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)), patch(
         "backend.app.services.albums.AlbumRepository"
     ) as repo_cls:
         repo_cls.return_value.get_share = AsyncMock(return_value=None)
+        repo_cls.return_value.get_invite = AsyncMock(return_value=None)
         with pytest.raises(AppError):
             await service.revoke_share(album.id, uuid.uuid4(), user)
 

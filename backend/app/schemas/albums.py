@@ -36,12 +36,30 @@ class AlbumUpdate(BaseModel):
     }
 
 
+class AlbumAccessRole(str, Enum):
+    viewer = "viewer"
+    editor = "editor"
+    owner = "owner"
+
+
+class AlbumOwnerSummary(BaseModel):
+    id: uuid.UUID
+    username: str
+
+
+class AlbumPreviewMedia(BaseModel):
+    id: uuid.UUID
+
+
 class AlbumRead(BaseModel):
     id: uuid.UUID
     owner_id: uuid.UUID
+    owner: AlbumOwnerSummary
+    access_role: AlbumAccessRole
     name: str
     description: str | None = None
     cover_media_id: uuid.UUID | None = None
+    preview_media: list[AlbumPreviewMedia] = Field(default_factory=list)
     media_count: int = 0
     version: int
     created_at: datetime
@@ -53,9 +71,18 @@ class AlbumRead(BaseModel):
             "example": {
                 "id": "05dc6c4d-a955-4f90-bf2d-7e6b5bc93574",
                 "owner_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "owner": {
+                    "id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                    "username": "Saber",
+                },
+                "access_role": "owner",
                 "name": "Fate/stay night",
                 "description": "Images related to Fate/stay night.",
                 "cover_media_id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
+                "preview_media": [
+                    {"id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8"},
+                    {"id": "3387d261-c924-49d5-a6ca-b682482880d8"},
+                ],
                 "media_count": 42,
                 "version": 4,
                 "created_at": "2026-03-20T07:05:11Z",
@@ -87,14 +114,19 @@ class AlbumShareReadRole(str, Enum):
     owner = "owner"
 
 
+class AlbumShareReadStatus(str, Enum):
+    pending = "pending"
+    accepted = "accepted"
+
+
 class AlbumShareCreate(BaseModel):
-    user_id: uuid.UUID
+    username: str = Field(min_length=3, max_length=64)
     role: AlbumShareRole = AlbumShareRole.viewer
 
     model_config = {
         "json_schema_extra": {
             "example": {
-                "user_id": "f8c6e80d-d2f7-4db8-9ee1-5d0a44e0f6e7",
+                "username": "Saber",
                 "role": "editor",
             }
         }
@@ -104,6 +136,7 @@ class AlbumShareCreate(BaseModel):
 class AlbumShareRead(BaseModel):
     user_id: uuid.UUID
     role: AlbumShareReadRole
+    status: AlbumShareReadStatus = AlbumShareReadStatus.accepted
     shared_at: datetime
     shared_by_user_id: uuid.UUID | None = None
 
@@ -113,6 +146,7 @@ class AlbumShareRead(BaseModel):
             "example": {
                 "user_id": "f8c6e80d-d2f7-4db8-9ee1-5d0a44e0f6e7",
                 "role": "editor",
+                "status": "accepted",
                 "shared_at": "2026-03-24T15:55:09Z",
                 "shared_by_user_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
             }

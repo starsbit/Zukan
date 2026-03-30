@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
+from backend.app.models.auth import User
+from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.utils.media_projections import build_media_metadata, build_media_read, enrich_media
 
@@ -33,12 +34,15 @@ def _make_media() -> Media:
         created_at=now,
         deleted_at=None,
         version=1,
+        visibility=MediaVisibility.private,
     )
     t1 = Tag(id=1, name="b", category=0, media_count=1)
     t2 = Tag(id=2, name="a", category=0, media_count=1)
     media.media_tags = [MediaTag(tag=t1, confidence=0.5), MediaTag(tag=t2, confidence=0.6)]
     media.entities = []
     media.external_refs = []
+    media.uploader = User(username="uploader", email="uploader@example.com", hashed_password="x")
+    media.owner = User(username="owner", email="owner@example.com", hashed_password="x")
     return media
 
 
@@ -54,7 +58,10 @@ def test_build_media_read_and_enrich_media():
     read = build_media_read(media, True)
     assert read.is_favorited is True
     assert read.tags == ["a", "b"]
+    assert read.uploader_username == "uploader"
+    assert read.owner_username == "owner"
 
-    result = enrich_media([media], {media.id})
+    result = enrich_media([media], {media.id}, {media.id: 3})
     assert len(result) == 1
     assert result[0].is_favorited is True
+    assert result[0].favorite_count == 3

@@ -1,652 +1,234 @@
-import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, catchError, distinctUntilChanged, finalize, map, Observable, of, tap, throwError } from 'rxjs';
+import { inject, Injectable, OnDestroy, signal } from '@angular/core';
+import { catchError, EMPTY, finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
+import { MediaClientService, MediaSearchParams, UploadParams } from './web/media-client.service';
+import { BlobUrlCache } from '../utils/blob-url.utils';
+import { MediaCursorPage, MediaDetail, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
+import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads';
+import { BulkResult } from '../models/common';
+import { CharacterSuggestion } from '../models/tags';
 
-import {
-  BatchUploadResponse,
-  BulkResult,
-  DownloadRequestDto,
-  ListMediaQuery,
-  MediaBatchDeleteDto,
-  MediaBatchUpdateDto,
-  MediaCursorPage,
-  MediaDetail,
-  MediaRead,
-  MediaUpdateDto,
-  TaggingJobQueuedResponse,
-  Uuid
-} from '../models/api';
-import {
-  beginRequest,
-  completeRequest,
-  createRequestStatus,
-  failRequest,
-  patchItemById,
-  removeItemById,
-  replaceItemById,
-  type RequestStatus
-} from './store.utils';
-import { MediaClientService } from './web/media-client.service';
+@Injectable({ providedIn: 'root' })
+export class MediaService implements OnDestroy {
+  private readonly client = inject(MediaClientService);
 
-export interface MediaState {
-  page: MediaCursorPage | null;
-  pageQuery: ListMediaQuery | null;
-  pageMode: 'list' | 'search';
-  details: Record<Uuid, MediaDetail>;
-  selectedMediaId: Uuid | null;
-  request: RequestStatus;
-  mutationPending: boolean;
-  mutationError: unknown | null;
-}
+  private readonly _items = signal<MediaRead[]>([]);
+  private readonly _hasMore = signal(false);
+  private readonly _cursor = signal<string | null>(null);
+  private readonly _total = signal<number | null>(null);
+  private readonly _loading = signal(false);
 
-const initialMediaState = (): MediaState => ({
-  page: null,
-  pageQuery: null,
-  pageMode: 'list',
-  details: {},
-  selectedMediaId: null,
-  request: createRequestStatus(),
-  mutationPending: false,
-  mutationError: null
-});
+  private _activeParams: MediaSearchParams = {};
 
-@Injectable({
-  providedIn: 'root'
-})
-export class MediaService {
-  private readonly mediaClient = inject(MediaClientService);
-  private readonly stateSubject = new BehaviorSubject<MediaState>(initialMediaState());
+  private readonly thumbnailCache = new BlobUrlCache();
+  private readonly posterCache = new BlobUrlCache();
+  private readonly thumbnailRequests = new Map<string, Observable<string>>();
+  private readonly posterRequests = new Map<string, Observable<string>>();
 
-  readonly state$ = this.stateSubject.asObservable();
-  readonly mediaPage$ = this.state$.pipe(
-    map((state) => state.page),
-    distinctUntilChanged()
-  );
-  readonly items$ = this.state$.pipe(
-    map((state) => state.page?.items ?? []),
-    distinctUntilChanged()
-  );
-  readonly selectedMedia$ = this.state$.pipe(
-    map((state) => state.selectedMediaId ? state.details[state.selectedMediaId] ?? null : null),
-    distinctUntilChanged()
-  );
-  readonly requestLoading$ = this.state$.pipe(
-    map((state) => state.request.loading),
-    distinctUntilChanged()
-  );
-  readonly mutationPending$ = this.state$.pipe(
-    map((state) => state.mutationPending),
-    distinctUntilChanged()
-  );
-  readonly loading$ = this.state$.pipe(
-    map((state) => state.request.loading || state.mutationPending),
-    distinctUntilChanged()
-  );
-  readonly loaded$ = this.state$.pipe(
-    map((state) => state.request.loaded),
-    distinctUntilChanged()
-  );
-  readonly error$ = this.state$.pipe(
-    map((state) => state.mutationError ?? state.request.error),
-    distinctUntilChanged()
-  );
+  readonly items = this._items.asReadonly();
+  readonly hasMore = this._hasMore.asReadonly();
+  readonly total = this._total.asReadonly();
+  readonly loading = this._loading.asReadonly();
 
-  get snapshot(): MediaState {
-    return this.stateSubject.value;
-  }
-
-  loadPage(query?: ListMediaQuery): Observable<MediaCursorPage> {
-    return this.loadPageWithMode('list', query);
-  }
-
-  loadSearchPage(query?: ListMediaQuery): Observable<MediaCursorPage> {
-    return this.loadPageWithMode('search', query);
-  }
-
-  private loadPageWithMode(pageMode: 'list' | 'search', query?: ListMediaQuery): Observable<MediaCursorPage> {
-    this.patchState({
-      pageMode,
-      pageQuery: query ?? null,
-      request: beginRequest(this.stateSubject.value.request)
-    });
-
-    return this.getPageRequest(pageMode, query).pipe(
-      tap((page) => {
-        this.patchState({
-          page,
-          pageMode,
-          pageQuery: query ?? null,
-          request: completeRequest(this.stateSubject.value.request)
-        });
+  load(params: MediaSearchParams = {}): Observable<MediaCursorPage> {
+    this._activeParams = params;
+    this._loading.set(true);
+    return this.client.search(params).pipe(
+      tap(page => {
+        this._items.set(page.items);
+        this._cursor.set(page.next_cursor);
+        this._hasMore.set(page.has_more);
+        this._total.set(page.total);
+        this._loading.set(false);
       }),
-      catchError((error) => {
-        this.patchState({
-          request: failRequest(this.stateSubject.value.request, error)
-        });
-        return throwError(() => error);
-      })
-    );
-  }
-
-  refreshPage(): Observable<MediaCursorPage> {
-    const state = this.stateSubject.value;
-    return state.pageMode === 'search'
-      ? this.loadSearchPage(state.pageQuery ?? undefined)
-      : this.loadPage(state.pageQuery ?? undefined);
-  }
-
-  loadNextPage(): Observable<MediaCursorPage | null> {
-    const state = this.stateSubject.value;
-    const page = state.page;
-
-    if (!page || state.request.loading) {
-      return of(null);
-    }
-
-    if (!page.next_cursor) {
-      return of(null);
-    }
-
-    const nextQuery: ListMediaQuery = {
-      ...(state.pageQuery ?? {}),
-      after: page.next_cursor,
-      page_size: (state.pageQuery?.page_size ?? page.page_size)
-    };
-
-    this.patchState({
-      request: beginRequest(state.request)
-    });
-
-    return this.getPageRequest(state.pageMode, nextQuery).pipe(
-      tap((next) => {
-        const currentPage = this.stateSubject.value.page;
-        const mergedItems = mergePageItems(currentPage?.items ?? [], next.items);
-
-        this.patchState({
-          page: {
-            ...next,
-            items: mergedItems
-          },
-          request: completeRequest(this.stateSubject.value.request)
-        });
+      catchError(err => {
+        this._loading.set(false);
+        return throwError(() => err);
       }),
-      catchError((error) => {
-        this.patchState({
-          request: failRequest(this.stateSubject.value.request, error)
-        });
-        return throwError(() => error);
-      })
     );
   }
 
-  private getPageRequest(pageMode: 'list' | 'search', query?: ListMediaQuery): Observable<MediaCursorPage> {
-    return pageMode === 'search'
-      ? this.mediaClient.searchMedia(query)
-      : this.mediaClient.listMedia(query);
-  }
-
-  selectMedia(mediaId: Uuid): Observable<MediaDetail> {
-    const cached = this.stateSubject.value.details[mediaId];
-    this.patchState({
-      selectedMediaId: mediaId
-    });
-
-    if (cached) {
-      return of(cached);
-    }
-
-    return this.loadMedia(mediaId);
-  }
-
-  loadMedia(mediaId: Uuid): Observable<MediaDetail> {
-    this.patchState({
-      request: beginRequest(this.stateSubject.value.request),
-      selectedMediaId: mediaId
-    });
-
-    return this.mediaClient.getMedia(mediaId).pipe(
-      tap((media) => {
-        this.patchState({
-          details: {
-            ...this.stateSubject.value.details,
-            [mediaId]: media
-          },
-          request: completeRequest(this.stateSubject.value.request)
-        });
-        this.applyMediaToPage(media);
+  loadMore(): Observable<MediaCursorPage> {
+    if (!this._hasMore() || this._loading()) return EMPTY;
+    this._loading.set(true);
+    const params = { ...this._activeParams, after: this._cursor() ?? undefined };
+    return this.client.search(params).pipe(
+      tap(page => {
+        this._items.update(prev => [...prev, ...page.items]);
+        this._cursor.set(page.next_cursor);
+        this._hasMore.set(page.has_more);
+        this._loading.set(false);
       }),
-      catchError((error) => {
-        this.patchState({
-          request: failRequest(this.stateSubject.value.request, error)
-        });
-        return throwError(() => error);
-      })
-    );
-  }
-
-  refreshMediaInPage(mediaId: Uuid): Observable<MediaDetail> {
-    return this.mediaClient.getMedia(mediaId).pipe(
-      tap((media) => {
-        this.patchState({
-          details: {
-            ...this.stateSubject.value.details,
-            [mediaId]: media
-          }
-        });
-        this.applyMediaToPage(media, { insertIfMissing: true });
-      })
-    );
-  }
-
-  uploadMedia(files: File[]): Observable<BatchUploadResponse> {
-    this.startMutation();
-
-    return this.mediaClient.uploadMedia(files).pipe(
-      tap(() => this.invalidatePage()),
-      tap(() => this.finishMutation()),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
-    );
-  }
-
-  updateMedia(mediaId: Uuid, body: MediaUpdateDto): Observable<MediaDetail> {
-    this.startMutation();
-
-    return this.mediaClient.updateMedia(mediaId, body).pipe(
-      tap((media) => {
-        this.patchState({
-          details: {
-            ...this.stateSubject.value.details,
-            [mediaId]: media
-          }
-        });
-        this.applyMediaUpdateToPage(media, body);
-        this.finishMutation();
+      catchError(err => {
+        this._loading.set(false);
+        return throwError(() => err);
       }),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
     );
   }
 
-  batchUpdateMedia(body: MediaBatchUpdateDto): Observable<BulkResult> {
-    this.startMutation();
+  reset(): void {
+    this._items.set([]);
+    this._cursor.set(null);
+    this._hasMore.set(false);
+    this._total.set(null);
+    this._loading.set(false);
+    this._activeParams = {};
+  }
 
-    return this.mediaClient.batchUpdateMedia(body).pipe(
-      tap((result) => {
-        this.patchBatchMedia(body);
-        this.finishMutation();
-        return result;
-      }),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
+  get(id: string): Observable<MediaDetail> {
+    return this.client.get(id);
+  }
+
+  update(id: string, body: MediaUpdate): Observable<MediaDetail> {
+    return this.client.update(id, body).pipe(
+      tap(updated => this._patchItem(updated)),
     );
   }
 
-  batchDeleteMedia(body: MediaBatchDeleteDto): Observable<BulkResult> {
-    this.startMutation();
+  delete(id: string): Observable<void> {
+    return this.client.delete(id).pipe(
+      tap(() => this._removeItem(id)),
+    );
+  }
 
-    return this.mediaClient.batchDeleteMedia(body).pipe(
+  restore(id: string): Observable<void> {
+    return this.client.restore(id).pipe(
+      tap(() => this._removeItem(id)),
+    );
+  }
+
+  purge(id: string): Observable<void> {
+    return this.client.purge(id).pipe(
       tap(() => {
-        this.removeDetails(body.media_ids);
-        if (this.stateSubject.value.page) {
-          this.patchState({
-            page: {
-              ...this.stateSubject.value.page,
-              items: this.stateSubject.value.page.items.filter((item) => !body.media_ids.includes(item.id)),
-              total: this.stateSubject.value.page.total != null ? Math.max(0, this.stateSubject.value.page.total - body.media_ids.length) : null
-            }
-          });
-        }
-        this.finishMutation();
+        this._removeItem(id);
+        this.thumbnailCache.delete(id);
+        this.posterCache.delete(id);
       }),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
     );
   }
 
-  deleteMedia(mediaId: Uuid): Observable<void> {
-    this.startMutation();
+  batchDelete(ids: string[]): Observable<BulkResult> {
+    return this.client.batchDelete({ media_ids: ids }).pipe(
+      tap(() => this._removeItems(ids)),
+    );
+  }
 
-    return this.mediaClient.deleteMedia(mediaId).pipe(
+  batchPurge(ids: string[]): Observable<BulkResult> {
+    return this.client.batchPurge({ media_ids: ids }).pipe(
       tap(() => {
-        this.removeDetails([mediaId]);
-        const page = this.stateSubject.value.page;
-        const pageQuery = this.stateSubject.value.pageQuery;
-
-        if (page) {
-          if (pageQuery?.state === 'trashed') {
-            this.invalidatePage();
-          } else {
-            this.patchState({
-              page: {
-                ...page,
-                items: removeItemById(page.items, mediaId),
-                total: page.total != null ? Math.max(0, page.total - 1) : null
-              }
-            });
-          }
-        }
-
-        if (this.stateSubject.value.selectedMediaId === mediaId) {
-          this.patchState({
-            selectedMediaId: null
-          });
-        }
-
-        this.finishMutation();
+        this._removeItems(ids);
+        ids.forEach(id => {
+          this.thumbnailCache.delete(id);
+          this.posterCache.delete(id);
+        });
       }),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
     );
   }
 
-  emptyTrash(): Observable<void> {
-    this.startMutation();
-
-    return this.mediaClient.emptyTrash().pipe(
+  batchFavorite(ids: string[], favorited: boolean): Observable<BulkResult> {
+    return this.client.batchUpdate({ media_ids: ids, favorited }).pipe(
       tap(() => {
-        if (this.stateSubject.value.pageQuery?.state === 'trashed') {
-          this.patchState({
-            page: this.stateSubject.value.page
-              ? { ...this.stateSubject.value.page, items: [], total: 0 }
-              : { items: [], next_cursor: null, has_more: false, page_size: 0, total: 0 }
-          });
-        } else {
-          this.invalidatePage();
-        }
-
-        this.finishMutation();
+        const set = new Set(ids);
+        this._items.update(items =>
+          items.map(item => set.has(item.id) ? { ...item, is_favorited: favorited } : item),
+        );
       }),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
     );
   }
 
-  queueTaggingJob(mediaId: Uuid): Observable<TaggingJobQueuedResponse> {
-    this.startMutation();
-
-    return this.mediaClient.queueTaggingJob(mediaId).pipe(
-      tap(() => this.finishMutation()),
-      catchError((error) => this.failMutation(error)),
-      finalize(() => this.ensureMutationSettled())
+  batchUpdateVisibility(ids: string[], visibility: MediaVisibility): Observable<BulkResult> {
+    return this.client.batchUpdate({ media_ids: ids, visibility }).pipe(
+      tap(() => {
+        const set = new Set(ids);
+        this._items.update(items =>
+          items.map(item => set.has(item.id) ? { ...item, visibility } : item),
+        );
+      }),
     );
   }
 
-  downloadMedia(body: DownloadRequestDto): Observable<Blob> {
-    return this.mediaClient.downloadMedia(body);
+  upload(files: File[], params?: UploadParams): Observable<BatchUploadResponse> {
+    return this.client.upload(files, params);
   }
 
-  getMediaFile(mediaId: Uuid): Observable<Blob> {
-    return this.mediaClient.getMediaFile(mediaId);
+  download(ids: string[]): Observable<Blob> {
+    return this.client.download({ media_ids: ids });
   }
 
-  getMediaThumbnail(mediaId: Uuid): Observable<Blob> {
-    return this.mediaClient.getMediaThumbnail(mediaId);
+  queueTaggingJob(id: string): Observable<TaggingJobQueuedResponse> {
+    return this.client.queueTaggingJob(id);
   }
 
-  restoreMedia(mediaId: Uuid): Observable<MediaDetail> {
-    return this.updateMedia(mediaId, { deleted: false });
+  batchQueueTaggingJobs(ids: string[]): Observable<TaggingJobQueuedResponse> {
+    return this.client.batchQueueTaggingJobs({ media_ids: ids });
   }
 
-  restoreMediaBatch(mediaIds: Uuid[]): Observable<BulkResult> {
-    return this.batchUpdateMedia({ media_ids: mediaIds, deleted: false });
+  getCharacterSuggestions(q: string, limit?: number): Observable<CharacterSuggestion[]> {
+    return this.client.getCharacterSuggestions(q, limit);
   }
 
-  private patchBatchMedia(body: MediaBatchUpdateDto): void {
-    const page = this.stateSubject.value.page;
-    const ids = new Set(body.media_ids);
+  getThumbnailUrl(id: string): Observable<string> {
+    const cached = this.thumbnailCache.get(id);
+    if (cached) return new Observable(s => { s.next(cached); s.complete(); });
 
-    const details = { ...this.stateSubject.value.details };
-    for (const mediaId of body.media_ids) {
-      delete details[mediaId];
+    const pending = this.thumbnailRequests.get(id);
+    if (pending) {
+      return pending;
     }
 
-    if (!page) {
-      this.patchState({ details });
-      return;
+    const request = this.client.getThumbnail(id).pipe(
+      map(blob => this.thumbnailCache.set(id, blob)),
+      finalize(() => this.thumbnailRequests.delete(id)),
+      shareReplay(1),
+    );
+    this.thumbnailRequests.set(id, request);
+    return request;
+  }
+
+  getPosterUrl(id: string): Observable<string> {
+    const cached = this.posterCache.get(id);
+    if (cached) return new Observable(s => { s.next(cached); s.complete(); });
+
+    const pending = this.posterRequests.get(id);
+    if (pending) {
+      return pending;
     }
 
-    const nextItems = page.items.flatMap((item) => {
-      if (!ids.has(item.id)) {
-        return [item];
-      }
-
-      const patched = patchMediaRead(item, body);
-      const shouldRemoveFromCurrentView = shouldRemoveFromCurrentViewForDeletedState(
-        this.stateSubject.value.pageQuery?.state,
-        body.deleted
-      );
-
-      return shouldRemoveFromCurrentView ? [] : [patched];
-    });
-
-    const removedCount = page.items.length - nextItems.length;
-
-    this.patchState({
-      details,
-      page: {
-        ...page,
-        items: nextItems,
-        total: removedCount > 0 && page.total != null ? Math.max(0, page.total - removedCount) : page.total
-      }
-    });
+    const request = this.client.getPoster(id).pipe(
+      map(blob => this.posterCache.set(id, blob)),
+      finalize(() => this.posterRequests.delete(id)),
+      shareReplay(1),
+    );
+    this.posterRequests.set(id, request);
+    return request;
   }
 
-  private applyMediaUpdateToPage(media: MediaRead, body: MediaUpdateDto): void {
-    const page = this.stateSubject.value.page;
-    if (!page || !page.items.some((item) => item.id === media.id)) {
-      return;
-    }
-
-    if (shouldRemoveFromCurrentViewForDeletedState(this.stateSubject.value.pageQuery?.state, body.deleted)) {
-      this.patchState({
-        page: {
-          ...page,
-          items: removeItemById(page.items, media.id),
-          total: page.total != null ? Math.max(0, page.total - 1) : null
-        }
-      });
-      return;
-    }
-
-    this.patchState({
-      page: {
-        ...page,
-        items: replaceItemById(page.items, media)
-      }
-    });
+  getFileUrl(id: string): Observable<string> {
+    return this.client.getFile(id).pipe(
+      map(blob => URL.createObjectURL(blob)),
+    );
   }
 
-  private applyMediaToPage(media: MediaRead, options?: { insertIfMissing?: boolean }): void {
-    const page = this.stateSubject.value.page;
-    if (!page) {
-      return;
-    }
-
-    if (page.items.some((item) => item.id === media.id)) {
-      this.patchState({
-        page: {
-          ...page,
-          items: replaceItemById(page.items, media)
-        }
-      });
-      return;
-    }
-
-    if (!options?.insertIfMissing || !shouldInsertIntoCurrentView(media, this.stateSubject.value.pageQuery)) {
-      return;
-    }
-
-    this.patchState({
-      page: {
-        ...page,
-        items: [media, ...page.items],
-        total: page.total != null ? page.total + 1 : page.total
-      }
-    });
+  ngOnDestroy(): void {
+    this.thumbnailCache.clear();
+    this.posterCache.clear();
   }
 
-  private removeDetails(mediaIds: Uuid[]): void {
-    const details = { ...this.stateSubject.value.details };
-    for (const mediaId of mediaIds) {
-      delete details[mediaId];
-    }
-
-    this.patchState({
-      details
-    });
+  private _patchItem(updated: MediaRead): void {
+    this._items.update(items =>
+      items.map(item => item.id === updated.id ? updated : item),
+    );
   }
 
-  private invalidatePage(): void {
-    this.patchState({
-      page: null,
-      request: {
-        ...this.stateSubject.value.request,
-        loaded: false
-      }
-    });
+  private _removeItem(id: string): void {
+    this._items.update(items => items.filter(item => item.id !== id));
+    this._total.update(t => t != null ? t - 1 : null);
   }
 
-  private startMutation(): void {
-    this.patchState({
-      mutationPending: true,
-      mutationError: null
-    });
+  private _removeItems(ids: string[]): void {
+    const set = new Set(ids);
+    const before = this._items().length;
+    this._items.update(items => items.filter(item => !set.has(item.id)));
+    const removed = before - this._items().length;
+    this._total.update(t => t != null ? t - removed : null);
   }
-
-  private finishMutation(): void {
-    this.patchState({
-      mutationPending: false,
-      mutationError: null
-    });
-  }
-
-  private failMutation(error: unknown): Observable<never> {
-    this.patchState({
-      mutationPending: false,
-      mutationError: error
-    });
-
-    return throwError(() => error);
-  }
-
-  private ensureMutationSettled(): void {
-    if (!this.stateSubject.value.mutationPending) {
-      return;
-    }
-
-    this.patchState({
-      mutationPending: false
-    });
-  }
-
-  private patchState(patch: Partial<MediaState>): void {
-    this.stateSubject.next({
-      ...this.stateSubject.value,
-      ...patch
-    });
-  }
-}
-
-function patchMediaRead(media: MediaRead, body: MediaBatchUpdateDto): MediaRead {
-  return {
-    ...media,
-    is_favorited: body.favorited ?? media.is_favorited,
-    deleted_at: body.deleted === true ? media.deleted_at ?? new Date().toISOString() : body.deleted === false ? null : media.deleted_at
-  };
-}
-
-function shouldRemoveFromCurrentViewForDeletedState(
-  viewState: ListMediaQuery['state'],
-  deleted: boolean | null | undefined
-): boolean {
-  if (deleted === true) {
-    return viewState !== 'trashed';
-  }
-
-  if (deleted === false) {
-    return viewState === 'trashed';
-  }
-
-  return false;
-}
-
-function shouldInsertIntoCurrentView(media: MediaRead, query: ListMediaQuery | null): boolean {
-  if (query?.state === 'trashed') {
-    return Boolean(media.deleted_at);
-  }
-
-  if (media.deleted_at) {
-    return false;
-  }
-
-  if (query?.favorited === true && !media.is_favorited) {
-    return false;
-  }
-
-  if (query?.media_type && query.media_type.length > 0 && !query.media_type.includes(media.media_type)) {
-    return false;
-  }
-
-  if (query?.status) {
-    const allowedStatuses = new Set(query.status.split(',').map((value) => value.trim()).filter(Boolean));
-    if (allowedStatuses.size > 0 && !allowedStatuses.has(media.tagging_status)) {
-      return false;
-    }
-  }
-
-  if (query?.tag && query.tag.length > 0 && !query.tag.every((tag) => media.tags.includes(tag))) {
-    return false;
-  }
-
-  if (query?.album_id || query?.character_name || query?.ocr_text) {
-    return false;
-  }
-
-  if ((query?.captured_after || query?.captured_before) && !isWithinCaptureWindow(media.metadata.captured_at, query)) {
-    return false;
-  }
-
-  return true;
-}
-
-function isWithinCaptureWindow(capturedAt: string, query: ListMediaQuery): boolean {
-  const captured = new Date(capturedAt).getTime();
-  if (Number.isNaN(captured)) {
-    return false;
-  }
-
-  if (query.captured_after) {
-    const after = new Date(query.captured_after).getTime();
-    if (!Number.isNaN(after) && captured < after) {
-      return false;
-    }
-  }
-
-  if (query.captured_before) {
-    const before = new Date(query.captured_before).getTime();
-    if (!Number.isNaN(before) && captured > before) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function mergePageItems(existing: MediaRead[], next: MediaRead[]): MediaRead[] {
-  if (existing.length === 0) {
-    return [...next];
-  }
-
-  const seenIds = new Set(existing.map((item) => item.id));
-  const merged = [...existing];
-
-  for (const item of next) {
-    if (seenIds.has(item.id)) {
-      continue;
-    }
-    merged.push(item);
-    seenIds.add(item.id);
-  }
-
-  return merged;
 }

@@ -1,0 +1,49 @@
+<form [formGroup]="form" (ngSubmit)="onSubmit()" class="auth-form">
+  @if (successMessage()) {
+    <p class="form-success">{{ successMessage() }}</p>
+  }
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Username</mat-label>
+    <input matInput formControlName="username" autocomplete="username" />
+    @if (form.controls.username.hasError('required') && form.controls.username.touched) {
+      <mat-error>Username is required</mat-error>
+    }
+  </mat-form-field>
+
+  <mat-form-field appearance="outline" class="full-width">
+    <mat-label>Password</mat-label>
+    <input
+      matInput
+      [type]="hidePassword ? 'password' : 'text'"
+      formControlName="password"
+      autocomplete="current-password"
+    />
+    <button mat-icon-button matSuffix type="button" (click)="hidePassword = !hidePassword"
+      [attr.aria-label]="hidePassword ? 'Show password' : 'Hide password'">
+      <mat-icon>{{ hidePassword ? 'visibility_off' : 'visibility' }}</mat-icon>
+    </button>
+    @if (form.controls.password.hasError('required') && form.controls.password.touched) {
+      <mat-error>Password is required</mat-error>
+    }
+  </mat-form-field>
+
+  <mat-checkbox formControlName="rememberMe">Remember me</mat-checkbox>
+
+  @if (error()) {
+    <p class="form-error">{{ error() }}</p>
+  }
+
+  <div class="form-actions">
+    <button mat-button type="button" (click)="openForgotPassword()">
+      Forgot password?
+    </button>
+    <button mat-flat-button type="submit" [disabled]="form.invalid || loading()">
+      @if (loading()) {
+        <mat-spinner diameter="20" />
+      } @else {
+        Sign In
+      }
+    </button>
+  </div>
+</form>

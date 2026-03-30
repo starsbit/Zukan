@@ -100,8 +100,10 @@ def media(user: User) -> Media:
 def stub_query() -> SimpleNamespace:
     return SimpleNamespace(
         get_active_media=AsyncMock(),
+        get_favoritable_media=AsyncMock(),
         get_favorite=AsyncMock(),
         get_active_media_ids=AsyncMock(),
+        get_favoritable_media_ids=AsyncMock(),
         get_existing_favorites=AsyncMock(),
         get_owned_or_admin_media=AsyncMock(),
         get_expired_trash=AsyncMock(),

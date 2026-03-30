@@ -1,38 +1,23 @@
-import { APP_INITIALIZER, ApplicationConfig, importProvidersFrom, provideBrowserGlobalErrorListeners } from '@angular/core';
+import { ApplicationConfig, inject, provideAppInitializer, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
 import { provideRouter } from '@angular/router';
-import { MatDialogModule } from '@angular/material/dialog';
-import { MatSnackBarModule } from '@angular/material/snack-bar';
+import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 
 import { routes } from './app.routes';
-import { AuthService } from './services/auth.service';
-import { ThemeService } from './services/theme.service';
-import { authInterceptor } from './services/web/auth.interceptor';
+import { authInterceptor } from './interceptors/auth.interceptor';
+import { AuthSessionService } from './services/auth-session.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideAnimationsAsync(),
+    provideAppInitializer(() => inject(AuthSessionService).restore()),
     provideRouter(routes),
-    importProvidersFrom(MatDialogModule, MatSnackBarModule),
+    provideHttpClient(withInterceptors([authInterceptor])),
     {
-      provide: APP_INITIALIZER,
-      multi: true,
-      deps: [AuthService],
-      useFactory: (authService: AuthService) => () => new Promise<void>((resolve) => {
-        authService.initializeSession().subscribe({
-          next: () => resolve(),
-          error: () => resolve()
-        });
-      })
+      provide: MAT_SNACK_BAR_DEFAULT_OPTIONS,
+      useValue: { duration: 5000 },
     },
-    {
-      provide: APP_INITIALIZER,
-      multi: true,
-      deps: [ThemeService],
-      useFactory: (themeService: ThemeService) => () => {
-        themeService.initialize();
-      }
-    }
   ]
 };

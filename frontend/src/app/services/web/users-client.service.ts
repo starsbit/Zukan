@@ -1,20 +1,19 @@
-import { Injectable, inject } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { API_BASE_URL } from './api.config';
+import { UserRead, UserUpdate } from '../../models/auth';
 
-import { UserRead, UserUpdateDto } from '../../models/api';
-import { ClientApiService } from './api.service';
-
-@Injectable({
-  providedIn: 'root'
-})
+@Injectable({ providedIn: 'root' })
 export class UsersClientService {
-  private readonly api = inject(ClientApiService);
+  private readonly http = inject(HttpClient);
+  private readonly base = inject(API_BASE_URL);
 
   getMe(): Observable<UserRead> {
-    return this.api.get<UserRead>('/me');
+    return this.http.get<UserRead>(`${this.base}/api/v1/me`);
   }
 
-  updateMe(body: UserUpdateDto): Observable<UserRead> {
-    return this.api.patch<UserRead>('/me', body);
+  updateMe(body: UserUpdate): Observable<UserRead> {
+    return this.http.patch<UserRead>(`${this.base}/api/v1/me`, body);
   }
 }

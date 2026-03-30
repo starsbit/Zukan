@@ -1,399 +1,431 @@
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom } from 'rxjs';
-
-import { CLIENT_API_BASE_URL } from './web/api.config';
-import { MediaClientService } from './web/media-client.service';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MediaService } from './media.service';
+import { API_BASE_URL } from './web/api.config';
+import { MediaType, TaggingStatus, ProcessingStatus, MediaVisibility } from '../models/media';
 
-const createMedia = (id: string, overrides: Partial<Record<string, unknown>> = {}) => ({
-  id,
-  uploader_id: 'user-1',
-  filename: `${id}.png`,
-  original_filename: `${id}.png`,
-  metadata: {
-    file_size: 100,
-    width: 10,
-    height: 10,
-    mime_type: 'image/png',
-    captured_at: '2026-03-21T00:00:00Z'
-  },
-  tags: ['fox'],
-  is_nsfw: false,
-  tagging_status: 'done',
-  thumbnail_status: 'ready',
-  version: 1,
-  created_at: '2026-03-21T00:00:00Z',
-  deleted_at: null,
-  is_favorited: false,
-  ...overrides
-});
+function makeMedia(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    uploader_id: 'u1',
+    uploader_username: 'uploader',
+    owner_id: 'u1',
+    owner_username: 'owner',
+    visibility: MediaVisibility.PRIVATE,
+    filename: `${id}.jpg`,
+    original_filename: `${id}.jpg`,
+    media_type: MediaType.IMAGE,
+    metadata: {
+      file_size: 1024, width: 100, height: 100,
+      duration_seconds: null, frame_count: null,
+      mime_type: 'image/jpeg', captured_at: '2026-01-01T00:00:00Z',
+    },
+    version: 1,
+    created_at: '2026-01-01T00:00:00Z',
+    deleted_at: null,
+    tags: [],
+    ocr_text_override: null,
+    is_nsfw: false,
+    tagging_status: TaggingStatus.DONE,
+    tagging_error: null,
+    thumbnail_status: ProcessingStatus.DONE,
+    poster_status: ProcessingStatus.NOT_APPLICABLE,
+    ocr_text: null,
+    is_favorited: false,
+    favorite_count: 0,
+    ...overrides,
+  };
+}
+
+function makePage(items: ReturnType<typeof makeMedia>[], has_more = false, next_cursor: string | null = null) {
+  return { items, has_more, next_cursor, total: items.length, page_size: 20 };
+}
 
 describe('MediaService', () => {
   let service: MediaService;
-  let httpTesting: HttpTestingController;
+  let http: HttpTestingController;
 
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
-        MediaService,
-        MediaClientService,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: CLIENT_API_BASE_URL, useValue: 'http://api.example.test' }
-      ]
+        { provide: API_BASE_URL, useValue: '' },
+      ],
     });
-
     service = TestBed.inject(MediaService);
-    httpTesting = TestBed.inject(HttpTestingController);
+    http = TestBed.inject(HttpTestingController);
   });
 
-  afterEach(() => {
-    httpTesting.verify();
+  afterEach(() => http.verify());
+
+  describe('load()', () => {
+    it('sets items and pagination signals from response', () => {
+      const page = makePage([makeMedia('m1'), makeMedia('m2')], true, 'cursor1');
+      page.total = 10;
+
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(page);
+
+      expect(service.items()).toHaveLength(2);
+      expect(service.items()[0].id).toBe('m1');
+      expect(service.hasMore()).toBe(true);
+      expect(service.total()).toBe(10);
+      expect(service.loading()).toBe(false);
+    });
+
+    it('replaces items on subsequent load()', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m1')]));
+
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m2')]));
+
+      expect(service.items()).toHaveLength(1);
+      expect(service.items()[0].id).toBe('m2');
+    });
+
+    it('passes search params to the client', () => {
+      service.load({ tag: ['cat', 'night'], nsfw: 'include' as any, visibility: MediaVisibility.PUBLIC }).subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(req.request.params.getAll('tag')).toEqual(['cat', 'night']);
+      expect(req.request.params.get('nsfw')).toBe('include');
+      expect(req.request.params.get('visibility')).toBe('public');
+      req.flush(makePage([]));
+    });
+
+    it('sets loading=false and rethrows on error', () => {
+      let err: unknown;
+      service.load().subscribe({ error: e => (err = e) });
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush('', { status: 500, statusText: 'Server Error' });
+
+      expect(service.loading()).toBe(false);
+      expect(err).toBeTruthy();
+    });
   });
 
-  it('loads a media search page and refreshes it with the last query', async () => {
-    const loadPromise = firstValueFrom(service.loadSearchPage({ after: 'cursor-pg2', page_size: 10, favorited: true }));
-    expect(service.snapshot.request.loading).toBe(true);
+  describe('loadMore()', () => {
+    it('appends items and uses cursor from previous page', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1')], true, 'cur1'));
 
-    const firstRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
-    firstRequest.flush({
-      total: 1,
-      next_cursor: null,
-      page_size: 10,
-      items: [createMedia('media-1', { is_favorited: true })]
+      service.loadMore().subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(req.request.params.get('after')).toBe('cur1');
+      req.flush(makePage([makeMedia('m2')], false, null));
+
+      expect(service.items()).toHaveLength(2);
+      expect(service.hasMore()).toBe(false);
     });
 
-    await expect(loadPromise).resolves.toMatchObject({ total: 1 });
-    expect(service.snapshot.pageQuery).toEqual({ after: 'cursor-pg2', page_size: 10, favorited: true });
-    expect(service.snapshot.pageMode).toBe('search');
+    it('returns EMPTY when hasMore is false', () => {
+      let emitted = false;
+      service.loadMore().subscribe({ next: () => (emitted = true) });
+      http.expectNone(r => r.url === '/api/v1/media/search');
+      expect(emitted).toBe(false);
+    });
 
-    const refreshPromise = firstValueFrom(service.refreshPage());
-    const refreshRequest = httpTesting.expectOne('http://api.example.test/media/search?after=cursor-pg2&page_size=10&favorited=true');
-    refreshRequest.flush({ total: 0, next_cursor: null, page_size: 10, items: [] });
-
-    await expect(refreshPromise).resolves.toMatchObject({ total: 0, items: [] });
+    it('returns EMPTY when already loading', () => {
+      service.load().subscribe();
+      // load is now in-flight, loading=true
+      service.loadMore().subscribe();
+      // only the original load request should be pending
+      const reqs = http.match(r => r.url === '/api/v1/media/search');
+      expect(reqs).toHaveLength(1);
+      reqs[0].flush(makePage([]));
+    });
   });
 
-  it('loads and appends the next page of media items', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageMode: 'search',
-      pageQuery: { page_size: 2, tag: ['sky'] },
-      page: {
-        total: 4,
-        next_cursor: 'cursor-next',
-        page_size: 2,
-        items: [createMedia('media-1'), createMedia('media-2')]
-      },
-      request: { loading: false, loaded: true, error: null }
-    });
+  describe('reset()', () => {
+    it('clears all state', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1')], true, 'c1'));
 
-    const nextPagePromise = firstValueFrom(service.loadNextPage());
-    const nextRequest = httpTesting.expectOne('http://api.example.test/media/search?page_size=2&tag=sky&after=cursor-next');
-    nextRequest.flush({
-      total: 4,
-      next_cursor: null,
-      page_size: 2,
-      items: [createMedia('media-2'), createMedia('media-3'), createMedia('media-4')]
-    });
+      service.reset();
 
-    await expect(nextPagePromise).resolves.toMatchObject({ next_cursor: null });
-    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-1', 'media-2', 'media-3', 'media-4']);
+      expect(service.items()).toHaveLength(0);
+      expect(service.hasMore()).toBe(false);
+      expect(service.total()).toBeNull();
+      expect(service.loading()).toBe(false);
+    });
   });
 
-  it('does not load next page when all media has already been loaded', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { page_size: 2 },
-      page: {
-        total: 2,
-        next_cursor: null,
-        page_size: 2,
-        items: [createMedia('media-1'), createMedia('media-2')]
-      },
-      request: { loading: false, loaded: true, error: null }
-    });
+  describe('update()', () => {
+    it('patches the item in the local list', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1'), makeMedia('m2')]));
 
-    await expect(firstValueFrom(service.loadNextPage())).resolves.toBeNull();
-    httpTesting.expectNone((request) => request.urlWithParams.includes('/media?after'));
+      const updated = { ...makeMedia('m1'), tags: ['cat'], tag_details: [], external_refs: [], entities: [] };
+      service.update('m1', { tags: ['cat'] }).subscribe();
+      http.expectOne('/api/v1/media/m1').flush(updated);
+
+      expect(service.items()[0].tags).toEqual(['cat']);
+      expect(service.items()[1].id).toBe('m2');
+    });
   });
 
-  it('updates cached detail and current page items after a media mutation', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { page_size: 20 },
-      page: {
-        total: 1,
-        next_cursor: null,
-        page_size: 20,
-        items: [createMedia('media-1')]
-      },
-      details: {
-        'media-1': createMedia('media-1')
-      },
-      selectedMediaId: 'media-1'
+  describe('delete()', () => {
+    it('removes the item from the list and decrements total', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush({ ...makePage([makeMedia('m1'), makeMedia('m2')]), total: 2 });
+
+      service.delete('m1').subscribe();
+      http.expectOne('/api/v1/media/m1').flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(service.items()).toHaveLength(1);
+      expect(service.items()[0].id).toBe('m2');
+      expect(service.total()).toBe(1);
     });
-
-    const updatePromise = firstValueFrom(service.updateMedia('media-1', { favorited: true }));
-    const request = httpTesting.expectOne('http://api.example.test/media/media-1');
-    expect(request.request.method).toBe('PATCH');
-    request.flush(createMedia('media-1', { is_favorited: true }));
-
-    await expect(updatePromise).resolves.toMatchObject({ is_favorited: true });
-    expect(service.snapshot.details['media-1']?.is_favorited).toBe(true);
-    expect(service.snapshot.page?.items[0]?.is_favorited).toBe(true);
   });
 
-  it('inserts refreshed media into the current active page when it is missing', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageMode: 'search',
-      pageQuery: {
-        state: 'active',
-        page_size: 20,
-        status: 'pending,processing,done,failed'
-      },
-      page: {
-        total: 1,
-        next_cursor: null,
-        page_size: 20,
-        items: [createMedia('media-existing')]
-      }
+  describe('restore()', () => {
+    it('removes the item from the list', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1')]));
+
+      service.restore('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/restore').flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(service.items()).toHaveLength(0);
     });
-
-    const refreshPromise = firstValueFrom(service.refreshMediaInPage('media-new'));
-    const request = httpTesting.expectOne('http://api.example.test/media/media-new');
-    request.flush(createMedia('media-new'));
-
-    await expect(refreshPromise).resolves.toMatchObject({ id: 'media-new' });
-    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-new', 'media-existing']);
-    expect(service.snapshot.page?.total).toBe(2);
   });
 
-  it('does not insert refreshed active media into the trash view', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageMode: 'search',
-      pageQuery: {
-        state: 'trashed',
-        page_size: 20,
-        status: 'pending,processing,done,failed'
-      },
-      page: {
-        total: 1,
-        next_cursor: null,
-        page_size: 20,
-        items: [createMedia('media-trashed', { deleted_at: '2026-03-21T00:00:00Z' })]
-      }
+  describe('purge()', () => {
+    it('removes the item from the list', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1')]));
+
+      service.purge('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/purge').flush(null, { status: 204, statusText: 'No Content' });
+
+      expect(service.items()).toHaveLength(0);
     });
-
-    const refreshPromise = firstValueFrom(service.refreshMediaInPage('media-new'));
-    const request = httpTesting.expectOne('http://api.example.test/media/media-new');
-    request.flush(createMedia('media-new', { deleted_at: null }));
-
-    await expect(refreshPromise).resolves.toMatchObject({ id: 'media-new' });
-    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-trashed']);
-    expect(service.snapshot.page?.total).toBe(1);
   });
 
-  it('removes restored media from the current trash page', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { state: 'trashed' },
-      page: {
-        total: 1,
-        next_cursor: null,
-        page_size: 20,
-        items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })]
-      },
-      details: {
-        'media-1': createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })
-      }
+  describe('batchDelete()', () => {
+    it('removes all matched items and adjusts total', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush({ ...makePage([makeMedia('m1'), makeMedia('m2'), makeMedia('m3')]), total: 3 });
+
+      service.batchDelete(['m1', 'm3']).subscribe();
+      http.expectOne('/api/v1/media/actions/delete').flush({ processed: 2, skipped: 0 });
+
+      expect(service.items()).toHaveLength(1);
+      expect(service.items()[0].id).toBe('m2');
+      expect(service.total()).toBe(1);
     });
-
-    const restorePromise = firstValueFrom(service.restoreMedia('media-1'));
-    const request = httpTesting.expectOne('http://api.example.test/media/media-1');
-    expect(request.request.method).toBe('PATCH');
-    expect(request.request.body).toEqual({ deleted: false });
-    request.flush(createMedia('media-1', { deleted_at: null }));
-
-    await expect(restorePromise).resolves.toMatchObject({ deleted_at: null });
-    expect(service.snapshot.page?.items).toEqual([]);
-    expect(service.snapshot.page?.total).toBe(0);
   });
 
-  it('selects cached media without making a request and loads uncached detail', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      details: {
-        'media-1': createMedia('media-1')
-      }
+  describe('batchPurge()', () => {
+    it('removes all matched items', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1'), makeMedia('m2')]));
+
+      service.batchPurge(['m1', 'm2']).subscribe();
+      http.expectOne('/api/v1/media/actions/purge').flush({ processed: 2, skipped: 0 });
+
+      expect(service.items()).toHaveLength(0);
     });
-
-    await expect(firstValueFrom(service.selectMedia('media-1'))).resolves.toMatchObject({ id: 'media-1' });
-    httpTesting.expectNone('http://api.example.test/media/media-1');
-
-    const loadPromise = firstValueFrom(service.selectMedia('media-2'));
-    const request = httpTesting.expectOne('http://api.example.test/media/media-2');
-    request.flush(createMedia('media-2'));
-    await expect(loadPromise).resolves.toMatchObject({ id: 'media-2' });
-    expect(service.snapshot.selectedMediaId).toBe('media-2');
   });
 
-  it('handles uploads, downloads, and tagging job requests', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1')] },
-      request: { loading: false, loaded: true, error: null }
+  describe('batchFavorite()', () => {
+    it('updates is_favorited on matched items', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1'), makeMedia('m2'), makeMedia('m3')]));
+
+      service.batchFavorite(['m1', 'm3'], true).subscribe();
+      http.expectOne('/api/v1/media').flush({ processed: 2, skipped: 0 });
+
+      expect(service.items()[0].is_favorited).toBe(true);
+      expect(service.items()[1].is_favorited).toBe(false);
+      expect(service.items()[2].is_favorited).toBe(true);
     });
-
-    const uploadPromise = firstValueFrom(service.uploadMedia([
-      new File(['a'], 'a.png', { type: 'image/png' })
-    ]));
-    const uploadRequest = httpTesting.expectOne('http://api.example.test/media');
-    uploadRequest.flush({ accepted: 1, duplicates: 0, errors: 0, results: [] });
-    await expect(uploadPromise).resolves.toMatchObject({ accepted: 1 });
-    expect(service.snapshot.page).toBeNull();
-    expect(service.snapshot.request.loaded).toBe(false);
-
-    const queuePromise = firstValueFrom(service.queueTaggingJob('media-1'));
-    const queueRequest = httpTesting.expectOne('http://api.example.test/media/media-1/tagging-jobs');
-    queueRequest.flush({ queued: 1 });
-    await expect(queuePromise).resolves.toEqual({ queued: 1 });
-
-    const downloadPromise = firstValueFrom(service.downloadMedia({ media_ids: ['media-1'] }));
-    const downloadRequest = httpTesting.expectOne('http://api.example.test/media/download');
-    const zipBlob = new Blob(['zip']);
-    downloadRequest.flush(zipBlob);
-    await expect(downloadPromise).resolves.toEqual(zipBlob);
-
-    const filePromise = firstValueFrom(service.getMediaFile('media-1'));
-    const fileRequest = httpTesting.expectOne('http://api.example.test/media/media-1/file');
-    const fileBlob = new Blob(['file']);
-    fileRequest.flush(fileBlob);
-    await expect(filePromise).resolves.toEqual(fileBlob);
-
-    const thumbnailPromise = firstValueFrom(service.getMediaThumbnail('media-1'));
-    const thumbnailRequest = httpTesting.expectOne('http://api.example.test/media/media-1/thumbnail');
-    const thumbBlob = new Blob(['thumb']);
-    thumbnailRequest.flush(thumbBlob);
-    await expect(thumbnailPromise).resolves.toEqual(thumbBlob);
   });
 
-  it('patches and removes media collections for batch and delete operations', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { state: 'active' },
-      page: {
-        total: 2,
-        next_cursor: null,
-        page_size: 20,
-        items: [createMedia('media-1'), createMedia('media-2')]
-      },
-      details: {
-        'media-1': createMedia('media-1'),
-        'media-2': createMedia('media-2')
-      },
-      selectedMediaId: 'media-1'
+  describe('batchUpdateVisibility()', () => {
+    it('updates visibility on matched items', () => {
+      service.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('m1'), makeMedia('m2')]));
+
+      service.batchUpdateVisibility(['m1'], MediaVisibility.PUBLIC).subscribe();
+      const req = http.expectOne('/api/v1/media');
+      expect(req.request.body).toEqual({ media_ids: ['m1'], visibility: MediaVisibility.PUBLIC });
+      req.flush({ processed: 1, skipped: 0 });
+
+      expect(service.items()[0].visibility).toBe(MediaVisibility.PUBLIC);
+      expect(service.items()[1].visibility).toBe(MediaVisibility.PRIVATE);
     });
-
-    const batchUpdatePromise = firstValueFrom(service.batchUpdateMedia({
-      media_ids: ['media-1'],
-      favorited: true,
-      deleted: true
-    }));
-    const batchUpdateRequest = httpTesting.expectOne('http://api.example.test/media');
-    expect(batchUpdateRequest.request.method).toBe('PATCH');
-    batchUpdateRequest.flush({ processed: 1, skipped: 0 });
-    await expect(batchUpdatePromise).resolves.toEqual({ processed: 1, skipped: 0 });
-    expect(service.snapshot.page?.items.map((item) => item.id)).toEqual(['media-2']);
-    expect(service.snapshot.details['media-1']).toBeUndefined();
-
-    const batchDeletePromise = firstValueFrom(service.batchDeleteMedia({ media_ids: ['media-2'] }));
-    const batchDeleteRequest = httpTesting.expectOne('http://api.example.test/media');
-    expect(batchDeleteRequest.request.method).toBe('DELETE');
-    batchDeleteRequest.flush({ processed: 1, skipped: 0 });
-    await expect(batchDeletePromise).resolves.toEqual({ processed: 1, skipped: 0 });
-    expect(service.snapshot.page?.items).toEqual([]);
-
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { state: 'active' },
-      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-3')] },
-      details: { 'media-3': createMedia('media-3') },
-      selectedMediaId: 'media-3'
-    });
-
-    const deletePromise = firstValueFrom(service.deleteMedia('media-3'));
-    const deleteRequest = httpTesting.expectOne('http://api.example.test/media/media-3');
-    deleteRequest.flush(null, { status: 204, statusText: 'No Content' });
-    await expect(deletePromise).resolves.toBeNull();
-    expect(service.snapshot.page?.items).toEqual([]);
-    expect(service.snapshot.selectedMediaId).toBeNull();
   });
 
-  it('invalidates trash views and keeps trashed batch updates in the current list', async () => {
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { state: 'trashed' },
-      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' })] },
-      details: { 'media-1': createMedia('media-1', { deleted_at: '2026-03-21T00:00:00Z' }) }
+  describe('upload()', () => {
+    it('sends POST /api/v1/media with FormData', () => {
+      const file = new File(['data'], 'test.jpg', { type: 'image/jpeg' });
+      const mock = {
+        batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items',
+        poll_after_seconds: 1, webhooks_supported: false,
+        accepted: 1, duplicates: 0, errors: 0, results: [],
+      };
+
+      service.upload([file]).subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/media');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toBeInstanceOf(FormData);
+      req.flush(mock);
     });
 
-    const batchUpdatePromise = firstValueFrom(service.batchUpdateMedia({
-      media_ids: ['media-1'],
-      favorited: true,
-      deleted: true
-    }));
-    const batchUpdateRequest = httpTesting.expectOne('http://api.example.test/media');
-    batchUpdateRequest.flush({ processed: 1, skipped: 0 });
-    await expect(batchUpdatePromise).resolves.toEqual({ processed: 1, skipped: 0 });
-    expect(service.snapshot.page?.items[0]?.is_favorited).toBe(true);
+    it('passes visibility through upload params', () => {
+      const file = new File(['data'], 'test.jpg', { type: 'image/jpeg' });
 
-    const restoreBatchPromise = firstValueFrom(service.restoreMediaBatch(['media-1']));
-    const restoreBatchRequest = httpTesting.expectOne('http://api.example.test/media');
-    expect(restoreBatchRequest.request.method).toBe('PATCH');
-    expect(restoreBatchRequest.request.body).toEqual({ media_ids: ['media-1'], deleted: false });
-    restoreBatchRequest.flush({ processed: 1, skipped: 0 });
-    await expect(restoreBatchPromise).resolves.toEqual({ processed: 1, skipped: 0 });
-    expect(service.snapshot.page?.items).toEqual([]);
-    expect(service.snapshot.page?.total).toBe(0);
+      service.upload([file], { visibility: MediaVisibility.SHARED }).subscribe();
+      const req = http.expectOne('/api/v1/media');
 
-    const emptyTrashPromise = firstValueFrom(service.emptyTrash());
-    const emptyTrashRequest = httpTesting.expectOne('http://api.example.test/media/actions/empty-trash');
-    emptyTrashRequest.flush(null, { status: 204, statusText: 'No Content' });
-    await expect(emptyTrashPromise).resolves.toBeNull();
-    expect(service.snapshot.page?.items).toEqual([]);
-
-    service['stateSubject'].next({
-      ...service.snapshot,
-      pageQuery: { state: 'active' },
-      page: { total: 1, next_cursor: null, page_size: 20, items: [createMedia('media-2')] },
-      request: { loading: false, loaded: true, error: null }
+      expect((req.request.body as FormData).get('visibility')).toBe('shared');
+      req.flush({
+        batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items',
+        poll_after_seconds: 1, webhooks_supported: false,
+        accepted: 1, duplicates: 0, errors: 0, results: [],
+      });
     });
-
-    const emptyActivePromise = firstValueFrom(service.emptyTrash());
-    const emptyActiveRequest = httpTesting.expectOne('http://api.example.test/media/actions/empty-trash');
-    emptyActiveRequest.flush(null, { status: 204, statusText: 'No Content' });
-    await expect(emptyActivePromise).resolves.toBeNull();
-    expect(service.snapshot.page).toBeNull();
-    expect(service.snapshot.request.loaded).toBe(false);
   });
 
-  it('records request and mutation failures', async () => {
-    const loadPromise = firstValueFrom(service.loadPage({}));
-    const loadRequest = httpTesting.expectOne('http://api.example.test/media');
-    loadRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
-    await expect(loadPromise).rejects.toMatchObject({ status: 500 });
-    expect(service.snapshot.request.error).toMatchObject({ status: 500 });
+  describe('download()', () => {
+    it('sends POST /api/v1/media/download and returns blob', () => {
+      const blob = new Blob(['data'], { type: 'application/zip' });
+      service.download(['m1', 'm2']).subscribe(res => expect(res).toBeInstanceOf(Blob));
+      const req = http.expectOne('/api/v1/media/download');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ media_ids: ['m1', 'm2'] });
+      req.flush(blob);
+    });
+  });
 
-    const updatePromise = firstValueFrom(service.updateMedia('media-1', { favorited: true }));
-    const updateRequest = httpTesting.expectOne('http://api.example.test/media/media-1');
-    updateRequest.flush({ detail: 'broken' }, { status: 500, statusText: 'Server Error' });
-    await expect(updatePromise).rejects.toMatchObject({ status: 500 });
-    expect(service.snapshot.mutationError).toMatchObject({ status: 500 });
-    expect(service.snapshot.mutationPending).toBe(false);
+  describe('getThumbnailUrl()', () => {
+    it('fetches blob and returns object URL', () => {
+      const mockUrl = 'blob:http://localhost/thumb1';
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockUrl);
+
+      let result: string | undefined;
+      service.getThumbnailUrl('m1').subscribe(url => (result = url));
+      http.expectOne('/api/v1/media/m1/thumbnail')
+        .flush(new Blob(['img'], { type: 'image/jpeg' }));
+
+      expect(result).toBe(mockUrl);
+    });
+
+    it('returns cached URL on second call without HTTP request', () => {
+      const mockUrl = 'blob:http://localhost/thumb1';
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockUrl);
+
+      service.getThumbnailUrl('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/thumbnail')
+        .flush(new Blob(['img'], { type: 'image/jpeg' }));
+
+      let result: string | undefined;
+      service.getThumbnailUrl('m1').subscribe(url => (result = url));
+      http.expectNone('/api/v1/media/m1/thumbnail');
+      expect(result).toBe(mockUrl);
+    });
+
+    it('deduplicates concurrent thumbnail requests for the same media id', () => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/thumb1');
+
+      let first: string | undefined;
+      let second: string | undefined;
+
+      service.getThumbnailUrl('m1').subscribe((url) => (first = url));
+      service.getThumbnailUrl('m1').subscribe((url) => (second = url));
+
+      const requests = http.match('/api/v1/media/m1/thumbnail');
+      expect(requests).toHaveLength(1);
+
+      requests[0].flush(new Blob(['img'], { type: 'image/jpeg' }));
+
+      expect(first).toBe('blob:http://localhost/thumb1');
+      expect(second).toBe('blob:http://localhost/thumb1');
+    });
+  });
+
+  describe('getPosterUrl()', () => {
+    it('fetches blob and returns object URL', () => {
+      const mockUrl = 'blob:http://localhost/poster1';
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue(mockUrl);
+
+      let result: string | undefined;
+      service.getPosterUrl('m1').subscribe(url => (result = url));
+      http.expectOne('/api/v1/media/m1/poster')
+        .flush(new Blob(['img'], { type: 'image/jpeg' }));
+
+      expect(result).toBe(mockUrl);
+    });
+  });
+
+  describe('getFileUrl()', () => {
+    it('fetches blob and returns a new object URL each call', () => {
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:file-url');
+
+      service.getFileUrl('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/file')
+        .flush(new Blob(['data'], { type: 'image/jpeg' }));
+
+      service.getFileUrl('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/file')
+        .flush(new Blob(['data'], { type: 'image/jpeg' }));
+    });
+  });
+
+  describe('get()', () => {
+    it('sends GET /api/v1/media/{id}', () => {
+      const detail = { ...makeMedia('m1'), tag_details: [], external_refs: [], entities: [] };
+      service.get('m1').subscribe(res => expect(res).toEqual(detail));
+      const req = http.expectOne('/api/v1/media/m1');
+      expect(req.request.method).toBe('GET');
+      req.flush(detail);
+    });
+  });
+
+  describe('queueTaggingJob()', () => {
+    it('sends POST /api/v1/media/{id}/tagging-jobs', () => {
+      const mock = { queued: 1 };
+      service.queueTaggingJob('m1').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/media/m1/tagging-jobs');
+      expect(req.request.method).toBe('POST');
+      req.flush(mock);
+    });
+  });
+
+  describe('batchQueueTaggingJobs()', () => {
+    it('queues tagging through the batch endpoint', () => {
+      service.batchQueueTaggingJobs(['m1', 'm2']).subscribe((result) => {
+        expect(result).toEqual({ queued: 2 });
+      });
+
+      const req = http.expectOne('/api/v1/media/tagging-jobs');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual({ media_ids: ['m1', 'm2'] });
+      req.flush({ queued: 2 });
+    });
+  });
+
+  describe('getCharacterSuggestions()', () => {
+    it('sends GET /api/v1/media/character-suggestions with q', () => {
+      const mock = [{ name: 'hatsune_miku', media_count: 5 }];
+      service.getCharacterSuggestions('miku').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne(r => r.url === '/api/v1/media/character-suggestions');
+      expect(req.request.params.get('q')).toBe('miku');
+      req.flush(mock);
+    });
   });
 });

@@ -69,3 +69,33 @@ async def delete_notification(
     db: AsyncSession = Depends(get_db),
 ):
     await NotificationService(db).delete_notification(notification_id, user.id)
+
+
+@router.post(
+    "/{notification_id}/accept",
+    response_model=NotificationRead,
+    summary="Accept Share Invite",
+    description="Accept a share invite notification and join the related album.",
+    responses=error_responses(404, 409, 422),
+)
+async def accept_notification_invite(
+    notification_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await NotificationService(db).accept_invite(notification_id, user.id)
+
+
+@router.post(
+    "/{notification_id}/reject",
+    response_model=NotificationRead,
+    summary="Reject Share Invite",
+    description="Reject a share invite notification without joining the related album.",
+    responses=error_responses(404, 409, 422),
+)
+async def reject_notification_invite(
+    notification_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await NotificationService(db).reject_invite(notification_id, user.id)

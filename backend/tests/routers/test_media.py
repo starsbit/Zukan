@@ -17,7 +17,9 @@ def _media_read_payload(media_id: str) -> dict:
     return {
         "id": media_id,
         "uploader_id": str(uuid.uuid4()),
+        "uploader_username": "uploader",
         "owner_id": str(uuid.uuid4()),
+        "owner_username": "owner",
         "visibility": "private",
         "filename": "a.webp",
         "original_filename": "a.webp",
@@ -47,7 +49,10 @@ def _media_read_payload(media_id: str) -> dict:
 
 
 def test_upload_media_contract(api_client, monkeypatch):
-    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None):
+    captured = {}
+
+    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None, visibility="private"):
+        captured["captured_at_values"] = captured_at_values
         batch_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
         media_id = str(uuid.uuid4())
@@ -75,11 +80,15 @@ def test_upload_media_contract(api_client, monkeypatch):
 
     response = api_client.post(
         "/api/v1/media",
-        files=[("files", ("a.webp", b"abc", "image/webp"))],
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("captured_at_values", (None, "2024-02-03T04:05:06Z")),
+        ],
     )
 
     assert response.status_code == 202
     assert response.json()["accepted"] == 1
+    assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
 
 
 def test_list_media_contract(api_client, monkeypatch):
@@ -106,6 +115,24 @@ def test_search_media_contract(api_client, monkeypatch):
     assert response.json()["page_size"] == 6
 
 
+def test_media_timeline_contract(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_timeline(self, user, **kwargs):
+        captured.update(kwargs)
+        return {"buckets": []}
+
+    monkeypatch.setattr(MediaQueryService, "get_timeline", _fake_timeline)
+
+    response = api_client.get("/api/v1/media/timeline", params={"tag": "safe", "status": "reviewed", "favorited": "false"})
+
+    assert response.status_code == 200
+    assert response.json() == {"buckets": []}
+    assert captured["tags"] == ["safe"]
+    assert captured["status_filter"] == "reviewed"
+    assert captured["favorited"] is False
+
+
 def test_character_suggestions_contract(api_client, monkeypatch):
     async def _fake_suggestions(self, user, q, limit):
         return [{"name": "Saber", "media_count": 2}]
@@ -128,6 +155,19 @@ def test_batch_update_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["processed"] == 1
+
+
+def test_batch_update_visibility_contract(api_client, monkeypatch):
+    async def _fake_bulk_visibility(self, media_ids, user, visibility):
+        assert visibility == "public"
+        return {"processed": 2, "skipped": 1}
+
+    monkeypatch.setattr(MediaMetadataService, "bulk_update_visibility", _fake_bulk_visibility)
+
+    response = api_client.patch("/api/v1/media", json={"media_ids": [str(uuid.uuid4())], "visibility": "public"})
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 2, "skipped": 1}
 
 
 def test_batch_delete_command_contract(api_client, monkeypatch):
@@ -302,3 +342,15 @@ def test_queue_media_tagging_job_contract(api_client, monkeypatch):
 
     assert response.status_code == 202
     assert response.json() == {"queued": 4}
+
+
+def test_queue_bulk_media_tagging_jobs_contract(api_client, monkeypatch):
+    async def _fake_bulk_retag(self, media_ids, user):
+        return 2
+
+    monkeypatch.setattr(MediaProcessingService, "bulk_retag_media", _fake_bulk_retag)
+
+    response = api_client.post("/api/v1/media/tagging-jobs", json={"media_ids": [str(uuid.uuid4()), str(uuid.uuid4())]})
+
+    assert response.status_code == 202
+    assert response.json() == {"queued": 2}

@@ -6,7 +6,7 @@ Its in the repository domain because it relates closely to SQL related logic.
 import re
 from sqlalchemy import extract, func, or_, select
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaTag, MediaType
+from backend.app.models.media import Media, MediaTag, MediaType, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
@@ -74,6 +74,11 @@ def apply_media_type_filters(stmt, media_type_filter: list[str] | None):
         return stmt
     valid_values = [MediaType(value) for value in media_type_filter]
     return stmt.where(Media.media_type.in_(valid_values))
+
+def apply_visibility_filter(stmt, visibility: MediaVisibility | None):
+    if visibility is None:
+        return stmt
+    return stmt.where(Media.visibility == visibility)
 
 def apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
     captured_at = captured_timestamp_expr()

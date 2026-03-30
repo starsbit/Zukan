@@ -1,0 +1,22 @@
+<zukan-layout>
+  <section class="trash-page__header">
+    <div class="trash-page__actions">
+      <button mat-stroked-button type="button" [disabled]="!hasMedia() || galleryStore.loading()" (click)="restoreAll()">
+        Restore all
+      </button>
+      <button mat-stroked-button type="button" [disabled]="!hasMedia() || galleryStore.loading()" (click)="emptyTrash()">
+        Empty trash
+      </button>
+    </div>
+  </section>
+
+  <zukan-media-browser
+    [dayGroups]="galleryStore.groupedByDay()"
+    [timeline]="galleryStore.timeline()"
+    [loading]="galleryStore.loading()"
+    [selectionActionMode]="'trash'"
+    [emptyStateTitle]="'Trash is empty'"
+    [emptyStateMessage]="'Deleted media will appear here until you restore it or empty the trash.'"
+    (restoreSelected)="restoreSelected($event)">
+  </zukan-media-browser>
+</zukan-layout>

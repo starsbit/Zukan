@@ -1,0 +1,103 @@
+.dialog-content {
+  display: grid;
+  gap: 16px;
+  max-height: 70vh;
+  min-width: min(720px, 80vw);
+}
+
+.filter-toggle-group {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.item-list {
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 56%, transparent);
+  border-radius: 18px;
+  overflow: hidden;
+  padding: 0;
+}
+
+.item-row {
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 88%, transparent);
+  min-height: 92px;
+  --mdc-list-list-item-leading-avatar-shape: 12px;
+  --mdc-list-list-item-leading-avatar-size: 56px;
+}
+
+:host ::ng-deep .item-row .mdc-list-item__content {
+  min-width: 0;
+}
+
+:host ::ng-deep .item-row .mdc-list-item__start {
+  align-self: center;
+}
+
+:host ::ng-deep .item-row .mdc-list-item__primary-text,
+:host ::ng-deep .item-row .mdc-list-item__secondary-text {
+  white-space: normal;
+}
+
+:host ::ng-deep .item-row .mdc-list-item__secondary-text {
+  padding: 0;
+}
+
+.item-title-row {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.item-filename {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-status {
+  color: var(--mat-sys-on-surface-variant);
+  white-space: nowrap;
+}
+
+.item-meta-row {
+  color: var(--mat-sys-on-surface-variant);
+  display: flex;
+  font-size: 0.9rem;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+}
+
+.item-meta-row span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.item-message {
+  color: var(--mat-sys-on-surface-variant);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.empty-state {
+  align-items: center;
+  color: var(--mat-sys-on-surface-variant);
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  min-height: 140px;
+}
+
+@media (max-width: 767px) {
+  .dialog-content {
+    min-width: auto;
+    width: 100%;
+  }
+
+  .item-title-row,
+  .item-meta-row {
+    flex-direction: column;
+    gap: 4px;
+  }
+}
