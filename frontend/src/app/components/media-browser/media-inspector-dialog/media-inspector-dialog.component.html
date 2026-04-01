@@ -1,41 +1,57 @@
-<div class="media-inspector-dialog__header" mat-dialog-title>
-  <button
-    mat-icon-button
-    type="button"
-    aria-label="Close inspector"
-    (click)="close()">
-    <mat-icon aria-hidden="true">arrow_back</mat-icon>
-  </button>
+<header class="inspector-toolbar" mat-dialog-title>
+  <div class="inspector-toolbar-group">
+    <button
+      class="toolbar-button"
+      mat-icon-button
+      type="button"
+      aria-label="Close inspector"
+      (click)="close()">
+      <mat-icon aria-hidden="true">arrow_back</mat-icon>
+    </button>
 
-  <div class="media-inspector-dialog__title-group">
-    <span class="media-inspector-dialog__eyebrow">{{ isVideo() ? 'Video' : 'Image' }}</span>
-    <h2>{{ title() }}</h2>
+    <div class="inspector-title">
+      <span class="inspector-eyebrow">{{ isVideo() ? 'Video' : 'Image' }}</span>
+      <h2>{{ title() }}</h2>
+    </div>
   </div>
-</div>
 
-<mat-dialog-content class="media-inspector-dialog">
+  <div class="inspector-toolbar-group">
+    @if (isImage()) {
+      <button
+        class="toolbar-button"
+        mat-icon-button
+        type="button"
+        aria-label="Reset zoom"
+        (click)="resetZoom()">
+        <mat-icon aria-hidden="true">center_focus_strong</mat-icon>
+      </button>
+    }
+  </div>
+</header>
+
+<mat-dialog-content class="inspector-content">
   @if (loading()) {
-    <div class="media-inspector-dialog__state">
+    <div class="inspector-state">
       <mat-spinner diameter="40"></mat-spinner>
       <p>Loading media details…</p>
     </div>
   } @else if (loadError()) {
-    <div class="media-inspector-dialog__state">
+    <div class="inspector-state">
       <mat-icon aria-hidden="true">error_outline</mat-icon>
       <p>{{ loadError() }}</p>
     </div>
   } @else {
-    <div class="media-inspector-dialog__layout">
+    <div class="inspector-layout">
       <section
         #zoomStage
-        class="media-inspector-dialog__media-pane"
-        [class.media-inspector-dialog__media-pane--draggable]="isImage() && zoom() > 1"
-        [class.media-inspector-dialog__media-pane--dragging]="dragging()"
+        class="inspector-media-pane"
+        [class.inspector-media-pane--draggable]="isImage() && zoom() > 1"
+        [class.inspector-media-pane--dragging]="dragging()"
         (wheel)="onWheelZoom($event)">
-        <div class="media-inspector-dialog__media-scroll">
+        <div class="inspector-media-scroll">
           @if (isVideo()) {
             <video
-              class="media-inspector-dialog__media"
+              class="inspector-media"
               [src]="mediaUrl()!"
               [attr.aria-label]="title()"
               controls
@@ -44,8 +60,8 @@
             </video>
           } @else {
             <img
-              class="media-inspector-dialog__media media-inspector-dialog__media--image"
-              [class.media-inspector-dialog__media--dragging]="dragging()"
+              class="inspector-media inspector-media--image"
+              [class.inspector-media--dragging]="dragging()"
               [src]="mediaUrl()!"
               [alt]="title()"
               draggable="false"
@@ -55,14 +71,14 @@
         </div>
       </section>
 
-      <aside class="media-inspector-dialog__sidebar">
+      <aside class="inspector-sidebar">
         <mat-card appearance="outlined">
           <mat-card-header>
             <mat-card-title>Metadata</mat-card-title>
           </mat-card-header>
-          <mat-card-content class="media-inspector-dialog__fields">
+          <mat-card-content class="inspector-fields">
             @for (field of metadataFields(); track trackByLabel($index, field)) {
-              <div class="media-inspector-dialog__field">
+              <div class="inspector-field">
                 <span>{{ field.label }}</span>
                 <strong>{{ field.value }}</strong>
               </div>
@@ -75,16 +91,16 @@
             <mat-card-header>
               <mat-card-title>Author & Source</mat-card-title>
             </mat-card-header>
-            <mat-card-content class="media-inspector-dialog__fields">
+            <mat-card-content class="inspector-fields">
               @for (field of authorFields(); track trackByLabel($index, field)) {
-                <div class="media-inspector-dialog__field">
+                <div class="inspector-field">
                   <span>{{ field.label }}</span>
                   <strong>{{ field.value }}</strong>
                 </div>
               }
 
               @for (ref of externalRefs(); track ref.label + ':' + ref.value) {
-                <div class="media-inspector-dialog__field">
+                <div class="inspector-field">
                   <span>{{ ref.label }}</span>
                   @if (ref.url) {
                     <a [href]="ref.url" target="_blank" rel="noreferrer">{{ ref.value }}</a>
@@ -102,9 +118,9 @@
             <mat-card-header>
               <mat-card-title>Characters</mat-card-title>
             </mat-card-header>
-            <mat-card-content class="media-inspector-dialog__characters">
+            <mat-card-content class="inspector-characters">
               @for (character of characters(); track character.name + ':' + character.details) {
-                <div class="media-inspector-dialog__character">
+                <div class="inspector-character">
                   <strong>{{ character.name }}</strong>
                   @if (character.details) {
                     <span>{{ character.details }}</span>
@@ -121,7 +137,7 @@
               <mat-card-title>Detected Text</mat-card-title>
             </mat-card-header>
             <mat-card-content>
-              <p class="media-inspector-dialog__text">{{ detectedText() }}</p>
+              <p class="inspector-text">{{ detectedText() }}</p>
             </mat-card-content>
           </mat-card>
         }
@@ -132,7 +148,7 @@
               <mat-card-title>Tags</mat-card-title>
             </mat-card-header>
             <mat-card-content>
-              <mat-chip-set aria-label="Media tags" class="media-inspector-dialog__chips">
+              <mat-chip-set aria-label="Media tags" class="inspector-chips">
                 @for (tag of tags(); track tag) {
                   <mat-chip>{{ tag }}</mat-chip>
                 }

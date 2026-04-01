@@ -89,7 +89,7 @@ async def test_update_metadata_with_public_fields_uses_active_media_access(fake_
 
 @pytest.mark.asyncio
 async def test_update_metadata_visibility_requires_owner_access(fake_db, stub_query, media, user):
-    payload = MediaUpdate(version=media.version, visibility=MediaVisibility.shared)
+    payload = MediaUpdate(version=media.version, visibility=MediaVisibility.public)
     stub_query.get_owned_or_admin_media.return_value = media
     stub_query.get_media_with_relations.return_value = media
     stub_query.build_media_detail.return_value = SimpleNamespace(id=media.id)

@@ -1,11 +1,13 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.app.models.media import Media, MediaTag
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare
+from backend.app.models.auth import User
+from backend.app.models.media import Media, MediaTag, MediaVisibility
 
 
 class MediaRepository:
@@ -19,6 +21,8 @@ class MediaRepository:
         stmt = (
             select(Media)
             .options(
+                selectinload(Media.uploader),
+                selectinload(Media.owner),
                 selectinload(Media.media_tags).selectinload(MediaTag.tag),
                 selectinload(Media.external_refs),
                 selectinload(Media.entities),
@@ -37,6 +41,51 @@ class MediaRepository:
 
     async def get_by_ids(self, media_ids: list[uuid.UUID]) -> list[Media]:
         return (await self.db.execute(select(Media).where(Media.id.in_(media_ids)))).scalars().all()
+
+    def accessible_to_user_clause(self, user: User):
+        album_access = exists(
+            select(1)
+            .select_from(AlbumMedia)
+            .join(Album, Album.id == AlbumMedia.album_id)
+            .outerjoin(
+                AlbumShare,
+                and_(AlbumShare.album_id == Album.id, AlbumShare.user_id == user.id),
+            )
+            .where(
+                AlbumMedia.media_id == Media.id,
+                or_(
+                    Album.owner_id == user.id,
+                    AlbumShare.user_id == user.id,
+                ),
+            )
+        )
+        return or_(
+            Media.uploader_id == user.id,
+            Media.owner_id == user.id,
+            Media.visibility == MediaVisibility.public,
+            album_access,
+        )
+
+    async def get_accessible_active_ids(self, user: User, media_ids: list[uuid.UUID]) -> set[uuid.UUID]:
+        if not media_ids:
+            return set()
+
+        stmt = select(Media.id).where(
+            Media.id.in_(media_ids),
+            Media.deleted_at.is_(None),
+        )
+        if not user.is_admin:
+            stmt = stmt.where(self.accessible_to_user_clause(user))
+
+        return set((await self.db.execute(stmt)).scalars().all())
+
+    async def is_accessible(self, media_id: uuid.UUID, user: User, *, include_deleted: bool = False) -> bool:
+        stmt = select(Media.id).where(Media.id == media_id)
+        if not include_deleted:
+            stmt = stmt.where(Media.deleted_at.is_(None))
+        if not user.is_admin:
+            stmt = stmt.where(self.accessible_to_user_clause(user))
+        return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
     async def get_active_ids(self, media_ids: list[uuid.UUID]) -> set[uuid.UUID]:
         return set(

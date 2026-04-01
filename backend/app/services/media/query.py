@@ -85,7 +85,7 @@ class MediaQueryService:
 
     async def get_favoritable_media(self, media_id: uuid.UUID, user: User) -> Media:
         media = await self.get_active_media(media_id)
-        if not self._is_media_visible_to_user(media, user):
+        if not await self._media_repo.is_accessible(media.id, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
         return media
 
@@ -119,8 +119,7 @@ class MediaQueryService:
         return await self._media_repo.get_active_ids(media_ids)
 
     async def get_favoritable_media_ids(self, media_ids: list[uuid.UUID], user: User) -> set[uuid.UUID]:
-        rows = await self._media_repo.get_by_ids(media_ids)
-        return {row.id for row in rows if row.deleted_at is None and self._is_media_visible_to_user(row, user)}
+        return await self._media_repo.get_accessible_active_ids(user, media_ids)
 
     async def get_favorite(self, media_id: uuid.UUID, user_id: uuid.UUID) -> UserFavorite | None:
         return await self._favorite_repo.get(media_id, user_id)
@@ -164,7 +163,7 @@ class MediaQueryService:
         if media is None:
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
 
-        self._assert_media_visible_to_user(media, user)
+        await self._assert_media_visible_to_user(media, user)
         return media
 
     async def get_media_detail(self, media_id: uuid.UUID, user: User) -> MediaDetail:
@@ -172,7 +171,7 @@ class MediaQueryService:
         if media is None:
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
 
-        self._assert_media_visible_to_user(media, user)
+        await self._assert_media_visible_to_user(media, user)
         return await self.build_media_detail(media, user.id)
 
     async def build_media_detail(self, media: Media, user_id: uuid.UUID) -> MediaDetail:
@@ -400,6 +399,8 @@ class MediaQueryService:
 
     def _build_base_list_stmt(self) -> Select[tuple[Media]]:
         return select(Media).options(
+            selectinload(Media.uploader),
+            selectinload(Media.owner),
             selectinload(Media.media_tags).selectinload(MediaTag.tag),
         )
 
@@ -455,16 +456,8 @@ class MediaQueryService:
             return stmt
         if visibility == MediaVisibility.public:
             return stmt.where(Media.visibility == MediaVisibility.public)
-        if visibility == MediaVisibility.shared:
-            return stmt.where(Media.visibility == MediaVisibility.shared)
         if favorited is True:
-            return stmt.where(
-                or_(
-                    Media.uploader_id == user.id,
-                    Media.visibility == MediaVisibility.shared,
-                    Media.visibility == MediaVisibility.public,
-                )
-            )
+            return stmt.where(self._media_repo.accessible_to_user_clause(user))
         return stmt.where(Media.uploader_id == user.id)
 
     def _apply_status_filter(
@@ -570,12 +563,12 @@ class MediaQueryService:
         return media
 
     def _can_manage_media(self, media: Media, user: User) -> bool:
-        return media.uploader_id == user.id or user.is_admin
+        return media.uploader_id == user.id or media.owner_id == user.id or user.is_admin
 
-    def _assert_media_visible_to_user(self, media: Media, user: User) -> None:
+    async def _assert_media_visible_to_user(self, media: Media, user: User) -> None:
         if media.deleted_at is not None and not self._can_manage_media(media, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
-        if media.deleted_at is None and not self._is_media_visible_to_user(media, user):
+        if media.deleted_at is None and not await self._media_repo.is_accessible(media.id, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
         self._assert_nsfw_visible(media, user)
 
@@ -584,7 +577,4 @@ class MediaQueryService:
             raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
 
     def _is_media_visible_to_user(self, media: Media, user: User) -> bool:
-        return self._can_manage_media(media, user) or media.visibility in {
-            MediaVisibility.shared,
-            MediaVisibility.public,
-        }
+        return self._can_manage_media(media, user) or media.visibility == MediaVisibility.public

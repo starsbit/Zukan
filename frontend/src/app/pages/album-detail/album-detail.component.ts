@@ -103,7 +103,13 @@ export class AlbumDetailComponent {
         return;
       }
 
-      this.albumStore.get(albumId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+      this.albumStore.get(albumId).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => {
+          void this.router.navigate(['/album']);
+          return EMPTY;
+        }),
+      ).subscribe();
 
       const params = {
         ...this.searchService.appliedParams(),

@@ -2,8 +2,8 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
+import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlbumAccessRole, AlbumShareRole } from '../../models/albums';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
@@ -410,5 +410,67 @@ describe('AlbumDetailComponent', () => {
     });
     expect(galleryStore.load).toHaveBeenCalledTimes(2);
     expect(galleryStore.loadTimeline).toHaveBeenCalledTimes(2);
+  });
+
+  it('redirects to /album when the album fetch returns a 404 (pending invite, no accepted share)', async () => {
+    const galleryStore = {
+      setParams: vi.fn(),
+      load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      loadTimeline: vi.fn(() => of({ buckets: [] })),
+      loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      groupedByDay: () => [],
+      timeline: () => [],
+      loading: () => false,
+      hasMore: () => false,
+    };
+    const albumStore = {
+      selectedAlbum: () => null,
+      selectedAlbumLoading: () => false,
+      get: vi.fn(() => throwError(() => ({ status: 404, error: { code: 'album_not_found' } }))),
+      share: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+    };
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      upload: vi.fn(),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [AlbumDetailComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { paramMap: convertToParamMap({ albumId: 'album-inaccessible' }) },
+            paramMap: of(convertToParamMap({ albumId: 'album-inaccessible' })),
+          },
+        },
+        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+        { provide: AlbumStore, useValue: albumStore },
+        { provide: GalleryStore, useValue: galleryStore },
+        { provide: MediaService, useValue: mediaService },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: NavbarSearchService, useValue: { appliedParams: () => ({}) } },
+        { provide: ConfirmDialogService, useValue: { open: vi.fn(() => of(true)) } },
+        { provide: UserStore, useValue: { isAdmin: () => false } },
+      ],
+    })
+      .overrideComponent(AlbumDetailComponent, {
+        remove: { imports: [LayoutComponent] },
+        add: { imports: [TestLayoutComponent] },
+      })
+      .compileComponents();
+
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate');
+
+    const fixture = TestBed.createComponent(AlbumDetailComponent);
+    fixture.detectChanges();
+
+    expect(albumStore.get).toHaveBeenCalledWith('album-inaccessible');
+    expect(navigateSpy).toHaveBeenCalledWith(['/album']);
   });
 });

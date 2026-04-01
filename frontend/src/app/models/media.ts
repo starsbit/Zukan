@@ -24,7 +24,6 @@ export enum ProcessingStatus {
 
 export enum MediaVisibility {
   PRIVATE = 'private',
-  SHARED = 'shared',
   PUBLIC = 'public',
 }
 

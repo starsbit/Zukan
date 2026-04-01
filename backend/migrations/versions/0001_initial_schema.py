@@ -1,4 +1,4 @@
-"""Initial schema baseline
+"""Current schema baseline
 
 Revision ID: 0001_initial_schema
 Revises:

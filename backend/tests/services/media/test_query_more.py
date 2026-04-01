@@ -104,6 +104,7 @@ async def test_visibility_and_detail_methods(service, user, media):
 
     media.is_nsfw = False
     media.visibility = MediaVisibility.public
+    service._media_repo.is_accessible = AsyncMock(return_value=True)
     service._media_repo.get_by_id_with_relations = AsyncMock(return_value=media)
     service.build_media_detail = AsyncMock(return_value="detail")
     detail = await service.get_media_detail(media.id, user)
@@ -111,6 +112,7 @@ async def test_visibility_and_detail_methods(service, user, media):
 
     stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False)
     media.visibility = MediaVisibility.private
+    service._media_repo.is_accessible = AsyncMock(return_value=False)
     with pytest.raises(AppError):
         await service.get_media_detail(media.id, stranger)
 
@@ -149,7 +151,7 @@ def test_apply_visibility_scope_keeps_album_scoped_media_visible(service):
     assert service._apply_visibility_scope(stmt, user, MediaListState.ACTIVE, None, True) is stmt
 
 
-def test_apply_visibility_scope_for_favorites_includes_public_media(service, user):
+def test_apply_visibility_scope_for_favorites_includes_public_and_album_access(service, user):
     stmt = select(Media)
 
     scoped = service._apply_visibility_scope(
@@ -164,9 +166,9 @@ def test_apply_visibility_scope_for_favorites_includes_public_media(service, use
     sql = str(scoped)
     assert "media.uploader_id" in sql
     assert "media.visibility" in sql
-    assert " OR " in sql
+    assert "album_media" in sql
+    assert "album_shares" in sql
     params = scoped.compile().params
-    assert MediaVisibility.shared in params.values()
     assert MediaVisibility.public in params.values()
 
 
@@ -185,23 +187,6 @@ def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filte
     sql = str(scoped)
     assert "media.visibility" in sql
     assert " OR " not in sql
-
-
-def test_apply_visibility_scope_for_explicit_shared_filter_uses_shared_visibility(service, user):
-    stmt = select(Media)
-
-    scoped = service._apply_visibility_scope(
-        stmt,
-        user,
-        MediaListState.ACTIVE,
-        MediaVisibility.shared,
-        False,
-        None,
-    )
-
-    sql = str(scoped)
-    assert "WHERE media.visibility" in sql
-    assert MediaVisibility.shared in scoped.compile().params.values()
 
 
 @pytest.mark.asyncio
@@ -282,6 +267,7 @@ async def test_favoritable_media_checks_public_visibility(service, user, media):
     stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False)
     media.visibility = MediaVisibility.public
     service._media_repo.get_by_id = AsyncMock(return_value=media)
+    service._media_repo.is_accessible = AsyncMock(side_effect=[True, False])
 
     visible = await service.get_favoritable_media(media.id, stranger)
     assert visible is media

@@ -289,10 +289,10 @@ describe('MediaService', () => {
     it('passes visibility through upload params', () => {
       const file = new File(['data'], 'test.jpg', { type: 'image/jpeg' });
 
-      service.upload([file], { visibility: MediaVisibility.SHARED }).subscribe();
+      service.upload([file], { visibility: MediaVisibility.PUBLIC }).subscribe();
       const req = http.expectOne('/api/v1/media');
 
-      expect((req.request.body as FormData).get('visibility')).toBe('shared');
+      expect((req.request.body as FormData).get('visibility')).toBe('public');
       req.flush({
         batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items',
         poll_after_seconds: 1, webhooks_supported: false,

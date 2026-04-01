@@ -94,7 +94,7 @@ async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_s
     await db_session.flush()
 
     m1.visibility = MediaVisibility.public
-    m2.visibility = MediaVisibility.shared
+    m2.visibility = MediaVisibility.public
     m3.visibility = MediaVisibility.private
     m1.ocr_text_override = "fa-te route"
     m2.ocr_text = "fate night"
@@ -118,9 +118,9 @@ async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_s
     rows = (await db_session.execute(stmt)).scalars().all()
     assert {row.id for row in rows} == {m1.id, m2.id}
 
-    stmt = media_filters.apply_visibility_filter(select(type(m1)), MediaVisibility.shared)
+    stmt = media_filters.apply_visibility_filter(select(type(m1)), MediaVisibility.public)
     rows = (await db_session.execute(stmt)).scalars().all()
-    assert {row.id for row in rows} == {m2.id}
+    assert {row.id for row in rows} == {m1.id, m2.id}
 
     stmt = media_filters.apply_ocr_text_filter(select(type(m1)), "fate")
     rows = (await db_session.execute(stmt)).scalars().all()

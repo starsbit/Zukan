@@ -234,6 +234,10 @@ export class MediaInspectorDialogComponent {
     this.objectUrl = null;
   }
 
+  resetZoom(): void {
+    this.applyZoom(1);
+  }
+
   private applyZoom(value: number): void {
     const nextZoom = clampNumber(value, 1, 6);
     this.zoom.set(nextZoom);

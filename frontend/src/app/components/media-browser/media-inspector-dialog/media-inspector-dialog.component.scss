@@ -1,63 +1,93 @@
 :host {
+  --inspector-surface: color-mix(in srgb, var(--mat-sys-surface-container-low) 88%, black 12%);
   display: block;
   width: min(99.5vw, 2400px);
   max-width: 100%;
   height: min(98vh, 1600px);
 }
 
-:host ::ng-deep .mat-mdc-dialog-surface {
-  overflow: hidden;
-  border-radius: 24px;
-  background: rgba(10, 12, 18, 0.18);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+:host ::ng-deep .mat-mdc-dialog-container {
+  padding: 0;
 }
 
-.media-inspector-dialog__header {
+:host ::ng-deep .mat-mdc-dialog-surface {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 24px;
+  background: color-mix(in srgb, var(--mat-sys-scrim) 55%, transparent);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--mat-sys-level3);
+}
+
+:host ::ng-deep .mat-mdc-dialog-content {
+  max-height: none;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inspector-toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
+  justify-content: space-between;
+  gap: 1rem;
   min-width: 0;
   margin: 0;
-  padding: 10px 16px 12px;
+  padding: 0.625rem 1rem;
   border-bottom: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 28%, transparent);
-  background: rgba(23, 25, 31, 0.88);
+  background: var(--inspector-surface);
   backdrop-filter: blur(16px);
 }
 
-.media-inspector-dialog__title-group {
+.inspector-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-button {
+  color: var(--mat-sys-on-surface);
+  background-color: color-mix(in srgb, var(--mat-sys-surface-container-high) 82%, transparent);
+}
+
+.inspector-title {
   min-width: 0;
 }
 
-.media-inspector-dialog__eyebrow {
+.inspector-eyebrow {
   display: block;
   margin-bottom: 2px;
-  color: color-mix(in srgb, var(--mat-sys-primary) 72%, white);
+  color: var(--mat-sys-primary);
   font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 
-.media-inspector-dialog__title-group h2 {
+.inspector-title h2 {
   margin: 0;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--mat-sys-on-surface);
   font-size: 1rem;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: min(52vw, 640px);
 }
 
-.media-inspector-dialog {
+.inspector-content {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
   height: 100%;
   max-height: 100%;
   padding: 0;
   overflow: hidden;
+  color: var(--mat-sys-on-surface);
 }
 
-.media-inspector-dialog__layout {
+.inspector-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 272px;
   gap: 14px;
@@ -67,27 +97,27 @@
   overflow: hidden;
 }
 
-.media-inspector-dialog__media-pane {
+.inspector-media-pane {
   display: grid;
   place-items: center;
   min-width: 0;
   min-height: 0;
   background:
-    radial-gradient(circle at top center, rgba(54, 63, 93, 0.2), transparent 28%),
-    linear-gradient(180deg, rgba(14, 15, 20, 0.52), rgba(8, 9, 12, 0.62));
+    radial-gradient(circle at top center, color-mix(in srgb, var(--mat-sys-primary) 12%, transparent), transparent 28%),
+    var(--inspector-surface);
   border-radius: 22px;
   overflow: hidden;
 }
 
-.media-inspector-dialog__media-pane--draggable {
+.inspector-media-pane--draggable {
   cursor: grab;
 }
 
-.media-inspector-dialog__media-pane--dragging {
+.inspector-media-pane--dragging {
   cursor: grabbing;
 }
 
-.media-inspector-dialog__media-scroll {
+.inspector-media-scroll {
   display: grid;
   place-items: center;
   width: 100%;
@@ -98,7 +128,7 @@
   overflow: hidden;
 }
 
-.media-inspector-dialog__media {
+.inspector-media {
   display: block;
   width: auto;
   max-width: 100%;
@@ -106,10 +136,10 @@
   max-height: 100%;
   object-fit: contain;
   border-radius: 14px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+  box-shadow: var(--mat-sys-level2);
 }
 
-.media-inspector-dialog__media--image {
+.inspector-media--image {
   cursor: inherit;
   user-select: none;
   transition: transform 120ms ease-out;
@@ -117,108 +147,119 @@
   will-change: transform;
 }
 
-.media-inspector-dialog__media--dragging {
+.inspector-media--dragging {
   transition: none;
 }
 
-video.media-inspector-dialog__media {
+video.inspector-media {
   width: 100%;
   max-width: 100%;
   max-height: 100%;
 }
 
-.media-inspector-dialog__sidebar {
+.inspector-sidebar {
   display: grid;
-  gap: 16px;
+  gap: 12px;
   align-content: start;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding-right: 0;
   scrollbar-width: none;
 }
 
-.media-inspector-dialog__sidebar::-webkit-scrollbar {
+.inspector-sidebar::-webkit-scrollbar {
   display: none;
 }
 
-.media-inspector-dialog__fields,
-.media-inspector-dialog__characters {
+.inspector-sidebar mat-card {
+  border-radius: 16px;
+  background: var(--inspector-surface);
+  border-color: color-mix(in srgb, var(--mat-sys-outline-variant) 75%, transparent);
+  box-shadow: none;
+}
+
+.inspector-sidebar .mat-mdc-card-content,
+.inspector-sidebar .mat-mdc-card-header {
+  padding-inline: 14px;
+}
+
+.inspector-sidebar .mat-mdc-card-content:last-child {
+  padding-bottom: 14px;
+}
+
+.inspector-sidebar .mat-mdc-card-title {
+  color: var(--mat-sys-on-surface);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.inspector-fields,
+.inspector-characters {
   display: grid;
   gap: 12px;
 }
 
-.media-inspector-dialog__field,
-.media-inspector-dialog__character {
+.inspector-field,
+.inspector-character {
   display: grid;
   gap: 4px;
 }
 
-.media-inspector-dialog__field span,
-.media-inspector-dialog__character span {
-  color: color-mix(in srgb, var(--mat-sys-primary) 62%, white);
-  font-size: 0.9rem;
-  line-height: 1.4;
+.inspector-field span,
+.inspector-character span {
+  color: color-mix(in srgb, var(--mat-sys-primary) 85%, var(--mat-sys-on-surface-variant));
+  font-size: 0.8rem;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
-.media-inspector-dialog__field strong,
-.media-inspector-dialog__character strong,
-.media-inspector-dialog__field a {
-  color: rgba(255, 255, 255, 0.92);
+.inspector-field strong,
+.inspector-character strong,
+.inspector-field a {
+  color: var(--mat-sys-on-surface);
   line-height: 1.45;
   word-break: break-word;
 }
 
-.media-inspector-dialog__field a {
+.inspector-field a {
   text-decoration: none;
 }
 
-.media-inspector-dialog__field a:hover {
+.inspector-field a:hover {
   text-decoration: underline;
 }
 
-.media-inspector-dialog__text {
+.inspector-text {
   margin: 0;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--mat-sys-on-surface);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.media-inspector-dialog__chips {
+.inspector-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
-.media-inspector-dialog__state {
+.inspector-chips mat-chip {
+  --mdc-chip-elevated-container-color: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+  --mdc-chip-label-text-color: var(--mat-sys-on-surface);
+  --mdc-chip-outline-color: color-mix(in srgb, var(--mat-sys-outline-variant) 80%, transparent);
+}
+
+.inspector-state {
   min-height: 320px;
   display: grid;
   place-items: center;
   gap: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--mat-sys-on-surface-variant);
   text-align: center;
 }
 
-.media-inspector-dialog__state p {
+.inspector-state p {
   margin: 0;
-}
-
-.media-inspector-dialog__sidebar mat-card {
-  border-radius: 16px;
-  background: rgba(24, 25, 31, 0.88);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: none;
-}
-
-.media-inspector-dialog__sidebar .mat-mdc-card-content,
-.media-inspector-dialog__sidebar .mat-mdc-card-header {
-  padding-inline: 14px;
-}
-
-.media-inspector-dialog__sidebar .mat-mdc-card-content:last-child {
-  padding-bottom: 14px;
 }
 
 @media (max-width: 1100px) {
@@ -226,20 +267,19 @@ video.media-inspector-dialog__media {
     height: min(96vh, 1600px);
   }
 
-  .media-inspector-dialog__layout {
+  .inspector-layout {
     grid-template-columns: 1fr;
     height: auto;
     padding-right: 14px;
     overflow: auto;
   }
 
-  .media-inspector-dialog__media-pane {
+  .inspector-media-pane {
     min-height: min(62vh, 820px);
   }
 
-  .media-inspector-dialog__sidebar {
+  .inspector-sidebar {
     overflow: visible;
-    padding-right: 0;
   }
 }
 
@@ -248,21 +288,25 @@ video.media-inspector-dialog__media {
     height: 100vh;
   }
 
-  .media-inspector-dialog__header {
-    padding-inline: 10px;
+  .inspector-toolbar {
+    padding-inline: 0.625rem;
   }
 
-  .media-inspector-dialog__layout {
+  .inspector-title h2 {
+    max-width: 52vw;
+  }
+
+  .inspector-layout {
     gap: 12px;
     padding: 10px;
     overflow: auto;
   }
 
-  .media-inspector-dialog__media-scroll {
+  .inspector-media-scroll {
     padding: 6px;
   }
 
-  .media-inspector-dialog__media-pane {
+  .inspector-media-pane {
     min-height: 48vh;
   }
 }

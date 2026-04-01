@@ -34,7 +34,6 @@ class ProcessingStatus(str, enum.Enum):
 
 class MediaVisibility(str, enum.Enum):
     private = "private"
-    shared = "shared"
     public = "public"
 
 

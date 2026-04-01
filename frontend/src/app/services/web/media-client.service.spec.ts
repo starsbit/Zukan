@@ -81,10 +81,10 @@ describe('MediaClientService', () => {
   });
 
   it('search passes visibility filter', () => {
-    service.search({ visibility: MediaVisibility.SHARED }).subscribe();
+    service.search({ visibility: MediaVisibility.PUBLIC }).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
-    expect(req.request.params.get('visibility')).toBe('shared');
+    expect(req.request.params.get('visibility')).toBe('public');
     req.flush(mockPage);
   });
 

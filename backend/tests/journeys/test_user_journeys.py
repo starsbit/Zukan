@@ -37,6 +37,19 @@ def _auth_headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+async def _favorite_media(client, headers: dict[str, str], media_id: str) -> dict:
+    detail = await client.get(f"/api/v1/media/{media_id}", headers=headers)
+    assert detail.status_code == 200
+    version = detail.json()["version"]
+    favorite = await client.patch(
+        f"/api/v1/media/{media_id}",
+        json={"favorited": True, "version": version},
+        headers=headers,
+    )
+    assert favorite.status_code == 200
+    return favorite.json()
+
+
 @pytest.mark.asyncio
 async def test_journey_auth_upload_media_album_and_batchs(journey_client):
     token = await _register_and_login(journey_client, "saber", "saber@starsbit.space")
@@ -249,6 +262,167 @@ async def test_journey_sharing_access_control_and_admin_announcements(journey_cl
 
 
 @pytest.mark.asyncio
+async def test_journey_favorites_include_public_media_until_visibility_is_removed(journey_client):
+    owner_token = await _register_and_login(journey_client, "public-owner", "public-owner@example.com")
+    viewer_token = await _register_and_login(journey_client, "public-viewer", "public-viewer@example.com")
+    owner_headers = _auth_headers(owner_token)
+    viewer_headers = _auth_headers(viewer_token)
+
+    upload = await journey_client.post(
+        "/api/v1/media",
+        data={"visibility": "public"},
+        files=[("files", _image_file_tuple("public-favorite.png", color="blue"))],
+        headers=owner_headers,
+    )
+    assert upload.status_code == 202
+    media_id = upload.json()["results"][0]["id"]
+
+    favorite = await _favorite_media(journey_client, viewer_headers, media_id)
+    assert favorite["is_favorited"] is True
+
+    search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert search.status_code == 200
+    assert [item["id"] for item in search.json()["items"]] == [media_id]
+
+    timeline = await journey_client.get("/api/v1/media/timeline", params={"favorited": "true"}, headers=viewer_headers)
+    assert timeline.status_code == 200
+    assert timeline.json()["buckets"][0]["count"] == 1
+
+    detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=viewer_headers)
+    assert detail.status_code == 200
+
+    media_file = await journey_client.get(f"/api/v1/media/{media_id}/file", headers=viewer_headers)
+    assert media_file.status_code == 200
+
+    owner_detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=owner_headers)
+    owner_update = await journey_client.patch(
+        f"/api/v1/media/{media_id}",
+        json={"visibility": "private", "version": owner_detail.json()["version"]},
+        headers=owner_headers,
+    )
+    assert owner_update.status_code == 200
+
+    hidden_search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert hidden_search.status_code == 200
+    assert hidden_search.json()["items"] == []
+
+    hidden_timeline = await journey_client.get("/api/v1/media/timeline", params={"favorited": "true"}, headers=viewer_headers)
+    assert hidden_timeline.status_code == 200
+    assert hidden_timeline.json()["buckets"] == []
+
+    hidden_detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=viewer_headers)
+    assert hidden_detail.status_code == 404
+
+    hidden_file = await journey_client.get(f"/api/v1/media/{media_id}/file", headers=viewer_headers)
+    assert hidden_file.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_journey_favorites_follow_shared_album_access_and_reappear_when_restored(journey_client):
+    owner_token = await _register_and_login(journey_client, "album-owner", "album-owner@example.com")
+    viewer_token = await _register_and_login(journey_client, "album-viewer", "album-viewer@example.com")
+    owner_headers = _auth_headers(owner_token)
+    viewer_headers = _auth_headers(viewer_token)
+
+    viewer_me = (await journey_client.get("/api/v1/me", headers=viewer_headers)).json()
+    viewer_id = viewer_me["id"]
+    viewer_username = viewer_me["username"]
+
+    create_album = await journey_client.post(
+        "/api/v1/albums",
+        json={"name": "Favorites Access", "description": "shared favorites"},
+        headers=owner_headers,
+    )
+    assert create_album.status_code == 201
+    album_id = create_album.json()["id"]
+
+    upload = await journey_client.post(
+        "/api/v1/media",
+        data={"album_id": album_id},
+        files=[("files", _image_file_tuple("shared-favorite.png", color="green"))],
+        headers=owner_headers,
+    )
+    assert upload.status_code == 202
+    media_id = upload.json()["results"][0]["id"]
+
+    share = await journey_client.post(
+        f"/api/v1/albums/{album_id}/shares",
+        json={"username": viewer_username, "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert share.status_code in (200, 201)
+
+    notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
+    invite_id = notifications.json()["items"][0]["id"]
+    accept = await journey_client.post(f"/api/v1/me/notifications/{invite_id}/accept", headers=viewer_headers)
+    assert accept.status_code == 200
+
+    favorite = await _favorite_media(journey_client, viewer_headers, media_id)
+    assert favorite["is_favorited"] is True
+
+    search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert search.status_code == 200
+    assert [item["id"] for item in search.json()["items"]] == [media_id]
+
+    timeline = await journey_client.get("/api/v1/media/timeline", params={"favorited": "true"}, headers=viewer_headers)
+    assert timeline.status_code == 200
+    assert timeline.json()["buckets"][0]["count"] == 1
+
+    detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=viewer_headers)
+    assert detail.status_code == 200
+
+    revoke = await journey_client.delete(f"/api/v1/albums/{album_id}/shares/{viewer_id}", headers=owner_headers)
+    assert revoke.status_code == 204
+
+    hidden_search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert hidden_search.status_code == 200
+    assert hidden_search.json()["items"] == []
+
+    hidden_detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=viewer_headers)
+    assert hidden_detail.status_code == 404
+
+    reshared = await journey_client.post(
+        f"/api/v1/albums/{album_id}/shares",
+        json={"username": viewer_username, "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert reshared.status_code in (200, 201)
+    notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
+    invite_id = notifications.json()["items"][0]["id"]
+    accept = await journey_client.post(f"/api/v1/me/notifications/{invite_id}/accept", headers=viewer_headers)
+    assert accept.status_code == 200
+
+    restored_search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert restored_search.status_code == 200
+    assert [item["id"] for item in restored_search.json()["items"]] == [media_id]
+
+    remove_from_album = await journey_client.request(
+        "DELETE",
+        f"/api/v1/albums/{album_id}/media",
+        json={"media_ids": [media_id]},
+        headers=owner_headers,
+    )
+    assert remove_from_album.status_code == 200
+    assert remove_from_album.json()["processed"] == 1
+
+    removed_search = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert removed_search.status_code == 200
+    assert removed_search.json()["items"] == []
+
+    add_back = await journey_client.put(
+        f"/api/v1/albums/{album_id}/media",
+        json={"media_ids": [media_id]},
+        headers=owner_headers,
+    )
+    assert add_back.status_code == 200
+    assert add_back.json()["processed"] == 1
+
+    restored_again = await journey_client.get("/api/v1/media/search", params={"favorited": "true"}, headers=viewer_headers)
+    assert restored_again.status_code == 200
+    assert [item["id"] for item in restored_again.json()["items"]] == [media_id]
+
+
+@pytest.mark.asyncio
 async def test_journey_search_and_tag_editing_flows(journey_client):
     token = await _register_and_login(journey_client, "rider", "rider@starsbit.space")
     headers = _auth_headers(token)
@@ -349,3 +523,87 @@ async def test_journey_search_and_tag_editing_flows(journey_client):
     trashed_media = await journey_client.get("/api/v1/media", params={"state": "trashed"}, headers=headers)
     assert trashed_media.status_code == 200
     assert media1_id in {item["id"] for item in trashed_media.json()["items"]}
+
+
+@pytest.mark.asyncio
+async def test_journey_album_not_accessible_until_invite_accepted(journey_client):
+    owner_token = await _register_and_login(journey_client, "invite-owner", "invite-owner@example.com")
+    viewer_token = await _register_and_login(journey_client, "invite-viewer", "invite-viewer@example.com")
+    rejecter_token = await _register_and_login(journey_client, "invite-rejecter", "invite-rejecter@example.com")
+
+    owner_headers = _auth_headers(owner_token)
+    viewer_headers = _auth_headers(viewer_token)
+    rejecter_headers = _auth_headers(rejecter_token)
+
+    viewer_username = (await journey_client.get("/api/v1/me", headers=viewer_headers)).json()["username"]
+    rejecter_username = (await journey_client.get("/api/v1/me", headers=rejecter_headers)).json()["username"]
+
+    create_album = await journey_client.post(
+        "/api/v1/albums",
+        json={"name": "Invite Test Album"},
+        headers=owner_headers,
+    )
+    assert create_album.status_code == 201
+    album_id = create_album.json()["id"]
+
+    # Neither user can see the album before any invite
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)).status_code == 404
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=rejecter_headers)).status_code == 404
+
+    # Send invites
+    invite_viewer = await journey_client.post(
+        f"/api/v1/albums/{album_id}/shares",
+        json={"username": viewer_username, "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert invite_viewer.status_code in (200, 201)
+    assert invite_viewer.json()["status"] == "pending"
+
+    invite_rejecter = await journey_client.post(
+        f"/api/v1/albums/{album_id}/shares",
+        json={"username": rejecter_username, "role": "viewer"},
+        headers=owner_headers,
+    )
+    assert invite_rejecter.status_code in (200, 201)
+    assert invite_rejecter.json()["status"] == "pending"
+
+    # Album still not accessible while invites are pending
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)).status_code == 404
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=rejecter_headers)).status_code == 404
+
+    # Album does not appear in the list endpoint while invite is pending
+    viewer_list = await journey_client.get("/api/v1/albums", headers=viewer_headers)
+    assert viewer_list.status_code == 200
+    assert not any(item["id"] == album_id for item in viewer_list.json()["items"])
+
+    # Viewer accepts; rejecter rejects
+    viewer_notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
+    viewer_invite_notification_id = viewer_notifications.json()["items"][0]["id"]
+    accept = await journey_client.post(
+        f"/api/v1/me/notifications/{viewer_invite_notification_id}/accept",
+        headers=viewer_headers,
+    )
+    assert accept.status_code == 200
+    assert accept.json()["data"]["invite_status"] == "accepted"
+
+    rejecter_notifications = await journey_client.get("/api/v1/me/notifications", headers=rejecter_headers)
+    rejecter_invite_notification_id = rejecter_notifications.json()["items"][0]["id"]
+    reject = await journey_client.post(
+        f"/api/v1/me/notifications/{rejecter_invite_notification_id}/reject",
+        headers=rejecter_headers,
+    )
+    assert reject.status_code == 200
+    assert reject.json()["data"]["invite_status"] == "rejected"
+
+    # Viewer now has access; rejecter does not
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)).status_code == 200
+    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=rejecter_headers)).status_code == 404
+
+    # Album appears in the list for the accepted viewer but not the rejecter
+    viewer_list_after = await journey_client.get("/api/v1/albums", headers=viewer_headers)
+    assert viewer_list_after.status_code == 200
+    assert any(item["id"] == album_id for item in viewer_list_after.json()["items"])
+
+    rejecter_list_after = await journey_client.get("/api/v1/albums", headers=rejecter_headers)
+    assert rejecter_list_after.status_code == 200
+    assert not any(item["id"] == album_id for item in rejecter_list_after.json()["items"])

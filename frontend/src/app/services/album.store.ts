@@ -36,6 +36,9 @@ export class AlbumStore {
   }
 
   get(id: string): Observable<AlbumRead> {
+    if (this._selectedAlbum()?.id !== id) {
+      this._selectedAlbum.set(null);
+    }
     this._selectedAlbumLoading.set(true);
     return this.client.get(id).pipe(
       tap((album) => {

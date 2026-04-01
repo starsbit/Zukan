@@ -39,7 +39,11 @@ function mediaItem(id: string) {
   };
 }
 
-async function setupFavoritesMocks(page: Page, searchRequests: URL[]): Promise<void> {
+async function setupFavoritesMocks(
+  page: Page,
+  searchRequests: URL[],
+  searchResponses: Array<{ items: ReturnType<typeof mediaItem>[]; total: number }>,
+): Promise<void> {
   await page.route('**/api/v1/config/setup-required', async (route: Route) => {
     await route.fulfill({
       json: {
@@ -97,10 +101,11 @@ async function setupFavoritesMocks(page: Page, searchRequests: URL[]): Promise<v
 
   await page.route('**/api/v1/media/search**', async (route: Route) => {
     searchRequests.push(new URL(route.request().url()));
+    const response = searchResponses.shift() ?? { items: [], total: 0 };
     await route.fulfill({
       json: {
-        items: [mediaItem('own-favorite-1')],
-        total: 1,
+        items: response.items,
+        total: response.total,
         next_cursor: null,
         has_more: false,
         page_size: 20,
@@ -141,7 +146,7 @@ test.describe.serial('Favorites page', () => {
 
   test('shows a user-owned favorited item instead of the empty state', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await setupFavoritesMocks(page, searchRequests);
+    await setupFavoritesMocks(page, searchRequests, [{ items: [mediaItem('own-favorite-1')], total: 1 }]);
 
     await page.goto('/favorites');
     await page.getByLabel('Username').fill('owner');
@@ -154,5 +159,55 @@ test.describe.serial('Favorites page', () => {
     await expect(page.locator('.media-card').first()).toBeVisible();
     await expect(page.getByText('No favorites yet')).toHaveCount(0);
     await expect(page.getByText('Media you favorite will appear here.')).toHaveCount(0);
+  });
+
+  test('shows public and shared-album favorites returned by the backend', async ({ page }) => {
+    const searchRequests: URL[] = [];
+    const publicFavorite = {
+      ...mediaItem('public-favorite-1'),
+      uploader_id: 'u2',
+      owner_id: 'u2',
+      visibility: 'public',
+      filename: 'public-favorite-1.jpg',
+    };
+    const sharedAlbumFavorite = {
+      ...mediaItem('shared-album-favorite-1'),
+      uploader_id: 'u2',
+      owner_id: 'u2',
+      visibility: 'private',
+      filename: 'shared-album-favorite-1.jpg',
+    };
+    await setupFavoritesMocks(page, searchRequests, [
+      { items: [publicFavorite, sharedAlbumFavorite], total: 2 },
+    ]);
+
+    await page.goto('/favorites');
+    await page.getByLabel('Username').fill('owner');
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill('password');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+
+    await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
+    await expect(page.locator('.media-card')).toHaveCount(2);
+    await expect(page.getByText('No favorites yet')).toHaveCount(0);
+  });
+
+  test('shows the empty state after previously visible favorites lose access', async ({ page }) => {
+    const searchRequests: URL[] = [];
+    await setupFavoritesMocks(page, searchRequests, [
+      { items: [{ ...mediaItem('shared-album-favorite-1'), filename: 'shared-album-favorite-1.jpg' }], total: 1 },
+      { items: [], total: 0 },
+    ]);
+
+    await page.goto('/favorites');
+    await page.getByLabel('Username').fill('owner');
+    await page.getByRole('textbox', { name: 'Password', exact: true }).fill('password');
+    await page.getByRole('button', { name: 'Sign In' }).click();
+
+    await expect(page.locator('.media-card')).toHaveCount(1);
+
+    await page.reload();
+
+    await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(1);
+    await expect(page.locator('.media-card')).toHaveCount(0);
   });
 });
