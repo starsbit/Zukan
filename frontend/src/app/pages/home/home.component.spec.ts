@@ -17,6 +17,7 @@ describe('HomeComponent', () => {
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      clearOptimisticItems: vi.fn(),
       hasMore: () => false,
       loading: () => false,
       groupedByDay: () => [],

@@ -22,6 +22,10 @@ class RateLimitStore:
         self._entries: dict[str, _Counter] = {}
         self._lock = asyncio.Lock()
 
+    async def reset(self) -> None:
+        async with self._lock:
+            self._entries.clear()
+
     async def check(self, *, key: str, max_requests: int, window_seconds: int) -> None:
         now = datetime.now(timezone.utc)
         window = timedelta(seconds=window_seconds)

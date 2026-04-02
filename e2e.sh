@@ -46,7 +46,7 @@ echo "==> Running Playwright e2e tests"
 cd "$ROOT_DIR/frontend"
 PLAYWRIGHT_TEST_BASE_URL="$FRONTEND_URL" \
 API_BASE_URL="$API_URL" \
-  npx playwright test --project=chromium "$@" || E2E_FAILED=1
+  ng e2e --project=zukan "$@" || E2E_FAILED=1
 
 if [[ $E2E_FAILED -ne 0 ]]; then
   echo

@@ -44,7 +44,7 @@ run_step "Frontend unit tests" npm --prefix "$FRONTEND_DIR" run test -- --watch=
 run_step "Backend tests" "$PYTEST_BIN" "$BACKEND_DIR/tests"
 
 if docker_daemon_available; then
-  run_step "Frontend e2e tests" npm --prefix "$FRONTEND_DIR" run e2e
+  run_step "Frontend e2e tests" ./e2e.sh
 else
   echo
   echo "==> Frontend e2e tests"

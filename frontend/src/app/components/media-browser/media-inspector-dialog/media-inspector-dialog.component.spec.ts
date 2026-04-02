@@ -137,9 +137,9 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Characters');
     expect(fixture.nativeElement.textContent).toContain('Saber Alter');
     expect(fixture.nativeElement.textContent).toContain('Series');
-    expect(fixture.nativeElement.textContent).toContain('Fate/stay night');
+    expect(fixture.nativeElement.textContent).toContain('Fate/Stay Night');
     expect(fixture.nativeElement.textContent).toContain('Tags');
-    expect(fixture.nativeElement.textContent).toContain('white hair');
+    expect(fixture.nativeElement.textContent).toContain('White Hair');
     expect(fixture.nativeElement.textContent).toContain('Detected text');
     expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
   });

@@ -130,7 +130,7 @@ export class MediaBrowserComponent {
   readonly selectedIds = signal<string[]>([]);
   readonly isCompactLayout = computed(() => this.contentWidth() < 768);
   readonly isEmpty = computed(
-    () => !this.loading() && this.dayGroups().length === 0,
+    () => !this.loading() && this.dayGroups().length === 0 && this.timeline().length === 0,
   );
   readonly justifiedDayGroups = computed(() => this.buildJustifiedDayGroups());
   readonly timelineEntries = computed(() => this.buildTimelineEntries());

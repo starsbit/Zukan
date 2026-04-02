@@ -6,6 +6,7 @@ __pycache__/
 venv/
 storage/
 model_cache/
+node_modules/
 *.onnx
 .DS_Store
 .coverage

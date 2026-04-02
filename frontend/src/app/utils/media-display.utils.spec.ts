@@ -28,6 +28,7 @@ describe('media-display utils', () => {
 
   it('formats backend labels and enums for display', () => {
     expect(humanizeBackendLabel('tagging_failed')).toBe('Tagging Failed');
+    expect(humanizeBackendLabel('fate/stay night')).toBe('Fate/Stay Night');
     expect(formatMetadataName('aru_(blue_archive)')).toBe('Aru (Blue Archive)');
     expect(formatMetadataName('fate_stay_night')).toBe('Fate Stay Night');
     expect(formatMediaType(MediaType.GIF)).toBe('GIF');

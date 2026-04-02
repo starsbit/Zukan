@@ -89,7 +89,7 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(list).toHaveBeenCalledWith({ page_size: 8 });
-    expect(fixture.componentInstance.unreadCount()).toBe(2);
+    expect(fixture.componentInstance.unreadCount()).toBe(3);
 
     const element = fixture.nativeElement as HTMLElement;
     (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();

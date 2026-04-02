@@ -26,6 +26,7 @@ from backend.app.models.notifications import AppAnnouncement, Notification
 from backend.app.models.processing import ImportBatch, ImportBatchItem
 from backend.app.models.relations import MediaEntity, MediaExternalRef
 from backend.app.models.tags import MediaTag, Tag
+from backend.app.utils.rate_limit import rate_limit_store
 
 
 def _to_async_url(url: str) -> str:
@@ -92,6 +93,7 @@ async def db_sessionmaker(db_engine):
 
 @pytest_asyncio.fixture()
 async def journey_client(db_sessionmaker, tmp_path, monkeypatch):
+    await rate_limit_store.reset()
     app = FastAPI()
     app.include_router(v1_router)
     app.add_exception_handler(AppError, app_error_handler)
