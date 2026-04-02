@@ -27,6 +27,24 @@ export function humanizeBackendLabel(value: string | null | undefined): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+export function formatMetadataName(value: string | null | undefined): string {
+  if (!value?.trim()) {
+    return '';
+  }
+
+  const normalized = value
+    .trim()
+    .replace(/[_]+/g, ' ')
+    .replace(/\(\s*/g, ' (')
+    .replace(/\s*\)/g, ')')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return normalized.replace(/(^|[\s(/-])([a-z])/g, (_match, prefix: string, char: string) =>
+    `${prefix}${char.toUpperCase()}`,
+  );
+}
+
 export function formatFileSize(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
     return '';

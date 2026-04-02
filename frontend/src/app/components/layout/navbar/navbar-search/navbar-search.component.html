@@ -65,7 +65,7 @@
       <mat-optgroup label="Characters">
         @for (suggestion of characterSuggestions(); track suggestion.type + ':' + suggestion.value) {
           <mat-option [value]="suggestion">
-            <span>{{ suggestion.value }}</span>
+            <span>{{ suggestion.label }}</span>
             <span class="option-secondary">{{ suggestion.subtitle }}</span>
           </mat-option>
         }
@@ -76,7 +76,7 @@
       <mat-optgroup label="Series">
         @for (suggestion of seriesSuggestions(); track suggestion.type + ':' + suggestion.value) {
           <mat-option [value]="suggestion">
-            <span>{{ suggestion.value }}</span>
+            <span>{{ suggestion.label }}</span>
             <span class="option-secondary">{{ suggestion.subtitle }}</span>
           </mat-option>
         }
@@ -87,7 +87,7 @@
       <mat-optgroup label="Tags">
         @for (suggestion of tagSuggestions(); track suggestion.type + ':' + suggestion.value) {
           <mat-option [value]="suggestion">
-            <span>{{ suggestion.value }}</span>
+            <span>{{ suggestion.label }}</span>
             <span class="option-secondary">{{ suggestion.subtitle }}</span>
           </mat-option>
         }

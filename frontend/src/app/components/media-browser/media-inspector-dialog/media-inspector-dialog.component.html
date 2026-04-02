@@ -176,7 +176,7 @@
             >
               @for (suggestion of characterSuggestions(); track suggestion.name) {
                 <mat-option [value]="suggestion.name">
-                  <span>{{ suggestion.name }}</span>
+                  <span>{{ displayMetadataName(suggestion.name) }}</span>
                   <span class="inspector-option-secondary"
                     >{{ suggestion.media_count }} matches</span
                   >
@@ -188,11 +188,11 @@
               <mat-chip-set class="inspector-chips" aria-label="Selected characters">
                 @for (character of editableCharacters(); track character) {
                   <mat-chip-row [removable]="true" (removed)="removeCharacter(character)">
-                    {{ character }}
+                    {{ displayMetadataName(character) }}
                     <button
                       matChipRemove
                       type="button"
-                      aria-label="Remove character {{ character }}"
+                      aria-label="Remove character {{ displayMetadataName(character) }}"
                     >
                       <mat-icon aria-hidden="true">cancel</mat-icon>
                     </button>
@@ -253,7 +253,7 @@
             >
               @for (suggestion of seriesSuggestions(); track suggestion.name) {
                 <mat-option [value]="suggestion.name">
-                  <span>{{ suggestion.name }}</span>
+                  <span>{{ displayMetadataName(suggestion.name) }}</span>
                   <span class="inspector-option-secondary"
                     >{{ suggestion.media_count }} matches</span
                   >
@@ -265,11 +265,11 @@
               <mat-chip-set class="inspector-chips" aria-label="Selected series">
                 @for (seriesName of editableSeries(); track seriesName) {
                   <mat-chip-row [removable]="true" (removed)="removeSeries(seriesName)">
-                    {{ seriesName }}
+                    {{ displayMetadataName(seriesName) }}
                     <button
                       matChipRemove
                       type="button"
-                      aria-label="Remove series {{ seriesName }}"
+                      aria-label="Remove series {{ displayMetadataName(seriesName) }}"
                     >
                       <mat-icon aria-hidden="true">cancel</mat-icon>
                     </button>
@@ -364,7 +364,7 @@
             >
               @for (tag of tagSuggestions(); track tag.id) {
                 <mat-option [value]="tag.name">
-                  <span>{{ tag.name }}</span>
+                  <span>{{ displayMetadataName(tag.name) }}</span>
                   <span class="inspector-option-secondary">{{ tag.category_name }}</span>
                 </mat-option>
               }
@@ -374,8 +374,8 @@
               <mat-chip-set aria-label="Selected tags" class="inspector-chips">
                 @for (tag of editableTags(); track tag) {
                   <mat-chip-row [removable]="true" (removed)="removeTag(tag)">
-                    {{ tag }}
-                    <button matChipRemove type="button" aria-label="Remove tag {{ tag }}">
+                    {{ displayMetadataName(tag) }}
+                    <button matChipRemove type="button" aria-label="Remove tag {{ displayMetadataName(tag) }}">
                       <mat-icon aria-hidden="true">cancel</mat-icon>
                     </button>
                   </mat-chip-row>
@@ -387,7 +387,7 @@
           } @else if (tags().length > 0) {
             <mat-chip-set aria-label="Media tags" class="inspector-chips">
               @for (tag of tags(); track tag) {
-                <mat-chip>{{ tag }}</mat-chip>
+                <mat-chip>{{ displayMetadataName(tag) }}</mat-chip>
               }
             </mat-chip-set>
           } @else {

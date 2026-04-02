@@ -13,12 +13,14 @@ import { TagsClientService } from '../../../../services/web/tags-client.service'
 import { MediaClientService } from '../../../../services/web/media-client.service';
 import { NavbarSearchService, SearchChip } from '../../../../services/navbar-search.service';
 import { debounceTime, distinctUntilChanged, forkJoin, of, switchMap } from 'rxjs';
+import { formatMetadataName } from '../../../../utils/media-display.utils';
 
 type SuggestionType = 'tag' | 'character' | 'series';
 
 interface SearchSuggestion {
   type: SuggestionType;
   value: string;
+  label: string;
   subtitle: string;
 }
 
@@ -116,6 +118,7 @@ export class NavbarSearchComponent {
               .map((tag) => ({
                 type: 'tag' as const,
                 value: tag.name,
+                label: formatMetadataName(tag.name),
                 subtitle: `${tag.media_count} matches`,
               }))
               .sort((left, right) => this.compareSuggestions(left.value, right.value, query))
@@ -127,6 +130,7 @@ export class NavbarSearchComponent {
           .map((character) => ({
             type: 'character' as const,
             value: character.name,
+            label: formatMetadataName(character.name),
             subtitle: `${character.media_count} matches`,
           }))
           .sort((left, right) => this.compareSuggestions(left.value, right.value, query)),
@@ -137,6 +141,7 @@ export class NavbarSearchComponent {
           .map((item) => ({
             type: 'series' as const,
             value: item.name,
+            label: formatMetadataName(item.name),
             subtitle: `${item.media_count} matches`,
           }))
           .sort((left, right) => this.compareSuggestions(left.value, right.value, query)),
@@ -145,7 +150,7 @@ export class NavbarSearchComponent {
   }
 
   chipLabel(chip: SearchChip): string {
-    return chip.type === 'ocr' ? `OCR: "${chip.value}"` : chip.value;
+    return chip.type === 'ocr' ? `OCR: "${chip.value}"` : formatMetadataName(chip.value);
   }
 
   chipIcon(chip: SearchChip): string {

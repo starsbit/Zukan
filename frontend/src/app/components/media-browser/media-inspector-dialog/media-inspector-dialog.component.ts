@@ -34,6 +34,7 @@ import {
   formatDimensions,
   formatDuration,
   formatFileSize,
+  formatMetadataName,
   formatMediaType,
   formatProcessingStatus,
   formatVisibility,
@@ -478,6 +479,10 @@ export class MediaInspectorDialogComponent {
     return field.label;
   }
 
+  displayMetadataName(value: string): string {
+    return formatMetadataName(value);
+  }
+
   private navigateTo(index: number): void {
     if (index < 0 || index >= this.items().length) {
       return;
@@ -687,7 +692,7 @@ export class MediaInspectorDialogComponent {
     return (this.detail()?.entities ?? [])
       .filter((entity) => entity.entity_type === entityType)
       .map((entity) => ({
-        name: entity.name,
+        name: formatMetadataName(entity.name),
         details: [
           entity.role ? humanizeBackendLabel(entity.role) : '',
           entity.source ? humanizeBackendLabel(entity.source) : '',
