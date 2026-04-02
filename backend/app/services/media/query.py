@@ -453,9 +453,18 @@ class MediaQueryService:
         if user.is_admin or state == MediaListState.TRASHED:
             return stmt
         if album_scoped:
-            return stmt
+            return stmt.where(
+                or_(
+                    Media.uploader_id == user.id,
+                    Media.owner_id == user.id,
+                    self._media_repo.external_visibility_ready_clause(),
+                )
+            )
         if visibility == MediaVisibility.public:
-            return stmt.where(Media.visibility == MediaVisibility.public)
+            return stmt.where(
+                Media.visibility == MediaVisibility.public,
+                self._media_repo.external_visibility_ready_clause(),
+            )
         if favorited is True:
             return stmt.where(self._media_repo.accessible_to_user_clause(user))
         return stmt.where(Media.uploader_id == user.id)
@@ -577,4 +586,9 @@ class MediaQueryService:
             raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
 
     def _is_media_visible_to_user(self, media: Media, user: User) -> bool:
-        return self._can_manage_media(media, user) or media.visibility == MediaVisibility.public
+        return self._can_manage_media(media, user) or (
+            media.visibility == MediaVisibility.public
+            and media.tagging_status not in ("pending", "processing")
+            and media.thumbnail_status not in ("pending", "processing")
+            and media.poster_status not in ("pending", "processing")
+        )

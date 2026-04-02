@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from backend.app.models.media import TaggingStatus
+from backend.app.models.media import MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.repositories.media import MediaRepository
 
 
@@ -55,3 +55,39 @@ async def test_media_repository_delete_flushes(db_session, make_user, make_media
     await db_session.flush()
 
     assert await repo.get_by_id(media.id) is None
+
+
+@pytest.mark.asyncio
+async def test_media_repository_hides_processing_media_from_other_users(db_session, make_user, make_media):
+    owner = await make_user(username="owner", email="owner@example.com")
+    other = await make_user(username="other", email="other@example.com")
+
+    processing_public = await make_media(
+        uploader_id=owner.id,
+        tagging_status=TaggingStatus.PENDING,
+    )
+    processing_public.visibility = MediaVisibility.public
+
+    processing_private = await make_media(
+        uploader_id=owner.id,
+        tagging_status=TaggingStatus.PROCESSING,
+    )
+    processing_private.visibility = MediaVisibility.private
+
+    ready_public = await make_media(
+        uploader_id=owner.id,
+        tagging_status=TaggingStatus.DONE,
+    )
+    ready_public.visibility = MediaVisibility.public
+    ready_public.thumbnail_status = ProcessingStatus.DONE
+    ready_public.poster_status = ProcessingStatus.NOT_APPLICABLE
+
+    await db_session.flush()
+
+    repo = MediaRepository(db_session)
+
+    assert await repo.is_accessible(processing_public.id, owner) is True
+    assert await repo.is_accessible(processing_private.id, owner) is True
+    assert await repo.is_accessible(processing_public.id, other) is False
+    assert await repo.is_accessible(processing_private.id, other) is False
+    assert await repo.is_accessible(ready_public.id, other) is True

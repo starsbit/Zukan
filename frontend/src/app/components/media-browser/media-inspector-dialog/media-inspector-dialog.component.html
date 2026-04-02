@@ -1,63 +1,97 @@
-<header class="inspector-toolbar" mat-dialog-title>
-  <div class="inspector-toolbar-group">
-    <button
-      class="toolbar-button"
-      mat-icon-button
-      type="button"
-      aria-label="Close inspector"
-      (click)="close()">
-      <mat-icon aria-hidden="true">arrow_back</mat-icon>
-    </button>
+<mat-dialog-content class="inspector-content">
+  <div class="inspector-layout">
+    <section
+      #zoomStage
+      class="inspector-media-pane"
+      [class.inspector-media-pane--draggable]="isImage() && zoom() > 1"
+      [class.inspector-media-pane--dragging]="dragging()"
+      (wheel)="onWheelZoom($event)"
+    >
+      <div class="inspector-overlay inspector-overlay--top-left">
+        <button
+          class="toolbar-button"
+          mat-icon-button
+          type="button"
+          aria-label="Close viewer"
+          (click)="close()"
+        >
+          <mat-icon aria-hidden="true">arrow_back</mat-icon>
+        </button>
+      </div>
 
-    <div class="inspector-title">
-      <span class="inspector-eyebrow">{{ isVideo() ? 'Video' : 'Image' }}</span>
-      <h2>{{ title() }}</h2>
-    </div>
-  </div>
+      <div class="inspector-overlay inspector-overlay--top-right">
+        @if (isImage()) {
+          <button
+            class="toolbar-button"
+            mat-icon-button
+            type="button"
+            aria-label="Reset zoom"
+            (click)="resetZoom()"
+          >
+            <mat-icon aria-hidden="true">center_focus_strong</mat-icon>
+          </button>
+        }
+        @if (!editing()) {
+          <button class="toolbar-pill" mat-stroked-button type="button" (click)="beginEdit()">
+            <mat-icon aria-hidden="true">edit</mat-icon>
+            <span>Edit</span>
+          </button>
+        } @else {
+          <button
+            class="toolbar-pill"
+            mat-button
+            type="button"
+            [disabled]="saving()"
+            (click)="cancelEdit()"
+          >
+            Cancel
+          </button>
+          <button
+            class="toolbar-pill"
+            mat-flat-button
+            type="button"
+            [disabled]="saving()"
+            (click)="save()"
+          >
+            <mat-icon aria-hidden="true">save</mat-icon>
+            <span>{{ saving() ? 'Saving…' : 'Save' }}</span>
+          </button>
+        }
+      </div>
 
-  <div class="inspector-toolbar-group">
-    @if (isImage()) {
       <button
-        class="toolbar-button"
+        class="inspector-nav inspector-nav--prev"
         mat-icon-button
         type="button"
-        aria-label="Reset zoom"
-        (click)="resetZoom()">
-        <mat-icon aria-hidden="true">center_focus_strong</mat-icon>
+        aria-label="Previous media"
+        [disabled]="!hasPrevious()"
+        (click)="previous()"
+      >
+        <mat-icon aria-hidden="true">chevron_left</mat-icon>
       </button>
-    }
-  </div>
-</header>
 
-<mat-dialog-content class="inspector-content">
-  @if (loading()) {
-    <div class="inspector-state">
-      <mat-spinner diameter="40"></mat-spinner>
-      <p>Loading media details…</p>
-    </div>
-  } @else if (loadError()) {
-    <div class="inspector-state">
-      <mat-icon aria-hidden="true">error_outline</mat-icon>
-      <p>{{ loadError() }}</p>
-    </div>
-  } @else {
-    <div class="inspector-layout">
-      <section
-        #zoomStage
-        class="inspector-media-pane"
-        [class.inspector-media-pane--draggable]="isImage() && zoom() > 1"
-        [class.inspector-media-pane--dragging]="dragging()"
-        (wheel)="onWheelZoom($event)">
-        <div class="inspector-media-scroll">
+      <div class="inspector-media-scroll">
+        @if (loading()) {
+          <div class="inspector-state">
+            <mat-spinner diameter="44"></mat-spinner>
+            <p>Loading media…</p>
+          </div>
+        } @else if (mediaLoadError()) {
+          <div class="inspector-state">
+            <mat-icon aria-hidden="true">broken_image</mat-icon>
+            <p>{{ mediaLoadError() }}</p>
+          </div>
+        } @else if (mediaUrl()) {
           @if (isVideo()) {
             <video
               class="inspector-media"
               [src]="mediaUrl()!"
               [attr.aria-label]="title()"
               controls
+              autoplay
               playsinline
-              preload="metadata">
-            </video>
+              preload="metadata"
+            ></video>
           } @else {
             <img
               class="inspector-media inspector-media--image"
@@ -66,59 +100,110 @@
               [alt]="title()"
               draggable="false"
               [style.transform]="imageTransform()"
-              (pointerdown)="startPan($event)">
+              (pointerdown)="startPan($event)"
+            />
           }
-        </div>
-      </section>
+        }
+      </div>
 
-      <aside class="inspector-sidebar">
+      <button
+        class="inspector-nav inspector-nav--next"
+        mat-icon-button
+        type="button"
+        aria-label="Next media"
+        [disabled]="!hasNext()"
+        (click)="next()"
+      >
+        <mat-icon aria-hidden="true">chevron_right</mat-icon>
+      </button>
+    </section>
+
+    <aside class="inspector-sidebar">
+      @if (detailError()) {
         <mat-card appearance="outlined">
-          <mat-card-header>
-            <mat-card-title>Metadata</mat-card-title>
-          </mat-card-header>
-          <mat-card-content class="inspector-fields">
-            @for (field of metadataFields(); track trackByLabel($index, field)) {
-              <div class="inspector-field">
-                <span>{{ field.label }}</span>
-                <strong>{{ field.value }}</strong>
-              </div>
-            }
+          <mat-card-content class="inspector-banner">
+            <mat-icon aria-hidden="true">warning</mat-icon>
+            <p>{{ detailError() }}</p>
           </mat-card-content>
         </mat-card>
+      }
 
-        @if (authorFields().length > 0 || externalRefs().length > 0) {
-          <mat-card appearance="outlined">
-            <mat-card-header>
-              <mat-card-title>Author & Source</mat-card-title>
-            </mat-card-header>
-            <mat-card-content class="inspector-fields">
-              @for (field of authorFields(); track trackByLabel($index, field)) {
-                <div class="inspector-field">
-                  <span>{{ field.label }}</span>
-                  <strong>{{ field.value }}</strong>
-                </div>
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>Summary</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-fields">
+          @for (field of metadataFields(); track trackByLabel($index, field)) {
+            <div class="inspector-field">
+              <span>{{ field.label }}</span>
+              <strong>{{ field.value }}</strong>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>Characters</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-section-content">
+          @if (editing()) {
+            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Add character</mat-label>
+              <input
+                matInput
+                type="text"
+                [formControl]="characterInputControl"
+                [matAutocomplete]="characterAutocomplete"
+                placeholder="Type or choose a character"
+                (keydown.enter)="addTypedCharacterFromEvent($event)"
+              />
+              <button
+                mat-icon-button
+                matSuffix
+                type="button"
+                aria-label="Add current character"
+                (click)="addTypedCharacter()"
+              >
+                <mat-icon aria-hidden="true">add</mat-icon>
+              </button>
+            </mat-form-field>
+
+            <mat-autocomplete
+              #characterAutocomplete="matAutocomplete"
+              autoActiveFirstOption
+              (optionSelected)="selectCharacter($event.option.value)"
+            >
+              @for (suggestion of characterSuggestions(); track suggestion.name) {
+                <mat-option [value]="suggestion.name">
+                  <span>{{ suggestion.name }}</span>
+                  <span class="inspector-option-secondary"
+                    >{{ suggestion.media_count }} matches</span
+                  >
+                </mat-option>
               }
+            </mat-autocomplete>
 
-              @for (ref of externalRefs(); track ref.label + ':' + ref.value) {
-                <div class="inspector-field">
-                  <span>{{ ref.label }}</span>
-                  @if (ref.url) {
-                    <a [href]="ref.url" target="_blank" rel="noreferrer">{{ ref.value }}</a>
-                  } @else {
-                    <strong>{{ ref.value }}</strong>
-                  }
-                </div>
-              }
-            </mat-card-content>
-          </mat-card>
-        }
-
-        @if (characters().length > 0) {
-          <mat-card appearance="outlined">
-            <mat-card-header>
-              <mat-card-title>Characters</mat-card-title>
-            </mat-card-header>
-            <mat-card-content class="inspector-characters">
+            @if (editableCharacters().length > 0) {
+              <mat-chip-set class="inspector-chips" aria-label="Selected characters">
+                @for (character of editableCharacters(); track character) {
+                  <mat-chip-row [removable]="true" (removed)="removeCharacter(character)">
+                    {{ character }}
+                    <button
+                      matChipRemove
+                      type="button"
+                      aria-label="Remove character {{ character }}"
+                    >
+                      <mat-icon aria-hidden="true">cancel</mat-icon>
+                    </button>
+                  </mat-chip-row>
+                }
+              </mat-chip-set>
+            } @else {
+              <p class="inspector-empty">No character names added yet.</p>
+            }
+          } @else if (characters().length > 0) {
+            <div class="inspector-characters">
               @for (character of characters(); track character.name + ':' + character.details) {
                 <div class="inspector-character">
                   <strong>{{ character.name }}</strong>
@@ -127,36 +212,139 @@
                   }
                 </div>
               }
-            </mat-card-content>
-          </mat-card>
-        }
+            </div>
+          } @else {
+            <p class="inspector-empty">No character names detected for this item.</p>
+          }
+        </mat-card-content>
+      </mat-card>
 
-        @if (detectedText()) {
-          <mat-card appearance="outlined">
-            <mat-card-header>
-              <mat-card-title>Detected Text</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <p class="inspector-text">{{ detectedText() }}</p>
-            </mat-card-content>
-          </mat-card>
-        }
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>OCR</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-section-content">
+          @if (editing()) {
+            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+              <mat-label>OCR override</mat-label>
+              <textarea
+                matInput
+                rows="5"
+                [value]="editableOcrValue()"
+                placeholder="Leave empty to clear the override"
+                (input)="updateOcrOverride($any($event.target).value)"
+              ></textarea>
+            </mat-form-field>
+          } @else if (media().ocr_text_override) {
+            <div class="inspector-text-block">
+              <span class="inspector-text-label">Override</span>
+              <p class="inspector-text">{{ media().ocr_text_override }}</p>
+            </div>
+          } @else {
+            <p class="inspector-empty">No OCR override saved.</p>
+          }
 
-        @if (tags().length > 0) {
-          <mat-card appearance="outlined">
-            <mat-card-header>
-              <mat-card-title>Tags</mat-card-title>
-            </mat-card-header>
-            <mat-card-content>
-              <mat-chip-set aria-label="Media tags" class="inspector-chips">
-                @for (tag of tags(); track tag) {
-                  <mat-chip>{{ tag }}</mat-chip>
+          @if (detectedOcrText()) {
+            <div class="inspector-text-block">
+              <span class="inspector-text-label">Detected text</span>
+              <p class="inspector-text">{{ detectedOcrText() }}</p>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card appearance="outlined">
+        <mat-card-header>
+          <mat-card-title>Tags</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-section-content">
+          @if (editing()) {
+            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Add tag</mat-label>
+              <input
+                matInput
+                type="text"
+                [formControl]="tagInputControl"
+                [matAutocomplete]="tagAutocomplete"
+                placeholder="Type or choose a tag"
+                (keydown.enter)="addTypedTagFromEvent($event)"
+              />
+              <button
+                mat-icon-button
+                matSuffix
+                type="button"
+                aria-label="Add current tag"
+                (click)="addTypedTag()"
+              >
+                <mat-icon aria-hidden="true">add</mat-icon>
+              </button>
+            </mat-form-field>
+
+            <mat-autocomplete
+              #tagAutocomplete="matAutocomplete"
+              autoActiveFirstOption
+              (optionSelected)="selectTag($event.option.value)"
+            >
+              @for (tag of tagSuggestions(); track tag.id) {
+                <mat-option [value]="tag.name">
+                  <span>{{ tag.name }}</span>
+                  <span class="inspector-option-secondary">{{ tag.category_name }}</span>
+                </mat-option>
+              }
+            </mat-autocomplete>
+
+            @if (editableTags().length > 0) {
+              <mat-chip-set aria-label="Selected tags" class="inspector-chips">
+                @for (tag of editableTags(); track tag) {
+                  <mat-chip-row [removable]="true" (removed)="removeTag(tag)">
+                    {{ tag }}
+                    <button matChipRemove type="button" aria-label="Remove tag {{ tag }}">
+                      <mat-icon aria-hidden="true">cancel</mat-icon>
+                    </button>
+                  </mat-chip-row>
                 }
               </mat-chip-set>
-            </mat-card-content>
-          </mat-card>
-        }
-      </aside>
-    </div>
-  }
+            } @else {
+              <p class="inspector-empty">No tags selected yet.</p>
+            }
+          } @else if (tags().length > 0) {
+            <mat-chip-set aria-label="Media tags" class="inspector-chips">
+              @for (tag of tags(); track tag) {
+                <mat-chip>{{ tag }}</mat-chip>
+              }
+            </mat-chip-set>
+          } @else {
+            <p class="inspector-empty">No tags available for this item yet.</p>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      @if (authorFields().length > 0 || externalRefs().length > 0) {
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>Source</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-fields">
+            @for (field of authorFields(); track trackByLabel($index, field)) {
+              <div class="inspector-field">
+                <span>{{ field.label }}</span>
+                <strong>{{ field.value }}</strong>
+              </div>
+            }
+
+            @for (ref of externalRefs(); track ref.label + ':' + ref.value) {
+              <div class="inspector-field">
+                <span>{{ ref.label }}</span>
+                @if (ref.url) {
+                  <a [href]="ref.url" target="_blank" rel="noreferrer">{{ ref.value }}</a>
+                } @else {
+                  <strong>{{ ref.value }}</strong>
+                }
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+      }
+    </aside>
+  </div>
 </mat-dialog-content>

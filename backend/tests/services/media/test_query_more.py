@@ -144,11 +144,23 @@ async def test_ensure_album_visible_requires_owner_admin_or_share(service, user)
         await service._ensure_album_is_visible(user, uuid.uuid4())
 
 
-def test_apply_visibility_scope_keeps_album_scoped_media_visible(service):
-    stmt = object()
-    user = SimpleNamespace(is_admin=False)
+def test_apply_visibility_scope_hides_processing_media_for_shared_album_view(service, user):
+    stmt = select(Media)
 
-    assert service._apply_visibility_scope(stmt, user, MediaListState.ACTIVE, None, True) is stmt
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        None,
+        True,
+    )
+
+    sql = str(scoped)
+    assert "media.uploader_id" in sql
+    assert "media.owner_id" in sql
+    assert "media.tagging_status" in sql
+    assert "media.thumbnail_status" in sql
+    assert "media.poster_status" in sql
 
 
 def test_apply_visibility_scope_for_favorites_includes_public_and_album_access(service, user):
@@ -170,6 +182,25 @@ def test_apply_visibility_scope_for_favorites_includes_public_and_album_access(s
     assert "album_shares" in sql
     params = scoped.compile().params
     assert MediaVisibility.public in params.values()
+
+
+def test_apply_visibility_scope_for_public_feed_hides_processing_media(service, user):
+    stmt = select(Media)
+
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        MediaVisibility.public,
+        False,
+        False,
+    )
+
+    sql = str(scoped)
+    assert "media.visibility" in sql
+    assert "media.tagging_status" in sql
+    assert "media.thumbnail_status" in sql
+    assert "media.poster_status" in sql
 
 
 def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filter(service, user):

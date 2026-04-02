@@ -53,6 +53,7 @@ const galleryStoreMock = {
   batchDelete: vi.fn(() => of({ processed: 1, skipped: 0 })),
   batchQueueTaggingJobs: vi.fn(() => of({ queued: 1 })),
   batchUpdateVisibility: vi.fn(() => of({ processed: 1, skipped: 0 })),
+  hasMore: vi.fn(() => true),
   toggleFavorite: vi.fn((media) => of({ ...media, is_favorited: !media.is_favorited })),
 };
 
@@ -106,16 +107,22 @@ describe('MediaBrowserComponent', () => {
   });
 
   beforeEach(() => {
-    vi.stubGlobal('IntersectionObserver', class {
-      observe = vi.fn();
-      unobserve = vi.fn();
-      disconnect = vi.fn();
-    });
-    vi.stubGlobal('ResizeObserver', class {
-      observe = vi.fn();
-      unobserve = vi.fn();
-      disconnect = vi.fn();
-    });
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+      },
+    );
     vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
       cb(0);
       return 1;
@@ -124,6 +131,7 @@ describe('MediaBrowserComponent', () => {
     galleryStoreMock.batchDelete.mockClear();
     galleryStoreMock.batchQueueTaggingJobs.mockClear();
     galleryStoreMock.batchUpdateVisibility.mockClear();
+    galleryStoreMock.hasMore.mockClear();
     galleryStoreMock.toggleFavorite.mockClear();
     albumStoreMock.addMedia.mockClear();
     albumStoreMock.load.mockClear();
@@ -267,7 +275,11 @@ describe('MediaBrowserComponent', () => {
     const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
     Object.defineProperty(content, 'clientHeight', { value: 400, configurable: true });
     Object.defineProperty(content, 'scrollHeight', { value: 1400, configurable: true });
-    Object.defineProperty(content, 'scrollTop', { value: 1000, writable: true, configurable: true });
+    Object.defineProperty(content, 'scrollTop', {
+      value: 1000,
+      writable: true,
+      configurable: true,
+    });
     fixture.componentInstance.onContentScroll();
     (fixture.componentInstance as any).syncActiveSection();
 
@@ -309,11 +321,7 @@ describe('MediaBrowserComponent', () => {
       {
         date: '2026-03-28',
         label: 'March 28, 2026',
-        items: [
-          makeMedia('m1', 1600, 900),
-          makeMedia('m2', 700, 1000),
-          makeMedia('m3', 1300, 900),
-        ],
+        items: [makeMedia('m1', 1600, 900), makeMedia('m2', 700, 1000), makeMedia('m3', 1300, 900)],
       },
     ] satisfies DayGroup[]);
     fixture.componentRef.setInput('timeline', []);
@@ -321,7 +329,9 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.isCompactLayout()).toBe(true);
-    expect(fixture.componentInstance.justifiedDayGroups()[0]?.rows[0]?.height).toBeLessThanOrEqual(260);
+    expect(fixture.componentInstance.justifiedDayGroups()[0]?.rows[0]?.height).toBeLessThanOrEqual(
+      260,
+    );
   });
 
   it('enters selection mode when a media card is selected', async () => {
@@ -369,24 +379,28 @@ describe('MediaBrowserComponent', () => {
 
     const fixture = TestBed.createComponent(MediaBrowserComponent);
     const media = makeMedia('m1', 100, 100);
+    const secondMedia = makeMedia('m2', 120, 120);
     fixture.componentRef.setInput('dayGroups', [
       {
         date: '2026-03-28',
         label: 'March 28, 2026',
-        items: [media],
+        items: [media, secondMedia],
       },
     ] satisfies DayGroup[]);
     fixture.detectChanges();
 
     fixture.componentInstance.onMediaActivated(media);
 
-    expect(dialogMock.open).toHaveBeenCalledWith(MediaInspectorDialogComponent, expect.objectContaining({
-      data: { media },
-      width: '99.5vw',
-      maxWidth: '2400px',
-      height: '96vh',
-      panelClass: 'media-inspector-dialog-panel',
-    }));
+    expect(dialogMock.open).toHaveBeenCalledWith(
+      MediaInspectorDialogComponent,
+      expect.objectContaining({
+        data: { items: [media, secondMedia], activeMediaId: media.id },
+        width: '100vw',
+        maxWidth: '100vw',
+        height: '100vh',
+        panelClass: 'media-inspector-dialog-panel',
+      }),
+    );
   });
 
   it('keeps click behavior in selection mode on selection toggle instead of opening the inspector', async () => {
@@ -406,7 +420,10 @@ describe('MediaBrowserComponent', () => {
     fixture.componentInstance.onMediaSelectionToggled(media);
 
     expect(fixture.componentInstance.selectionCount()).toBe(1);
-    expect(dialogMock.open).not.toHaveBeenCalledWith(MediaInspectorDialogComponent, expect.anything());
+    expect(dialogMock.open).not.toHaveBeenCalledWith(
+      MediaInspectorDialogComponent,
+      expect.anything(),
+    );
   });
 
   it('shows restore-only actions in trash mode', async () => {
@@ -573,5 +590,4 @@ describe('MediaBrowserComponent', () => {
     expect(fixture.componentInstance.selectionCount()).toBe(1);
     expect(fixture.componentInstance.isMediaSelected('m2')).toBe(true);
   });
-
 });

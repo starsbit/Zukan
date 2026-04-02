@@ -1,4 +1,19 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, QueryList, ViewChild, ViewChildren, computed, effect, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  QueryList,
+  ViewChild,
+  ViewChildren,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -17,7 +32,10 @@ import { DayGroup } from '../../utils/gallery-grouping.utils';
 import { MediaCardComponent } from './media-card/media-card.component';
 import { MediaTimelineComponent } from './media-timeline/media-timeline.component';
 import { MatCard, MatCardContent, MatCardHeader, MatCardTitle } from '@angular/material/card';
-import { AlbumPickerDialogComponent, AlbumPickerDialogValue } from '../album/album-picker-dialog/album-picker-dialog.component';
+import {
+  AlbumPickerDialogComponent,
+  AlbumPickerDialogValue,
+} from '../album/album-picker-dialog/album-picker-dialog.component';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 
 interface GallerySectionAnchor {
@@ -59,8 +77,18 @@ const SKELETON_ASPECT_RATIO = 4 / 3;
 
 @Component({
   selector: 'zukan-media-browser',
-  imports: [MatButtonModule, MatIconModule, MatSnackBarModule, MatToolbarModule, MediaCardComponent, MediaTimelineComponent, 
-    MatCardContent, MatCard, MatCardTitle, MatCardHeader],
+  imports: [
+    MatButtonModule,
+    MatIconModule,
+    MatSnackBarModule,
+    MatToolbarModule,
+    MediaCardComponent,
+    MediaTimelineComponent,
+    MatCardContent,
+    MatCard,
+    MatCardTitle,
+    MatCardHeader,
+  ],
   templateUrl: './media-browser.component.html',
   styleUrl: './media-browser.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -102,7 +130,7 @@ export class MediaBrowserComponent {
   readonly selectedIds = signal<string[]>([]);
   readonly isCompactLayout = computed(() => this.contentWidth() < 768);
   readonly isEmpty = computed(
-    () => !this.loading() && this.dayGroups().length === 0 && this.timeline().length === 0,
+    () => !this.loading() && this.dayGroups().length === 0,
   );
   readonly justifiedDayGroups = computed(() => this.buildJustifiedDayGroups());
   readonly timelineEntries = computed(() => this.buildTimelineEntries());
@@ -117,7 +145,7 @@ export class MediaBrowserComponent {
     return allIds.length > 0 && allIds.every((id) => this.selectedIdSet().has(id));
   });
 
-  private sectionAnchors: GallerySectionAnchor[] = [];
+  private readonly _sectionAnchors = signal<GallerySectionAnchor[]>([]);
   private resizeObserver?: ResizeObserver;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
@@ -176,12 +204,13 @@ export class MediaBrowserComponent {
   }
 
   onMediaActivated(media: MediaRead): void {
+    const items = this.dayGroups().flatMap((group) => group.items);
     this.dialog.open(MediaInspectorDialogComponent, {
-      data: { media },
-      width: '99.5vw',
-      maxWidth: '2400px',
-      height: '96vh',
-      maxHeight: '96vh',
+      data: { items, activeMediaId: media.id },
+      width: '100vw',
+      maxWidth: '100vw',
+      height: '100vh',
+      maxHeight: '100vh',
       autoFocus: false,
       panelClass: 'media-inspector-dialog-panel',
     });
@@ -189,9 +218,7 @@ export class MediaBrowserComponent {
   }
 
   onFavoriteToggled(media: MediaRead): void {
-    this.galleryStore.toggleFavorite(media)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe();
+    this.galleryStore.toggleFavorite(media).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
 
   onMediaSelectionToggled(media: MediaRead): void {
@@ -211,7 +238,7 @@ export class MediaBrowserComponent {
     }
     event?.stopPropagation();
     const groupIds = group.rows
-      .flatMap(row => row.items.map(item => item.media?.id))
+      .flatMap((row) => row.items.map((item) => item.media?.id))
       .filter((id): id is string => id !== undefined);
     const set = new Set(this.selectedIds());
     const allSelected = groupIds.every((id) => set.has(id));
@@ -239,21 +266,31 @@ export class MediaBrowserComponent {
       return;
     }
 
-    this.confirmDialog.open({
-      title: 'Move selected media to trash?',
-      message: `Move ${ids.length} selected item${ids.length === 1 ? '' : 's'} to the trash?`,
-      confirmLabel: 'Move to trash',
-      tone: 'warn',
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
+    this.confirmDialog
+      .open({
+        title: 'Move selected media to trash?',
+        message: `Move ${ids.length} selected item${ids.length === 1 ? '' : 's'} to the trash?`,
+        confirmLabel: 'Move to trash',
+        tone: 'warn',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
 
-      this.galleryStore.batchDelete(ids).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-        this.clearSelection();
-        this.snackBar.open(`Moved ${ids.length} item${ids.length === 1 ? '' : 's'} to trash.`, 'Close', { duration: 4000 });
+        this.galleryStore
+          .batchDelete(ids)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(() => {
+            this.clearSelection();
+            this.snackBar.open(
+              `Moved ${ids.length} item${ids.length === 1 ? '' : 's'} to trash.`,
+              'Close',
+              { duration: 4000 },
+            );
+          });
       });
-    });
   }
 
   requestRestoreSelection(): void {
@@ -271,21 +308,31 @@ export class MediaBrowserComponent {
       return;
     }
 
-    this.confirmDialog.open({
-      title: 'Reprocess tagging?',
-      message: `Queue tagging again for ${ids.length} selected item${ids.length === 1 ? '' : 's'}?`,
-      confirmLabel: 'Reprocess tagging',
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
+    this.confirmDialog
+      .open({
+        title: 'Reprocess tagging?',
+        message: `Queue tagging again for ${ids.length} selected item${ids.length === 1 ? '' : 's'}?`,
+        confirmLabel: 'Reprocess tagging',
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
 
-      this.galleryStore.batchQueueTaggingJobs(ids).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
-        this.uploadTracker.registerRetagging(this.selectedMedia());
-        this.clearSelection();
-        this.snackBar.open(`Queued tagging for ${result.queued} item${result.queued === 1 ? '' : 's'}.`, 'Close', { duration: 4000 });
+        this.galleryStore
+          .batchQueueTaggingJobs(ids)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe((result) => {
+            this.uploadTracker.registerRetagging(this.selectedMedia());
+            this.clearSelection();
+            this.snackBar.open(
+              `Queued tagging for ${result.queued} item${result.queued === 1 ? '' : 's'}.`,
+              'Close',
+              { duration: 4000 },
+            );
+          });
       });
-    });
   }
 
   addSelectionToAlbum(): void {
@@ -294,32 +341,35 @@ export class MediaBrowserComponent {
       return;
     }
 
-    this.dialog.open(AlbumPickerDialogComponent, {
-      data: {
-        title: 'Add to album',
-        confirmLabel: 'Add to album',
-        selectedCount: ids.length,
-      },
-      maxWidth: '560px',
-      width: '100%',
-    }).afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((value: AlbumPickerDialogValue | undefined) => {
-      if (!value) {
-        return;
-      }
+    this.dialog
+      .open(AlbumPickerDialogComponent, {
+        data: {
+          title: 'Add to album',
+          confirmLabel: 'Add to album',
+          selectedCount: ids.length,
+        },
+        maxWidth: '560px',
+        width: '100%',
+      })
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value: AlbumPickerDialogValue | undefined) => {
+        if (!value) {
+          return;
+        }
 
-      this.albumStore.addMedia(value.albumId, ids)
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe((result) => {
-          this.clearSelection();
-          this.snackBar.open(
-            `Added ${result.processed} item${result.processed === 1 ? '' : 's'} to ${value.albumName}.`,
-            'Close',
-            { duration: 4000 },
-          );
-        });
-    });
+        this.albumStore
+          .addMedia(value.albumId, ids)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe((result) => {
+            this.clearSelection();
+            this.snackBar.open(
+              `Added ${result.processed} item${result.processed === 1 ? '' : 's'} to ${value.albumName}.`,
+              'Close',
+              { duration: 4000 },
+            );
+          });
+      });
   }
 
   updateSelectionVisibility(visibility: MediaVisibility): void {
@@ -329,27 +379,37 @@ export class MediaBrowserComponent {
     }
 
     const visibilityLabel = visibility === MediaVisibility.PUBLIC ? 'public' : 'private';
-    this.confirmDialog.open({
-      title: `Make selected media ${visibilityLabel}?`,
-      message: `Change ${ids.length} selected item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}?`,
-      confirmLabel: `Make ${visibilityLabel}`,
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
+    this.confirmDialog
+      .open({
+        title: `Make selected media ${visibilityLabel}?`,
+        message: `Change ${ids.length} selected item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}?`,
+        confirmLabel: `Make ${visibilityLabel}`,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
 
-      this.galleryStore.batchUpdateVisibility(ids, visibility).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-        this.clearSelection();
-        this.snackBar.open(`Updated ${ids.length} item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}.`, 'Close', { duration: 4000 });
+        this.galleryStore
+          .batchUpdateVisibility(ids, visibility)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe(() => {
+            this.clearSelection();
+            this.snackBar.open(
+              `Updated ${ids.length} item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}.`,
+              'Close',
+              { duration: 4000 },
+            );
+          });
       });
-    });
   }
 
   isDaySelected(group: JustifiedDayGroup): boolean {
     const ids = group.rows
-      .flatMap(row => row.items.map(item => item.media?.id))
+      .flatMap((row) => row.items.map((item) => item.media?.id))
       .filter((id): id is string => id !== undefined);
-    return ids.length > 0 && ids.every(id => this.selectedIdSet().has(id));
+    return ids.length > 0 && ids.every((id) => this.selectedIdSet().has(id));
   }
 
   isMediaSelected(id: string): boolean {
@@ -364,11 +424,9 @@ export class MediaBrowserComponent {
   @HostListener('document:keydown', ['$event'])
   onDocumentKeydown(event: KeyboardEvent): void {
     const target = event.target as HTMLElement | null;
-    const isEditable = !!target && (
-      target.tagName === 'INPUT'
-      || target.tagName === 'TEXTAREA'
-      || target.isContentEditable
-    );
+    const isEditable =
+      !!target &&
+      (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
     if (isEditable) {
       return;
@@ -391,9 +449,7 @@ export class MediaBrowserComponent {
 
   private toggleSelection(id: string): void {
     this.selectedIds.update((ids) =>
-      ids.includes(id)
-        ? ids.filter((existingId) => existingId !== id)
-        : [...ids, id],
+      ids.includes(id) ? ids.filter((existingId) => existingId !== id) : [...ids, id],
     );
   }
 
@@ -440,11 +496,9 @@ export class MediaBrowserComponent {
       return;
     }
 
-    this.daySections.changes
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
-        this.syncSectionAnchors();
-      });
+    this.daySections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.syncSectionAnchors();
+    });
     this.syncSectionAnchors();
   }
 
@@ -463,17 +517,17 @@ export class MediaBrowserComponent {
 
   private syncSectionAnchors(): void {
     const sections = this.daySections?.toArray() ?? [];
-    this.sectionAnchors = sections.map((sectionRef) => {
+    this._sectionAnchors.set(sections.map((sectionRef) => {
       const element = sectionRef.nativeElement;
       const date = element.dataset['date'] ?? '';
-      const [year, month] = date.split('-').map(part => Number(part));
+      const [year, month] = date.split('-').map((part) => Number(part));
       return {
         id: element.id,
         date,
         year,
         month,
       };
-    });
+    }));
     this.tryResolvePendingJump();
     this.scheduleActiveSectionSync();
   }
@@ -500,26 +554,41 @@ export class MediaBrowserComponent {
     }
 
     const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
-    const scrollProgress = maxScrollTop <= 0 ? 0 : this.clamp(content.scrollTop / maxScrollTop, 0, 1);
+    const scrollProgress =
+      maxScrollTop <= 0 ? 0 : this.clamp(content.scrollTop / maxScrollTop, 0, 1);
     const startPosition = timelineMonths[0]?.position ?? 0;
     const endPosition = timelineMonths[timelineMonths.length - 1]?.position ?? startPosition;
     const activePosition = startPosition + (endPosition - startPosition) * scrollProgress;
-    const activeIndex = this.resolveActiveMonthIndex(timelineMonths, 0, timelineMonths.length - 1, activePosition);
+    const activeIndex = this.resolveActiveMonthIndex(
+      timelineMonths,
+      0,
+      timelineMonths.length - 1,
+      activePosition,
+    );
     const activeMonth = timelineMonths[activeIndex] ?? timelineMonths[0];
 
     this.activeTimelineProgress.set(activePosition);
     this.activeYear.set(activeMonth?.year ?? null);
-    this.activeMonthKey.set(activeMonth ? this.monthKey(activeMonth.year, activeMonth.month) : null);
+    this.activeMonthKey.set(
+      activeMonth ? this.monthKey(activeMonth.year, activeMonth.month) : null,
+    );
   }
 
   private buildTimelineEntries(): GalleryTimelineYear[] {
     const anchorMap = new Map<string, string>();
-    const sources = this.sectionAnchors.length > 0
-      ? this.sectionAnchors
-      : this.justifiedDayGroups().map(group => {
-          const parts = group.date.split('-').map(part => Number(part));
-          return { id: this.sectionId(group.date), date: group.date, year: parts[0]!, month: parts[1]! };
-        });
+    const sectionAnchors = this._sectionAnchors();
+    const sources =
+      sectionAnchors.length > 0
+        ? sectionAnchors
+        : this.justifiedDayGroups().map((group) => {
+            const parts = group.date.split('-').map((part) => Number(part));
+            return {
+              id: this.sectionId(group.date),
+              date: group.date,
+              year: parts[0]!,
+              month: parts[1]!,
+            };
+          });
 
     for (const anchor of sources) {
       const key = this.monthKey(anchor.year, anchor.month);
@@ -564,7 +633,7 @@ export class MediaBrowserComponent {
 
     const timelineMonths = this.flattenTimelineMonths();
     const targetIndex = timelineMonths.findIndex(
-      month => this.monthKey(month.year, month.month) === targetKey,
+      (month) => this.monthKey(month.year, month.month) === targetKey,
     );
 
     if (targetIndex === -1) {
@@ -613,7 +682,7 @@ export class MediaBrowserComponent {
   }
 
   private flattenTimelineMonths() {
-    return this.timelineEntries().flatMap(entry => entry.months);
+    return this.timelineEntries().flatMap((entry) => entry.months);
   }
 
   private resolveActiveMonthIndex(
@@ -651,7 +720,7 @@ export class MediaBrowserComponent {
     }
 
     if (this.timeline().length === 0 && this.dayGroups().length > 0) {
-      return this.dayGroups().map(group => ({
+      return this.dayGroups().map((group) => ({
         date: group.date,
         label: group.label,
         itemCount: group.items.length,
@@ -673,7 +742,7 @@ export class MediaBrowserComponent {
             isSkeleton: false,
           });
         }
-      } else {
+      } else if (this.loading() || this.galleryStore.hasMore()) {
         result.push(this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap));
       }
     }
@@ -741,7 +810,12 @@ export class MediaBrowserComponent {
     );
   }
 
-  private justifyRows(items: MediaRead[], contentWidth: number, targetRowHeight: number, gap: number): JustifiedRow[] {
+  private justifyRows(
+    items: MediaRead[],
+    contentWidth: number,
+    targetRowHeight: number,
+    gap: number,
+  ): JustifiedRow[] {
     const rows: JustifiedRow[] = [];
     let rowItems: MediaRead[] = [];
     let aspectSum = 0;
@@ -759,7 +833,7 @@ export class MediaBrowserComponent {
         ? this.clamp(naturalHeight, minRowHeight, maxRowHeight)
         : Math.min(targetRowHeight, maxRowHeight);
 
-      const widths = rowItems.map(item => rowHeight * this.aspectRatioFor(item));
+      const widths = rowItems.map((item) => rowHeight * this.aspectRatioFor(item));
       if (justify) {
         const totalWidth = widths.reduce((sum, width) => sum + width, 0);
         const scale = totalWidth > 0 ? (contentWidth - gapWidth) / totalWidth : 1;

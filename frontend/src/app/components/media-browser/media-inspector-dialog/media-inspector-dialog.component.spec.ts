@@ -1,22 +1,25 @@
 import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
+import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MediaDetail, MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { MediaEntityType } from '../../../models/relations';
+import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
+import { TagsClientService } from '../../../services/web/tags-client.service';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog.component';
 
-function makeMedia(overrides: Partial<MediaRead> = {}): MediaRead {
+function makeMedia(id = 'm1', overrides: Partial<MediaRead> = {}): MediaRead {
   return {
-    id: 'm1',
+    id,
     uploader_id: 'uploader-1',
     uploader_username: 'shirou',
     owner_id: 'owner-1',
     owner_username: 'rin',
     visibility: MediaVisibility.PUBLIC,
-    filename: 'media.jpg',
-    original_filename: 'hero-image.jpg',
+    filename: `${id}.jpg`,
+    original_filename: `${id}-original.jpg`,
     media_type: MediaType.IMAGE,
     metadata: {
       file_size: 2048,
@@ -44,9 +47,9 @@ function makeMedia(overrides: Partial<MediaRead> = {}): MediaRead {
   };
 }
 
-function makeDetail(overrides: Partial<MediaDetail> = {}): MediaDetail {
+function makeDetail(id = 'm1', overrides: Partial<MediaDetail> = {}): MediaDetail {
   return {
-    ...makeMedia(),
+    ...makeMedia(id),
     tag_details: [],
     external_refs: [
       {
@@ -72,97 +75,172 @@ function makeDetail(overrides: Partial<MediaDetail> = {}): MediaDetail {
 }
 
 describe('MediaInspectorDialogComponent', () => {
-  it('loads media detail and renders metadata, characters, and tags', async () => {
+  async function createComponent(overrides?: {
+    get?: ReturnType<typeof vi.fn>;
+    getFileUrl?: ReturnType<typeof vi.fn>;
+    update?: ReturnType<typeof vi.fn>;
+    items?: MediaRead[];
+  }) {
     const mediaService = {
-      get: vi.fn(() => of(makeDetail())),
-      getFileUrl: vi.fn(() => of('blob:file')),
+      get: overrides?.get ?? vi.fn((id: string) => of(makeDetail(id))),
+      getFileUrl: overrides?.getFileUrl ?? vi.fn((id: string) => of(`blob:${id}`)),
+      update: overrides?.update ?? vi.fn((id: string, body: unknown) => of(makeDetail(id, body as Partial<MediaDetail>))),
+      getCharacterSuggestions: vi.fn(() => of([{ name: 'Rin Tohsaka', media_count: 7 }])),
+    };
+    const galleryStore = {
+      patchItem: vi.fn(),
+    };
+    const dialogRef = {
+      close: vi.fn(),
+    };
+    const tagsClient = {
+      list: vi.fn(() => of({ items: [{ id: 1, name: 'hero', category: 0, category_name: 'general', category_key: 'general', media_count: 10 }] })),
     };
 
+    const items = overrides?.items ?? [makeMedia('m1'), makeMedia('m2', { media_type: MediaType.GIF })];
+
     await TestBed.configureTestingModule({
-      imports: [MediaInspectorDialogComponent],
+      imports: [MediaInspectorDialogComponent, NoopAnimationsModule],
       providers: [
         { provide: MediaService, useValue: mediaService },
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: MAT_DIALOG_DATA, useValue: { media: makeMedia() } },
+        { provide: GalleryStore, useValue: galleryStore },
+        { provide: TagsClientService, useValue: tagsClient },
+        { provide: MatDialogRef, useValue: dialogRef },
+        { provide: MAT_DIALOG_DATA, useValue: { items, activeMediaId: 'm1' } },
       ],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(MediaInspectorDialogComponent);
     fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    return { fixture, mediaService, galleryStore, dialogRef, tagsClient, items };
+  }
+
+  it('loads media detail and renders metadata, characters, tags, and OCR sections', async () => {
+    const { fixture, mediaService } = await createComponent();
 
     expect(mediaService.get).toHaveBeenCalledWith('m1');
     expect(mediaService.getFileUrl).toHaveBeenCalledWith('m1');
-    expect(fixture.nativeElement.textContent).toContain('Metadata');
-    expect(fixture.nativeElement.textContent).toContain('Author & Source');
+    expect(fixture.nativeElement.textContent).toContain('Summary');
     expect(fixture.nativeElement.textContent).toContain('Characters');
     expect(fixture.nativeElement.textContent).toContain('Saber Alter');
     expect(fixture.nativeElement.textContent).toContain('Tags');
     expect(fixture.nativeElement.textContent).toContain('white hair');
-    expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:file');
+    expect(fixture.nativeElement.textContent).toContain('Detected text');
+    expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
   });
 
   it('renders videos with native controls', async () => {
-    const mediaService = {
-      get: vi.fn(() => of(makeDetail({
+    const { fixture } = await createComponent({
+      items: [makeMedia('m1', { media_type: MediaType.VIDEO })],
+      get: vi.fn(() => of(makeDetail('m1', {
         media_type: MediaType.VIDEO,
         poster_status: ProcessingStatus.DONE,
         metadata: {
-          ...makeMedia().metadata,
+          ...makeMedia('m1').metadata,
           duration_seconds: 90,
+          mime_type: 'video/mp4',
         },
       }))),
       getFileUrl: vi.fn(() => of('blob:video')),
-    };
-
-    await TestBed.configureTestingModule({
-      imports: [MediaInspectorDialogComponent],
-      providers: [
-        { provide: MediaService, useValue: mediaService },
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: MAT_DIALOG_DATA, useValue: { media: makeMedia({ media_type: MediaType.VIDEO }) } },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(MediaInspectorDialogComponent);
-    fixture.detectChanges();
+    });
 
     const video = fixture.nativeElement.querySelector('video') as HTMLVideoElement | null;
     expect(video).not.toBeNull();
     expect(video?.controls).toBe(true);
   });
 
-  it('omits empty optional values and shows an error when loading fails', async () => {
-    const mediaService = {
-      get: vi.fn(() => throwError(() => new Error('failed'))),
-      getFileUrl: vi.fn(() => throwError(() => new Error('failed'))),
-    };
+  it('navigates between media items and loads the next item in place', async () => {
+    const { fixture, mediaService } = await createComponent();
 
-    await TestBed.configureTestingModule({
-      imports: [MediaInspectorDialogComponent],
-      providers: [
-        { provide: MediaService, useValue: mediaService },
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        {
-          provide: MAT_DIALOG_DATA,
-          useValue: {
-            media: makeMedia({
-              original_filename: null,
-              owner_id: null,
-              owner_username: null,
-              uploader_id: null,
-              uploader_username: null,
-              tags: [],
-            }),
-          },
-        },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(MediaInspectorDialogComponent);
+    fixture.componentInstance.next();
+    fixture.detectChanges();
+    await fixture.whenStable();
     fixture.detectChanges();
 
+    expect(mediaService.get).toHaveBeenCalledWith('m2');
+    expect(fixture.componentInstance.activeIndex()).toBe(1);
+    expect(fixture.nativeElement.textContent).toContain('2 / 2');
+  });
+
+  it('supports keyboard navigation and escape close', async () => {
+    const { fixture, dialogRef } = await createComponent();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.activeIndex()).toBe(1);
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(dialogRef.close).toHaveBeenCalled();
+  });
+
+  it('resets zoom when navigating between items', async () => {
+    const { fixture } = await createComponent();
+
+    fixture.componentInstance['zoom'].set(2);
+    fixture.componentInstance['panX'].set(10);
+    fixture.componentInstance['panY'].set(8);
+
+    fixture.componentInstance.next();
+
+    expect(fixture.componentInstance.zoom()).toBe(1);
+    expect(fixture.componentInstance.panX()).toBe(0);
+    expect(fixture.componentInstance.panY()).toBe(0);
+  });
+
+  it('builds the combined save payload, clears empty values, and patches gallery state', async () => {
+    const updated = makeDetail('m1', {
+      tags: ['hero'],
+      entities: [
+        {
+          id: 'entity-2',
+          entity_type: MediaEntityType.CHARACTER,
+          entity_id: null,
+          name: 'Rin Tohsaka',
+          role: 'primary',
+          source: 'manual',
+          confidence: null,
+        },
+      ],
+      ocr_text_override: null,
+      version: 2,
+    });
+    const update = vi.fn(() => of(updated));
+    const { fixture, mediaService, galleryStore } = await createComponent({ update });
+
+    fixture.componentInstance.beginEdit();
+    fixture.componentInstance.removeTag('Saber');
+    fixture.componentInstance.removeTag('white hair');
+    fixture.componentInstance.addTypedTag();
+    fixture.componentInstance.selectTag('hero');
+    fixture.componentInstance.removeCharacter('Saber Alter');
+    fixture.componentInstance.selectCharacter('Rin Tohsaka');
+    fixture.componentInstance.updateOcrOverride('   ');
+    fixture.componentInstance.save();
+    await fixture.whenStable();
+
+    expect(mediaService.update).toHaveBeenCalledWith('m1', {
+      tags: ['hero'],
+      entities: [{ entity_type: MediaEntityType.CHARACTER, name: 'Rin Tohsaka' }],
+      ocr_text_override: null,
+      version: 1,
+    });
+    expect(galleryStore.patchItem).toHaveBeenCalledWith(updated);
+    expect(fixture.componentInstance.editing()).toBe(false);
+  });
+
+  it('shows save errors and load failures without crashing', async () => {
+    const { fixture, mediaService } = await createComponent({
+      get: vi.fn(() => throwError(() => new Error('detail failed'))),
+      getFileUrl: vi.fn(() => throwError(() => new Error('file failed'))),
+      update: vi.fn(() => throwError(() => ({ status: 409 }))),
+    });
+
     expect(fixture.nativeElement.textContent).toContain('Unable to load');
-    expect(fixture.nativeElement.textContent).not.toContain('Original filename');
-    expect(fixture.nativeElement.textContent).not.toContain('Owner');
+
+    fixture.componentInstance.save();
+    expect(mediaService.update).toHaveBeenCalledTimes(1);
   });
 });
