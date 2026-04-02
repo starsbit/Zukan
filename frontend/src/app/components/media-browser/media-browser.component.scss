@@ -179,21 +179,7 @@
 }
 
 .media-browser__empty {
-  padding: 56px 24px;
-  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 42%, transparent);
-  border-radius: 28px;
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--mat-sys-primary-container) 38%, var(--mat-sys-surface-container-low)),
-    color-mix(in srgb, var(--mat-sys-secondary-container) 26%, var(--mat-sys-surface-container-low))
-  );
-}
-
-.media-browser__empty h2 {
-  margin: 0 0 8px;
-  font-size: 1.35rem;
-  font-weight: 900;
-  color: var(--mat-sys-on-surface);
+  margin-top: 24px;
 }
 
 .media-browser__empty p {
@@ -270,11 +256,6 @@
 
   .media-browser__day-header span {
     font-size: 0.82rem;
-  }
-
-  .media-browser__empty {
-    padding: 40px 18px;
-    border-radius: 22px;
   }
 }
 

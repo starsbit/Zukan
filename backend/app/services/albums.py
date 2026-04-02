@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -186,12 +186,21 @@ class AlbumService:
         page_size: int,
     ) -> MediaCursorPage:
         await self.get_album_for_user(album_id, user)
+        media_repo = MediaRepository(self._db)
         stmt = (
             select(Media, AlbumMedia.position)
             .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
             .join(AlbumMedia, AlbumMedia.media_id == Media.id)
             .where(AlbumMedia.album_id == album_id, Media.deleted_at.is_(None))
         )
+        if not user.is_admin:
+            stmt = stmt.where(
+                or_(
+                    Media.uploader_id == user.id,
+                    Media.owner_id == user.id,
+                    media_repo.external_visibility_ready_clause(),
+                )
+            )
         if not user.show_nsfw:
             stmt = stmt.where(Media.is_nsfw == False)
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)

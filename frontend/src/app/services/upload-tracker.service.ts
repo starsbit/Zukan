@@ -453,6 +453,7 @@ export class UploadTrackerService implements OnDestroy {
     this.mediaPollTimers.clear();
     this.mediaPollSubscriptions.clear();
     this.resolvedMediaIds.clear();
+    this.galleryStore.clearOptimisticItems();
     this.pendingRequests.set([]);
     this.trackedBatches.set({});
     this.failedUploadFiles.set([]);

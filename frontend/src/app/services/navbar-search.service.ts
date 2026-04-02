@@ -124,7 +124,7 @@ export class NavbarSearchService {
     }
 
     const lowerValue = normalized.toLowerCase();
-    this._draftChips.update((chips) =>
+    this.updateDraftChips((chips) =>
       chips.some((chip) => chip.type === 'tag' && chip.value.toLowerCase() === lowerValue)
         ? chips
         : [...chips, { type: 'tag', value: normalized }],
@@ -138,7 +138,7 @@ export class NavbarSearchService {
       return;
     }
 
-    this._draftChips.update((chips) => [
+    this.updateDraftChips((chips) => [
       ...chips.filter((chip) => chip.type !== 'character'),
       { type: 'character', value: normalized },
     ]);
@@ -151,7 +151,7 @@ export class NavbarSearchService {
       return;
     }
 
-    this._draftChips.update((chips) => [
+    this.updateDraftChips((chips) => [
       ...chips.filter((chip) => chip.type !== 'series'),
       { type: 'series', value: normalized },
     ]);
@@ -160,7 +160,7 @@ export class NavbarSearchService {
 
   setOcr(value: string): void {
     const normalized = value.trim();
-    this._draftChips.update((chips) => {
+    this.updateDraftChips((chips) => {
       const withoutOcr = chips.filter((chip) => chip.type !== 'ocr');
       return normalized ? [...withoutOcr, { type: 'ocr', value: normalized }] : withoutOcr;
     });
@@ -168,13 +168,13 @@ export class NavbarSearchService {
   }
 
   removeChip(chip: SearchChip): void {
-    this._draftChips.update((chips) =>
+    this.updateDraftChips((chips) =>
       chips.filter((candidate) => !(candidate.type === chip.type && candidate.value === chip.value)),
     );
   }
 
   removeLastChip(): void {
-    this._draftChips.update((chips) => chips.slice(0, -1));
+    this.updateDraftChips((chips) => chips.slice(0, -1));
   }
 
   setAdvancedFilters(filters: Partial<AdvancedSearchFilters>): void {
@@ -213,6 +213,28 @@ export class NavbarSearchService {
       ocrText: null,
       advanced: this.emptyAdvancedFilters,
     });
+  }
+
+  private updateDraftChips(updater: (chips: SearchChip[]) => SearchChip[]): void {
+    const current = this._draftChips();
+    const next = updater(current);
+    if (next === current) {
+      return;
+    }
+
+    this._draftChips.set(next);
+    this.syncAppliedChips();
+  }
+
+  private syncAppliedChips(): void {
+    const chips = this._draftChips();
+    this._applied.update((current) => ({
+      ...current,
+      tags: chips.filter((chip) => chip.type === 'tag').map((chip) => chip.value),
+      characterName: chips.find((chip) => chip.type === 'character')?.value ?? null,
+      seriesName: chips.find((chip) => chip.type === 'series')?.value ?? null,
+      ocrText: chips.find((chip) => chip.type === 'ocr')?.value ?? null,
+    }));
   }
 
   private normalizeAdvancedFilters(filters: AdvancedSearchFilters): AdvancedSearchFilters {

@@ -25,6 +25,7 @@ from backend.app.utils.tagging import (
     TaggerBackend,
     TaggingResult,
     aggregate_tagging_results,
+    derive_series_predictions,
     tag_names_mark_nsfw,
 )
 from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_media_frames
@@ -218,8 +219,7 @@ class TagService:
             if prediction.category == 4
         ] + [
             (MediaEntityType.series, prediction)
-            for prediction in filtered_predictions
-            if prediction.category == 3
+            for prediction in derive_series_predictions(filtered_predictions)
         ]
         seen_entities: set[tuple[MediaEntityType, str]] = set()
         for entity_type, prediction in entity_predictions:

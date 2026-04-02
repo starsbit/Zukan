@@ -13,6 +13,7 @@ describe('NavbarSearchService', () => {
     service.addTag('saber');
 
     expect(service.draftChips()).toEqual([{ type: 'tag', value: 'Saber' }]);
+    expect(service.applied().tags).toEqual(['Saber']);
   });
 
   it('replaces the character chip', () => {
@@ -21,6 +22,7 @@ describe('NavbarSearchService', () => {
 
     expect(service.draftChips()).toContainEqual({ type: 'character', value: 'Saber' });
     expect(service.draftChips().filter((chip) => chip.type === 'character')).toHaveLength(1);
+    expect(service.applied().characterName).toBe('Saber');
   });
 
   it('replaces the series chip', () => {
@@ -29,6 +31,7 @@ describe('NavbarSearchService', () => {
 
     expect(service.draftChips()).toContainEqual({ type: 'series', value: 'Fate/stay night' });
     expect(service.draftChips().filter((chip) => chip.type === 'series')).toHaveLength(1);
+    expect(service.applied().seriesName).toBe('Fate/stay night');
   });
 
   it('replaces the ocr chip', () => {
@@ -37,6 +40,7 @@ describe('NavbarSearchService', () => {
 
     expect(service.draftChips()).toContainEqual({ type: 'ocr', value: 'second text' });
     expect(service.draftChips().filter((chip) => chip.type === 'ocr')).toHaveLength(1);
+    expect(service.applied().ocrText).toBe('second text');
   });
 
   it('commits pending text as OCR when applying', () => {
@@ -145,7 +149,7 @@ describe('NavbarSearchService', () => {
     });
   });
 
-  it('keeps applied advanced filters when draft chips change before the next apply', () => {
+  it('keeps applied advanced filters when chip changes sync into the current search', () => {
     service.setAdvancedFilters({
       status: 'done',
       favorited: true,
@@ -156,8 +160,23 @@ describe('NavbarSearchService', () => {
     service.setText('draft text');
 
     expect(service.appliedParams()).toEqual({
+      tag: ['Saber'],
       status: 'done',
       favorited: true,
+    });
+  });
+
+  it('removing chips updates the applied search immediately', () => {
+    service.addTag('Saber');
+    service.setCharacter('Rin');
+    service.setSeries('Fate/stay night');
+    service.removeChip({ type: 'tag', value: 'Saber' });
+    service.removeLastChip();
+
+    expect(service.applied()).toMatchObject({
+      tags: [],
+      characterName: 'Rin',
+      seriesName: null,
     });
   });
 

@@ -51,6 +51,37 @@ async def _favorite_media(client, headers: dict[str, str], media_id: str) -> dic
 
 
 @pytest.mark.asyncio
+async def test_journey_api_key_can_be_created_regenerated_and_used(journey_client):
+    access_token = await _register_and_login(journey_client, "archer", "archer@example.com")
+    jwt_headers = _auth_headers(access_token)
+
+    created = await journey_client.post("/api/v1/me/api-key", headers=jwt_headers)
+    assert created.status_code == 200
+    first_key = created.json()["api_key"]
+    assert first_key.startswith("zk_")
+
+    me_with_api_key = await journey_client.get("/api/v1/me", headers=_auth_headers(first_key))
+    assert me_with_api_key.status_code == 200
+    assert me_with_api_key.json()["username"] == "archer"
+
+    status_after_use = await journey_client.get("/api/v1/me/api-key", headers=jwt_headers)
+    assert status_after_use.status_code == 200
+    assert status_after_use.json()["has_key"] is True
+    assert status_after_use.json()["last_used_at"] is not None
+
+    regenerated = await journey_client.post("/api/v1/me/api-key", headers=jwt_headers)
+    assert regenerated.status_code == 200
+    second_key = regenerated.json()["api_key"]
+    assert second_key != first_key
+
+    old_key_response = await journey_client.get("/api/v1/me", headers=_auth_headers(first_key))
+    assert old_key_response.status_code == 401
+
+    new_key_response = await journey_client.get("/api/v1/me", headers=_auth_headers(second_key))
+    assert new_key_response.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_journey_auth_upload_media_album_and_batchs(journey_client):
     token = await _register_and_login(journey_client, "saber", "saber@starsbit.space")
     headers = _auth_headers(token)

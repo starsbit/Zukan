@@ -113,12 +113,15 @@ class AuthService:
     async def create_api_key(self, user_id: uuid.UUID) -> APIKeyCreateResponse:
         repo = APIKeyRepository(self._db)
         existing = await repo.get_by_user_id(user_id)
-        if existing is not None:
-            await self._db.delete(existing)
-
         raw = f"zk_{secrets.token_hex(32)}"
-        record = APIKey(user_id=user_id, key_hash=hash_token(raw))
-        self._db.add(record)
+        if existing is None:
+            record = APIKey(user_id=user_id, key_hash=hash_token(raw))
+            self._db.add(record)
+        else:
+            record = existing
+            record.key_hash = hash_token(raw)
+            record.created_at = datetime.now(UTC)
+            record.last_used_at = None
         await self._db.commit()
         await self._db.refresh(record)
         return APIKeyCreateResponse(

@@ -562,4 +562,25 @@ describe('GalleryStore', () => {
       expect(store.params()).toEqual({});
     });
   });
+
+  describe('clearOptimisticItems()', () => {
+    it('removes unresolved optimistic uploads without clearing server items', () => {
+      const file = new File(['x'], 'private-upload.jpg', {
+        type: 'image/jpeg',
+        lastModified: Date.parse('2026-03-29T10:00:00Z'),
+      });
+
+      store.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('server-item')]));
+
+      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'batch-1', ['optimistic-item']);
+      expect(store.items().map((item) => item.id)).toContain('optimistic-item');
+      expect(store.items().map((item) => item.id)).toContain('server-item');
+
+      store.clearOptimisticItems();
+
+      expect(store.items().map((item) => item.id)).toEqual(['server-item']);
+      expect(store.total()).toBe(1);
+    });
+  });
 });

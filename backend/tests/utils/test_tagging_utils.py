@@ -1,6 +1,14 @@
 from __future__ import annotations
 
-from backend.app.utils.tagging import TagPrediction, TaggingResult, aggregate_tagging_results, derive_character_name, tag_names_mark_nsfw
+from backend.app.utils.tagging import (
+    TagPrediction,
+    TaggingResult,
+    aggregate_tagging_results,
+    derive_character_name,
+    derive_series_predictions,
+    extract_series_name_from_character_tag,
+    tag_names_mark_nsfw,
+)
 
 
 def test_derive_character_name_uses_highest_confidence_category_4():
@@ -13,6 +21,22 @@ def test_tag_names_mark_nsfw_by_hint_or_rating():
     assert tag_names_mark_nsfw(["rating:explicit"]) is True
     assert tag_names_mark_nsfw(["Nude"]) is True
     assert tag_names_mark_nsfw(["safe"]) is False
+
+
+def test_extract_series_name_from_character_tag():
+    assert extract_series_name_from_character_tag("kanna_(blue_archive)") == "blue_archive"
+    assert extract_series_name_from_character_tag("saber") is None
+
+
+def test_derive_series_predictions_uses_explicit_and_character_suffixes():
+    predictions = [
+        TagPrediction("kanna_(blue_archive)", 4, 0.91),
+        TagPrediction("hoshino_(blue_archive)", 4, 0.88),
+        TagPrediction("blue_archive", 3, 0.42),
+        TagPrediction("safe", 0, 0.99),
+    ]
+
+    assert derive_series_predictions(predictions) == [TagPrediction("blue_archive", 3, 0.91)]
 
 
 def test_aggregate_tagging_results_keeps_max_confidence_and_nsfw():

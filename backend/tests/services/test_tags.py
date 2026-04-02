@@ -130,6 +130,36 @@ async def test_store_tagging_result_sets_status_and_persists_all_character_and_s
 
 
 @pytest.mark.asyncio
+async def test_store_tagging_result_derives_series_from_character_suffix_when_no_copyright_tag(fake_db, user, media):
+    media.uploader_id = user.id
+    media.id = uuid.uuid4()
+    result = TaggingResult(
+        predictions=[
+            TagPrediction("kanna_(blue_archive)", 4, 0.91),
+            TagPrediction("hoshino_(blue_archive)", 4, 0.89),
+            TagPrediction("safe", 0, 0.8),
+        ],
+        is_nsfw=False,
+    )
+
+    with patch("backend.app.services.tags.TagRepository") as tag_repo_cls, patch(
+        "backend.app.services.tags.MediaEntityRepository"
+    ) as entity_repo_cls:
+        tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
+        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[SimpleNamespace(id=1)], [SimpleNamespace(id=2)]])
+        fake_db.get = AsyncMock(return_value=user)
+
+        await TagService(fake_db)._store_tagging_result(media, result)
+
+    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
+    assert {(item.entity_type, item.name, item.confidence) for item in added_entities} == {
+        (MediaEntityType.character, "kanna_(blue_archive)", 0.91),
+        (MediaEntityType.character, "hoshino_(blue_archive)", 0.89),
+        (MediaEntityType.series, "blue_archive", 0.91),
+    }
+
+
+@pytest.mark.asyncio
 async def test_tag_wrappers_and_tag_media_missing_media(fake_db, user):
     service = TagService(fake_db)
 

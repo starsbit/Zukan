@@ -288,11 +288,15 @@ export class GalleryStore {
     });
   }
 
+  clearOptimisticItems(): void {
+    this.revokeOptimisticItems(this._optimisticItems());
+    this._optimisticItems.set([]);
+  }
+
   reset(): void {
     this._params.set({});
     this._items.set([]);
-    this.revokeOptimisticItems(this._optimisticItems());
-    this._optimisticItems.set([]);
+    this.clearOptimisticItems();
     this._cursor.set(null);
     this._hasMore.set(false);
     this._total.set(null);

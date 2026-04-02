@@ -54,7 +54,7 @@ describe('UploadTrackerService', () => {
       providers: [
         UploadTrackerService,
         { provide: BatchesClientService, useValue: { get, listItems } },
-        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn() } },
+        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
     }).compileComponents();
@@ -224,7 +224,7 @@ describe('UploadTrackerService', () => {
       providers: [
         UploadTrackerService,
         { provide: BatchesClientService, useValue: { get, listItems } },
-        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn() } },
+        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
     }).compileComponents();
@@ -266,7 +266,7 @@ describe('UploadTrackerService', () => {
       providers: [
         UploadTrackerService,
         { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn() } },
-        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn() } },
+        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
     }).compileComponents();
@@ -289,6 +289,7 @@ describe('UploadTrackerService', () => {
       addAcceptedUploads: vi.fn(),
       patchItem: vi.fn(),
       resolveOptimisticMediaId: vi.fn(),
+      clearOptimisticItems: vi.fn(),
     };
     const get = vi.fn().mockReturnValue(of({
       id: 'b1',
@@ -425,6 +426,7 @@ describe('UploadTrackerService', () => {
       addAcceptedUploads: vi.fn(),
       patchItem: vi.fn(),
       resolveOptimisticMediaId: vi.fn(),
+      clearOptimisticItems: vi.fn(),
     };
     const mediaService = {
       get: vi.fn()
@@ -589,11 +591,18 @@ describe('UploadTrackerService', () => {
       }],
     }));
 
+    const galleryStore = {
+      addAcceptedUploads: vi.fn(),
+      patchItem: vi.fn(),
+      resolveOptimisticMediaId: vi.fn(),
+      clearOptimisticItems: vi.fn(),
+    };
+
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
         { provide: BatchesClientService, useValue: { get, listItems } },
-        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn() } },
+        { provide: GalleryStore, useValue: galleryStore },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
     }).compileComponents();
@@ -622,8 +631,32 @@ describe('UploadTrackerService', () => {
     expect(service.visible()).toBe(false);
     expect(service.hasTrackedUploads()).toBe(false);
     expect(service.summary().totalTrackedItems).toBe(0);
+    expect(galleryStore.clearOptimisticItems).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(1000);
     expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('reset clears optimistic gallery uploads so they do not leak across account switches', async () => {
+    const galleryStore = {
+      addAcceptedUploads: vi.fn(),
+      patchItem: vi.fn(),
+      resolveOptimisticMediaId: vi.fn(),
+      clearOptimisticItems: vi.fn(),
+    };
+
+    await TestBed.configureTestingModule({
+      providers: [
+        UploadTrackerService,
+        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn() } },
+        { provide: GalleryStore, useValue: galleryStore },
+        { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const service = TestBed.inject(UploadTrackerService);
+    service.reset();
+
+    expect(galleryStore.clearOptimisticItems).toHaveBeenCalledTimes(1);
   });
 });

@@ -371,6 +371,37 @@ async def test_list_album_media_and_add_remove_paths(fake_db, user):
 
 
 @pytest.mark.asyncio
+async def test_list_album_media_scopes_processing_media_to_author_only(fake_db, user):
+    service = AlbumService(fake_db)
+    album_id = uuid.uuid4()
+    seen = {}
+
+    async def _capture_execute(stmt):
+        seen.setdefault("stmts", []).append(str(stmt))
+        if len(seen["stmts"]) == 1:
+            return ScalarResult(one=0)
+        return RowResult(rows=[])
+
+    fake_db.execute = AsyncMock(side_effect=_capture_execute)
+
+    with patch.object(service, "get_album_for_user", AsyncMock()), patch(
+        "backend.app.services.albums.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt
+    ), patch("backend.app.services.albums.UserFavoriteRepository") as fav_repo_cls, patch(
+        "backend.app.services.albums.enrich_media", return_value=[]
+    ):
+        fav_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        page = await service.list_album_media(album_id, user, tags=None, exclude_tags=None, mode="and", after=None, page_size=20)
+
+    assert page.total == 0
+    sql = "\n".join(seen["stmts"])
+    assert "media.uploader_id" in sql
+    assert "media.owner_id" in sql
+    assert "media.tagging_status" in sql
+    assert "media.thumbnail_status" in sql
+    assert "media.poster_status" in sql
+
+
+@pytest.mark.asyncio
 async def test_transfer_share_revoke_download_error_paths(fake_db, user):
     service = AlbumService(fake_db)
     album = Album(owner_id=user.id, name="a")

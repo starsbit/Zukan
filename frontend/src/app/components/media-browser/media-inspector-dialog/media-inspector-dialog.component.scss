@@ -50,11 +50,6 @@
   padding: 0.55rem 0.85rem 0.6rem;
   border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 42%, transparent);
   border-radius: 1.1rem;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--mat-sys-surface-container) 90%, transparent),
-    color-mix(in srgb, var(--mat-sys-surface-container-high) 82%, transparent)
-  );
   box-shadow:
     0 14px 34px color-mix(in srgb, black 14%, transparent),
     inset 0 1px 0 color-mix(in srgb, white 22%, transparent);

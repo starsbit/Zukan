@@ -35,17 +35,6 @@
   height: 100%;
   overflow: hidden;
   border-radius: inherit;
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--mat-sys-primary) 10%, transparent),
-      color-mix(in srgb, var(--mat-sys-tertiary) 14%, transparent)
-    ),
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, var(--mat-sys-surface)),
-      color-mix(in srgb, var(--mat-sys-surface-container) 96%, var(--mat-sys-surface))
-    );
 }
 
 .media-card--selected .media-card__surface::after {
@@ -101,19 +90,6 @@
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background:
-    linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--mat-sys-primary) 16%, transparent),
-      color-mix(in srgb, var(--mat-sys-secondary) 12%, transparent)
-    ),
-    repeating-linear-gradient(
-      -45deg,
-      color-mix(in srgb, var(--mat-sys-surface) 58%, transparent),
-      color-mix(in srgb, var(--mat-sys-surface) 58%, transparent) 14px,
-      color-mix(in srgb, var(--mat-sys-surface-container-high) 36%, transparent) 14px,
-      color-mix(in srgb, var(--mat-sys-surface-container-high) 36%, transparent) 28px
-    );
 }
 
 .media-card__placeholder--loading {

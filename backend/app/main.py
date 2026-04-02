@@ -73,6 +73,11 @@ OPENAPI_EXTERNAL_DOCS = {
     "description": "Public API behavior contract",
     "url": "/redoc",
 }
+API_KEY_AUTH_DESCRIPTION = (
+    "Authenticate with `Authorization: Bearer <token>`. "
+    "The bearer token may be either a JWT access token from `/api/v1/auth/login` "
+    "or a user-generated API key from Account Settings."
+)
 
 
 async def tagging_worker():
@@ -201,6 +206,24 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
         await queue.put(media_id)
 
     return len(ordered_media_ids)
+
+
+def _augment_openapi_security(schema: dict) -> dict:
+    components = schema.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    for scheme in security_schemes.values():
+        if not isinstance(scheme, dict):
+            continue
+        scheme_type = scheme.get("type")
+        if scheme_type in {"oauth2", "http"}:
+            description = scheme.get("description")
+            if description:
+                if API_KEY_AUTH_DESCRIPTION not in description:
+                    scheme["description"] = f"{description}\n\n{API_KEY_AUTH_DESCRIPTION}"
+            else:
+                scheme["description"] = API_KEY_AUTH_DESCRIPTION
+
+    return schema
 
 
 @asynccontextmanager
@@ -402,6 +425,7 @@ async def openapi_schema(_: User = Depends(docs_user)):
                 license_info=api.license_info,
             )
             schema["externalDocs"] = OPENAPI_EXTERNAL_DOCS
+            schema = _augment_openapi_security(schema)
             api.openapi_schema = jsonable_encoder(schema)
         except Exception:
             logger.exception("Failed to generate OpenAPI schema")

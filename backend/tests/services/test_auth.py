@@ -177,7 +177,7 @@ async def test_create_api_key_persists_hashed_record(fake_db, user):
 @pytest.mark.asyncio
 async def test_create_api_key_replaces_existing_key(fake_db, user):
     service = AuthService(fake_db)
-    existing = SimpleNamespace()
+    existing = SimpleNamespace(key_hash="old", created_at=datetime.now(UTC), last_used_at=datetime.now(UTC))
 
     with patch("backend.app.services.auth.APIKeyRepository") as repo_cls, patch(
         "backend.app.services.auth.secrets.token_hex", return_value="new-api-key"
@@ -186,7 +186,9 @@ async def test_create_api_key_replaces_existing_key(fake_db, user):
         created = await service.create_api_key(user.id)
 
     assert created.api_key == "zk_new-api-key"
-    assert fake_db.deleted == [existing]
+    assert existing.key_hash != "old"
+    assert existing.last_used_at is None
+    assert fake_db.deleted == []
 
 
 @pytest.mark.asyncio

@@ -92,6 +92,7 @@ describe('NavbarSearchComponent', () => {
     fixture.detectChanges();
 
     expect(searchService.draftChips()).toContainEqual({ type: 'tag', value: 'Saber' });
+    expect(searchService.applied().tags).toEqual(['Saber']);
   });
 
   it('creates and replaces the character chip from suggestions', async () => {
@@ -180,6 +181,18 @@ describe('NavbarSearchComponent', () => {
     component.onBackspace();
 
     expect(searchService.draftChips()).toEqual([]);
+    expect(searchService.applied().tags).toEqual([]);
+  });
+
+  it('updates the applied search when removing a chip from the navbar', async () => {
+    const { searchService, component } = await createComponent();
+
+    searchService.addTag('Saber');
+    searchService.addTag('Archer');
+
+    component.onRemoveChip({ type: 'tag', value: 'Saber' });
+
+    expect(searchService.applied().tags).toEqual(['Archer']);
   });
 
   it('hides already entered tags, characters, and series from suggestions', async () => {

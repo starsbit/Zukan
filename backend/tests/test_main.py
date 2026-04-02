@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from backend.app.main import _ensure_admin_user
+from backend.app.main import API_KEY_AUTH_DESCRIPTION, _augment_openapi_security, _ensure_admin_user
 
 
 class _FakeResult:
@@ -58,3 +58,30 @@ async def test_ensure_admin_user_does_not_recreate_default_admin_when_custom_adm
 
     assert fake_db.added == []
     assert fake_db.committed is False
+
+
+def test_augment_openapi_security_describes_api_key_on_existing_bearer_scheme():
+    schema = {
+        "components": {
+            "securitySchemes": {
+                "OAuth2PasswordBearer": {
+                    "type": "oauth2",
+                    "flows": {"password": {"tokenUrl": "/api/v1/auth/login", "scopes": {}}},
+                }
+            }
+        },
+        "paths": {
+            "/api/v1/me": {
+                "get": {"security": [{"OAuth2PasswordBearer": []}]},
+            },
+            "/api/v1/auth/login": {
+                "post": {},
+            },
+        },
+    }
+
+    augmented = _augment_openapi_security(schema)
+
+    assert API_KEY_AUTH_DESCRIPTION in augmented["components"]["securitySchemes"]["OAuth2PasswordBearer"]["description"]
+    assert augmented["paths"]["/api/v1/me"]["get"]["security"] == [{"OAuth2PasswordBearer": []}]
+    assert "security" not in augmented["paths"]["/api/v1/auth/login"]["post"]
