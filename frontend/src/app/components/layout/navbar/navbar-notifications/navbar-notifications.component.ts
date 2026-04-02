@@ -11,7 +11,13 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { EMPTY, catchError, finalize } from 'rxjs';
 import { AlbumStore } from '../../../../services/album.store';
-import { NotificationRead, NotificationType, ShareInviteNotificationData } from '../../../../models/notifications';
+import {
+  AnnouncementSeverity,
+  AppUpdateNotificationData,
+  NotificationRead,
+  NotificationType,
+  ShareInviteNotificationData,
+} from '../../../../models/notifications';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
 
@@ -43,6 +49,7 @@ export class NavbarNotificationsComponent implements OnInit {
   readonly error = signal(false);
   readonly actioningIds = signal<string[]>([]);
   readonly unreadCount = computed(() => this.notifications().filter((item) => !item.is_read).length);
+  readonly announcementSeverity = AnnouncementSeverity;
 
   ngOnInit(): void {
     if (!this.authStore.isAuthenticated()) {
@@ -78,8 +85,42 @@ export class NavbarNotificationsComponent implements OnInit {
       && notification.data.invite_status === 'pending';
   }
 
+  isAppUpdate(notification: NotificationRead): notification is NotificationRead & { data: AppUpdateNotificationData | null } {
+    return notification.type === NotificationType.APP_UPDATE;
+  }
+
+  announcementSeverityFor(notification: NotificationRead): AnnouncementSeverity | null {
+    if (!this.isAppUpdate(notification) || !notification.data || !('severity' in notification.data)) {
+      return null;
+    }
+    return notification.data.severity as AnnouncementSeverity;
+  }
+
   isActioning(notificationId: string): boolean {
     return this.actioningIds().includes(notificationId);
+  }
+
+  canMarkRead(notification: NotificationRead): boolean {
+    return !notification.is_read && !this.isPendingShareInvite(notification);
+  }
+
+  markRead(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.canMarkRead(notification) || this.isActioning(notification.id)) {
+      return;
+    }
+
+    this.setActioning(notification.id, true);
+    this.notificationsClient.markRead(notification.id).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.setActioning(notification.id, false)),
+      catchError((error: { error?: { detail?: string } }) => {
+        this.snackBar.open(error.error?.detail ?? 'Unable to mark the notification as read.', 'Close', { duration: 5000 });
+        return EMPTY;
+      }),
+    ).subscribe((updated) => {
+      this.notifications.update((items) => items.map((item) => item.id === updated.id ? updated : item));
+    });
   }
 
   acceptInvite(notification: NotificationRead, event: Event): void {

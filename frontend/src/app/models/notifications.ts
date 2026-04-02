@@ -23,7 +23,15 @@ export interface ShareInviteNotificationData {
   invite_id: string;
 }
 
-export type NotificationData = ShareInviteNotificationData | Record<string, unknown>;
+export interface AppUpdateNotificationData {
+  announcement_id: string;
+  severity: AnnouncementSeverity;
+  version: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+}
+
+export type NotificationData = ShareInviteNotificationData | AppUpdateNotificationData | Record<string, unknown>;
 
 export interface NotificationRead {
   id: string;

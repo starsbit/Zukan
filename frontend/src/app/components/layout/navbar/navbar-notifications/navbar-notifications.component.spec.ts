@@ -2,7 +2,7 @@ import { OverlayContainer } from '@angular/cdk/overlay';
 import { of, throwError } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { NotificationType } from '../../../../models/notifications';
+import { AnnouncementSeverity, NotificationType } from '../../../../models/notifications';
 import { AlbumStore } from '../../../../services/album.store';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
@@ -40,9 +40,15 @@ describe('NavbarNotificationsComponent', () => {
         type: NotificationType.APP_UPDATE,
         title: 'Update available',
         body: 'Version 1.2.0 is ready.',
-        is_read: true,
+        is_read: false,
         link_url: null,
-        data: null,
+        data: {
+          announcement_id: 'ann-1',
+          severity: AnnouncementSeverity.WARNING,
+          version: '1.2.0',
+          starts_at: null,
+          ends_at: null,
+        },
         created_at: '2026-03-27T10:00:00Z',
       },
     ],
@@ -65,7 +71,7 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(list).toHaveBeenCalledWith({ page_size: 8 });
-    expect(fixture.componentInstance.unreadCount()).toBe(1);
+    expect(fixture.componentInstance.unreadCount()).toBe(2);
 
     const element = fixture.nativeElement as HTMLElement;
     (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
@@ -76,6 +82,8 @@ describe('NavbarNotificationsComponent', () => {
     expect(overlayText).toContain('Update available');
     expect(overlayText).toContain('Accept');
     expect(overlayText).toContain('Reject');
+    expect(overlayText).toContain('warning');
+    expect(overlayText).toContain('Mark as read');
   });
 
   it('does not load notifications when not authenticated', async () => {
@@ -168,5 +176,40 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(rejectInvite).toHaveBeenCalledWith('n1');
+  });
+
+  it('marks app update notifications as read', async () => {
+    const list = vi.fn().mockReturnValue(of(notificationsResponse));
+    const markRead = vi.fn().mockReturnValue(of({
+      ...notificationsResponse.items[1],
+      is_read: true,
+    }));
+
+    await TestBed.configureTestingModule({
+      imports: [NavbarNotificationsComponent, NoopAnimationsModule],
+      providers: [
+        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+        { provide: NotificationsClientService, useValue: { list, markRead } },
+        { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
+      ],
+    }).compileComponents();
+
+    const overlayContainer = TestBed.inject(OverlayContainer);
+    const fixture = TestBed.createComponent(NavbarNotificationsComponent);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const markReadButton = Array.from(
+      overlayContainer.getContainerElement().querySelectorAll('button'),
+    ).find((button) => button.textContent?.includes('Mark as read')) as HTMLButtonElement;
+
+    markReadButton.click();
+    fixture.detectChanges();
+
+    expect(markRead).toHaveBeenCalledWith('n2');
+    expect(fixture.componentInstance.notifications().find((item) => item.id === 'n2')?.is_read).toBe(true);
   });
 });

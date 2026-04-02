@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 import pytest
 
 from backend.app.main import API_KEY_AUTH_DESCRIPTION, _augment_openapi_security, _ensure_admin_user
+from backend.app.main import OPENAPI_SERVERS
+from backend.app.logging_config import configure_logging
 
 
 class _FakeResult:
@@ -85,3 +87,21 @@ def test_augment_openapi_security_describes_api_key_on_existing_bearer_scheme():
     assert API_KEY_AUTH_DESCRIPTION in augmented["components"]["securitySchemes"]["OAuth2PasswordBearer"]["description"]
     assert augmented["paths"]["/api/v1/me"]["get"]["security"] == [{"OAuth2PasswordBearer": []}]
     assert "security" not in augmented["paths"]["/api/v1/auth/login"]["post"]
+
+
+def test_openapi_servers_default_to_current_origin_first():
+    assert OPENAPI_SERVERS[0]["url"] == "/"
+
+
+def test_configure_logging_wires_backend_and_uvicorn_loggers_to_console():
+    configure_logging("warning")
+
+    backend_logger = __import__("logging").getLogger("backend")
+    uvicorn_access_logger = __import__("logging").getLogger("uvicorn.access")
+
+    assert backend_logger.level == __import__("logging").WARNING
+    assert backend_logger.propagate is False
+    assert backend_logger.handlers
+    assert uvicorn_access_logger.level == __import__("logging").WARNING
+    assert uvicorn_access_logger.propagate is False
+    assert uvicorn_access_logger.handlers

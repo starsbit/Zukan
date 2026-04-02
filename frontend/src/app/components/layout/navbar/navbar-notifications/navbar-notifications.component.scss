@@ -2,3 +2,59 @@
   display: flex;
   align-items: center;
 }
+
+.notification-item {
+  border-left: 3px solid transparent;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.notification-unread {
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 18%, transparent);
+}
+
+.notification-app-update.notification-severity-info {
+  border-left-color: var(--mat-sys-primary);
+}
+
+.notification-app-update.notification-severity-warning {
+  border-left-color: #f59e0b;
+}
+
+.notification-app-update.notification-severity-critical {
+  border-left-color: #dc2626;
+}
+
+.notification-title-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.notification-severity-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.notification-severity-warning .notification-severity-pill {
+  background: color-mix(in srgb, #f59e0b 16%, var(--mat-sys-surface-container-high));
+  color: color-mix(in srgb, #f59e0b 82%, var(--mat-sys-on-surface));
+}
+
+.notification-severity-critical .notification-severity-pill {
+  background: color-mix(in srgb, #dc2626 14%, var(--mat-sys-surface-container-high));
+  color: color-mix(in srgb, #dc2626 84%, var(--mat-sys-on-surface));
+}
+
+.notification-severity-info .notification-severity-pill {
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 72%, transparent);
+  color: var(--mat-sys-primary);
+}

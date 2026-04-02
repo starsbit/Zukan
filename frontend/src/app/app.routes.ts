@@ -1,4 +1,6 @@
 import { Routes } from '@angular/router';
+import { AdminDashboardPageComponent } from './pages/admin-dashboard/admin-dashboard-page.component';
+import { adminGuard } from './guards/admin.guard';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
 import { AlbumComponent } from './pages/album/album.component';
@@ -24,6 +26,11 @@ export const routes: Routes = [
     path: 'gallery',
     component: GalleryComponent,
     canActivate: [authGuard],
+  },
+  {
+    path: 'admin',
+    component: AdminDashboardPageComponent,
+    canActivate: [adminGuard],
   },
   {
     path: 'album/:albumId',

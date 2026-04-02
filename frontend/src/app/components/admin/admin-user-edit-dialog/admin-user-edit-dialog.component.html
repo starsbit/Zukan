@@ -1,0 +1,46 @@
+<h2 mat-dialog-title>Edit User</h2>
+
+<mat-dialog-content [formGroup]="form" class="dialog-content">
+  <p class="dialog-copy">
+    Update the account details for <strong>{{ data.user.email }}</strong>.
+  </p>
+
+  <mat-checkbox formControlName="isAdmin">
+    Administrator access
+  </mat-checkbox>
+  @if (isSelf) {
+    <p class="dialog-copy">Your own admin role can’t be changed from this dialog.</p>
+  }
+
+  <mat-form-field appearance="outline">
+    <mat-label>Username</mat-label>
+    <input matInput formControlName="username" />
+    @if (form.controls.username.hasError('required')) {
+      <mat-error>Username is required.</mat-error>
+    } @else if (form.controls.username.hasError('minlength')) {
+      <mat-error>Username must be at least 3 characters.</mat-error>
+    }
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>New Password</mat-label>
+    <input matInput type="password" formControlName="password" />
+    @if (form.controls.password.hasError('minlength')) {
+      <mat-error>Password must be at least 8 characters.</mat-error>
+    }
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
+    <mat-label>Confirm Password</mat-label>
+    <input matInput type="password" formControlName="confirmPassword" />
+  </mat-form-field>
+
+  @if (error()) {
+    <p class="dialog-error">{{ error() }}</p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()" [disabled]="!hasChanges()">Save Changes</button>
+</mat-dialog-actions>

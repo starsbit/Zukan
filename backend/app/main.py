@@ -17,11 +17,13 @@ from backend.app.errors.error import AppError, build_error_response
 
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
+from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
 from backend.app.models.media import Media
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
+from backend.app.runtime import health_monitor
 from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
 from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue
@@ -35,20 +37,7 @@ from backend.app.ml.tagger import tagger
 from backend.app.ml.ocr import ocr_backend
 
 
-def configure_logging() -> None:
-    level_name = "INFO"
-    level = getattr(logging, level_name, logging.INFO)
-    root_logger = logging.getLogger()
-    if not root_logger.handlers:
-        logging.basicConfig(
-            level=level,
-            format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        )
-    else:
-        root_logger.setLevel(level)
-
-
-configure_logging()
+configure_logging(settings.log_level)
 logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
@@ -66,6 +55,7 @@ OPENAPI_TAGS = [
     {"name": "config", "description": "Client-facing runtime limits and feature configuration endpoints."},
 ]
 OPENAPI_SERVERS = [
+    {"url": "/", "description": "Current origin"},
     {"url": "http://localhost:8000", "description": "Local development server"},
     {"url": "http://127.0.0.1:8000", "description": "Local loopback server"},
 ]
@@ -234,6 +224,7 @@ async def lifespan(_api: FastAPI):
     tagger.load()
     ocr_backend.load()
     set_tag_queue(tag_queue)
+    health_monitor.start()
     recovered_count = await _recover_pending_media_jobs(tag_queue)
     worker = asyncio.create_task(tagging_worker())
     purge_worker = asyncio.create_task(trash_purge_worker())
@@ -245,6 +236,7 @@ async def lifespan(_api: FastAPI):
     logger.info("Application shutdown initiated")
     worker.cancel()
     purge_worker.cancel()
+    await health_monitor.stop()
     try:
         await worker
     except asyncio.CancelledError:
@@ -394,6 +386,24 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         _request_id(request),
     )
     return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
+
+
+@api.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception(
+        "Unhandled exception path=%s method=%s request_id=%s",
+        request.url.path,
+        request.method,
+        _request_id(request),
+    )
+    payload = build_error_response(
+        status_code=500,
+        code="internal_server_error",
+        message="Internal server error",
+        request_id=_request_id(request),
+        trace_id=_request_id(request),
+    )
+    return JSONResponse(status_code=500, content=payload)
 
 
 v1_router = APIRouter(prefix="/api/v1")

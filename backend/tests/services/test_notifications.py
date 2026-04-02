@@ -8,8 +8,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
+from backend.app.models.auth import User
 from backend.app.models.albums import AlbumShareInvite, AlbumShareInviteStatus, AlbumShareRole
-from backend.app.models.notifications import Notification, NotificationType
+from backend.app.models.notifications import AnnouncementSeverity, AppAnnouncement, Notification, NotificationType
 from backend.app.services.notifications import NotificationService
 from backend.tests.services.conftest import ScalarResult
 
@@ -108,3 +109,27 @@ async def test_accept_and_reject_invites(fake_db, user):
 
     assert rejected.data["invite_status"] == "rejected"
     assert any(getattr(item, "album_id", None) == invite.album_id for item in fake_db.added)
+
+
+@pytest.mark.asyncio
+async def test_publish_announcement_creates_app_update_notifications_for_all_users(fake_db):
+    service = NotificationService(fake_db)
+    announcement = AppAnnouncement(
+        id=uuid.uuid4(),
+        version="2.0.0",
+        title="Maintenance",
+        message="Nightly deployment window",
+        severity=AnnouncementSeverity.warning,
+    )
+    user_ids = [uuid.uuid4(), uuid.uuid4()]
+    fake_db.execute = AsyncMock(return_value=ScalarResult(rows=user_ids))
+
+    published = await service.publish_announcement(announcement)
+
+    assert published == 2
+    notifications = [item for item in fake_db.added if isinstance(item, Notification)]
+    assert len(notifications) == 2
+    assert all(item.type == NotificationType.app_update for item in notifications)
+    assert notifications[0].title == "Maintenance"
+    assert notifications[0].data["announcement_id"] == str(announcement.id)
+    fake_db.commit.assert_awaited_once()

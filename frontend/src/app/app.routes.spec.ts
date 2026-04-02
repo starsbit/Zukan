@@ -1,3 +1,4 @@
+import { adminGuard } from './guards/admin.guard';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
 import { routes } from './app.routes';
@@ -22,5 +23,11 @@ describe('routes', () => {
     const loginRoute = routes.find((route) => route.path === 'login');
 
     expect(loginRoute?.canActivate).toEqual([guestGuard]);
+  });
+
+  it('protects admin with adminGuard', () => {
+    const adminRoute = routes.find((route) => route.path === 'admin');
+
+    expect(adminRoute?.canActivate).toEqual([adminGuard]);
   });
 });

@@ -45,6 +45,13 @@ describe('AdminService', () => {
       http.expectNone('/api/v1/admin/stats');
     });
 
+    it('getHealth throws Forbidden', () => {
+      let err: unknown;
+      service.getHealth().subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+      http.expectNone('/api/v1/admin/health');
+    });
+
     it('listUsers throws Forbidden', () => {
       let err: unknown;
       service.listUsers().subscribe({ error: e => (err = e) });
@@ -66,6 +73,12 @@ describe('AdminService', () => {
     it('deleteUser throws Forbidden', () => {
       let err: unknown;
       service.deleteUser('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('deleteUserMedia throws Forbidden', () => {
+      let err: unknown;
+      service.deleteUserMedia('u2').subscribe({ error: e => (err = e) });
       expect((err as Error).message).toMatch(/Forbidden/);
     });
 
@@ -100,15 +113,32 @@ describe('AdminService', () => {
     beforeEach(() => userStore.set(makeUser(true)));
 
     it('getStats sends GET /api/v1/admin/stats', () => {
-      const mock = { total_users: 5, total_media: 100, total_storage_bytes: 1024, pending_tagging: 0, failed_tagging: 0, trashed_media: 0 };
+      const mock = { total_users: 5, total_media: 100, total_storage_bytes: 1024, pending_tagging: 0, failed_tagging: 0, trashed_media: 0, storage_by_user: [] };
       service.getStats().subscribe(res => expect(res).toEqual(mock));
       const req = http.expectOne('/api/v1/admin/stats');
       expect(req.request.method).toBe('GET');
       req.flush(mock);
     });
 
+    it('getHealth sends GET /api/v1/admin/health', () => {
+      const mock = {
+        generated_at: '2026-04-02T10:00:00Z',
+        uptime_seconds: 42,
+        cpu_percent: 10,
+        memory_rss_bytes: 1024,
+        system_memory_total_bytes: 4096,
+        system_memory_used_bytes: 2048,
+        tagging_queue_depth: 2,
+        samples: [],
+      };
+      service.getHealth().subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/health');
+      expect(req.request.method).toBe('GET');
+      req.flush(mock);
+    });
+
     it('listUsers sends GET /api/v1/admin/users', () => {
-      const mock = { items: [], total: 0, page: 1, page_size: 20, total_pages: 0 };
+      const mock = { items: [], total: 0, page: 1, page_size: 20 };
       service.listUsers().subscribe(res => expect(res).toEqual(mock));
       const req = http.expectOne('/api/v1/admin/users');
       expect(req.request.method).toBe('GET');
@@ -120,7 +150,7 @@ describe('AdminService', () => {
       const req = http.expectOne(r => r.url === '/api/v1/admin/users');
       expect(req.request.params.get('page')).toBe('2');
       expect(req.request.params.get('page_size')).toBe('10');
-      req.flush({ items: [], total: 0, page: 2, page_size: 10, total_pages: 0 });
+      req.flush({ items: [], total: 0, page: 2, page_size: 10 });
     });
 
     it('getUser sends GET /api/v1/admin/users/{id}', () => {
@@ -153,6 +183,14 @@ describe('AdminService', () => {
       const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2');
       expect(req.request.params.get('delete_media')).toBe('true');
       req.flush(null, { status: 204, statusText: 'No Content' });
+    });
+
+    it('deleteUserMedia sends DELETE /api/v1/admin/users/{id}/media', () => {
+      const mock = { deleted: 4 };
+      service.deleteUserMedia('u2').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2/media');
+      expect(req.request.method).toBe('DELETE');
+      req.flush(mock);
     });
 
     it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {

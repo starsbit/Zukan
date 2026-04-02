@@ -4,9 +4,11 @@ import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
 import { UserRead } from '../../models/auth';
 import {
+  AdminHealthResponse,
   AdminStatsResponse,
   AdminUserDetail,
   AdminUserUpdate,
+  DeleteUserMediaResponse,
   UserListResponse,
 } from '../../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../../models/notifications';
@@ -28,6 +30,10 @@ export class AdminClientService {
     return this.http.get<AdminStatsResponse>(`${this.base}/api/v1/admin/stats`);
   }
 
+  getHealth(): Observable<AdminHealthResponse> {
+    return this.http.get<AdminHealthResponse>(`${this.base}/api/v1/admin/health`);
+  }
+
   listUsers(p: AdminUserListParams = {}): Observable<UserListResponse> {
     let params = new HttpParams();
     if (p.page != null) params = params.set('page', p.page);
@@ -43,6 +49,10 @@ export class AdminClientService {
 
   updateUser(userId: string, body: AdminUserUpdate): Observable<UserRead> {
     return this.http.patch<UserRead>(`${this.base}/api/v1/admin/users/${userId}`, body);
+  }
+
+  deleteUserMedia(userId: string): Observable<DeleteUserMediaResponse> {
+    return this.http.delete<DeleteUserMediaResponse>(`${this.base}/api/v1/admin/users/${userId}/media`);
   }
 
   deleteUser(userId: string, deleteMedia = false): Observable<void> {

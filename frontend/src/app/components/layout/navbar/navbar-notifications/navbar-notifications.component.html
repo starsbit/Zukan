@@ -28,12 +28,23 @@
     } @else if (notifications().length === 0) {
       <div class="panel-state">No notifications yet.</div>
     } @else {
-      <div class="notifications-list">
-        @for (notification of notifications(); track notification.id) {
-          <div class="notification-item">
+        <div class="notifications-list">
+          @for (notification of notifications(); track notification.id) {
+          <div
+            class="notification-item"
+            [class.notification-unread]="!notification.is_read"
+            [class.notification-app-update]="isAppUpdate(notification)"
+            [class.notification-severity-info]="announcementSeverityFor(notification) === announcementSeverity.INFO"
+            [class.notification-severity-warning]="announcementSeverityFor(notification) === announcementSeverity.WARNING"
+            [class.notification-severity-critical]="announcementSeverityFor(notification) === announcementSeverity.CRITICAL">
             <mat-icon class="notification-icon">{{ iconFor(notification.type) }}</mat-icon>
             <div class="notification-copy">
-              <div class="notification-title">{{ notification.title }}</div>
+              <div class="notification-title-row">
+                <div class="notification-title">{{ notification.title }}</div>
+                @if (announcementSeverityFor(notification); as severity) {
+                  <span class="notification-severity-pill">{{ severity }}</span>
+                }
+              </div>
               <div class="notification-body">{{ notification.body }}</div>
               <div class="notification-meta">{{ notification.created_at | date: 'medium' }}</div>
               @if (isPendingShareInvite(notification)) {
@@ -52,6 +63,16 @@
                     [disabled]="isActioning(notification.id)"
                     (click)="rejectInvite(notification, $event)">
                     Reject
+                  </button>
+                </div>
+              } @else if (canMarkRead(notification)) {
+                <div class="notification-actions">
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="isActioning(notification.id)"
+                    (click)="markRead(notification, $event)">
+                    Mark as read
                   </button>
                 </div>
               }

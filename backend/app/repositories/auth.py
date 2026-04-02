@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.auth import APIKey, RefreshToken, User
+from backend.app.models.media import Media
 
 
 class UserRepository:
@@ -23,6 +26,58 @@ class UserRepository:
 
     async def list(self, *, offset: int, limit: int, order_expr) -> list[User]:
         return (await self.db.execute(select(User).order_by(order_expr).offset(offset).limit(limit))).scalars().all()
+
+    async def list_with_media_stats(self, *, offset: int, limit: int, order_expr) -> list[dict]:
+        stmt = (
+            select(
+                User,
+                func.count(Media.id).label("media_count"),
+                func.coalesce(func.sum(Media.file_size), 0).label("storage_used_bytes"),
+            )
+            .outerjoin(
+                Media,
+                and_(Media.uploader_id == User.id, Media.deleted_at.is_(None)),
+            )
+            .group_by(User.id)
+            .order_by(order_expr)
+            .offset(offset)
+            .limit(limit)
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            {
+                "user": row[0],
+                "media_count": int(row.media_count or 0),
+                "storage_used_bytes": int(row.storage_used_bytes or 0),
+            }
+            for row in rows
+        ]
+
+    async def list_storage_summaries(self) -> list[dict]:
+        stmt = (
+            select(
+                User.id.label("user_id"),
+                User.username,
+                func.count(Media.id).label("media_count"),
+                func.coalesce(func.sum(Media.file_size), 0).label("storage_used_bytes"),
+            )
+            .outerjoin(
+                Media,
+                and_(Media.uploader_id == User.id, Media.deleted_at.is_(None)),
+            )
+            .group_by(User.id)
+            .order_by(func.coalesce(func.sum(Media.file_size), 0).desc(), User.username.asc())
+        )
+        rows = (await self.db.execute(stmt)).all()
+        return [
+            {
+                "user_id": str(row.user_id),
+                "username": row.username,
+                "media_count": int(row.media_count or 0),
+                "storage_used_bytes": int(row.storage_used_bytes or 0),
+            }
+            for row in rows
+        ]
 
     async def count(self) -> int:
         return (await self.db.execute(select(func.count(User.id)))).scalar_one()

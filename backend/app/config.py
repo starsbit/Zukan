@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     host: str = "0.0.0.0"
     port: int = 8000
+    log_level: str = "INFO"
     cors_allowed_origins: list[str] = [
         "http://localhost:4200",
         "http://127.0.0.1:4200",

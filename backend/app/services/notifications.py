@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors.error import AppError
+from backend.app.models.auth import User
 from backend.app.models.albums import AlbumShare, AlbumShareInviteStatus
-from backend.app.models.notifications import NotificationType
-from backend.app.models.notifications import Notification
+from backend.app.models.notifications import AppAnnouncement, Notification, NotificationType
 from backend.app.repositories.albums import AlbumRepository
 from backend.app.repositories.notifications import NotificationRepository
 from backend.app.schemas import NotificationListResponse
@@ -19,6 +19,34 @@ from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_
 class NotificationService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
+
+    async def publish_announcement(self, announcement: AppAnnouncement) -> int:
+        user_ids = (
+            await self._db.execute(select(User.id))
+        ).scalars().all()
+
+        for user_id in user_ids:
+            severity = announcement.severity.value if announcement.severity is not None else "info"
+            self._db.add(
+                Notification(
+                    user_id=user_id,
+                    type=NotificationType.app_update,
+                    title=announcement.title,
+                    body=announcement.message,
+                    is_read=False,
+                    link_url=None,
+                    data={
+                        "announcement_id": str(announcement.id),
+                        "severity": severity,
+                        "version": announcement.version,
+                        "starts_at": announcement.starts_at.isoformat() if announcement.starts_at else None,
+                        "ends_at": announcement.ends_at.isoformat() if announcement.ends_at else None,
+                    },
+                )
+            )
+
+        await self._db.commit()
+        return len(user_ids)
 
     async def list_notifications(
         self,

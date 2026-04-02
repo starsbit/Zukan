@@ -11,8 +11,9 @@ const mockUser = {
   version: 1, created_at: '2026-01-01T00:00:00Z',
 };
 const mockUserDetail = { ...mockUser, media_count: 10, storage_used_bytes: 1024 };
-const mockStats = { total_users: 1, total_media: 5, total_storage_bytes: 5120, pending_tagging: 0, failed_tagging: 0, trashed_media: 0 };
-const mockUserPage = { total: 1, page: 1, page_size: 20, items: [mockUser] };
+const mockStats = { total_users: 1, total_media: 5, total_storage_bytes: 5120, pending_tagging: 0, failed_tagging: 0, trashed_media: 0, storage_by_user: [] };
+const mockHealth = { generated_at: '2026-04-02T10:00:00Z', uptime_seconds: 12, cpu_percent: 4, memory_rss_bytes: 1024, system_memory_total_bytes: 4096, system_memory_used_bytes: 2048, tagging_queue_depth: 1, samples: [] };
+const mockUserPage = { total: 1, page: 1, page_size: 20, items: [mockUserDetail] };
 
 describe('AdminClientService', () => {
   let service: AdminClientService;
@@ -58,6 +59,14 @@ describe('AdminClientService', () => {
     req.flush(mockUserPage);
   });
 
+  it('getHealth sends GET /api/v1/admin/health', () => {
+    service.getHealth().subscribe(res => expect(res).toEqual(mockHealth));
+
+    const req = http.expectOne('/api/v1/admin/health');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockHealth);
+  });
+
   it('getUser sends GET /api/v1/admin/users/{id}', () => {
     service.getUser('u1').subscribe(res => expect(res).toEqual(mockUserDetail));
 
@@ -92,6 +101,16 @@ describe('AdminClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1');
     expect(req.request.params.get('delete_media')).toBe('true');
     req.flush(null, { status: 204, statusText: 'No Content' });
+  });
+
+  it('deleteUserMedia sends DELETE /api/v1/admin/users/{id}/media', () => {
+    const mock = { deleted: 5 };
+
+    service.deleteUserMedia('u1').subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/admin/users/u1/media');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(mock);
   });
 
   it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {

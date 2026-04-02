@@ -6,21 +6,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
 from backend.app.routers.deps import admin_user
+from backend.app.models.auth import User
 from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (
     ADMIN_ERROR_RESPONSES,
+    AdminHealthResponse,
     AdminStatsResponse,
     AdminUserDetail,
+    AdminUserListResponse,
     AdminUserUpdate,
     AppAnnouncementCreate,
     AppAnnouncementRead,
     TaggingJobQueuedResponse,
-    UserListResponse,
     UserRead,
     error_responses,
 )
 from backend.app.services.admin import AdminService
+from backend.app.services.notifications import NotificationService
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
 
@@ -32,7 +35,14 @@ async def admin_stats(
     return await AdminService(db).get_admin_stats()
 
 
-@router.get("/users", response_model=UserListResponse)
+@router.get("/health", response_model=AdminHealthResponse)
+async def admin_health(
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminService(db).get_health()
+
+
+@router.get("/users", response_model=AdminUserListResponse)
 async def list_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=200),
@@ -55,18 +65,30 @@ async def get_user_detail(
 async def update_user(
     user_id: uuid.UUID,
     body: AdminUserUpdate,
+    actor: User = Depends(admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await AdminService(db).update_user(user_id, body)
+    return await AdminService(db).update_user(actor, user_id, body)
 
 
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, responses=error_responses(404))
+@router.delete("/users/{user_id}/media", response_model=dict[str, int], responses=error_responses(403, 404))
+async def delete_user_media(
+    user_id: uuid.UUID,
+    actor: User = Depends(admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await AdminService(db).delete_user_media(actor, user_id)
+    return {"deleted": deleted}
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, responses=error_responses(403, 404))
 async def delete_user(
     user_id: uuid.UUID,
     delete_media: bool = Query(default=False),
+    actor: User = Depends(admin_user),
     db: AsyncSession = Depends(get_db),
 ):
-    await AdminService(db).delete_user(user_id, delete_media)
+    await AdminService(db).delete_user(actor, user_id, delete_media)
 
 
 @router.post("/users/{user_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse, responses=error_responses(404))
@@ -102,4 +124,5 @@ async def create_announcement(
     db.add(announcement)
     await db.commit()
     await db.refresh(announcement)
+    await NotificationService(db).publish_announcement(announcement)
     return announcement

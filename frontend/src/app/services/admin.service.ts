@@ -3,7 +3,14 @@ import { Observable, throwError } from 'rxjs';
 import { AdminClientService, AdminUserListParams } from './web/admin-client.service';
 import { UserStore } from './user.store';
 import { UserRead } from '../models/auth';
-import { AdminStatsResponse, AdminUserDetail, AdminUserUpdate, UserListResponse } from '../models/admin';
+import {
+  AdminHealthResponse,
+  AdminStatsResponse,
+  AdminUserDetail,
+  AdminUserUpdate,
+  DeleteUserMediaResponse,
+  UserListResponse,
+} from '../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../models/notifications';
 import { TaggingJobQueuedResponse } from '../models/uploads';
 
@@ -22,6 +29,10 @@ export class AdminService {
     return this.guard(() => this.client.getStats());
   }
 
+  getHealth(): Observable<AdminHealthResponse> {
+    return this.guard(() => this.client.getHealth());
+  }
+
   listUsers(p?: AdminUserListParams): Observable<UserListResponse> {
     return this.guard(() => this.client.listUsers(p));
   }
@@ -32,6 +43,10 @@ export class AdminService {
 
   updateUser(userId: string, body: AdminUserUpdate): Observable<UserRead> {
     return this.guard(() => this.client.updateUser(userId, body));
+  }
+
+  deleteUserMedia(userId: string): Observable<DeleteUserMediaResponse> {
+    return this.guard(() => this.client.deleteUserMedia(userId));
   }
 
   deleteUser(userId: string, deleteMedia = false): Observable<void> {

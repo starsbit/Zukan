@@ -1,0 +1,29 @@
+:host {
+  display: block;
+}
+
+.dialog-content {
+  display: grid;
+  gap: 1rem;
+  min-width: min(32rem, 80vw);
+  padding-top: 0.5rem;
+}
+
+mat-checkbox {
+  margin-top: -0.25rem;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.dialog-copy {
+  margin: 0;
+  color: rgba(15, 23, 42, 0.74);
+}
+
+.dialog-error {
+  margin: 0;
+  color: #b42318;
+  font-weight: 600;
+}

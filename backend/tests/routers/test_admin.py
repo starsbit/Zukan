@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import uuid
+from unittest.mock import AsyncMock, patch
 
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.services.admin import AdminService
@@ -17,6 +18,14 @@ def test_admin_stats_contract(api_client, monkeypatch):
             "pending_tagging": 1,
             "failed_tagging": 2,
             "trashed_media": 3,
+            "storage_by_user": [
+                {
+                    "user_id": str(uuid.uuid4()),
+                    "username": "alice",
+                    "media_count": 4,
+                    "storage_used_bytes": 1024,
+                }
+            ],
         }
 
     monkeypatch.setattr(AdminService, "get_admin_stats", _fake_stats)
@@ -25,6 +34,36 @@ def test_admin_stats_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["total_users"] == 5
+    assert response.json()["storage_by_user"][0]["username"] == "alice"
+
+
+def test_admin_health_contract(api_client, monkeypatch):
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def _fake_health(self):
+        return {
+            "generated_at": now,
+            "uptime_seconds": 42.5,
+            "cpu_percent": 15.2,
+            "memory_rss_bytes": 2048,
+            "system_memory_total_bytes": 4096,
+            "system_memory_used_bytes": 1024,
+            "tagging_queue_depth": 3,
+            "samples": [
+                {
+                    "captured_at": now,
+                    "cpu_percent": 10.5,
+                    "memory_rss_bytes": 1024,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(AdminService, "get_health", _fake_health)
+
+    response = api_client.get("/api/v1/admin/health")
+
+    assert response.status_code == 200
+    assert response.json()["tagging_queue_depth"] == 3
 
 
 def test_admin_users_list_contract(api_client, monkeypatch):
@@ -45,6 +84,8 @@ def test_admin_users_list_contract(api_client, monkeypatch):
                     "tag_confidence_threshold": 0.35,
                     "version": 1,
                     "created_at": now,
+                    "media_count": 12,
+                    "storage_used_bytes": 2048,
                 }
             ],
         }
@@ -55,6 +96,7 @@ def test_admin_users_list_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["page"] == 2
+    assert response.json()["items"][0]["media_count"] == 12
 
 
 def test_admin_user_detail_contract(api_client, monkeypatch):
@@ -86,11 +128,11 @@ def test_admin_user_detail_contract(api_client, monkeypatch):
 def test_admin_update_user_contract(api_client, monkeypatch):
     user_id = uuid.uuid4()
 
-    async def _fake_update(self, requested_user_id, body):
+    async def _fake_update(self, actor, requested_user_id, body):
         now = datetime.now(timezone.utc).isoformat()
         return {
             "id": str(requested_user_id),
-            "username": "alice",
+            "username": body.username or "alice",
             "email": "alice@example.com",
             "is_admin": True,
             "show_nsfw": True,
@@ -103,15 +145,28 @@ def test_admin_update_user_contract(api_client, monkeypatch):
 
     response = api_client.patch(
         f"/api/v1/admin/users/{user_id}",
-        json={"is_admin": True, "show_nsfw": True, "tag_confidence_threshold": 0.9},
+        json={"username": "alice-renamed", "is_admin": True, "show_nsfw": True, "tag_confidence_threshold": 0.9, "password": "newpassword123"},
     )
 
     assert response.status_code == 200
     assert response.json()["is_admin"] is True
+    assert response.json()["username"] == "alice-renamed"
+
+
+def test_admin_delete_user_media_contract(api_client, monkeypatch):
+    async def _fake_delete_media(self, actor, user_id):
+        return 4
+
+    monkeypatch.setattr(AdminService, "delete_user_media", _fake_delete_media)
+
+    response = api_client.delete(f"/api/v1/admin/users/{uuid.uuid4()}/media")
+
+    assert response.status_code == 200
+    assert response.json() == {"deleted": 4}
 
 
 def test_admin_delete_user_contract(api_client, monkeypatch):
-    async def _fake_delete(self, user_id, delete_media):
+    async def _fake_delete(self, actor, user_id, delete_media):
         assert delete_media is True
         return None
 
@@ -162,19 +217,23 @@ def test_admin_list_announcements_contract(api_client, monkeypatch):
 
 
 def test_admin_create_announcement_contract(api_client):
-    response = api_client.post(
-        "/api/v1/admin/announcements",
-        json={
-            "version": "1.1.0",
-            "title": "Upgrade",
-            "message": "New backend release",
-            "severity": "warning",
-            "starts_at": None,
-            "ends_at": None,
-        },
-    )
+    with patch("backend.app.routers.admin.NotificationService") as notification_service_cls:
+        notification_service_cls.return_value.publish_announcement = AsyncMock(return_value=3)
+
+        response = api_client.post(
+            "/api/v1/admin/announcements",
+            json={
+                "version": "1.1.0",
+                "title": "Upgrade",
+                "message": "New backend release",
+                "severity": "warning",
+                "starts_at": None,
+                "ends_at": None,
+            },
+        )
 
     assert response.status_code == 201
     payload = response.json()
     assert payload["title"] == "Upgrade"
     assert payload["severity"] == "warning"
+    notification_service_cls.return_value.publish_announcement.assert_awaited_once()

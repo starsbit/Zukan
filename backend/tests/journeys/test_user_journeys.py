@@ -291,6 +291,13 @@ async def test_journey_sharing_access_control_and_admin_announcements(journey_cl
     assert list_announcements.status_code == 200
     assert any(item["title"] == "Maintenance" for item in list_announcements.json())
 
+    viewer_notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
+    assert viewer_notifications.status_code == 200
+    assert any(
+        item["type"] == "app_update" and item["title"] == "Maintenance"
+        for item in viewer_notifications.json()["items"]
+    )
+
 
 @pytest.mark.asyncio
 async def test_journey_favorites_include_public_media_until_visibility_is_removed(journey_client):
