@@ -508,4 +508,87 @@ describe('MediaCardComponent', () => {
     expect((toggled as MediaRead | null)?.id).toBe('m1');
     expect(activated).toBeNull();
   });
+
+  it('does not emit activated for optimistic media that is still processing', async () => {
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      getPosterUrl: vi.fn(() => of('blob:poster')),
+      getFileUrl: vi.fn(() => of('blob:file')),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [MediaCardComponent],
+      providers: [{ provide: MediaService, useValue: mediaService }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaCardComponent);
+    fixture.componentRef.setInput('media', makeMedia({
+      client_is_optimistic: true,
+      tagging_status: TaggingStatus.PROCESSING,
+      thumbnail_status: ProcessingStatus.PROCESSING,
+    }));
+    fixture.detectChanges();
+
+    let activated: MediaRead | null = null;
+    fixture.componentInstance.activated.subscribe((media) => {
+      activated = media;
+    });
+
+    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
+    card.click();
+
+    expect(activated).toBeNull();
+    expect(card.getAttribute('role')).toBeNull();
+    expect(card.getAttribute('tabindex')).toBe('-1');
+    expect(card.getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('does not emit selection or favorite events for optimistic media that is still processing', async () => {
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      getPosterUrl: vi.fn(() => of('blob:poster')),
+      getFileUrl: vi.fn(() => of('blob:file')),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [MediaCardComponent],
+      providers: [{ provide: MediaService, useValue: mediaService }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaCardComponent);
+    fixture.componentRef.setInput('media', makeMedia({
+      client_is_optimistic: true,
+      tagging_status: TaggingStatus.PENDING,
+      thumbnail_status: ProcessingStatus.PENDING,
+    }));
+    fixture.componentRef.setInput('selectable', true);
+    fixture.componentRef.setInput('selectionMode', true);
+    fixture.componentRef.setInput('showFavorite', true);
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
+    card.dispatchEvent(new Event('mouseenter'));
+    fixture.detectChanges();
+
+    let toggled: MediaRead | null = null;
+    let favorited: MediaRead | null = null;
+    fixture.componentInstance.selectionToggled.subscribe((media) => {
+      toggled = media;
+    });
+    fixture.componentInstance.favoriteToggled.subscribe((media) => {
+      favorited = media;
+    });
+
+    const selectionButton = fixture.nativeElement.querySelector('.media-card__selection-button') as HTMLButtonElement;
+    const favoriteButton = fixture.nativeElement.querySelector('.media-card__favorite-button') as HTMLButtonElement;
+
+    expect(selectionButton.disabled).toBe(true);
+    expect(favoriteButton.disabled).toBe(true);
+
+    selectionButton.click();
+    favoriteButton.click();
+
+    expect(toggled).toBeNull();
+    expect(favorited).toBeNull();
+  });
 });

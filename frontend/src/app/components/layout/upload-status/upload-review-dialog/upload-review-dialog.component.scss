@@ -1,0 +1,168 @@
+.review-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 32rem;
+  color: var(--mat-sys-on-surface);
+}
+
+.review-toolbar,
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.review-toolbar__copy,
+.review-selection {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.review-inputs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.review-chip-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.review-state {
+  display: flex;
+  min-height: 16rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.9rem;
+}
+
+.review-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 72%, transparent);
+  border-radius: 1rem;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mat-sys-surface-container-low) 92%, transparent) 0%,
+      var(--mat-sys-surface-container) 100%
+    );
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease, background 140ms ease;
+}
+
+.review-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--mat-sys-primary) 45%, var(--mat-sys-outline-variant));
+  box-shadow: 0 14px 30px color-mix(in srgb, var(--mat-sys-shadow) 18%, transparent);
+}
+
+.review-card--selected {
+  border-color: var(--mat-sys-primary);
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mat-sys-primary-container) 42%, var(--mat-sys-surface-container-low)) 0%,
+      color-mix(in srgb, var(--mat-sys-primary-container) 22%, var(--mat-sys-surface-container)) 100%
+    );
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 28%, transparent),
+    0 16px 34px color-mix(in srgb, var(--mat-sys-primary) 14%, transparent);
+}
+
+.review-card__preview {
+  position: relative;
+  display: flex;
+  min-height: 10rem;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--mat-sys-surface-bright) 92%, transparent) 0%,
+      color-mix(in srgb, var(--mat-sys-surface-container-high) 86%, transparent) 100%
+    );
+}
+
+.review-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.9rem;
+}
+
+.review-card__header,
+.review-card__entities,
+.review-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.review-card__selection-indicator {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-surface) 78%, transparent);
+  color: var(--mat-sys-on-surface);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--mat-sys-shadow) 12%, transparent);
+  font: var(--mat-sys-label-medium);
+}
+
+.review-card__selection-indicator mat-icon {
+  width: 1rem;
+  height: 1rem;
+  font-size: 1rem;
+  color: var(--mat-sys-primary);
+}
+
+.review-card--selected .review-card__selection-indicator {
+  border-color: color-mix(in srgb, var(--mat-sys-primary) 60%, transparent);
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 86%, transparent);
+  color: color-mix(in srgb, var(--mat-sys-on-primary-container) 88%, var(--mat-sys-on-surface));
+}
+
+.review-card--selected .review-card__selection-indicator mat-icon {
+  color: var(--mat-sys-primary);
+}
+
+.review-card__header span,
+.review-card__entities span {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.92rem;
+}
+
+.review-card__header strong {
+  color: var(--mat-sys-on-surface);
+  overflow-wrap: anywhere;
+}
+
+.review-card__actions button {
+  align-self: flex-start;
+}

@@ -4,6 +4,9 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from backend.app.schemas.media import MediaRead
+from backend.app.schemas.relations import EntityRead
+
 
 class BatchType(str, Enum):
     upload = "upload"
@@ -84,3 +87,17 @@ class ImportBatchItemListResponse(BaseModel):
     has_more: bool = Field(description="Whether there are additional items after this page.")
     page_size: int = Field(description="Number of items returned per page.")
     items: list[ImportBatchItemRead] = Field(description="Batch items returned for the current page.")
+
+
+class ImportBatchReviewItemRead(BaseModel):
+    batch_item_id: uuid.UUID
+    media: MediaRead
+    entities: list[EntityRead]
+    source_filename: str
+    missing_character: bool
+    missing_series: bool
+
+
+class ImportBatchReviewListResponse(BaseModel):
+    total: int = Field(description="Number of currently reviewable items in the batch.")
+    items: list[ImportBatchReviewItemRead]

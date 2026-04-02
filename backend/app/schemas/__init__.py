@@ -36,7 +36,7 @@ from .auth import (
     UserUpdate,
 )
 from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
-from .bulk import BulkResult, MediaBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
+from .bulk import BulkResult, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
 from .media import (
     MediaCursorPage,
     MediaDetail,
@@ -60,6 +60,8 @@ from .notifications import (
 )
 from .processing import (
     BatchItemStatus,
+    ImportBatchReviewItemRead,
+    ImportBatchReviewListResponse,
     BatchStatus,
     BatchType,
     ImportBatchItemRead,
@@ -128,8 +130,11 @@ __all__ = [
     "ImportBatchItemListResponse",
     "ImportBatchListResponse",
     "ImportBatchRead",
+    "ImportBatchReviewItemRead",
+    "ImportBatchReviewListResponse",
     "MediaIdsRequest",
     "MediaBatchUpdate",
+    "MediaEntityBatchUpdate",
     "MediaCursorPage",
     "MediaDetail",
     "MediaListResponse",

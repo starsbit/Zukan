@@ -5,6 +5,7 @@ import {
   ImportBatchItemListResponse,
   ImportBatchItemRead,
   ImportBatchRead,
+  ImportBatchReviewItemRead,
 } from '../models/processing';
 import {
   UploadStatusDialogItem,
@@ -44,6 +45,10 @@ interface TrackedBatchState {
   response: BatchUploadResponse;
   batch: ImportBatchRead | null;
   items: ImportBatchItemRead[];
+  reviewItems: ImportBatchReviewItemRead[];
+  reviewTotal: number;
+  reviewBaselineTotal: number;
+  reviewRefreshing: boolean;
   error: string | null;
   refreshing: boolean;
 }
@@ -229,6 +234,16 @@ export class UploadTrackerService implements OnDestroy {
   });
 
   readonly visible = computed(() => this.hasTrackedUploads() && (!this.dismissed() || this.hasActiveWork()));
+  readonly reviewBatches = computed(() =>
+    Object.values(this.trackedBatches())
+      .filter((batch) => batch.reviewItems.length > 0 || batch.reviewBaselineTotal > 0)
+      .slice()
+      .sort((left, right) => {
+        const rightTimestamp = right.batch?.created_at ?? right.createdAt;
+        const leftTimestamp = left.batch?.created_at ?? left.createdAt;
+        return rightTimestamp.localeCompare(leftTimestamp);
+      }),
+  );
 
   readonly summary = computed<UploadStatusSummary>(() => {
     const mutableRequestCounts: Record<'queued' | 'uploading' | 'completed' | 'failed', number> = {
@@ -278,6 +293,7 @@ export class UploadTrackerService implements OnDestroy {
     itemCounts.skipped = this.itemsByFilter().skipped.length;
     itemCounts.upload_error += this.failedUploadFiles().length;
 
+    const reviewItems = Object.values(this.trackedBatches()).reduce((sum, batch) => sum + batch.reviewItems.length, 0);
     const totalTrackedItems = Object.values(itemCounts).reduce((sum, count) => sum + count, 0);
     const completedItems = itemCounts.done + itemCounts.failed + itemCounts.skipped + itemCounts.duplicate + itemCounts.upload_error;
     const progressPercent = totalTrackedItems > 0
@@ -287,6 +303,9 @@ export class UploadTrackerService implements OnDestroy {
     return {
       requestCounts: mutableRequestCounts,
       itemCounts,
+      reviewItems,
+      reviewBatchCount: this.reviewBatches().length,
+      latestReviewBatchId: this.reviewBatches()[0]?.id ?? null,
       totalTrackedItems,
       completedItems,
       progressPercent,
@@ -307,6 +326,10 @@ export class UploadTrackerService implements OnDestroy {
       }))
       .filter((item) => item.count > 0),
   );
+
+  getBatchReview(batchId: string): TrackedBatchState | null {
+    return this.trackedBatches()[batchId] ?? null;
+  }
 
   registerPendingBatch(files: File[], visibility: MediaVisibility): string {
     const requestId = `request-${this.nextRequestId += 1}`;
@@ -364,6 +387,10 @@ export class UploadTrackerService implements OnDestroy {
         },
         batch: null,
         items: [],
+        reviewItems: [],
+        reviewTotal: 0,
+        reviewBaselineTotal: 0,
+        reviewRefreshing: false,
         error: null,
         refreshing: false,
       },
@@ -432,6 +459,29 @@ export class UploadTrackerService implements OnDestroy {
 
   dismiss(): void {
     this.dismissed.set(true);
+  }
+
+  refreshBatchReview(batchId: string): void {
+    const batch = this.trackedBatches()[batchId];
+    if (!batch || batch.reviewRefreshing) {
+      return;
+    }
+
+    this.patchBatch(batchId, { reviewRefreshing: true });
+    this.batchesClient.listReviewItems(batchId).subscribe({
+      next: (response) => {
+        const previousBaseline = this.trackedBatches()[batchId]?.reviewBaselineTotal ?? 0;
+        this.patchBatch(batchId, {
+          reviewItems: response.items,
+          reviewTotal: response.total,
+          reviewBaselineTotal: Math.max(previousBaseline, response.total),
+          reviewRefreshing: false,
+        });
+      },
+      error: () => {
+        this.patchBatch(batchId, { reviewRefreshing: false });
+      },
+    });
   }
 
   reset(): void {
@@ -513,6 +563,7 @@ export class UploadTrackerService implements OnDestroy {
           error: null,
         });
         this.queueResolvedMedia(previousItems, items);
+        this.refreshBatchReview(batchId);
 
         if (!isTerminalBatchStatus(batchRead.status)) {
           this.scheduleRefresh(batchId, this.trackedBatches()[batchId]?.pollAfterSeconds ?? DEFAULT_POLL_AFTER_SECONDS);

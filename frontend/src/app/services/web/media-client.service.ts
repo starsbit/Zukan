@@ -7,6 +7,7 @@ import {
   MediaDetail,
   MediaUpdate,
   MediaBatchUpdate,
+  MediaEntityBatchUpdate,
   MediaListState,
   MediaVisibility,
   TagFilterMode,
@@ -128,6 +129,10 @@ export class MediaClientService {
 
   batchUpdate(body: MediaBatchUpdate): Observable<BulkResult> {
     return this.http.patch<BulkResult>(`${this.base}/api/v1/media`, body);
+  }
+
+  batchUpdateEntities(body: MediaEntityBatchUpdate): Observable<BulkResult> {
+    return this.http.patch<BulkResult>(`${this.base}/api/v1/media/entities`, body);
   }
 
   batchDelete(body: MediaIdsRequest): Observable<BulkResult> {

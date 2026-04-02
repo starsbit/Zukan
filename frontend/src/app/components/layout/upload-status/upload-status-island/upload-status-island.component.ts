@@ -7,6 +7,7 @@ import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { UploadStatusFilter, filterLabel } from '../../../../models/upload-tracker';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { UploadStatusDialogComponent } from '../upload-status-dialog/upload-status-dialog.component';
+import { UploadReviewDialogComponent } from '../upload-review-dialog/upload-review-dialog.component';
 
 @Component({
   selector: 'zukan-upload-status-island',
@@ -72,6 +73,7 @@ export class UploadStatusIslandComponent {
   readonly issueCount = computed(() =>
     this.summary().itemCounts.failed + this.summary().itemCounts.upload_error,
   );
+  readonly reviewCount = computed(() => this.summary().reviewItems);
   readonly progressMode = computed<'determinate' | 'indeterminate'>(() =>
     this.phase() === 'uploading' && this.summary().completedItems === 0
       ? 'indeterminate'
@@ -117,6 +119,21 @@ export class UploadStatusIslandComponent {
       },
       maxWidth: '90vw',
       panelClass: 'upload-status-dialog-panel',
+    });
+  }
+
+  openReviewDialog(): void {
+    const batchId = this.summary().latestReviewBatchId;
+    if (!batchId) {
+      return;
+    }
+
+    this.dialog.open(UploadReviewDialogComponent, {
+      data: { batchId },
+      maxWidth: '96vw',
+      width: '1100px',
+      panelClass: 'upload-status-dialog-panel',
+      autoFocus: false,
     });
   }
 

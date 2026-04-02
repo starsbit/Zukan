@@ -34,6 +34,9 @@ export interface UploadStatusDialogItem {
 export interface UploadStatusSummary {
   requestCounts: Record<UploadRequestState, number>;
   itemCounts: Record<UploadStatusFilter, number>;
+  reviewItems: number;
+  reviewBatchCount: number;
+  latestReviewBatchId: string | null;
   totalTrackedItems: number;
   completedItems: number;
   progressPercent: number;

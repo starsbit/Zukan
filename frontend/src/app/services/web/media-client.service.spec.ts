@@ -256,6 +256,18 @@ describe('MediaClientService', () => {
     req.flush(mock);
   });
 
+  it('batchUpdateEntities sends PATCH /api/v1/media/entities with body', () => {
+    const body = { media_ids: ['m1', 'm2'], character_names: ['Saber'], series_names: ['Fate'] };
+    const mock = { processed: 2, skipped: 0 };
+
+    service.batchUpdateEntities(body).subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/media/entities');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual(body);
+    req.flush(mock);
+  });
+
   it('batchDelete sends POST /api/v1/media/actions/delete', () => {
     const body = { media_ids: ['m1'] };
     const mock = { processed: 1, skipped: 0 };

@@ -94,3 +94,64 @@ def test_list_batch_items_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["items"][0]["batch_id"] == str(batch_id)
+
+
+def test_list_batch_review_items_contract(api_client, monkeypatch):
+    batch_id = uuid.uuid4()
+
+    async def _fake_review(self, request_batch_id, user_id):
+        assert request_batch_id == batch_id
+        now = datetime.now(timezone.utc).isoformat()
+        media_id = str(uuid.uuid4())
+        return {
+            "total": 1,
+            "items": [
+                {
+                    "batch_item_id": str(uuid.uuid4()),
+                    "media": {
+                        "id": media_id,
+                        "uploader_id": str(user_id),
+                        "uploader_username": "demo",
+                        "owner_id": str(user_id),
+                        "owner_username": "demo",
+                        "visibility": "private",
+                        "filename": "a.webp",
+                        "original_filename": "a.webp",
+                        "media_type": "image",
+                        "metadata": {
+                            "file_size": 1,
+                            "width": 10,
+                            "height": 10,
+                            "duration_seconds": None,
+                            "frame_count": 1,
+                            "mime_type": "image/webp",
+                            "captured_at": now,
+                        },
+                        "version": 1,
+                        "created_at": now,
+                        "deleted_at": None,
+                        "tags": [],
+                        "ocr_text_override": None,
+                        "is_nsfw": False,
+                        "tagging_status": "done",
+                        "tagging_error": None,
+                        "thumbnail_status": "done",
+                        "poster_status": "not_applicable",
+                        "ocr_text": None,
+                        "is_favorited": False,
+                        "favorite_count": 0,
+                    },
+                    "entities": [],
+                    "source_filename": "a.webp",
+                    "missing_character": True,
+                    "missing_series": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(ProcessingService, "list_batch_review_items", _fake_review)
+
+    response = api_client.get(f"/api/v1/me/import-batches/{batch_id}/review-items")
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1

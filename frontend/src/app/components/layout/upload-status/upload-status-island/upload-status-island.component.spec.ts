@@ -12,6 +12,9 @@ describe('UploadStatusIslandComponent', () => {
       summary: signal({
         requestCounts: { queued: 0, uploading: 0, completed: 0, failed: 0 },
         itemCounts: { pending: 0, processing: 0, done: 0, failed: 0, skipped: 0, duplicate: 0, upload_error: 0 },
+        reviewItems: 0,
+        reviewBatchCount: 0,
+        latestReviewBatchId: null,
         totalTrackedItems: 0,
         completedItems: 0,
         progressPercent: 0,
@@ -52,6 +55,9 @@ describe('UploadStatusIslandComponent', () => {
       summary: signal({
         requestCounts: { queued: 0, uploading: 1, completed: 1, failed: 0 },
         itemCounts: { pending: 2, processing: 1, done: 4, failed: 1, skipped: 0, duplicate: 1, upload_error: 0 },
+        reviewItems: 0,
+        reviewBatchCount: 0,
+        latestReviewBatchId: null,
         totalTrackedItems: 9,
         completedItems: 6,
         progressPercent: 67,
@@ -125,6 +131,9 @@ describe('UploadStatusIslandComponent', () => {
       summary: signal({
         requestCounts: { queued: 0, uploading: 0, completed: 0, failed: 0 },
         itemCounts: { pending: 1, processing: 1, done: 0, failed: 0, skipped: 0, duplicate: 0, upload_error: 0 },
+        reviewItems: 0,
+        reviewBatchCount: 0,
+        latestReviewBatchId: null,
         totalTrackedItems: 2,
         completedItems: 0,
         progressPercent: 0,

@@ -21,6 +21,7 @@ from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
     CharacterSuggestion,
+    MediaEntityBatchUpdate,
     MediaIdsRequest,
     MediaBatchUpdate,
     MediaCursorPage,
@@ -422,6 +423,22 @@ async def batch_update_media(
         payload=jsonable_encoder(result),
     )
     return result
+
+
+@router.patch(
+    "/entities",
+    response_model=BulkResult,
+    summary="Batch Update Media Character And Series Entities",
+    description="Apply manual character and/or series names to the selected media items.",
+    responses=error_responses(422),
+)
+async def batch_update_media_entities(
+    body: MediaEntityBatchUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _, _, _, _, _, metadata = _media_services(db)
+    return await metadata.bulk_update_entities(body, user)
 
 
 @router.post(

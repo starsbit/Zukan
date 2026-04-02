@@ -8,6 +8,8 @@ import { MediaService } from './media.service';
 import { BatchesClientService } from './web/batches-client.service';
 import { UploadTrackerService } from './upload-tracker.service';
 
+const emptyReviewPage = { total: 0, items: [] };
+
 describe('UploadTrackerService', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -53,7 +55,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get, listItems } },
+        { provide: BatchesClientService, useValue: { get, listItems, listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
@@ -88,6 +90,118 @@ describe('UploadTrackerService', () => {
     expect(service.summary().itemCounts.upload_error).toBe(1);
     expect(service.itemsByFilter().duplicate[0]?.filename).toBe('dup.jpg');
     expect(service.itemsByFilter().upload_error[0]?.filename).toBe('bad.jpg');
+  });
+
+  it('tracks review-needed items for completed batches', async () => {
+    const get = vi.fn().mockReturnValue(of({
+      id: 'b1',
+      user_id: 'u1',
+      type: BatchType.UPLOAD,
+      status: BatchStatus.DONE,
+      total_items: 1,
+      queued_items: 0,
+      processing_items: 0,
+      done_items: 1,
+      failed_items: 0,
+      created_at: '2026-03-29T10:00:00Z',
+      started_at: '2026-03-29T10:00:01Z',
+      finished_at: '2026-03-29T10:00:10Z',
+      last_heartbeat_at: '2026-03-29T10:00:10Z',
+      app_version: null,
+      worker_version: null,
+      error_summary: null,
+    }));
+    const listItems = vi.fn().mockReturnValue(of({
+      total: 1,
+      next_cursor: null,
+      has_more: false,
+      page_size: 200,
+      items: [{
+        id: 'i1',
+        batch_id: 'b1',
+        media_id: 'm1',
+        source_filename: 'done.jpg',
+        status: BatchItemStatus.DONE,
+        step: ProcessingStep.TAG,
+        progress_percent: 100,
+        error: null,
+        updated_at: '2026-03-29T10:00:10Z',
+      }],
+    }));
+    const listReviewItems = vi.fn().mockReturnValue(of({
+      total: 1,
+      items: [{
+        batch_item_id: 'i1',
+        source_filename: 'done.jpg',
+        missing_character: true,
+        missing_series: false,
+        entities: [],
+        media: {
+          id: 'm1',
+          uploader_id: 'u1',
+          uploader_username: 'uploader',
+          owner_id: 'u1',
+          owner_username: 'owner',
+          visibility: MediaVisibility.PRIVATE,
+          filename: 'done.jpg',
+          original_filename: 'done.jpg',
+          media_type: MediaType.IMAGE,
+          metadata: {
+            file_size: 1,
+            width: 10,
+            height: 10,
+            duration_seconds: null,
+            frame_count: null,
+            mime_type: 'image/jpeg',
+            captured_at: '2026-03-29T10:00:10Z',
+          },
+          version: 1,
+          created_at: '2026-03-29T10:00:10Z',
+          deleted_at: null,
+          tags: [],
+          ocr_text_override: null,
+          is_nsfw: false,
+          tagging_status: TaggingStatus.DONE,
+          tagging_error: null,
+          thumbnail_status: ProcessingStatus.DONE,
+          poster_status: ProcessingStatus.NOT_APPLICABLE,
+          ocr_text: null,
+          is_favorited: false,
+          favorite_count: 0,
+        },
+      }],
+    }));
+
+    await TestBed.configureTestingModule({
+      providers: [
+        UploadTrackerService,
+        { provide: BatchesClientService, useValue: { get, listItems, listReviewItems } },
+        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
+        { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const service = TestBed.inject(UploadTrackerService);
+    const requestId = service.registerPendingBatch([new File(['a'], 'done.jpg')], MediaVisibility.PRIVATE);
+    service.markBatchUploading(requestId);
+    service.registerBatchStarted(requestId, {
+      batch_id: 'b1',
+      batch_url: '/api/v1/me/import-batches/b1',
+      batch_items_url: '/api/v1/me/import-batches/b1/items',
+      poll_after_seconds: 2,
+      webhooks_supported: false,
+      accepted: 1,
+      duplicates: 0,
+      errors: 0,
+      results: [{ id: 'm1', batch_item_id: 'i1', original_filename: 'done.jpg', status: 'accepted', message: null }],
+    }, [new File(['a'], 'done.jpg')], MediaVisibility.PRIVATE);
+
+    await Promise.resolve();
+
+    expect(service.summary().reviewItems).toBe(1);
+    expect(service.summary().reviewBatchCount).toBe(1);
+    expect(service.summary().latestReviewBatchId).toBe('b1');
+    expect(service.getBatchReview('b1')?.reviewItems).toHaveLength(1);
   });
 
   it('polls active batches, merges paged items, and stops after terminal status', async () => {
@@ -223,7 +337,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get, listItems } },
+        { provide: BatchesClientService, useValue: { get, listItems, listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
@@ -265,7 +379,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn() } },
+        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn(), listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn(), clearOptimisticItems: vi.fn() } },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
@@ -378,7 +492,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get, listItems } },
+        { provide: BatchesClientService, useValue: { get, listItems, listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: MediaService, useValue: mediaService },
       ],
@@ -502,7 +616,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn() } },
+        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn(), listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: MediaService, useValue: mediaService },
       ],
@@ -601,7 +715,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get, listItems } },
+        { provide: BatchesClientService, useValue: { get, listItems, listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],
@@ -648,7 +762,7 @@ describe('UploadTrackerService', () => {
     await TestBed.configureTestingModule({
       providers: [
         UploadTrackerService,
-        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn() } },
+        { provide: BatchesClientService, useValue: { get: vi.fn(), listItems: vi.fn(), listReviewItems: vi.fn(() => of(emptyReviewPage)) } },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
       ],

@@ -5,6 +5,7 @@ export enum NotificationType {
   BATCH_FAILED = 'batch_failed',
   APP_UPDATE = 'app_update',
   SHARE_INVITE = 'share_invite',
+  METADATA_REVIEW = 'metadata_review',
 }
 
 export enum AnnouncementSeverity {
@@ -31,7 +32,18 @@ export interface AppUpdateNotificationData {
   ends_at: string | null;
 }
 
-export type NotificationData = ShareInviteNotificationData | AppUpdateNotificationData | Record<string, unknown>;
+export interface MetadataReviewNotificationData {
+  latest_batch_id: string;
+  review_batch_ids: string[];
+  unresolved_count: number;
+  dismiss_signature: string;
+}
+
+export type NotificationData =
+  | ShareInviteNotificationData
+  | AppUpdateNotificationData
+  | MetadataReviewNotificationData
+  | Record<string, unknown>;
 
 export interface NotificationRead {
   id: string;

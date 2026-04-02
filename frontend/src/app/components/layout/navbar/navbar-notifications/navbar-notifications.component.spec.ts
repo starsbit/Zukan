@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { AnnouncementSeverity, NotificationType } from '../../../../models/notifications';
 import { AlbumStore } from '../../../../services/album.store';
+import { ReviewReminderService } from '../../../../services/review-reminder.service';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
 import { NavbarNotificationsComponent } from './navbar-notifications.component';
@@ -53,6 +54,22 @@ describe('NavbarNotificationsComponent', () => {
       },
     ],
   };
+  const reviewReminder = {
+    id: 'review-reminder:3:b1',
+    user_id: 'u1',
+    type: NotificationType.METADATA_REVIEW,
+    title: 'Some uploaded media still need names',
+    body: '3 uploaded files still need character or series names.',
+    is_read: false,
+    link_url: null,
+    data: {
+      latest_batch_id: 'b1',
+      review_batch_ids: ['b1'],
+      unresolved_count: 3,
+      dismiss_signature: '3:b1',
+    },
+    created_at: '2026-03-29T10:00:00Z',
+  };
 
   it('loads notifications for authenticated users and shows unread count', async () => {
     const list = vi.fn().mockReturnValue(of(notificationsResponse));
@@ -62,6 +79,7 @@ describe('NavbarNotificationsComponent', () => {
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         { provide: NotificationsClientService, useValue: { list } },
+        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(reviewReminder)), dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
       ],
     }).compileComponents();
@@ -78,6 +96,8 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     const overlayText = overlayContainer.getContainerElement().textContent ?? '';
+    expect(overlayText).toContain('Some uploaded media still need names');
+    expect(overlayText).toContain('Review now');
     expect(overlayText).toContain('Album invite');
     expect(overlayText).toContain('Update available');
     expect(overlayText).toContain('Accept');
@@ -94,6 +114,7 @@ describe('NavbarNotificationsComponent', () => {
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => false } },
         { provide: NotificationsClientService, useValue: { list } },
+        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
       ],
     }).compileComponents();
@@ -113,6 +134,7 @@ describe('NavbarNotificationsComponent', () => {
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         { provide: NotificationsClientService, useValue: { list } },
+        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
       ],
     }).compileComponents();
@@ -153,6 +175,7 @@ describe('NavbarNotificationsComponent', () => {
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         { provide: NotificationsClientService, useValue: { list, acceptInvite, rejectInvite } },
+        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: loadAlbums } },
       ],
     }).compileComponents();
@@ -190,6 +213,7 @@ describe('NavbarNotificationsComponent', () => {
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         { provide: NotificationsClientService, useValue: { list, markRead } },
+        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
       ],
     }).compileComponents();

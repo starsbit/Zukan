@@ -29,3 +29,15 @@ class MediaIdsRequest(BaseModel):
 
 class TaggingJobQueuedResponse(BaseModel):
     queued: int
+
+
+class MediaEntityBatchUpdate(BaseModel):
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=500)
+    character_names: list[str] | None = None
+    series_names: list[str] | None = None
+
+    @model_validator(mode="after")
+    def validate_non_empty(self):
+        if self.character_names is None and self.series_names is None:
+            raise ValueError("At least one entity field must be provided")
+        return self

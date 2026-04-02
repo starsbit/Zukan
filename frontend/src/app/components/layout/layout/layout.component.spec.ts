@@ -27,6 +27,9 @@ describe('LayoutComponent', () => {
       summary: () => ({
         requestCounts: { queued: 0, uploading: 0, completed: 0, failed: 0 },
         itemCounts: { pending: 0, processing: 0, done: 0, failed: 0, skipped: 0, duplicate: 0, upload_error: 0 },
+        reviewItems: 0,
+        reviewBatchCount: 0,
+        latestReviewBatchId: null,
         totalTrackedItems: 0,
         completedItems: 0,
         progressPercent: 0,

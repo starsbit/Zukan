@@ -185,6 +185,27 @@ def test_batch_update_visibility_contract(api_client, monkeypatch):
     assert response.json() == {"processed": 2, "skipped": 1}
 
 
+def test_batch_update_entities_contract(api_client, monkeypatch):
+    async def _fake_bulk_entities(self, body, user):
+        assert body.character_names == ["Saber"]
+        assert body.series_names == ["Fate/stay night"]
+        return {"processed": 2, "skipped": 0}
+
+    monkeypatch.setattr(MediaMetadataService, "bulk_update_entities", _fake_bulk_entities)
+
+    response = api_client.patch(
+        "/api/v1/media/entities",
+        json={
+            "media_ids": [str(uuid.uuid4())],
+            "character_names": ["Saber"],
+            "series_names": ["Fate/stay night"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 2, "skipped": 0}
+
+
 def test_batch_delete_command_contract(api_client, monkeypatch):
     async def _fake_delete(self, body, user):
         return {"processed": 2, "skipped": 1}

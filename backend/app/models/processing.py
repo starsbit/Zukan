@@ -105,3 +105,4 @@ class ImportBatchItem(Base):
     )
 
     batch: Mapped["ImportBatch"] = relationship("ImportBatch", back_populates="items")
+    media = relationship("Media", foreign_keys=[media_id])

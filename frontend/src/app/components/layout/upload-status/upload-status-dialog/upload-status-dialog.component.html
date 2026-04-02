@@ -25,7 +25,7 @@
           <zukan-upload-status-preview matListItemAvatar [mediaId]="item.previewMediaId" />
 
           <div matListItemTitle class="item-title-row">
-            <span class="item-filename">{{ item.filename }}</span>
+            <span class="item-filename" [attr.title]="item.filename">{{ item.filename }}</span>
             <span class="item-status">{{ item.statusLabel }}</span>
           </div>
 

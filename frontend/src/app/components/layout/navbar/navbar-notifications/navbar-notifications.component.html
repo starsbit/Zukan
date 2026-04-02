@@ -65,6 +65,22 @@
                     Reject
                   </button>
                 </div>
+              } @else if (isMetadataReview(notification)) {
+                <div class="notification-actions">
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    (click)="reviewMetadata(notification, $event)">
+                    Review now
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="dismissMetadataReminder(notification, $event)">
+                    Dismiss
+                  </button>
+                </div>
               } @else if (canMarkRead(notification)) {
                 <div class="notification-actions">
                   <button

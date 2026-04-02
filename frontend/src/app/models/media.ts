@@ -141,3 +141,9 @@ export interface MediaBatchUpdate {
   favorited?: boolean | null;
   visibility?: MediaVisibility | null;
 }
+
+export interface MediaEntityBatchUpdate {
+  media_ids: string[];
+  character_names?: string[] | null;
+  series_names?: string[] | null;
+}

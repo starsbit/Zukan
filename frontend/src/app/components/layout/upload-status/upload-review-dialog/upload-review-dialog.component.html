@@ -1,0 +1,160 @@
+<h2 mat-dialog-title>Review Missing Names</h2>
+
+<mat-dialog-content class="review-dialog">
+  <section class="review-toolbar">
+    <div class="review-toolbar__copy">
+      <strong>{{ reviewedCount() }} of {{ baselineTotal() }} reviewed</strong>
+      <span>{{ items().length }} still need character or series names.</span>
+    </div>
+
+    <mat-button-toggle-group
+      [value]="filter()"
+      (valueChange)="filter.set($event)"
+      class="review-filter"
+    >
+      <mat-button-toggle value="all">All</mat-button-toggle>
+      <mat-button-toggle value="missing_character">Character</mat-button-toggle>
+      <mat-button-toggle value="missing_series">Series</mat-button-toggle>
+      <mat-button-toggle value="missing_both">Both</mat-button-toggle>
+    </mat-button-toggle-group>
+  </section>
+
+  <section class="review-actions">
+    <div class="review-selection">
+      <button mat-stroked-button type="button" (click)="selectAllVisible()">Select visible</button>
+      <button mat-button type="button" (click)="clearSelection()">Clear</button>
+      <span>{{ selectedCount() }} selected</span>
+    </div>
+
+    <div class="review-inputs">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Add character names</mat-label>
+        <input
+          matInput
+          type="text"
+          [formControl]="characterInputControl"
+          [matAutocomplete]="characterAutocomplete"
+          (keydown.enter)="$event.preventDefault(); addCharacter()"
+        />
+      </mat-form-field>
+
+      <mat-autocomplete
+        #characterAutocomplete="matAutocomplete"
+        autoActiveFirstOption
+        (optionSelected)="addCharacter($event.option.value)"
+      >
+        @for (suggestion of characterSuggestions(); track suggestion.name) {
+          <mat-option [value]="suggestion.name">{{ suggestion.name }}</mat-option>
+        }
+      </mat-autocomplete>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Add series names</mat-label>
+        <input
+          matInput
+          type="text"
+          [formControl]="seriesInputControl"
+          [matAutocomplete]="seriesAutocomplete"
+          (keydown.enter)="$event.preventDefault(); addSeries()"
+        />
+      </mat-form-field>
+
+      <mat-autocomplete
+        #seriesAutocomplete="matAutocomplete"
+        autoActiveFirstOption
+        (optionSelected)="addSeries($event.option.value)"
+      >
+        @for (suggestion of seriesSuggestions(); track suggestion.name) {
+          <mat-option [value]="suggestion.name">{{ suggestion.name }}</mat-option>
+        }
+      </mat-autocomplete>
+    </div>
+
+    <div class="review-chip-groups">
+      @if (characterNames().length > 0) {
+        <mat-chip-set aria-label="Selected character names">
+          @for (name of characterNames(); track name) {
+            <mat-chip-row [removable]="true" (removed)="removeCharacter(name)">
+              {{ name }}
+              <button matChipRemove type="button" aria-label="Remove character {{ name }}">
+                <mat-icon>cancel</mat-icon>
+              </button>
+            </mat-chip-row>
+          }
+        </mat-chip-set>
+      }
+
+      @if (seriesNames().length > 0) {
+        <mat-chip-set aria-label="Selected series names">
+          @for (name of seriesNames(); track name) {
+            <mat-chip-row [removable]="true" (removed)="removeSeries(name)">
+              {{ name }}
+              <button matChipRemove type="button" aria-label="Remove series {{ name }}">
+                <mat-icon>cancel</mat-icon>
+              </button>
+            </mat-chip-row>
+          }
+        </mat-chip-set>
+      }
+    </div>
+  </section>
+
+  @if (reviewState()?.reviewRefreshing || remoteRefreshing()) {
+    <div class="review-state">
+      <mat-spinner diameter="36"></mat-spinner>
+      <span>Refreshing review queue…</span>
+    </div>
+  } @else if (visibleItems().length === 0) {
+    <div class="review-state">
+      <mat-icon>task_alt</mat-icon>
+      <span>No matching items remain in this filter.</span>
+    </div>
+  } @else {
+    <section class="review-grid">
+      @for (item of visibleItems(); track trackByMediaId($index, item)) {
+        <article
+          class="review-card"
+          [class.review-card--selected]="isSelected(item.media.id)"
+          (click)="toggleSelected(item.media.id)"
+        >
+          <div class="review-card__preview">
+            <div class="review-card__selection-indicator">
+              <mat-icon>{{ isSelected(item.media.id) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+              <span>{{ isSelected(item.media.id) ? 'Selected' : 'Click to select' }}</span>
+            </div>
+            <zukan-upload-status-preview [mediaId]="item.media.id" />
+          </div>
+
+          <div class="review-card__body">
+            <div class="review-card__header">
+              <strong>{{ item.media.original_filename ?? item.media.filename }}</strong>
+              <span>{{ badgeLabel(item) }}</span>
+            </div>
+
+            <div class="review-card__entities">
+              <span>Characters: {{ characterLabel(item) }}</span>
+              <span>Series: {{ seriesLabel(item) }}</span>
+            </div>
+
+            <div class="review-card__actions">
+              <button
+                mat-button
+                type="button"
+                (click)="$event.stopPropagation(); openInspector(item)"
+              >
+                Open Inspector
+              </button>
+            </div>
+          </div>
+        </article>
+      }
+    </section>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Skip for now</button>
+  <button mat-flat-button type="button" [disabled]="!canApply()" (click)="applySelected()">
+    {{ saving() ? 'Applying…' : 'Apply to selected' }}
+  </button>
+</mat-dialog-actions>

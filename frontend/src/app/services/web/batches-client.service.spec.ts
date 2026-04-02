@@ -13,6 +13,7 @@ const mockBatch = {
   last_heartbeat_at: null, app_version: null, worker_version: null, error_summary: null,
 };
 const mockItemPage = { total: 0, next_cursor: null, has_more: false, page_size: 50, items: [] };
+const mockReviewPage = { total: 1, items: [] };
 
 describe('BatchesClientService', () => {
   let service: BatchesClientService;
@@ -71,5 +72,13 @@ describe('BatchesClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/b1/items');
     expect(req.request.params.get('page_size')).toBe('50');
     req.flush(mockItemPage);
+  });
+
+  it('listReviewItems sends GET /api/v1/me/import-batches/{id}/review-items', () => {
+    service.listReviewItems('b1').subscribe(res => expect(res).toEqual(mockReviewPage));
+
+    const req = http.expectOne('/api/v1/me/import-batches/b1/review-items');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockReviewPage);
   });
 });

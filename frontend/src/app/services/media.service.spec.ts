@@ -226,6 +226,17 @@ describe('MediaService', () => {
     });
   });
 
+  describe('batchUpdateEntities()', () => {
+    it('sends the batch entity payload to the dedicated endpoint', () => {
+      service.batchUpdateEntities({ media_ids: ['m1'], character_names: ['Saber'] }).subscribe();
+
+      const req = http.expectOne('/api/v1/media/entities');
+      expect(req.request.method).toBe('PATCH');
+      expect(req.request.body).toEqual({ media_ids: ['m1'], character_names: ['Saber'] });
+      req.flush({ processed: 1, skipped: 0 });
+    });
+  });
+
   describe('batchPurge()', () => {
     it('removes all matched items', () => {
       service.load().subscribe();

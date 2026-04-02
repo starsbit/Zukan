@@ -2,7 +2,7 @@ import { inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { catchError, EMPTY, finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
 import { MediaClientService, MediaSearchParams, UploadParams } from './web/media-client.service';
 import { BlobUrlCache } from '../utils/blob-url.utils';
-import { MediaCursorPage, MediaDetail, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
+import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads';
 import { BulkResult } from '../models/common';
 import { CharacterSuggestion, SeriesSuggestion } from '../models/tags';
@@ -144,6 +144,10 @@ export class MediaService implements OnDestroy {
         );
       }),
     );
+  }
+
+  batchUpdateEntities(body: MediaEntityBatchUpdate): Observable<BulkResult> {
+    return this.client.batchUpdateEntities(body);
   }
 
   upload(files: File[], params?: UploadParams): Observable<BatchUploadResponse> {

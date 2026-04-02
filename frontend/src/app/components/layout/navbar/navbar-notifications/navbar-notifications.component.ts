@@ -3,21 +3,25 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnIni
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
-import { EMPTY, catchError, finalize } from 'rxjs';
+import { EMPTY, catchError, finalize, forkJoin, of } from 'rxjs';
 import { AlbumStore } from '../../../../services/album.store';
 import {
   AnnouncementSeverity,
   AppUpdateNotificationData,
+  MetadataReviewNotificationData,
   NotificationRead,
   NotificationType,
   ShareInviteNotificationData,
 } from '../../../../models/notifications';
+import { ReviewReminderService } from '../../../../services/review-reminder.service';
+import { UploadReviewDialogComponent } from '../../upload-status/upload-review-dialog/upload-review-dialog.component';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
 
@@ -27,6 +31,7 @@ import { NotificationsClientService } from '../../../../services/web/notificatio
     DatePipe,
     MatBadgeModule,
     MatButtonModule,
+    MatDialogModule,
     MatDividerModule,
     MatIconModule,
     MatMenuModule,
@@ -43,6 +48,8 @@ export class NavbarNotificationsComponent implements OnInit {
   private readonly notificationsClient = inject(NotificationsClientService);
   private readonly albumStore = inject(AlbumStore);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly reviewReminderService = inject(ReviewReminderService);
+  private readonly dialog = inject(MatDialog);
 
   readonly notifications = signal<NotificationRead[]>([]);
   readonly loading = signal(false);
@@ -61,12 +68,21 @@ export class NavbarNotificationsComponent implements OnInit {
 
   loadNotifications(): void {
     this.loading.set(true);
-    this.notificationsClient
-      .list({ page_size: 8 })
+    forkJoin({
+      notifications: this.notificationsClient.list({ page_size: 8 }).pipe(catchError(() => of(null))),
+      reminder: this.reviewReminderService.loadReminder().pipe(catchError(() => of(null))),
+    })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (response) => {
-          this.notifications.set(response.items);
+        next: ({ notifications, reminder }) => {
+          if (!notifications) {
+            this.notifications.set([]);
+            this.loading.set(false);
+            this.error.set(true);
+            return;
+          }
+
+          this.notifications.set(reminder ? [reminder, ...notifications.items] : notifications.items);
           this.loading.set(false);
           this.error.set(false);
         },
@@ -89,6 +105,12 @@ export class NavbarNotificationsComponent implements OnInit {
     return notification.type === NotificationType.APP_UPDATE;
   }
 
+  isMetadataReview(notification: NotificationRead): notification is NotificationRead & { data: MetadataReviewNotificationData } {
+    return notification.type === NotificationType.METADATA_REVIEW
+      && !!notification.data
+      && 'latest_batch_id' in notification.data;
+  }
+
   announcementSeverityFor(notification: NotificationRead): AnnouncementSeverity | null {
     if (!this.isAppUpdate(notification) || !notification.data || !('severity' in notification.data)) {
       return null;
@@ -101,7 +123,7 @@ export class NavbarNotificationsComponent implements OnInit {
   }
 
   canMarkRead(notification: NotificationRead): boolean {
-    return !notification.is_read && !this.isPendingShareInvite(notification);
+    return !notification.is_read && !this.isPendingShareInvite(notification) && !this.isMetadataReview(notification);
   }
 
   markRead(notification: NotificationRead, event: Event): void {
@@ -164,6 +186,31 @@ export class NavbarNotificationsComponent implements OnInit {
     });
   }
 
+  reviewMetadata(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.isMetadataReview(notification)) {
+      return;
+    }
+
+    this.dialog.open(UploadReviewDialogComponent, {
+      data: { batchId: notification.data.latest_batch_id },
+      maxWidth: '96vw',
+      width: '1100px',
+      panelClass: 'upload-status-dialog-panel',
+      autoFocus: false,
+    });
+  }
+
+  dismissMetadataReminder(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.isMetadataReview(notification)) {
+      return;
+    }
+
+    this.reviewReminderService.dismissReminder(notification.data.dismiss_signature);
+    this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
+  }
+
   iconFor(type: NotificationType): string {
     switch (type) {
       case NotificationType.BATCH_DONE:
@@ -174,6 +221,8 @@ export class NavbarNotificationsComponent implements OnInit {
         return 'system_update';
       case NotificationType.SHARE_INVITE:
         return 'group_add';
+      case NotificationType.METADATA_REVIEW:
+        return 'edit_note';
     }
   }
 

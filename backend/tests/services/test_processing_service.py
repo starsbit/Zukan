@@ -7,6 +7,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
+from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
+from backend.app.models.media import MediaVisibility
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.services.processing import ProcessingService
 from backend.tests.services.conftest import ScalarResult
@@ -69,3 +72,70 @@ async def test_list_batch_items_returns_cursor_page(fake_db, user):
     assert page.total == 3
     assert page.has_more is True
     assert len(page.items) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_batch_review_items_returns_only_missing_character_or_series(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    media_one = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+    )
+    media_one.entities = [
+        MediaEntity(id=uuid.uuid4(), media_id=media_one.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="tagger"),
+    ]
+    media_two = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="two.webp",
+        original_filename="two.webp",
+        filepath="/tmp/two.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+    )
+    media_two.entities = [
+        MediaEntity(id=uuid.uuid4(), media_id=media_two.id, entity_type=MediaEntityType.character, name="Rin", role="primary", source="tagger"),
+        MediaEntity(id=uuid.uuid4(), media_id=media_two.id, entity_type=MediaEntityType.series, name="Fate", role="primary", source="tagger"),
+    ]
+    review_item = ImportBatchItem(batch_id=batch_id, media_id=media_one.id, source_filename="one.webp", status=ItemStatus.done)
+    review_item.id = uuid.uuid4()
+    review_item.media = media_one
+    complete_item = ImportBatchItem(batch_id=batch_id, media_id=media_two.id, source_filename="two.webp", status=ItemStatus.done)
+    complete_item.id = uuid.uuid4()
+    complete_item.media = media_two
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[review_item, complete_item])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id)
+
+    assert result.total == 1
+    assert result.items[0].media.id == media_one.id
+    assert result.items[0].missing_character is False
+    assert result.items[0].missing_series is True

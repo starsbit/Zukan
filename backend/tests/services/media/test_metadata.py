@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -9,7 +10,8 @@ import pytest
 from backend.app.errors.error import AppError
 from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntityType
-from backend.app.schemas import EntityCreate, ExternalRefCreate, MediaMetadataUpdate, MediaUpdate
+from backend.app.models.relations import MediaEntity
+from backend.app.schemas import EntityCreate, ExternalRefCreate, MediaEntityBatchUpdate, MediaMetadataUpdate, MediaUpdate
 from backend.app.services.media.metadata import MediaMetadataService
 
 
@@ -117,4 +119,38 @@ async def test_bulk_update_visibility_updates_only_manageable_media(fake_db, stu
     assert own_private.visibility == MediaVisibility.public
     assert own_public.visibility == MediaVisibility.public
     assert foreign_private.visibility == MediaVisibility.private
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_entities_replaces_only_requested_types(fake_db, stub_query, user):
+    media_one = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id)
+    media_two = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4())
+    old_character = MediaEntity(media_id=media_one.id, entity_type=MediaEntityType.character, name="Old Saber", role="primary", source="tagger")
+    preserved_series = MediaEntity(media_id=media_one.id, entity_type=MediaEntityType.series, name="Fate/stay night", role="primary", source="tagger")
+    foreign_character = MediaEntity(media_id=media_two.id, entity_type=MediaEntityType.character, name="Blocked", role="primary", source="tagger")
+    stub_query.get_media_by_ids.return_value = [media_one, media_two]
+    stub_query.get_media_entities = AsyncMock(side_effect=[
+        [old_character, preserved_series],
+        [foreign_character],
+    ])
+
+    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
+
+    result = await service.bulk_update_entities(
+        MediaEntityBatchUpdate(
+            media_ids=[media_one.id, media_two.id, uuid.uuid4()],
+            character_names=["  Saber  ", "Saber", "Rin"],
+            series_names=None,
+        ),
+        user,
+    )
+
+    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
+    assert result.processed == 1
+    assert result.skipped == 2
+    assert old_character in fake_db.deleted
+    assert preserved_series not in fake_db.deleted
+    assert [entity.name for entity in added_entities] == ["Saber", "Rin"]
+    assert all(entity.entity_type == MediaEntityType.character for entity in added_entities)
     fake_db.commit.assert_awaited_once()

@@ -21,6 +21,17 @@
 
           <div class="status-meta">
             <span>{{ acceptedCount() }} accepted</span>
+            @if (reviewCount() > 0) {
+              <button
+                class="inline-link"
+                type="button"
+                (click)="openReviewDialog()"
+              >
+                {{ reviewCount() }} need names
+              </button>
+            } @else {
+              <span>0 need names</span>
+            }
             @if (duplicateCount() > 0) {
               <button
                 class="inline-link"

@@ -6,9 +6,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.errors.error import AppError
+from backend.app.models.media import TaggingStatus
+from backend.app.models.relations import MediaEntityType
 from backend.app.models.processing import ImportBatch, ImportBatchItem
+from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
-from backend.app.schemas import ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead
+from backend.app.schemas import ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead, ImportBatchReviewItemRead, ImportBatchReviewListResponse
+from backend.app.utils.media_projections import build_media_read
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 
 
@@ -108,3 +112,50 @@ class ProcessingService:
             page_size=page_size,
             items=list(rows),
         )
+
+    async def list_batch_review_items(
+        self,
+        batch_id: uuid.UUID,
+        user_id: uuid.UUID,
+    ) -> ImportBatchReviewListResponse:
+        await self.get_batch_for_user(batch_id, user_id)
+        candidates = await ImportBatchItemRepository(self._db).list_review_candidates_for_batch(batch_id)
+        media_ids = [item.media.id for item in candidates if item.media is not None]
+        favorite_repo = UserFavoriteRepository(self._db)
+        favorited = await favorite_repo.get_favorited_ids(user_id, media_ids)
+        favorite_counts = await favorite_repo.get_favorite_counts(media_ids)
+
+        items: list[ImportBatchReviewItemRead] = []
+        for item in candidates:
+            media = item.media
+            if media is None or media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
+                continue
+
+            has_character = any(entity.entity_type == MediaEntityType.character and entity.name.strip() for entity in media.entities)
+            has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
+            if has_character and has_series:
+                continue
+
+            items.append(
+                ImportBatchReviewItemRead(
+                    batch_item_id=item.id,
+                    media=build_media_read(media, media.id in favorited, favorite_counts.get(media.id, 0)),
+                    entities=[
+                        {
+                            "id": entity.id,
+                            "entity_type": entity.entity_type,
+                            "entity_id": entity.entity_id,
+                            "name": entity.name,
+                            "role": entity.role,
+                            "source": entity.source,
+                            "confidence": entity.confidence,
+                        }
+                        for entity in media.entities
+                    ],
+                    source_filename=item.source_filename,
+                    missing_character=not has_character,
+                    missing_series=not has_series,
+                )
+            )
+
+        return ImportBatchReviewListResponse(total=len(items), items=items)

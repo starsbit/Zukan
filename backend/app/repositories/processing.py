@@ -2,7 +2,9 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from backend.app.models.media import Media, MediaTag
 from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem
 
 
@@ -94,3 +96,17 @@ class ImportBatchItemRepository:
                 )
             )
         ).scalars().all()
+
+    async def list_review_candidates_for_batch(self, batch_id: uuid.UUID) -> list[ImportBatchItem]:
+        stmt = (
+            select(ImportBatchItem)
+            .options(
+                selectinload(ImportBatchItem.media).selectinload(Media.uploader),
+                selectinload(ImportBatchItem.media).selectinload(Media.owner),
+                selectinload(ImportBatchItem.media).selectinload(Media.entities),
+                selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
+            .where(ImportBatchItem.batch_id == batch_id, ImportBatchItem.media_id.is_not(None))
+            .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
+        )
+        return (await self.db.execute(stmt)).scalars().all()

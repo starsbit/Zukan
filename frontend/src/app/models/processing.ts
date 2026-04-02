@@ -1,4 +1,6 @@
 import { CursorPage } from './common';
+import { MediaRead } from './media';
+import { EntityRead } from './relations';
 
 export enum BatchType {
   UPLOAD = 'upload',
@@ -65,3 +67,17 @@ export interface ImportBatchItemRead {
 
 export type ImportBatchListResponse = CursorPage<ImportBatchRead>;
 export type ImportBatchItemListResponse = CursorPage<ImportBatchItemRead>;
+
+export interface ImportBatchReviewItemRead {
+  batch_item_id: string;
+  media: MediaRead;
+  entities: EntityRead[];
+  source_filename: string;
+  missing_character: boolean;
+  missing_series: boolean;
+}
+
+export interface ImportBatchReviewListResponse {
+  total: number;
+  items: ImportBatchReviewItemRead[];
+}

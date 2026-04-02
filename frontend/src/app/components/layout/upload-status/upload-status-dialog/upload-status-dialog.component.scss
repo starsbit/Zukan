@@ -43,14 +43,17 @@
 
 .item-title-row {
   align-items: baseline;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 10px;
-  justify-content: space-between;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .item-filename {
+  display: block;
   font-weight: 600;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -58,6 +61,7 @@
 
 .item-status {
   color: var(--mat-sys-on-surface-variant);
+  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -67,6 +71,8 @@
   font-size: 0.9rem;
   flex-wrap: wrap;
   gap: 6px 10px;
+  min-width: 0;
+  width: 100%;
 }
 
 .item-meta-row span {
@@ -76,7 +82,9 @@
 
 .item-message {
   color: var(--mat-sys-on-surface-variant);
+  display: block;
   white-space: normal;
+  width: 100%;
   word-break: break-word;
 }
 
@@ -97,6 +105,7 @@
 
   .item-title-row,
   .item-meta-row {
+    display: flex;
     flex-direction: column;
     gap: 4px;
   }

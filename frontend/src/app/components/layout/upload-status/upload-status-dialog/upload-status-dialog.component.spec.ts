@@ -12,6 +12,9 @@ describe('UploadStatusDialogComponent', () => {
       summary: signal({
         requestCounts: { queued: 0, uploading: 0, completed: 1, failed: 0 },
         itemCounts: { pending: 0, processing: 0, done: 1, failed: 1, skipped: 0, duplicate: 0, upload_error: 0 },
+        reviewItems: 0,
+        reviewBatchCount: 0,
+        latestReviewBatchId: null,
         totalTrackedItems: 2,
         completedItems: 2,
         progressPercent: 100,

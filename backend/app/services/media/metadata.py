@@ -8,9 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.errors.error import AppError
 from backend.app.errors.upload import version_conflict
 from backend.app.models.auth import User
+from backend.app.models.relations import MediaEntityType
 from backend.app.models.relations import MediaEntity, MediaExternalRef
 from backend.app.repositories.tags import TagRepository
-from backend.app.schemas import BulkResult, MediaDetail, MediaUpdate
+from backend.app.schemas import BulkResult, MediaDetail, MediaEntityBatchUpdate, MediaUpdate
 from backend.app.services.media.interactions import MediaInteractionService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
@@ -106,3 +107,67 @@ class MediaMetadataService:
 
         await self._db.commit()
         return BulkResult(processed=processed, skipped=skipped)
+
+    async def bulk_update_entities(self, payload: MediaEntityBatchUpdate, user: User) -> BulkResult:
+        rows = await self._query.get_media_by_ids(payload.media_ids)
+        found_ids = {row.id for row in rows}
+        skipped = len(payload.media_ids) - len(found_ids)
+        processed = 0
+        normalized_characters = self._normalize_entity_names(payload.character_names)
+        normalized_series = self._normalize_entity_names(payload.series_names)
+
+        for media in rows:
+            if media.uploader_id != user.id and not user.is_admin:
+                skipped += 1
+                continue
+
+            existing_entities = await self._query.get_media_entities(media.id)
+            to_delete: list[MediaEntity] = []
+
+            if payload.character_names is not None:
+                to_delete.extend([entity for entity in existing_entities if entity.entity_type == MediaEntityType.character])
+            if payload.series_names is not None:
+                to_delete.extend([entity for entity in existing_entities if entity.entity_type == MediaEntityType.series])
+
+            for entity in to_delete:
+                await self._db.delete(entity)
+
+            if to_delete:
+                await self._db.flush()
+
+            if payload.character_names is not None:
+                self._add_manual_entities(media.id, MediaEntityType.character, normalized_characters)
+            if payload.series_names is not None:
+                self._add_manual_entities(media.id, MediaEntityType.series, normalized_series)
+
+            processed += 1
+
+        await self._db.commit()
+        return BulkResult(processed=processed, skipped=skipped)
+
+    def _add_manual_entities(self, media_id: uuid.UUID, entity_type: MediaEntityType, names: list[str]) -> None:
+        for name in names:
+            self._db.add(MediaEntity(
+                media_id=media_id,
+                entity_type=entity_type,
+                name=name,
+                role="primary",
+                source="manual",
+            ))
+
+    def _normalize_entity_names(self, names: list[str] | None) -> list[str]:
+        if names is None:
+            return []
+
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for value in names:
+            name = value.strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(name)
+        return normalized

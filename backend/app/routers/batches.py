@@ -6,7 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.schemas import AUTHENTICATED_ERROR_RESPONSES, ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead, error_responses
+from backend.app.schemas import (
+    AUTHENTICATED_ERROR_RESPONSES,
+    ImportBatchItemListResponse,
+    ImportBatchListResponse,
+    ImportBatchRead,
+    ImportBatchReviewListResponse,
+    error_responses,
+)
 from backend.app.services.processing import ProcessingService
 
 router = APIRouter(prefix="/me/import-batches", tags=["batches"], responses=AUTHENTICATED_ERROR_RESPONSES)
@@ -40,3 +47,12 @@ async def list_batch_items(
     db: AsyncSession = Depends(get_db),
 ):
     return await ProcessingService(db).list_batch_items(batch_id, user.id, after=after, page_size=page_size)
+
+
+@router.get("/{batch_id}/review-items", response_model=ImportBatchReviewListResponse, responses=error_responses(404))
+async def list_batch_review_items(
+    batch_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ProcessingService(db).list_batch_review_items(batch_id, user.id)

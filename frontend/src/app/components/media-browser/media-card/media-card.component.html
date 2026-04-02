@@ -2,8 +2,10 @@
   #card
   class="media-card"
   [class.media-card--selected]="selectedState()"
-  role="button"
-  tabindex="0"
+  [class.media-card--disabled]="interactionDisabled()"
+  [attr.role]="interactionDisabled() ? null : 'button'"
+  [attr.tabindex]="interactionDisabled() ? -1 : 0"
+  [attr.aria-disabled]="interactionDisabled()"
   [style.aspect-ratio]="aspectRatio()"
   (click)="onSelect()"
   (keydown)="onCardKeydown($event)"
@@ -19,6 +21,7 @@
         [class.media-card__selection-button--visible]="selectionMode() || selectedState()"
         [class.media-card__selection-button--selected]="selectedState()"
         type="button"
+        [disabled]="interactionDisabled()"
         [attr.aria-label]="selectedState() ? 'Unselect media' : 'Select media'"
         [attr.aria-pressed]="selectedState()"
         (click)="onSelectionToggle($event)">
@@ -82,6 +85,7 @@
           <button
             class="media-card__favorite-button"
             type="button"
+            [disabled]="interactionDisabled()"
             [attr.aria-label]="isFavorited() ? 'Remove from favorites' : 'Add to favorites'"
             [attr.aria-pressed]="isFavorited()"
             (click)="onFavoriteToggle($event)">

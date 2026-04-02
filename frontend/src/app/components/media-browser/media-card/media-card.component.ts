@@ -72,6 +72,7 @@ export class MediaCardComponent {
       || media.thumbnail_status === ProcessingStatus.PENDING
       || media.thumbnail_status === ProcessingStatus.PROCESSING;
   });
+  readonly interactionDisabled = computed(() => this.media().client_is_optimistic === true && this.isProcessing());
 
   readonly displayUrl = computed(() => {
     if (this.media().client_preview_url) {
@@ -140,6 +141,10 @@ export class MediaCardComponent {
   }
 
   onSelect(): void {
+    if (this.interactionDisabled()) {
+      return;
+    }
+
     if (this.selectionMode()) {
       this.selectionToggled.emit(this.media());
       return;
@@ -150,6 +155,9 @@ export class MediaCardComponent {
 
   onSelectionToggle(event: Event): void {
     event.stopPropagation();
+    if (this.interactionDisabled()) {
+      return;
+    }
     this.selectionToggled.emit(this.media());
   }
 
@@ -164,6 +172,9 @@ export class MediaCardComponent {
 
   onFavoriteToggle(event: Event): void {
     event.stopPropagation();
+    if (this.interactionDisabled()) {
+      return;
+    }
     this.favoriteToggled.emit(this.media());
   }
 
