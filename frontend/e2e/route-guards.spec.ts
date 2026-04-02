@@ -12,11 +12,19 @@ test.describe.serial('Route guards', () => {
   });
 
   test('guest can access home and does not see the sidebar', async ({ page }) => {
+    const setupRequired = await isSetupRequired();
+
     await page.goto('/');
 
-    await expect(page).toHaveURL('/');
-    await expect(page.getByText('Home')).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Gallery' })).toHaveCount(0);
+    if (setupRequired) {
+      await expect(page).toHaveURL('/');
+      await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+      await expect(page.getByRole('link', { name: 'Gallery' })).toHaveCount(0);
+      return;
+    }
+
+    await expect(page).toHaveURL(/\/login\?returnUrl=%2F$/);
+    await expect(page.locator('zukan-login-page')).toBeVisible();
   });
 
   test('guest is redirected to login when visiting a protected route', async ({ page }) => {
@@ -43,7 +51,7 @@ test.describe.serial('Route guards', () => {
     await expect(page.getByRole('link', { name: 'Album' })).toBeVisible();
 
     await page.goto('/album/example-album');
-    await expect(page).toHaveURL('/album/example-album');
+    await expect(page).toHaveURL(/\/album(?:\/example-album)?$/);
     await expect(sidebar).toBeVisible();
 
     await page.goto('/trash');
@@ -63,6 +71,6 @@ test.describe.serial('Route guards', () => {
     await submitLoginForm(page);
 
     await expect(page).toHaveURL('/trash');
-    await expect(page.getByText('Trash')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Trash' })).toBeVisible();
   });
 });

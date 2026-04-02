@@ -62,6 +62,8 @@ def _client_ip(request: Request) -> str:
 
 def rate_limit(*, max_requests: int, window_seconds: int, scope: str):
     async def _dependency(request: Request) -> None:
+        if max_requests <= 0 or window_seconds <= 0:
+            return
         client_key = _client_ip(request)
         key = f"{scope}:{client_key}"
         await rate_limit_store.check(key=key, max_requests=max_requests, window_seconds=window_seconds)

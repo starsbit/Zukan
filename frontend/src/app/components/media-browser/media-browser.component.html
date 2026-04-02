@@ -125,7 +125,8 @@
         [activeYear]="activeYear()"
         [activeMonthKey]="activeMonthKey()"
         [activeProgress]="activeTimelineProgress()"
-        (jumpRequested)="onJumpRequested($event)">
+        (jumpRequested)="onJumpRequested($event)"
+        (scrollRequested)="onScrollRequested($event)">
       </zukan-media-timeline>
     </div>
   }

@@ -61,3 +61,25 @@ class AdminHealthResponse(BaseModel):
     system_memory_used_bytes: int | None = Field(default=None, ge=0)
     tagging_queue_depth: int = Field(ge=0)
     samples: list[AdminHealthSample]
+
+
+class AdminAppConfigRead(BaseModel):
+    auth_login_rate_limit_requests: int = Field(ge=0)
+    auth_login_rate_limit_window_seconds: int = Field(ge=0)
+    auth_refresh_rate_limit_requests: int = Field(ge=0)
+    auth_refresh_rate_limit_window_seconds: int = Field(ge=0)
+    auth_register_rate_limit_requests: int = Field(ge=0)
+    auth_register_rate_limit_window_seconds: int = Field(ge=0)
+    upload_rate_limit_requests: int = Field(ge=0)
+    upload_rate_limit_window_seconds: int = Field(ge=0)
+
+
+class AdminAppConfigUpdate(BaseModel):
+    auth_login_rate_limit_requests: int | None = Field(default=None, ge=0)
+    auth_login_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
+    auth_refresh_rate_limit_requests: int | None = Field(default=None, ge=0)
+    auth_refresh_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
+    auth_register_rate_limit_requests: int | None = Field(default=None, ge=0)
+    auth_register_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
+    upload_rate_limit_requests: int | None = Field(default=None, ge=0)
+    upload_rate_limit_window_seconds: int | None = Field(default=None, ge=0)

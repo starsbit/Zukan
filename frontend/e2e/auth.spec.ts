@@ -14,25 +14,37 @@ async function fillPasswordFields(
 
 async function expectToolbarTitle(
   page: import('@playwright/test').Page,
-  title: string,
 ) {
-  await expect(page.locator('mat-toolbar').getByText(title)).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Profile' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+}
+
+async function skipIfSetupCompleted(page: import('@playwright/test').Page, reason: string) {
+  await page.goto('/login');
+  test.skip(!(await isSetupRequired()), reason);
 }
 
 test.describe.serial('Authentication workflows', () => {
   test.describe('First-time setup', () => {
     test('home stays accessible to guests before setup', async ({ page }) => {
+      const setupRequired = await isSetupRequired();
       await page.goto('/');
 
-      await expect(page).toHaveURL('/');
-      await expect(page.getByText('Home')).toBeVisible();
+      if (setupRequired) {
+        await expect(page).toHaveURL('/');
+        await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+        return;
+      }
+
+      await expect(page).toHaveURL(/\/login\?returnUrl=%2F$/);
+      await expect(page.locator('zukan-login-page')).toBeVisible();
     });
 
     test('setup wizard is visible when admin:admin user exists', async ({ page }) => {
       const setupRequired = await isSetupRequired();
       test.skip(!setupRequired, 'Setup already completed — admin:admin user no longer exists');
 
-      await page.goto('/login');
+      await skipIfSetupCompleted(page, 'Setup completed while the suite was running');
       await expect(page.locator('zukan-setup-wizard')).toBeVisible();
     });
 
@@ -40,7 +52,7 @@ test.describe.serial('Authentication workflows', () => {
       const setupRequired = await isSetupRequired();
       test.skip(!setupRequired, 'Setup already completed');
 
-      await page.goto('/login');
+      await skipIfSetupCompleted(page, 'Setup completed while the suite was running');
       await expect(page.locator('mat-tab-group')).not.toBeVisible();
     });
 
@@ -48,7 +60,7 @@ test.describe.serial('Authentication workflows', () => {
       const setupRequired = await isSetupRequired();
       test.skip(!setupRequired, 'Setup already completed');
 
-      await page.goto('/login');
+      await skipIfSetupCompleted(page, 'Setup completed while the suite was running');
 
       await page.locator('zukan-setup-wizard input[formcontrolname="username"]').fill(TEST_ADMIN.username);
       await page.locator('zukan-setup-wizard input[formcontrolname="email"]').fill(TEST_ADMIN.email);
@@ -59,7 +71,7 @@ test.describe.serial('Authentication workflows', () => {
       await page.getByRole('button', { name: 'Complete Setup' }).click();
 
       await expect(page).toHaveURL('/');
-      await expectToolbarTitle(page, 'Home');
+      await expectToolbarTitle(page);
       await expect(page.getByRole('link', { name: 'Gallery' })).toBeVisible();
     });
   });
@@ -92,7 +104,7 @@ test.describe.serial('Authentication workflows', () => {
       await submitLoginForm(page);
 
       await expect(page).toHaveURL('/');
-      await expectToolbarTitle(page, 'Home');
+      await expectToolbarTitle(page);
     });
 
     test('invalid credentials show error and stay on /login', async ({ page }) => {
@@ -190,7 +202,7 @@ test.describe.serial('Authentication workflows', () => {
       await submitLoginForm(page);
 
       await expect(page).toHaveURL('/');
-      await expectToolbarTitle(page, 'Home');
+      await expectToolbarTitle(page);
     });
   });
 });

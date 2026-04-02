@@ -909,6 +909,16 @@ export class MediaBrowserComponent {
     this.contentWidth.set(this.measureContentWidth(content));
   }
 
+  onScrollRequested(progress: number): void {
+    const content = this.contentPane?.nativeElement;
+    if (!content) {
+      return;
+    }
+
+    const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
+    content.scrollTop = progress * maxScrollTop;
+  }
+
   private measureContentWidth(content: HTMLElement): number {
     const measured = Math.max(
       content.clientWidth,

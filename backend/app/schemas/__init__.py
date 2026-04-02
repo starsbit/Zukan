@@ -1,4 +1,6 @@
 from .admin import (
+    AdminAppConfigRead,
+    AdminAppConfigUpdate,
     AdminHealthResponse,
     AdminHealthSample,
     AdminStatsResponse,
@@ -86,6 +88,8 @@ from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredRespo
 __all__ = [
     "AdminHealthResponse",
     "AdminHealthSample",
+    "AdminAppConfigRead",
+    "AdminAppConfigUpdate",
     "AdminStatsResponse",
     "AdminStorageUserSummary",
     "AdminUserDetail",

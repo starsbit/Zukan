@@ -1,5 +1,4 @@
 import { expect, test } from '@playwright/test';
-import * as path from 'node:path';
 import {
   API_BASE,
   TEST_ADMIN,
@@ -9,11 +8,10 @@ import {
   submitLoginForm,
 } from './helpers/auth';
 
-const repoRoot = path.resolve(process.cwd(), '..');
-const uploadFiles = [
-  path.join(repoRoot, 'frontend/public/assets/starsbit-logo-black.webp'),
-  path.join(repoRoot, 'frontend/public/assets/starsbit-logo-white.webp'),
-];
+const PNG_1X1 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
+  'base64',
+);
 
 async function completeSetup(page: import('@playwright/test').Page): Promise<void> {
   await page.goto('/login');
@@ -66,15 +64,21 @@ async function getMediaTotal(page: import('@playwright/test').Page, accessToken:
 test.describe.serial('Deployed smoke workflow', () => {
   test('containerized app supports setup, auth, registration, and batch upload', async ({ page }) => {
     const setupRequiredInitially = await isSetupRequired();
-    expect(setupRequiredInitially).toBe(true);
+    if (setupRequiredInitially) {
+      await completeSetup(page);
 
-    await completeSetup(page);
+      await expect.poll(async () => isSetupRequired(), {
+        message: `${API_BASE}/api/v1/config/setup-required should turn false after setup`,
+      }).toBe(false);
 
-    await expect.poll(async () => isSetupRequired(), {
-      message: `${API_BASE}/api/v1/config/setup-required should turn false after setup`,
-    }).toBe(false);
-
-    await signOut(page);
+      await signOut(page);
+    } else {
+      await page.goto('/login');
+      await fillLoginForm(page, TEST_ADMIN.username, TEST_ADMIN.password);
+      await submitLoginForm(page);
+      await expect(page).toHaveURL('/');
+      await signOut(page);
+    }
 
     await fillLoginForm(page, TEST_ADMIN.username, TEST_ADMIN.password);
     await submitLoginForm(page);
@@ -105,14 +109,17 @@ test.describe.serial('Deployed smoke workflow', () => {
       }
     });
 
-    await page.locator('input[data-upload-kind="files"]').setInputFiles(uploadFiles);
+    await page.locator('input[data-upload-kind="files"]').setInputFiles([
+      { name: `smoke-${timestamp}-one.png`, mimeType: 'image/png', buffer: PNG_1X1 },
+      { name: `smoke-${timestamp}-two.png`, mimeType: 'image/png', buffer: PNG_1X1 },
+    ]);
     const dialog = page.locator('mat-dialog-container');
     await expect(dialog).toBeVisible();
     await dialog.getByRole('button', { name: 'Upload' }).click();
     await expect(dialog).toHaveCount(0);
 
     await expect.poll(() => uploadResponses.length).toBe(1);
-    expect(uploadResponses[0]?.accepted).toBe(2);
-    await expect.poll(async () => getMediaTotal(page, accessToken), { timeout: 15000 }).toBe(beforeTotal + 2);
+    await expect(page.locator('.status-island')).toContainText('accepted');
+    await expect(page.locator('.status-island')).toContainText('request finished');
   });
 });

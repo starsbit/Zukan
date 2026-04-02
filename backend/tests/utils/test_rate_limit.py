@@ -41,3 +41,22 @@ async def test_rate_limit_dependency_uses_store(monkeypatch):
     req = SimpleNamespace(headers={}, client=SimpleNamespace(host="1.1.1.1"))
     await dep(req)
     assert calls[0]["key"] == "auth:1.1.1.1"
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_dependency_is_disabled_when_limit_or_window_is_zero(monkeypatch):
+    calls = []
+
+    class _Store:
+        async def check(self, **kwargs):
+            calls.append(kwargs)
+
+    from backend.app.utils import rate_limit as rate_limit_module
+
+    monkeypatch.setattr(rate_limit_module, "rate_limit_store", _Store())
+    req = SimpleNamespace(headers={}, client=SimpleNamespace(host="1.1.1.1"))
+
+    await rate_limit(max_requests=0, window_seconds=30, scope="auth")(req)
+    await rate_limit(max_requests=10, window_seconds=0, scope="auth")(req)
+
+    assert calls == []

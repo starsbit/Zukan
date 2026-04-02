@@ -1,27 +1,45 @@
 @if (hasEntries()) {
   <aside class="media-timeline" aria-label="Gallery timeline">
-    @if (activeMonthLabel(); as label) {
+    @if (hoveredLabel(); as label) {
       <div
         class="media-timeline__chip"
-        [style.top.%]="activeProgress() ?? (activeMonth() ? monthPosition(activeMonth()!) : 0)">
+        [style.top.%]="indicatorProgress() ?? 0">
         {{ label }}
       </div>
     }
 
     <div class="media-timeline__years">
-      @for (entry of entries(); track entry.year) {
+      @for (item of visibleEntries(); track item.entry.year) {
         <button
           class="media-timeline__year"
+          [class.media-timeline__year--label]="item.showLabel"
+          [class.media-timeline__year--dot]="!item.showLabel"
+          [class.media-timeline__year--active]="activeYear() === item.entry.year"
+          [style.top.%]="yearPosition(item.entry)"
           type="button"
-          [style.top.%]="yearPosition(entry)"
-          [class.media-timeline__year--active]="activeYear() === entry.year"
-          (click)="jumpToYear(entry)">
-          {{ entry.year }}
+          (click)="jumpToYear(item.entry)">
+          @if (item.showLabel) {
+            {{ item.entry.year }}
+          }
         </button>
       }
     </div>
 
-    <div class="media-timeline__rail" aria-label="Timeline months">
+    <div
+      class="media-timeline__rail"
+      #rail
+      role="scrollbar"
+      aria-label="Timeline scrubber"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      [attr.aria-valuenow]="indicatorProgress() ?? 0"
+      (pointerdown)="onRailPointerDown($event)"
+      (pointermove)="onRailPointerMove($event)"
+      (pointerup)="onRailPointerUp($event)"
+      (pointercancel)="onRailPointerUp($event)"
+      (pointerenter)="onRailPointerEnter($event)"
+      (pointerleave)="onRailPointerLeave()">
+
       @for (month of flatMonths(); track monthKey(month.year, month.month)) {
         <button
           class="media-timeline__month"
@@ -32,8 +50,14 @@
           [attr.aria-label]="monthLabel(month.month) + ' ' + month.year"
           [title]="monthLabel(month.month) + ' ' + month.year"
           (click)="jumpToMonth(month.year, month.month)">
-          <span class="media-timeline__month-label">{{ monthLabel(month.month) }}</span>
         </button>
+      }
+
+      @if (indicatorProgress() !== null) {
+        <div
+          class="media-timeline__indicator"
+          [style.top.%]="indicatorProgress()">
+        </div>
       }
     </div>
   </aside>

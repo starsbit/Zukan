@@ -1,7 +1,13 @@
 import { test, expect } from '@playwright/test';
+import { ensureAdminAuthenticated, isSetupRequired } from './helpers/auth';
 
 async function setTheme(page: import('@playwright/test').Page, theme: 'light' | 'dark') {
-  await page.goto('/');
+  if (await isSetupRequired()) {
+    await page.goto('/');
+  } else {
+    await ensureAdminAuthenticated(page);
+    await page.goto('/');
+  }
   await page.evaluate((value) => {
     localStorage.setItem('zukan-theme', value);
     document.documentElement.classList.remove('theme-light', 'theme-dark');

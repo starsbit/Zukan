@@ -40,9 +40,9 @@ function mediaItem(id: string, isFavorited = false) {
 }
 
 async function setupHomeMocks(page: Page, options: { initiallyFavorited?: boolean } = {}): Promise<{
-  patchRequests: Array<{ id: string; body: Record<string, unknown> }>;
+  patchRequests: Array<Record<string, unknown>>;
 }> {
-  const patchRequests: Array<{ id: string; body: Record<string, unknown> }> = [];
+  const patchRequests: Array<Record<string, unknown>> = [];
   const { initiallyFavorited = false } = options;
 
   await page.route('**/api/v1/media/search**', async (route: Route) => {
@@ -67,19 +67,40 @@ async function setupHomeMocks(page: Page, options: { initiallyFavorited?: boolea
     await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 });
   });
 
-  await page.route('**/api/v1/media/m1', async (route: Route) => {
+  await page.route('**/api/v1/media', async (route: Route) => {
     if (route.request().method() !== 'PATCH') {
       await route.continue();
       return;
     }
     const body = await route.request().postDataJSON() as Record<string, unknown>;
-    patchRequests.push({ id: 'm1', body });
+    patchRequests.push(body);
     await route.fulfill({
-      json: { ...mediaItem('m1', body['favorited'] as boolean) },
+      json: { processed: 1, skipped: 0 },
     });
   });
 
   return { patchRequests };
+}
+async function revealFavoriteButton(page: Page): Promise<{
+  ariaPressed: string | null;
+  iconText: string | null;
+}> {
+  return page.evaluate(() => {
+    const card = document.querySelector('.media-card') as HTMLElement | null;
+    card?.dispatchEvent(new Event('mouseenter'));
+    card?.dispatchEvent(new FocusEvent('focusin'));
+    const button = document.querySelector('.media-card__favorite-button') as HTMLButtonElement | null;
+    return {
+      ariaPressed: button?.getAttribute('aria-pressed') ?? null,
+      iconText: button?.querySelector('mat-icon')?.textContent?.trim() ?? null,
+    };
+  });
+}
+
+async function clickFavoriteButton(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (document.querySelector('.media-card__favorite-button') as HTMLButtonElement | null)?.click();
+  });
 }
 
 test.describe.serial('Home page favorites', () => {
@@ -103,18 +124,14 @@ test.describe.serial('Home page favorites', () => {
     // No favorite button before hover
     await expect(page.locator('.media-card__favorite-button')).toHaveCount(0);
 
-    // Hover reveals the favorite button
-    await card.hover();
-    const favBtn = page.locator('.media-card__favorite-button');
-    await expect(favBtn).toBeVisible();
-    await expect(favBtn).toHaveAttribute('aria-pressed', 'false');
-    await expect(favBtn.locator('mat-icon')).toHaveText('favorite_border');
+    await expect.poll(async () => (await revealFavoriteButton(page)).ariaPressed).toBe('false');
+    await expect.poll(async () => (await revealFavoriteButton(page)).iconText).toBe('favorite_border');
 
     // Click the button — should PATCH the backend
-    await favBtn.click();
+    await clickFavoriteButton(page);
 
     await expect.poll(() => patchRequests.length, { timeout: 5000 }).toBe(1);
-    expect(patchRequests[0]?.body['favorited']).toBe(true);
+    expect(patchRequests[0]).toEqual({ media_ids: ['m1'], favorited: true });
   });
 
   test('favorite icon changes to filled heart after clicking', async ({ page }) => {
@@ -124,15 +141,16 @@ test.describe.serial('Home page favorites', () => {
 
     const card = page.locator('.media-card').first();
     await expect(card).toBeVisible();
-    await card.hover();
-
-    const favBtn = page.locator('.media-card__favorite-button');
-    await expect(favBtn).toBeVisible();
+    await expect.poll(async () => (await revealFavoriteButton(page)).ariaPressed).toBe('false');
 
     // Optimistic update: icon should flip immediately on click
-    await favBtn.click();
-    await expect(favBtn.locator('mat-icon')).toHaveText('favorite');
-    await expect(favBtn).toHaveAttribute('aria-pressed', 'true');
+    await clickFavoriteButton(page);
+    await expect.poll(() =>
+      page.evaluate(() => document.querySelector('.media-card__favorite-button')?.getAttribute('aria-pressed') ?? null),
+    ).toBe('true');
+    await expect.poll(() =>
+      page.evaluate(() => document.querySelector('.media-card__favorite-button mat-icon')?.textContent?.trim() ?? null),
+    ).toBe('favorite');
   });
 
   test('clicking a filled heart unfavorites the item', async ({ page }) => {
@@ -142,17 +160,15 @@ test.describe.serial('Home page favorites', () => {
 
     const card = page.locator('.media-card').first();
     await expect(card).toBeVisible();
-    await card.hover();
+    await expect.poll(async () => (await revealFavoriteButton(page)).iconText).toBe('favorite');
 
-    const favBtn = page.locator('.media-card__favorite-button');
-    await expect(favBtn).toBeVisible();
-    await expect(favBtn.locator('mat-icon')).toHaveText('favorite');
+    await clickFavoriteButton(page);
 
-    await favBtn.click();
-
-    await expect(favBtn.locator('mat-icon')).toHaveText('favorite_border');
+    await expect.poll(() =>
+      page.evaluate(() => document.querySelector('.media-card__favorite-button mat-icon')?.textContent?.trim() ?? null),
+    ).toBe('favorite_border');
     await expect.poll(() => patchRequests.length, { timeout: 5000 }).toBe(1);
-    expect(patchRequests[0]?.body['favorited']).toBe(false);
+    expect(patchRequests[0]).toEqual({ media_ids: ['m1'], favorited: false });
   });
 
   test('clicking the favorite button does not open the media viewer', async ({ page }) => {
@@ -162,9 +178,9 @@ test.describe.serial('Home page favorites', () => {
 
     const card = page.locator('.media-card').first();
     await expect(card).toBeVisible();
-    await card.hover();
+    await expect.poll(async () => (await revealFavoriteButton(page)).ariaPressed).toBe('false');
 
-    await page.locator('.media-card__favorite-button').click();
+    await clickFavoriteButton(page);
 
     // URL should stay at '/' — no navigation to a detail view
     await expect(page).toHaveURL('/');

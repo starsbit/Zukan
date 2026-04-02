@@ -4,6 +4,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.config import get_runtime_config, update_runtime_config
 from backend.app.database import get_db
 from backend.app.routers.deps import admin_user
 from backend.app.models.auth import User
@@ -11,6 +12,8 @@ from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (
     ADMIN_ERROR_RESPONSES,
+    AdminAppConfigRead,
+    AdminAppConfigUpdate,
     AdminHealthResponse,
     AdminStatsResponse,
     AdminUserDetail,
@@ -24,8 +27,23 @@ from backend.app.schemas import (
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
+from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
+
+
+@router.get("/app-config", response_model=AdminAppConfigRead)
+async def get_app_config() -> AdminAppConfigRead:
+    return AdminAppConfigRead(**get_runtime_config())
+
+
+@router.patch("/app-config", response_model=AdminAppConfigRead)
+async def update_app_config(
+    body: AdminAppConfigUpdate,
+) -> AdminAppConfigRead:
+    next_config = update_runtime_config(body.model_dump(exclude_none=True))
+    await rate_limit_store.reset()
+    return AdminAppConfigRead(**next_config)
 
 
 @router.get("/stats", response_model=AdminStatsResponse)

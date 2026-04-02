@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.services.admin import AdminService
+from backend.app.config import settings
 
 
 def test_admin_stats_contract(api_client, monkeypatch):
@@ -237,3 +238,32 @@ def test_admin_create_announcement_contract(api_client):
     assert payload["title"] == "Upgrade"
     assert payload["severity"] == "warning"
     notification_service_cls.return_value.publish_announcement.assert_awaited_once()
+
+
+def test_admin_app_config_contract(api_client):
+    response = api_client.get("/api/v1/admin/app-config")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["auth_login_rate_limit_requests"] >= 0
+    assert payload["upload_rate_limit_window_seconds"] >= 0
+
+
+def test_admin_app_config_patch_updates_runtime_settings(api_client, monkeypatch):
+    original_login_limit = settings.auth_login_rate_limit_requests
+    original_upload_limit = settings.upload_rate_limit_requests
+    monkeypatch.setattr(settings, "auth_login_rate_limit_requests", original_login_limit)
+    monkeypatch.setattr(settings, "upload_rate_limit_requests", original_upload_limit)
+
+    response = api_client.patch(
+        "/api/v1/admin/app-config",
+        json={
+            "auth_login_rate_limit_requests": 0,
+            "upload_rate_limit_requests": 0,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["auth_login_rate_limit_requests"] == 0
+    assert payload["upload_rate_limit_requests"] == 0

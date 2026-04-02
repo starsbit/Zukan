@@ -74,10 +74,10 @@ export class AuthService {
       switchMap(() => this.usersClient.getMe()),
       tap(adminUser => { defaultAdminId = adminUser.id; }),
       switchMap(() => this.adminClient.updateUser(newUserId, { is_admin: true })),
-      switchMap(() => this.adminClient.deleteUser(defaultAdminId).pipe(map(() => null))),
       switchMap(() => this.authClient.login({ username, password, remember_me: true })),
       tap(tokens => this.authStore.setTokens(tokens, true)),
       switchMap(() => this.usersClient.getMe()),
+      switchMap(user => this.adminClient.deleteUser(defaultAdminId).pipe(map(() => user))),
       tap(user => {
         this.uploadTracker.reset();
         this.userStore.set(user);

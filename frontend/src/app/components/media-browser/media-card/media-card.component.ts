@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -99,8 +99,27 @@ export class MediaCardComponent {
   private previewObserver?: IntersectionObserver;
   private hasRequestedPreview = false;
   private hasRequestedAnimatedPreview = false;
+  private lastMediaId: string | null = null;
 
   constructor() {
+    effect(() => {
+      const media = this.media();
+
+      if (media.id !== this.lastMediaId) {
+        this.lastMediaId = media.id;
+        this.hasRequestedPreview = false;
+        this.hasRequestedAnimatedPreview = false;
+        this.previewUrl.set(null);
+        this.animatedPreviewUrl.set(null);
+        this.failed.set(false);
+        this.loading.set(false);
+      }
+
+      if (this.visible()) {
+        untracked(() => this.loadPrimaryPreview());
+      }
+    });
+
     effect(() => {
       if (!this.showVideoPreview()) {
         return;

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -52,3 +53,25 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+RUNTIME_CONFIG_FIELDS = {
+    "auth_register_rate_limit_requests",
+    "auth_register_rate_limit_window_seconds",
+    "auth_login_rate_limit_requests",
+    "auth_login_rate_limit_window_seconds",
+    "auth_refresh_rate_limit_requests",
+    "auth_refresh_rate_limit_window_seconds",
+    "upload_rate_limit_requests",
+    "upload_rate_limit_window_seconds",
+}
+
+
+def get_runtime_config() -> dict[str, Any]:
+    return {field: getattr(settings, field) for field in sorted(RUNTIME_CONFIG_FIELDS)}
+
+
+def update_runtime_config(changes: dict[str, Any]) -> dict[str, Any]:
+    for field, value in changes.items():
+        if field in RUNTIME_CONFIG_FIELDS:
+            setattr(settings, field, value)
+    return get_runtime_config()
