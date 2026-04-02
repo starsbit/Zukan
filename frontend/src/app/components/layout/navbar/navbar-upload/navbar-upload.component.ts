@@ -91,6 +91,21 @@ export class NavbarUploadComponent implements OnInit {
     this.handleSelection(Array.from(fileList ?? []), this.folderInput().nativeElement);
   }
 
+  @HostListener('document:paste', ['$event'])
+  onPaste(event: ClipboardEvent): void {
+    const items = Array.from(event.clipboardData?.items ?? []);
+    const files = items
+      .filter((item) => item.kind === 'file')
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null);
+
+    if (files.length === 0) {
+      return;
+    }
+
+    this.handleSelection(files);
+  }
+
   @HostListener('document:dragenter', ['$event'])
   onDragEnter(event: DragEvent): void {
     if (!this.hasFiles(event.dataTransfer)) {

@@ -427,6 +427,37 @@ function makeDialogMock(result: { isPublic: boolean } | undefined) {
     );
   });
 
+  function pasteEventWithItems(items: { kind: string; type: string; getAsFile: () => File | null }[]): ClipboardEvent {
+    return {
+      clipboardData: { items },
+    } as unknown as ClipboardEvent;
+  }
+
+  it('uploads an image pasted from the clipboard', async () => {
+    const { component, upload } = await createComponent();
+    const pasted = new File(['img'], 'image.png', { type: 'image/png' });
+
+    component.onPaste(pasteEventWithItems([{ kind: 'file', type: 'image/png', getAsFile: () => pasted }]));
+
+    expectUploadWithVisibility(upload, [pasted], MediaVisibility.PRIVATE);
+  });
+
+  it('ignores paste events that contain only non-file clipboard items', async () => {
+    const { component, upload } = await createComponent();
+
+    component.onPaste(pasteEventWithItems([{ kind: 'string', type: 'text/plain', getAsFile: () => null }]));
+
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it('ignores paste events when clipboardData is null', async () => {
+    const { component, upload } = await createComponent();
+
+    component.onPaste({ clipboardData: null } as unknown as ClipboardEvent);
+
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   it('registers failed upload requests with the upload tracker', async () => {
     const upload = vi.fn().mockReturnValue(throwError(() => ({ error: { detail: 'boom' } })));
     const tracker = {
