@@ -7,6 +7,8 @@
   [style.aspect-ratio]="aspectRatio()"
   (click)="onSelect()"
   (keydown)="onCardKeydown($event)"
+  (focusin)="onFocusIn()"
+  (focusout)="onFocusOut($event)"
   (mouseenter)="onHover(true)"
   (mouseleave)="onHover(false)">
   <div class="media-card__surface">
@@ -36,7 +38,7 @@
       }
     </div>
 
-    @if (isPublic() && showPublicBadge()) {
+    @if (showPublicOverlay()) {
       <div class="media-card__badge-stack media-card__badge-stack--bottom-left">
         <span
           class="media-card__badge media-card__badge--icon media-card__badge--public"
@@ -69,14 +71,14 @@
       </div>
     }
 
-    @if (mediaIcon() || showFavoriteControl() || (showFavorite() && favoriteCount() > 0)) {
+    @if (mediaIcon() || showFavoriteOverlay()) {
       <div class="media-card__badge-stack media-card__badge-stack--right">
         @if (mediaIcon(); as icon) {
           <span class="media-card__badge media-card__badge--icon" [attr.aria-label]="media().media_type" [attr.title]="media().media_type">
             <mat-icon aria-hidden="true">{{ icon }}</mat-icon>
           </span>
         }
-        @if (showFavoriteControl() || favoriteCount() > 0) {
+        @if (showFavoriteOverlay()) {
           <button
             class="media-card__favorite-button"
             type="button"

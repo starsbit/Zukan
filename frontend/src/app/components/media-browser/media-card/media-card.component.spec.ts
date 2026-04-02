@@ -247,6 +247,12 @@ describe('MediaCardComponent', () => {
     fixture.componentRef.setInput('media', makeMedia({ visibility: MediaVisibility.PUBLIC }));
     fixture.detectChanges();
 
+    expect(fixture.nativeElement.querySelector('[aria-label="Public"]')).toBeNull();
+
+    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
+    card.dispatchEvent(new Event('mouseenter'));
+    fixture.detectChanges();
+
     expect(fixture.nativeElement.querySelector('[aria-label="Public"]')).not.toBeNull();
 
     fixture.componentRef.setInput('media', makeMedia({ visibility: MediaVisibility.PRIVATE }));
@@ -382,6 +388,38 @@ describe('MediaCardComponent', () => {
     btn.click();
 
     expect((emitted as MediaRead | null)?.id).toBe('m1');
+  });
+
+  it('only renders the favorite button while hovered or focused', async () => {
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      getPosterUrl: vi.fn(() => of('blob:poster')),
+      getFileUrl: vi.fn(() => of('blob:file')),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [MediaCardComponent],
+      providers: [{ provide: MediaService, useValue: mediaService }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaCardComponent);
+    fixture.componentRef.setInput('media', makeMedia({ favorite_count: 4 }));
+    fixture.componentRef.setInput('showFavorite', true);
+    fixture.detectChanges();
+
+    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
+    expect(fixture.nativeElement.querySelector('.media-card__favorite-button')).toBeNull();
+
+    card.dispatchEvent(new Event('mouseenter'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-card__favorite-button')).not.toBeNull();
+
+    card.dispatchEvent(new Event('mouseleave'));
+    card.dispatchEvent(new FocusEvent('focusin'));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-card__favorite-button')).not.toBeNull();
   });
 
   it('does not emit activated when the favorite button is clicked', async () => {

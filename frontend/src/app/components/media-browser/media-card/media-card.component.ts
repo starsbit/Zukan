@@ -33,6 +33,7 @@ export class MediaCardComponent {
   readonly animatedPreviewUrl = signal<string | null>(null);
   readonly loading = signal(false);
   readonly hovered = signal(false);
+  readonly focused = signal(false);
   readonly visible = signal(false);
   readonly failed = signal(false);
 
@@ -91,7 +92,8 @@ export class MediaCardComponent {
   );
   readonly isFavorited = computed(() => this.media().is_favorited);
   readonly favoriteCount = computed(() => this.media().favorite_count ?? 0);
-  readonly showFavoriteControl = computed(() => this.showFavorite());
+  readonly showPublicOverlay = computed(() => this.isPublic() && this.showPublicBadge() && (this.hovered() || this.focused()));
+  readonly showFavoriteOverlay = computed(() => this.showFavorite() && (this.hovered() || this.focused()));
 
   private previewObserver?: IntersectionObserver;
   private hasRequestedPreview = false;
@@ -170,6 +172,19 @@ export class MediaCardComponent {
     if (active) {
       this.loadAnimatedPreview();
     }
+  }
+
+  onFocusIn(): void {
+    this.focused.set(true);
+  }
+
+  onFocusOut(event: FocusEvent): void {
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && this.host().nativeElement.contains(nextTarget)) {
+      return;
+    }
+
+    this.focused.set(false);
   }
 
   private loadPrimaryPreview(): void {
