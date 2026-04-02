@@ -52,6 +52,9 @@ describe('NavbarSearchComponent', () => {
             getCharacterSuggestions: (query: string) => of(
               query ? [{ name: 'Rin Tohsaka', media_count: 4 }] : [],
             ),
+            getSeriesSuggestions: (query: string) => of(
+              query ? [{ name: 'Fate/stay night', media_count: 9 }] : [],
+            ),
           },
         },
         NavbarSearchService,
@@ -103,6 +106,18 @@ describe('NavbarSearchComponent', () => {
     ]);
   });
 
+  it('creates and replaces the series chip from suggestions', async () => {
+    const { fixture, component, searchService } = await createComponent();
+
+    component.onSuggestionSelected({ option: { value: { type: 'series', value: 'Fate/zero' } } } as never);
+    component.onSuggestionSelected({ option: { value: { type: 'series', value: 'Fate/stay night' } } } as never);
+    fixture.detectChanges();
+
+    expect(searchService.draftChips().filter((chip) => chip.type === 'series')).toEqual([
+      { type: 'series', value: 'Fate/stay night' },
+    ]);
+  });
+
   it('commits OCR text and applies search on enter', async () => {
     const { fixture, element, component, searchService } = await createComponent();
     const input = element.querySelector('input') as HTMLInputElement;
@@ -133,6 +148,7 @@ describe('NavbarSearchComponent', () => {
     expect(searchService.applied()).toEqual({
       tags: [],
       characterName: null,
+      seriesName: null,
       ocrText: null,
       advanced: {
         excludeTags: [],
@@ -166,11 +182,12 @@ describe('NavbarSearchComponent', () => {
     expect(searchService.draftChips()).toEqual([]);
   });
 
-  it('hides already entered tags and characters from suggestions', async () => {
+  it('hides already entered tags, characters, and series from suggestions', async () => {
     const { fixture, element, component, searchService } = await createComponent();
 
     searchService.addTag('Saber');
     searchService.setCharacter('Rin Tohsaka');
+    searchService.setSeries('Fate/stay night');
     fixture.detectChanges();
 
     await setInputValue(fixture, element, 'sa');
@@ -178,6 +195,9 @@ describe('NavbarSearchComponent', () => {
 
     await setInputValue(fixture, element, 'rin');
     expect(component.characterSuggestions()).toEqual([]);
+
+    await setInputValue(fixture, element, 'fate');
+    expect(component.seriesSuggestions()).toEqual([]);
   });
 
   it('opens the advanced filters dialog', async () => {

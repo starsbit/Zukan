@@ -21,6 +21,11 @@ describe('UserSettingsDialogComponent', () => {
     version: 3,
     created_at: '2026-03-28T00:00:00Z',
   };
+  const apiKeyStatus = {
+    has_key: true,
+    created_at: '2026-04-02T09:15:00Z',
+    last_used_at: '2026-04-02T10:30:00Z',
+  };
 
   it('initializes the form from the current user', async () => {
     await TestBed.configureTestingModule({
@@ -29,7 +34,7 @@ describe('UserSettingsDialogComponent', () => {
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: { updateMe: vi.fn() } },
+        { provide: UsersClientService, useValue: { updateMe: vi.fn(), getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -55,7 +60,7 @@ describe('UserSettingsDialogComponent', () => {
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set } },
-        { provide: UsersClientService, useValue: { updateMe } },
+        { provide: UsersClientService, useValue: { updateMe, getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -88,7 +93,7 @@ describe('UserSettingsDialogComponent', () => {
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: { updateMe } },
+        { provide: UsersClientService, useValue: { updateMe, getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -112,7 +117,7 @@ describe('UserSettingsDialogComponent', () => {
       providers: [
         provideRouter([]),
         { provide: UserStore, useValue: { currentUser: () => user, isAdmin: () => true } },
-        { provide: UsersClientService, useValue: { updateMe: vi.fn().mockReturnValue(of(user)) } },
+        { provide: UsersClientService, useValue: { updateMe: vi.fn().mockReturnValue(of(user)), getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
       ],
     }).compileComponents();
@@ -141,7 +146,7 @@ describe('UserSettingsDialogComponent', () => {
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: { updateMe } },
+        { provide: UsersClientService, useValue: { updateMe, getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -152,5 +157,48 @@ describe('UserSettingsDialogComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.textContent).toContain('Version conflict');
+  });
+
+  it('renders the user id and api key status', async () => {
+    await TestBed.configureTestingModule({
+      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
+        { provide: UsersClientService, useValue: { updateMe: vi.fn(), getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
+    fixture.detectChanges();
+
+    const idInput = fixture.nativeElement.querySelector('input[disabled]') as HTMLInputElement;
+    expect(idInput.value).toBe(user.id);
+    expect(fixture.nativeElement.textContent).toContain('Active');
+  });
+
+  it('creates an api key and shows the raw value once', async () => {
+    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+
+    await TestBed.configureTestingModule({
+      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
+        { provide: UsersClientService, useValue: { updateMe: vi.fn(), getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)), createApiKey } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.createApiKey();
+    fixture.detectChanges();
+
+    expect(createApiKey).toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('zk_created_key');
+    expect(fixture.nativeElement.textContent).toContain('This key is only shown once');
   });
 });

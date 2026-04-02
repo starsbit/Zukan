@@ -221,6 +221,83 @@
 
       <mat-card appearance="outlined">
         <mat-card-header>
+          <mat-card-title>Series</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-section-content">
+          @if (editing()) {
+            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Add series</mat-label>
+              <input
+                matInput
+                type="text"
+                [formControl]="seriesInputControl"
+                [matAutocomplete]="seriesAutocomplete"
+                placeholder="Type or choose a series"
+                (keydown.enter)="addTypedSeriesFromEvent($event)"
+              />
+              <button
+                mat-icon-button
+                matSuffix
+                type="button"
+                aria-label="Add current series"
+                (click)="addTypedSeries()"
+              >
+                <mat-icon aria-hidden="true">add</mat-icon>
+              </button>
+            </mat-form-field>
+
+            <mat-autocomplete
+              #seriesAutocomplete="matAutocomplete"
+              autoActiveFirstOption
+              (optionSelected)="selectSeries($event.option.value)"
+            >
+              @for (suggestion of seriesSuggestions(); track suggestion.name) {
+                <mat-option [value]="suggestion.name">
+                  <span>{{ suggestion.name }}</span>
+                  <span class="inspector-option-secondary"
+                    >{{ suggestion.media_count }} matches</span
+                  >
+                </mat-option>
+              }
+            </mat-autocomplete>
+
+            @if (editableSeries().length > 0) {
+              <mat-chip-set class="inspector-chips" aria-label="Selected series">
+                @for (seriesName of editableSeries(); track seriesName) {
+                  <mat-chip-row [removable]="true" (removed)="removeSeries(seriesName)">
+                    {{ seriesName }}
+                    <button
+                      matChipRemove
+                      type="button"
+                      aria-label="Remove series {{ seriesName }}"
+                    >
+                      <mat-icon aria-hidden="true">cancel</mat-icon>
+                    </button>
+                  </mat-chip-row>
+                }
+              </mat-chip-set>
+            } @else {
+              <p class="inspector-empty">No series names added yet.</p>
+            }
+          } @else if (series().length > 0) {
+            <div class="inspector-characters">
+              @for (seriesItem of series(); track seriesItem.name + ':' + seriesItem.details) {
+                <div class="inspector-character">
+                  <strong>{{ seriesItem.name }}</strong>
+                  @if (seriesItem.details) {
+                    <span>{{ seriesItem.details }}</span>
+                  }
+                </div>
+              }
+            </div>
+          } @else {
+            <p class="inspector-empty">No series names detected for this item.</p>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card appearance="outlined">
+        <mat-card-header>
           <mat-card-title>OCR</mat-card-title>
         </mat-card-header>
         <mat-card-content class="inspector-section-content">

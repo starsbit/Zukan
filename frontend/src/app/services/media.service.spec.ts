@@ -428,4 +428,14 @@ describe('MediaService', () => {
       req.flush(mock);
     });
   });
+
+  describe('getSeriesSuggestions()', () => {
+    it('sends GET /api/v1/media/series-suggestions with q', () => {
+      const mock = [{ name: 'fate_stay_night', media_count: 5 }];
+      service.getSeriesSuggestions('fate').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne(r => r.url === '/api/v1/media/series-suggestions');
+      expect(req.request.params.get('q')).toBe('fate');
+      req.flush(mock);
+    });
+  });
 });

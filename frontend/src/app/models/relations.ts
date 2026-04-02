@@ -1,5 +1,6 @@
 export enum MediaEntityType {
   CHARACTER = 'character',
+  SERIES = 'series',
 }
 
 export interface EntityRead {

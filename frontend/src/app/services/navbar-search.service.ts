@@ -2,7 +2,7 @@ import { computed, Injectable, signal } from '@angular/core';
 import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode } from '../models/media';
 import { MediaSearchParams } from './web/media-client.service';
 
-export type SearchChipType = 'tag' | 'character' | 'ocr';
+export type SearchChipType = 'tag' | 'character' | 'series' | 'ocr';
 
 export interface SearchChip {
   type: SearchChipType;
@@ -12,6 +12,7 @@ export interface SearchChip {
 export interface AppliedSearchState {
   tags: string[];
   characterName: string | null;
+  seriesName: string | null;
   ocrText: string | null;
   advanced: AdvancedSearchFilters;
 }
@@ -58,6 +59,7 @@ export class NavbarSearchService {
   private readonly _applied = signal<AppliedSearchState>({
     tags: [],
     characterName: null,
+    seriesName: null,
     ocrText: null,
     advanced: this.emptyAdvancedFilters,
   });
@@ -91,6 +93,7 @@ export class NavbarSearchService {
     return {
       tag: applied.tags.length > 0 ? applied.tags : undefined,
       character_name: applied.characterName ?? undefined,
+      series_name: applied.seriesName ?? undefined,
       ocr_text: applied.ocrText ?? undefined,
       exclude_tag: applied.advanced.excludeTags.length > 0 ? applied.advanced.excludeTags : undefined,
       mode: applied.advanced.mode ?? undefined,
@@ -142,6 +145,19 @@ export class NavbarSearchService {
     this._draftText.set('');
   }
 
+  setSeries(value: string): void {
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+
+    this._draftChips.update((chips) => [
+      ...chips.filter((chip) => chip.type !== 'series'),
+      { type: 'series', value: normalized },
+    ]);
+    this._draftText.set('');
+  }
+
   setOcr(value: string): void {
     const normalized = value.trim();
     this._draftChips.update((chips) => {
@@ -181,6 +197,7 @@ export class NavbarSearchService {
     this._applied.set({
       tags: chips.filter((chip) => chip.type === 'tag').map((chip) => chip.value),
       characterName: chips.find((chip) => chip.type === 'character')?.value ?? null,
+      seriesName: chips.find((chip) => chip.type === 'series')?.value ?? null,
       ocrText: chips.find((chip) => chip.type === 'ocr')?.value ?? null,
       advanced: this._applied().advanced,
     });
@@ -192,6 +209,7 @@ export class NavbarSearchService {
     this._applied.set({
       tags: [],
       characterName: null,
+      seriesName: null,
       ocrText: null,
       advanced: this.emptyAdvancedFilters,
     });

@@ -21,6 +21,11 @@ class CharacterSuggestion(BaseModel):
     media_count: int = Field(description="Number of visible media items using this character name.")
 
 
+class SeriesSuggestion(BaseModel):
+    name: str = Field(description="Series entity name suggestion.")
+    media_count: int = Field(description="Number of visible media items using this series name.")
+
+
 class TagWithConfidence(BaseModel):
     name: str = Field(description="Canonical tag name.")
     category: int = Field(description="Numeric tag category from the tagging backend.")

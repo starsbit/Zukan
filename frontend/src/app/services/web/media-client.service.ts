@@ -14,7 +14,7 @@ import {
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
-import { CharacterSuggestion } from '../../models/tags';
+import { CharacterSuggestion, SeriesSuggestion } from '../../models/tags';
 import { MediaTimeline } from '../../models/timeline';
 
 export interface MediaListParams {
@@ -33,6 +33,7 @@ export interface MediaSearchParams {
   album_id?: string;
   tag?: string[];
   character_name?: string;
+  series_name?: string;
   exclude_tag?: string[];
   mode?: TagFilterMode;
   nsfw?: NsfwFilter;
@@ -87,6 +88,7 @@ export class MediaClientService {
     if (p.album_id != null) params = params.set('album_id', p.album_id);
     if (p.tag) p.tag.forEach(t => (params = params.append('tag', t)));
     if (p.character_name != null) params = params.set('character_name', p.character_name);
+    if (p.series_name != null) params = params.set('series_name', p.series_name);
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
@@ -152,6 +154,7 @@ export class MediaClientService {
     if (p.album_id != null) params = params.set('album_id', p.album_id);
     if (p.tag) p.tag.forEach(t => (params = params.append('tag', t)));
     if (p.character_name != null) params = params.set('character_name', p.character_name);
+    if (p.series_name != null) params = params.set('series_name', p.series_name);
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
@@ -167,6 +170,14 @@ export class MediaClientService {
     const params = new HttpParams().set('q', q).set('limit', limit);
     return this.http.get<CharacterSuggestion[]>(
       `${this.base}/api/v1/media/character-suggestions`,
+      { params },
+    );
+  }
+
+  getSeriesSuggestions(q: string, limit = 20): Observable<SeriesSuggestion[]> {
+    const params = new HttpParams().set('q', q).set('limit', limit);
+    return this.http.get<SeriesSuggestion[]>(
+      `${this.base}/api/v1/media/series-suggestions`,
       { params },
     );
   }

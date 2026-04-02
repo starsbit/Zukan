@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
-from backend.app.models.relations import MediaEntity
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.services.tags import TagService
 from backend.app.utils.tagging import TagPrediction, TaggingResult
@@ -95,11 +95,17 @@ async def test_predict_with_retries_retries_then_succeeds(fake_db):
 
 
 @pytest.mark.asyncio
-async def test_store_tagging_result_sets_status_and_character_entity(fake_db, user, media):
+async def test_store_tagging_result_sets_status_and_persists_all_character_and_series_entities(fake_db, user, media):
     media.uploader_id = user.id
     media.id = uuid.uuid4()
     result = TaggingResult(
-        predictions=[TagPrediction("Saber", 4, 0.95), TagPrediction("safe", 0, 0.8)],
+        predictions=[
+            TagPrediction("Saber", 4, 0.95),
+            TagPrediction("Rin Tohsaka", 4, 0.91),
+            TagPrediction("Fate/stay night", 3, 0.94),
+            TagPrediction("safe", 0, 0.8),
+            TagPrediction("below threshold", 4, 0.2),
+        ],
         is_nsfw=False,
     )
 
@@ -107,14 +113,20 @@ async def test_store_tagging_result_sets_status_and_character_entity(fake_db, us
         "backend.app.services.tags.MediaEntityRepository"
     ) as entity_repo_cls:
         tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
-        entity_repo_cls.return_value.get_tagger_char_entities = AsyncMock(return_value=[SimpleNamespace(id=1)])
+        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[SimpleNamespace(id=1)], [SimpleNamespace(id=2)]])
         fake_db.get = AsyncMock(return_value=user)
 
         await TagService(fake_db)._store_tagging_result(media, result)
 
     assert media.tagging_status == "done"
     assert media.tagging_error is None
-    assert any(isinstance(item, MediaEntity) and item.name == "Saber" for item in fake_db.added)
+    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
+    assert {(item.entity_type, item.name) for item in added_entities} == {
+        (MediaEntityType.character, "Saber"),
+        (MediaEntityType.character, "Rin Tohsaka"),
+        (MediaEntityType.series, "Fate/stay night"),
+    }
+    assert all(item.confidence is not None and item.confidence >= user.tag_confidence_threshold for item in added_entities)
 
 
 @pytest.mark.asyncio

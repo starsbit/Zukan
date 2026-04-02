@@ -549,4 +549,81 @@ describe('UploadTrackerService', () => {
     expect(service.hasActiveWork()).toBe(false);
     expect(galleryStore.patchItem).toHaveBeenCalled();
   });
+
+  it('reset clears tracked upload state and cancels pending polling', async () => {
+    vi.useFakeTimers();
+
+    const get = vi.fn().mockReturnValue(of({
+      id: 'b1',
+      user_id: 'u1',
+      type: BatchType.UPLOAD,
+      status: BatchStatus.RUNNING,
+      total_items: 1,
+      queued_items: 1,
+      processing_items: 0,
+      done_items: 0,
+      failed_items: 0,
+      created_at: '2026-03-29T10:00:00Z',
+      started_at: '2026-03-29T10:00:01Z',
+      finished_at: null,
+      last_heartbeat_at: '2026-03-29T10:00:03Z',
+      app_version: null,
+      worker_version: null,
+      error_summary: null,
+    }));
+    const listItems = vi.fn().mockReturnValue(of({
+      total: 1,
+      next_cursor: null,
+      has_more: false,
+      page_size: 200,
+      items: [{
+        id: 'i1',
+        batch_id: 'b1',
+        media_id: 'm1',
+        source_filename: 'one.jpg',
+        status: BatchItemStatus.PENDING,
+        step: ProcessingStep.INGEST,
+        progress_percent: 0,
+        error: null,
+        updated_at: '2026-03-29T10:00:03Z',
+      }],
+    }));
+
+    await TestBed.configureTestingModule({
+      providers: [
+        UploadTrackerService,
+        { provide: BatchesClientService, useValue: { get, listItems } },
+        { provide: GalleryStore, useValue: { addAcceptedUploads: vi.fn(), patchItem: vi.fn(), resolveOptimisticMediaId: vi.fn() } },
+        { provide: MediaService, useValue: { get: vi.fn(() => of()) } },
+      ],
+    }).compileComponents();
+
+    const service = TestBed.inject(UploadTrackerService);
+    const requestId = service.registerPendingBatch([new File(['a'], 'one.jpg')], MediaVisibility.PRIVATE);
+    service.markBatchUploading(requestId);
+    service.registerBatchStarted(requestId, {
+      batch_id: 'b1',
+      batch_url: '/api/v1/me/import-batches/b1',
+      batch_items_url: '/api/v1/me/import-batches/b1/items',
+      poll_after_seconds: 1,
+      webhooks_supported: false,
+      accepted: 1,
+      duplicates: 0,
+      errors: 0,
+      results: [],
+    }, [new File(['a'], 'one.jpg')], MediaVisibility.PRIVATE);
+
+    await Promise.resolve();
+    expect(service.visible()).toBe(true);
+    expect(service.summary().totalTrackedItems).toBe(1);
+
+    service.reset();
+
+    expect(service.visible()).toBe(false);
+    expect(service.hasTrackedUploads()).toBe(false);
+    expect(service.summary().totalTrackedItems).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
 });

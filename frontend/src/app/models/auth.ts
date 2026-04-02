@@ -47,3 +47,13 @@ export interface TokenResponse {
 export interface RefreshTokenRequest {
   refresh_token: string;
 }
+
+export interface ApiKeyStatusResponse {
+  has_key: boolean;
+  created_at: string | null;
+  last_used_at: string | null;
+}
+
+export interface ApiKeyCreateResponse extends ApiKeyStatusResponse {
+  api_key: string;
+}

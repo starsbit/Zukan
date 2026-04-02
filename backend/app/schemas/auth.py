@@ -121,6 +121,37 @@ class RefreshTokenRequest(BaseModel):
     }
 
 
+class APIKeyStatusResponse(BaseModel):
+    has_key: bool
+    created_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "has_key": True,
+                "created_at": "2026-04-02T09:15:00Z",
+                "last_used_at": "2026-04-02T10:30:00Z",
+            }
+        }
+    }
+
+
+class APIKeyCreateResponse(APIKeyStatusResponse):
+    api_key: str
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "api_key": "zk_9b4f816ab314f29d8d777d2e92e6910d7d4199be6adfcf7c6fb0a3bbf5f64ca1",
+                "has_key": True,
+                "created_at": "2026-04-02T09:15:00Z",
+                "last_used_at": None,
+            }
+        }
+    }
+
+
 class UserListResponse(BaseModel):
     total: int
     page: int

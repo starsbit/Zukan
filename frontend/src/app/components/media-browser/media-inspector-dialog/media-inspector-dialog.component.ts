@@ -24,7 +24,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { MediaDetail, MediaRead, MediaType } from '../../../models/media';
 import { MediaEntityType } from '../../../models/relations';
-import { CharacterSuggestion, TagRead } from '../../../models/tags';
+import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/tags';
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
@@ -53,6 +53,7 @@ interface InspectorField {
 interface MetadataDraft {
   tags: string[];
   characterNames: string[];
+  seriesNames: string[];
   ocrTextOverride: string;
 }
 
@@ -102,14 +103,17 @@ export class MediaInspectorDialogComponent {
   readonly dragging = signal(false);
   readonly tagSuggestions = signal<TagRead[]>([]);
   readonly characterSuggestions = signal<CharacterSuggestion[]>([]);
+  readonly seriesSuggestions = signal<SeriesSuggestion[]>([]);
   readonly draft = signal<MetadataDraft>({
     tags: [],
     characterNames: [],
+    seriesNames: [],
     ocrTextOverride: '',
   });
 
   readonly tagInputControl = new FormControl('', { nonNullable: true });
   readonly characterInputControl = new FormControl('', { nonNullable: true });
+  readonly seriesInputControl = new FormControl('', { nonNullable: true });
 
   readonly activeItem = computed(() => this.items()[this.activeIndex()] ?? this.items()[0] ?? null);
   readonly media = computed<MediaRead | MediaDetail>(() => this.detail() ?? this.activeItem()!);
@@ -154,18 +158,10 @@ export class MediaInspectorDialogComponent {
     ].filter((field) => field.value);
   });
   readonly characters = computed(() =>
-    (this.detail()?.entities ?? [])
-      .filter((entity) => entity.entity_type === MediaEntityType.CHARACTER)
-      .map((entity) => ({
-        name: entity.name,
-        details: [
-          entity.role ? humanizeBackendLabel(entity.role) : '',
-          entity.source ? humanizeBackendLabel(entity.source) : '',
-          entity.confidence == null ? '' : `Confidence ${formatConfidence(entity.confidence)}`,
-        ]
-          .filter(Boolean)
-          .join(' • '),
-      })),
+    this.entityDisplayItems(MediaEntityType.CHARACTER),
+  );
+  readonly series = computed(() =>
+    this.entityDisplayItems(MediaEntityType.SERIES),
   );
   readonly externalRefs = computed(() =>
     (this.detail()?.external_refs ?? []).map((ref) => ({
@@ -183,6 +179,7 @@ export class MediaInspectorDialogComponent {
   readonly editableOcrValue = computed(() => this.draft().ocrTextOverride);
   readonly editableTags = computed(() => this.draft().tags);
   readonly editableCharacters = computed(() => this.draft().characterNames);
+  readonly editableSeries = computed(() => this.draft().seriesNames);
 
   private objectUrl: string | null = null;
   private loadRequestId = 0;
@@ -237,6 +234,24 @@ export class MediaInspectorDialogComponent {
         const selected = new Set(this.draft().characterNames);
         this.characterSuggestions.set(suggestions.filter((item) => !selected.has(item.name)));
       });
+
+    this.seriesInputControl.valueChanges
+      .pipe(
+        debounceTime(150),
+        distinctUntilChanged(),
+        switchMap((value) => {
+          const query = value.trim();
+          if (!query) {
+            return of([]);
+          }
+          return this.mediaService.getSeriesSuggestions(query, 8);
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((suggestions) => {
+        const selected = new Set(this.draft().seriesNames);
+        this.seriesSuggestions.set(suggestions.filter((item) => !selected.has(item.name)));
+      });
   }
 
   ngOnDestroy(): void {
@@ -279,6 +294,10 @@ export class MediaInspectorDialogComponent {
     this.commitCharacter(this.characterInputControl.getRawValue());
   }
 
+  addTypedSeries(): void {
+    this.commitSeries(this.seriesInputControl.getRawValue());
+  }
+
   addTypedTagFromEvent(event: Event): void {
     event.preventDefault();
     this.addTypedTag();
@@ -289,12 +308,21 @@ export class MediaInspectorDialogComponent {
     this.addTypedCharacter();
   }
 
+  addTypedSeriesFromEvent(event: Event): void {
+    event.preventDefault();
+    this.addTypedSeries();
+  }
+
   selectTag(tagName: string): void {
     this.commitTag(tagName);
   }
 
   selectCharacter(characterName: string): void {
     this.commitCharacter(characterName);
+  }
+
+  selectSeries(seriesName: string): void {
+    this.commitSeries(seriesName);
   }
 
   removeTag(tag: string): void {
@@ -309,6 +337,14 @@ export class MediaInspectorDialogComponent {
     this.draft.update((draft) => ({
       ...draft,
       characterNames: draft.characterNames.filter((value) => value !== characterName),
+    }));
+    this.refreshSuggestionFilters();
+  }
+
+  removeSeries(seriesName: string): void {
+    this.draft.update((draft) => ({
+      ...draft,
+      seriesNames: draft.seriesNames.filter((value) => value !== seriesName),
     }));
     this.refreshSuggestionFilters();
   }
@@ -333,10 +369,16 @@ export class MediaInspectorDialogComponent {
     this.mediaService
       .update(media.id, {
         tags: [...draft.tags],
-        entities: draft.characterNames.map((name) => ({
-          entity_type: MediaEntityType.CHARACTER,
-          name,
-        })),
+        entities: [
+          ...draft.characterNames.map((name) => ({
+            entity_type: MediaEntityType.CHARACTER,
+            name,
+          })),
+          ...draft.seriesNames.map((name) => ({
+            entity_type: MediaEntityType.SERIES,
+            name,
+          })),
+        ],
         ocr_text_override: ocrTextOverride ? ocrTextOverride : null,
         version: media.version,
       })
@@ -560,23 +602,35 @@ export class MediaInspectorDialogComponent {
         .filter((entity) => entity.entity_type === MediaEntityType.CHARACTER)
         .map((entity) => entity.name),
     );
+    const seriesNames = dedupeNames(
+      (detail.entities ?? [])
+        .filter((entity) => entity.entity_type === MediaEntityType.SERIES)
+        .map((entity) => entity.name),
+    );
     this.draft.set({
       tags: [...media.tags],
       characterNames,
+      seriesNames,
       ocrTextOverride: media.ocr_text_override ?? '',
     });
     this.tagInputControl.setValue('', { emitEvent: false });
     this.characterInputControl.setValue('', { emitEvent: false });
+    this.seriesInputControl.setValue('', { emitEvent: false });
     this.tagSuggestions.set([]);
     this.characterSuggestions.set([]);
+    this.seriesSuggestions.set([]);
   }
 
   private refreshSuggestionFilters(): void {
     const selectedTags = new Set(this.draft().tags);
     const selectedCharacters = new Set(this.draft().characterNames);
+    const selectedSeries = new Set(this.draft().seriesNames);
     this.tagSuggestions.update((tags) => tags.filter((tag) => !selectedTags.has(tag.name)));
     this.characterSuggestions.update((items) =>
       items.filter((item) => !selectedCharacters.has(item.name)),
+    );
+    this.seriesSuggestions.update((items) =>
+      items.filter((item) => !selectedSeries.has(item.name)),
     );
   }
 
@@ -610,6 +664,38 @@ export class MediaInspectorDialogComponent {
     }));
     this.characterInputControl.setValue('', { emitEvent: false });
     this.refreshSuggestionFilters();
+  }
+
+  private commitSeries(rawValue: string): void {
+    const seriesName = normalizeChipValue(rawValue);
+    if (!seriesName) {
+      this.seriesInputControl.setValue('', { emitEvent: false });
+      return;
+    }
+
+    this.draft.update((draft) => ({
+      ...draft,
+      seriesNames: draft.seriesNames.includes(seriesName)
+        ? draft.seriesNames
+        : [...draft.seriesNames, seriesName],
+    }));
+    this.seriesInputControl.setValue('', { emitEvent: false });
+    this.refreshSuggestionFilters();
+  }
+
+  private entityDisplayItems(entityType: MediaEntityType) {
+    return (this.detail()?.entities ?? [])
+      .filter((entity) => entity.entity_type === entityType)
+      .map((entity) => ({
+        name: entity.name,
+        details: [
+          entity.role ? humanizeBackendLabel(entity.role) : '',
+          entity.source ? humanizeBackendLabel(entity.source) : '',
+          entity.confidence == null ? '' : `Confidence ${formatConfidence(entity.confidence)}`,
+        ]
+          .filter(Boolean)
+          .join(' • '),
+      }));
   }
 
   private isEditableTarget(target: EventTarget | null): boolean {

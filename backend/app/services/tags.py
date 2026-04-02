@@ -25,7 +25,6 @@ from backend.app.utils.tagging import (
     TaggerBackend,
     TaggingResult,
     aggregate_tagging_results,
-    derive_character_name,
     tag_names_mark_nsfw,
 )
 from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_media_frames
@@ -208,19 +207,33 @@ class TagService:
         media.tagging_status = "done"
         media.tagging_error = None
 
-        for entity in await MediaEntityRepository(self._db).get_tagger_char_entities(media.id):
-            await self._db.delete(entity)
+        entity_repo = MediaEntityRepository(self._db)
+        for entity_type in (MediaEntityType.character, MediaEntityType.series):
+            for entity in await entity_repo.get_tagger_entities(media.id, entity_type):
+                await self._db.delete(entity)
 
-        char_name = derive_character_name(filtered_predictions)
-        if char_name:
-            char_pred = next((p for p in filtered_predictions if p.name == char_name), None)
+        entity_predictions = [
+            (MediaEntityType.character, prediction)
+            for prediction in filtered_predictions
+            if prediction.category == 4
+        ] + [
+            (MediaEntityType.series, prediction)
+            for prediction in filtered_predictions
+            if prediction.category == 3
+        ]
+        seen_entities: set[tuple[MediaEntityType, str]] = set()
+        for entity_type, prediction in entity_predictions:
+            key = (entity_type, prediction.name.casefold())
+            if key in seen_entities:
+                continue
+            seen_entities.add(key)
             self._db.add(MediaEntity(
                 media_id=media.id,
-                entity_type=MediaEntityType.character,
-                name=char_name,
+                entity_type=entity_type,
+                name=prediction.name,
                 role="primary",
                 source="tagger",
-                confidence=char_pred.confidence if char_pred else None,
+                confidence=prediction.confidence,
             ))
 
         await self._db.commit()

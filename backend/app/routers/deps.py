@@ -17,14 +17,18 @@ async def current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     if token is not None:
-        user_id = decode_access_token(token)
-        if user_id is None:
-            raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=invalid_token, detail="Invalid token")
         from backend.app.services.auth import AuthService
-        user = await AuthService(db).get_user_by_id(user_id)
-        if user is None:
-            raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=user_not_found, detail="User not found")
-        return user
+        service = AuthService(db)
+        user_id = decode_access_token(token)
+        if user_id is not None:
+            user = await service.get_user_by_id(user_id)
+            if user is None:
+                raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=user_not_found, detail="User not found")
+            return user
+        user = await service.get_user_by_api_key(token)
+        if user is not None:
+            return user
+        raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=invalid_token, detail="Invalid token")
     raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=not_authenticated, detail="Not authenticated")
 
 

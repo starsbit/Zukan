@@ -11,6 +11,7 @@ from backend.app.database import Base
 
 class MediaEntityType(str, Enum):
     character = "character"
+    series = "series"
 
 
 class MediaEntity(Base):

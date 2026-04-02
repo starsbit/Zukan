@@ -7,6 +7,7 @@ import { UsersClientService } from './web/users-client.service';
 import { AdminClientService } from './web/admin-client.service';
 import { AuthStore } from './web/auth.store';
 import { UserStore } from './user.store';
+import { UploadTrackerService } from './upload-tracker.service';
 import { UserSelfRead } from '../models/auth';
 
 @Injectable({ providedIn: 'root' })
@@ -16,13 +17,17 @@ export class AuthService {
   private readonly adminClient = inject(AdminClientService);
   private readonly authStore = inject(AuthStore);
   private readonly userStore = inject(UserStore);
+  private readonly uploadTracker = inject(UploadTrackerService);
   private readonly router = inject(Router);
 
   login(username: string, password: string, rememberMe: boolean): Observable<void> {
     return this.authClient.login({ username, password, remember_me: rememberMe }).pipe(
       tap(tokens => this.authStore.setTokens(tokens, rememberMe)),
       switchMap(() => this.usersClient.getMe()),
-      tap(user => this.userStore.set(user)),
+      tap(user => {
+        this.uploadTracker.reset();
+        this.userStore.set(user);
+      }),
       map(() => void 0),
     );
   }
@@ -34,6 +39,7 @@ export class AuthService {
   logout(): Observable<void> {
     const refreshToken = this.authStore.getRefreshToken();
     const cleanup = () => {
+      this.uploadTracker.reset();
       this.authStore.clear();
       this.userStore.clear();
     };
@@ -72,7 +78,10 @@ export class AuthService {
       switchMap(() => this.authClient.login({ username, password, remember_me: true })),
       tap(tokens => this.authStore.setTokens(tokens, true)),
       switchMap(() => this.usersClient.getMe()),
-      tap(user => this.userStore.set(user)),
+      tap(user => {
+        this.uploadTracker.reset();
+        this.userStore.set(user);
+      }),
       map((): void => void 0),
     ) as Observable<void>;
   }

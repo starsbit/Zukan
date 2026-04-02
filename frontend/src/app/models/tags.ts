@@ -23,6 +23,11 @@ export interface CharacterSuggestion {
   media_count: number;
 }
 
+export interface SeriesSuggestion {
+  name: string;
+  media_count: number;
+}
+
 export interface TagManagementResult {
   matched_media: number;
   updated_media: number;

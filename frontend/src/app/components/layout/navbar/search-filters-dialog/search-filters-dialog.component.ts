@@ -1,13 +1,19 @@
-import { Component, inject } from '@angular/core';
-import { FormBuilder, ReactiveFormsModule } from '@angular/forms';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
+import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatChipsModule } from '@angular/material/chips';
 import { MatDialogModule, MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
-import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode } from '../../../../models/media';
+import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
+import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
 import { AdvancedSearchFilters } from '../../../../services/navbar-search.service';
+import { TagsClientService } from '../../../../services/web/tags-client.service';
 
 interface SearchFilterDialogData {
   filters: AdvancedSearchFilters;
@@ -20,10 +26,13 @@ type FavoriteFilterOption = 'any' | 'only' | 'exclude';
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    MatAutocompleteModule,
     MatButtonModule,
     MatCheckboxModule,
+    MatChipsModule,
     MatDialogModule,
     MatFormFieldModule,
+    MatIconModule,
     MatInputModule,
     MatSelectModule,
   ],
@@ -33,8 +42,17 @@ type FavoriteFilterOption = 'any' | 'only' | 'exclude';
 export class SearchFiltersDialogComponent {
   private readonly dialogRef = inject(MatDialogRef<SearchFiltersDialogComponent>);
   private readonly data = inject<SearchFilterDialogData>(MAT_DIALOG_DATA);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly fb = inject(FormBuilder);
+  private readonly tagsClient = inject(TagsClientService);
 
+  readonly statusOptions: Array<{ value: TaggingStatus | null; label: string }> = [
+    { value: null, label: 'Any' },
+    { value: TaggingStatus.PENDING, label: 'Pending' },
+    { value: TaggingStatus.PROCESSING, label: 'Processing' },
+    { value: TaggingStatus.DONE, label: 'Done' },
+    { value: TaggingStatus.FAILED, label: 'Failed' },
+  ];
   readonly modeOptions = [
     { value: null, label: 'Default' },
     { value: TagFilterMode.AND, label: 'Match all tags' },
@@ -74,11 +92,14 @@ export class SearchFiltersDialogComponent {
     { value: MediaType.VIDEO, label: 'Videos' },
   ];
 
+  readonly excludeTagChips = signal<string[]>([...this.data.filters.excludeTags]);
+  readonly excludeTagInput = new FormControl('', { nonNullable: true });
+  readonly excludeTagSuggestions = signal<string[]>([]);
+
   readonly form = this.fb.group({
-    excludeTags: [this.data.filters.excludeTags.join(', ')],
     mode: [this.data.filters.mode],
     nsfw: [this.data.filters.nsfw],
-    status: [this.data.filters.status ?? ''],
+    status: [this.data.filters.status ?? null],
     favorited: [this.favoriteValueFromBoolean(this.data.filters.favorited)],
     visibility: [this.data.filters.visibility],
     mediaTypes: [this.data.filters.mediaTypes],
@@ -92,17 +113,60 @@ export class SearchFiltersDialogComponent {
     capturedBeforeYear: [this.data.filters.capturedBeforeYear?.toString() ?? ''],
   });
 
+  constructor() {
+    this.excludeTagInput.valueChanges.pipe(
+      takeUntilDestroyed(this.destroyRef),
+      debounceTime(150),
+      distinctUntilChanged(),
+      switchMap((value) => {
+        const query = value.trim();
+        if (!query) {
+          return of({ items: [] as { name: string }[] });
+        }
+        return this.tagsClient.list({ q: query, page_size: 8 });
+      }),
+    ).subscribe(({ items }) => {
+      const existing = new Set(this.excludeTagChips().map((t) => t.toLowerCase()));
+      this.excludeTagSuggestions.set(
+        items
+          .filter((tag) => !existing.has(tag.name.toLowerCase()))
+          .map((tag) => tag.name),
+      );
+    });
+  }
+
+  addExcludeTag(value: string): void {
+    const normalized = value.trim();
+    if (!normalized) {
+      return;
+    }
+    const lower = normalized.toLowerCase();
+    this.excludeTagChips.update((chips) =>
+      chips.some((c) => c.toLowerCase() === lower) ? chips : [...chips, normalized],
+    );
+    this.excludeTagInput.reset('');
+    this.excludeTagSuggestions.set([]);
+  }
+
+  removeExcludeTag(tag: string): void {
+    this.excludeTagChips.update((chips) => chips.filter((c) => c !== tag));
+  }
+
+  onExcludeTagSelected(event: MatAutocompleteSelectedEvent): void {
+    this.addExcludeTag(event.option.value as string);
+  }
+
+  onExcludeTagInputEnter(): void {
+    this.addExcludeTag(this.excludeTagInput.value);
+  }
+
   apply(): void {
     const value = this.form.getRawValue();
-    const excludeTags = (value.excludeTags ?? '')
-      .split(',')
-      .map((tag) => tag.trim())
-      .filter(Boolean);
     this.dialogRef.close({
-      excludeTags,
+      excludeTags: this.excludeTagChips(),
       mode: value.mode ?? null,
       nsfw: value.nsfw ?? null,
-      status: (value.status ?? '').trim() || null,
+      status: value.status ?? null,
       favorited: this.favoriteBooleanFromValue(value.favorited ?? 'any'),
       visibility: value.visibility ?? null,
       mediaTypes: value.mediaTypes ?? [],
@@ -118,6 +182,8 @@ export class SearchFiltersDialogComponent {
   }
 
   clear(): void {
+    this.excludeTagChips.set([]);
+    this.excludeTagInput.reset('');
     this.dialogRef.close({
       excludeTags: [],
       mode: null,

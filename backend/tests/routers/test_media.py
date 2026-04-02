@@ -109,7 +109,7 @@ def test_search_media_contract(api_client, monkeypatch):
 
     monkeypatch.setattr(MediaQueryService, "list_media", _fake_list)
 
-    response = api_client.get("/api/v1/media/search", params={"page_size": 6, "ocr_text": "fate"})
+    response = api_client.get("/api/v1/media/search", params={"page_size": 6, "ocr_text": "fate", "series_name": "Fate"})
 
     assert response.status_code == 200
     assert response.json()["page_size"] == 6
@@ -124,13 +124,14 @@ def test_media_timeline_contract(api_client, monkeypatch):
 
     monkeypatch.setattr(MediaQueryService, "get_timeline", _fake_timeline)
 
-    response = api_client.get("/api/v1/media/timeline", params={"tag": "safe", "status": "reviewed", "favorited": "false"})
+    response = api_client.get("/api/v1/media/timeline", params={"tag": "safe", "status": "reviewed", "favorited": "false", "series_name": "Fate"})
 
     assert response.status_code == 200
     assert response.json() == {"buckets": []}
     assert captured["tags"] == ["safe"]
     assert captured["status_filter"] == "reviewed"
     assert captured["favorited"] is False
+    assert captured["series_name"] == "Fate"
 
 
 def test_character_suggestions_contract(api_client, monkeypatch):
@@ -143,6 +144,20 @@ def test_character_suggestions_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Saber"
+
+
+def test_series_suggestions_contract(api_client, monkeypatch):
+    async def _fake_suggestions(self, user, q, limit):
+        assert q == "S"
+        assert limit == 6
+        return [{"name": "Fate/stay night", "media_count": 2}]
+
+    monkeypatch.setattr(MediaQueryService, "list_series_suggestions", _fake_suggestions)
+
+    response = api_client.get("/api/v1/media/series-suggestions", params={"q": "S", "limit": 6})
+
+    assert response.status_code == 200
+    assert response.json()[0]["name"] == "Fate/stay night"
 
 
 def test_batch_update_contract(api_client, monkeypatch):

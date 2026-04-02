@@ -35,12 +35,22 @@ def apply_character_name_filter(stmt, character_name: str | None):
     if character_name and character_name.strip():
         normalized_query = normalize_character_name_search(character_name)
         if normalized_query:
-            normalized_entity_name = func.btrim(
-                func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
-                "_",
-            )
+            normalized_entity_name = _normalized_entity_name_expr()
             subq = select(MediaEntity.media_id).where(
                 MediaEntity.entity_type == MediaEntityType.character,
+                normalized_entity_name.contains(normalized_query),
+            )
+            stmt = stmt.where(Media.id.in_(subq))
+    return stmt
+
+
+def apply_series_name_filter(stmt, series_name: str | None):
+    if series_name and series_name.strip():
+        normalized_query = normalize_character_name_search(series_name)
+        if normalized_query:
+            normalized_entity_name = _normalized_entity_name_expr()
+            subq = select(MediaEntity.media_id).where(
+                MediaEntity.entity_type == MediaEntityType.series,
                 normalized_entity_name.contains(normalized_query),
             )
             stmt = stmt.where(Media.id.in_(subq))
@@ -111,3 +121,10 @@ def _build_fuzzy_ocr_like_pattern(term: str) -> str | None:
         return None
     # Insert SQL wildcards between characters to tolerate OCR noise inside words
     return "%" + "%".join(normalized) + "%"
+
+
+def _normalized_entity_name_expr():
+    return func.btrim(
+        func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
+        "_",
+    )

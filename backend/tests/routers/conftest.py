@@ -25,11 +25,16 @@ from backend.app.routers.deps import admin_user, current_user
 class FakeRouterDB:
     def __init__(self) -> None:
         self.added = []
+        self.deleted = []
         self.commit = AsyncMock()
+        self.delete = AsyncMock(side_effect=self._delete)
         self.refresh = AsyncMock(side_effect=self._refresh)
 
     def add(self, obj) -> None:
         self.added.append(obj)
+
+    async def _delete(self, obj) -> None:
+        self.deleted.append(obj)
 
     async def _refresh(self, obj) -> None:
         if getattr(obj, "id", None) is None:

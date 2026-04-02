@@ -93,6 +93,11 @@
   color: var(--mat-sys-tertiary);
 }
 
+.search-chip-series .search-chip-kind-icon {
+  background: color-mix(in srgb, var(--mat-sys-secondary-container) 35%, transparent);
+  color: var(--mat-sys-secondary);
+}
+
 .search-chip-ocr .search-chip-kind-icon {
   background: color-mix(in srgb, var(--mat-sys-secondary) 18%, transparent);
   color: var(--mat-sys-secondary);

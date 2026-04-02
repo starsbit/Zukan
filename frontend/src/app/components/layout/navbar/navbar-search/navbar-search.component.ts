@@ -14,7 +14,7 @@ import { MediaClientService } from '../../../../services/web/media-client.servic
 import { NavbarSearchService, SearchChip } from '../../../../services/navbar-search.service';
 import { debounceTime, distinctUntilChanged, forkJoin, of, switchMap } from 'rxjs';
 
-type SuggestionType = 'tag' | 'character';
+type SuggestionType = 'tag' | 'character' | 'series';
 
 interface SearchSuggestion {
   type: SuggestionType;
@@ -57,6 +57,7 @@ export class NavbarSearchComponent {
   readonly activeAdvancedFilterCount = this.searchService.activeAdvancedFilterCount;
   readonly tagSuggestions = signal<SearchSuggestion[]>([]);
   readonly characterSuggestions = signal<SearchSuggestion[]>([]);
+  readonly seriesSuggestions = signal<SearchSuggestion[]>([]);
 
   constructor() {
     effect(() => {
@@ -81,15 +82,16 @@ export class NavbarSearchComponent {
         this.searchService.setText(value);
         const query = value.trim();
         if (!this.authStore.isAuthenticated() || !query) {
-          return of({ tags: [], characters: [] });
+          return of({ tags: [], characters: [], series: [] });
         }
 
         return forkJoin({
           tags: this.tagsClient.list({ q: query, page_size: 6 }),
           characters: this.mediaClient.getCharacterSuggestions(query, 6),
+          series: this.mediaClient.getSeriesSuggestions(query, 6),
         });
       }),
-    ).subscribe(({ tags, characters }) => {
+    ).subscribe(({ tags, characters, series }) => {
       const query = this.query.value.trim().toLowerCase();
       const activeTags = new Set(
         this.chips()
@@ -99,6 +101,11 @@ export class NavbarSearchComponent {
       const activeCharacters = new Set(
         this.chips()
           .filter((chip) => chip.type === 'character')
+          .map((chip) => chip.value.toLowerCase()),
+      );
+      const activeSeries = new Set(
+        this.chips()
+          .filter((chip) => chip.type === 'series')
           .map((chip) => chip.value.toLowerCase()),
       );
 
@@ -124,6 +131,16 @@ export class NavbarSearchComponent {
           }))
           .sort((left, right) => this.compareSuggestions(left.value, right.value, query)),
       );
+      this.seriesSuggestions.set(
+        series
+          .filter((item) => !activeSeries.has(item.name.toLowerCase()))
+          .map((item) => ({
+            type: 'series' as const,
+            value: item.name,
+            subtitle: `${item.media_count} matches`,
+          }))
+          .sort((left, right) => this.compareSuggestions(left.value, right.value, query)),
+      );
     });
   }
 
@@ -137,13 +154,15 @@ export class NavbarSearchComponent {
         return 'sell';
       case 'character':
         return 'face';
+      case 'series':
+        return 'auto_stories';
       case 'ocr':
         return 'text_fields';
     }
   }
 
   hasSuggestions(): boolean {
-    return this.tagSuggestions().length + this.characterSuggestions().length > 0;
+    return this.tagSuggestions().length + this.characterSuggestions().length + this.seriesSuggestions().length > 0;
   }
 
   hasSearchValue(): boolean {
@@ -154,8 +173,10 @@ export class NavbarSearchComponent {
     const suggestion = event.option.value as SearchSuggestion;
     if (suggestion.type === 'tag') {
       this.searchService.addTag(suggestion.value);
-    } else {
+    } else if (suggestion.type === 'character') {
       this.searchService.setCharacter(suggestion.value);
+    } else {
+      this.searchService.setSeries(suggestion.value);
     }
 
     this.resetInput(true);
@@ -222,6 +243,7 @@ export class NavbarSearchComponent {
   private clearSuggestions(): void {
     this.tagSuggestions.set([]);
     this.characterSuggestions.set([]);
+    this.seriesSuggestions.set([]);
   }
 
   private resetInput(emitEvent: boolean): void {

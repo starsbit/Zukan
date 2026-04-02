@@ -227,6 +227,7 @@ class MediaQueryService:
         state: MediaListState,
         tags: list[str] | None,
         character_name: str | None,
+        series_name: str | None,
         exclude_tags: list[str] | None,
         mode: TagFilterMode,
         nsfw: NsfwFilter,
@@ -253,6 +254,7 @@ class MediaQueryService:
 
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
         stmt = media_filters.apply_character_name_filter(stmt, character_name)
+        stmt = media_filters.apply_series_name_filter(stmt, series_name)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
         stmt = media_filters.apply_media_type_filters(stmt, media_type)
         stmt = media_filters.apply_captured_at_filters(stmt, metadata)
@@ -285,6 +287,7 @@ class MediaQueryService:
         state: MediaListState = MediaListState.ACTIVE,
         tags: list[str] | None = None,
         character_name: str | None = None,
+        series_name: str | None = None,
         exclude_tags: list[str] | None = None,
         mode: TagFilterMode = TagFilterMode.AND,
         nsfw: NsfwFilter = NsfwFilter.DEFAULT,
@@ -312,6 +315,7 @@ class MediaQueryService:
 
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
         stmt = media_filters.apply_character_name_filter(stmt, character_name)
+        stmt = media_filters.apply_series_name_filter(stmt, series_name)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
         stmt = media_filters.apply_media_type_filters(stmt, media_type)
         stmt = media_filters.apply_ocr_text_filter(stmt, ocr_text)
@@ -359,6 +363,24 @@ class MediaQueryService:
             return []
 
         return await self._entity_repo.list_character_suggestions(
+            query=query,
+            limit=limit,
+            show_nsfw=user.show_nsfw,
+            is_admin=user.is_admin,
+        )
+
+    async def list_series_suggestions(
+        self,
+        user: User,
+        *,
+        q: str,
+        limit: int,
+    ) -> list[dict[str, int | str]]:
+        query = q.strip()
+        if not query:
+            return []
+
+        return await self._entity_repo.list_series_suggestions(
             query=query,
             limit=limit,
             show_nsfw=user.show_nsfw,

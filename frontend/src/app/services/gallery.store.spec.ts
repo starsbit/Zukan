@@ -95,6 +95,31 @@ describe('GalleryStore', () => {
       expect(req.request.params.get('visibility')).toBe('public');
       req.flush(makePage([]));
     });
+
+    it('sorts items by date descending when no sort_by is set', () => {
+      store.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
+        makeMedia('m1', '2026-01-01T00:00:00Z'),
+        makeMedia('m2', '2026-03-01T00:00:00Z'),
+        makeMedia('m3', '2026-02-01T00:00:00Z'),
+      ]));
+
+      const ids = store.items().map((i) => i.id);
+      expect(ids).toEqual(['m2', 'm3', 'm1']);
+    });
+
+    it('preserves server order when sort_by is set', () => {
+      store.setParams({ sort_by: 'filename' });
+      store.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
+        makeMedia('m1', '2026-03-01T00:00:00Z'),
+        makeMedia('m2', '2026-01-01T00:00:00Z'),
+        makeMedia('m3', '2026-02-01T00:00:00Z'),
+      ]));
+
+      const ids = store.items().map((i) => i.id);
+      expect(ids).toEqual(['m1', 'm2', 'm3']);
+    });
   });
 
   describe('loadMore()', () => {

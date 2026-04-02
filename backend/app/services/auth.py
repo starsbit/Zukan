@@ -10,9 +10,9 @@ from backend.app.config import settings
 from backend.app.errors.error import AppError
 from backend.app.errors.auth import duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token
 from backend.app.errors.upload import version_conflict
-from backend.app.models.auth import RefreshToken, User
-from backend.app.repositories.auth import RefreshTokenRepository, UserRepository
-from backend.app.schemas import TokenResponse, UserRegister, UserUpdate
+from backend.app.models.auth import APIKey, RefreshToken, User
+from backend.app.repositories.auth import APIKeyRepository, RefreshTokenRepository, UserRepository
+from backend.app.schemas import APIKeyCreateResponse, APIKeyStatusResponse, TokenResponse, UserRegister, UserUpdate
 from backend.app.utils.passwords import hash_password, hash_token, verify_password
 from backend.app.utils.tokens import create_access_token
 
@@ -103,6 +103,49 @@ class AuthService:
         record.revoked = True
         await self._db.commit()
         return True
+
+    async def get_api_key_status(self, user_id: uuid.UUID) -> APIKeyStatusResponse:
+        record = await APIKeyRepository(self._db).get_by_user_id(user_id)
+        if record is None:
+            return APIKeyStatusResponse(has_key=False, created_at=None, last_used_at=None)
+        return APIKeyStatusResponse(has_key=True, created_at=record.created_at, last_used_at=record.last_used_at)
+
+    async def create_api_key(self, user_id: uuid.UUID) -> APIKeyCreateResponse:
+        repo = APIKeyRepository(self._db)
+        existing = await repo.get_by_user_id(user_id)
+        if existing is not None:
+            await self._db.delete(existing)
+
+        raw = f"zk_{secrets.token_hex(32)}"
+        record = APIKey(user_id=user_id, key_hash=hash_token(raw))
+        self._db.add(record)
+        await self._db.commit()
+        await self._db.refresh(record)
+        return APIKeyCreateResponse(
+            api_key=raw,
+            has_key=True,
+            created_at=record.created_at,
+            last_used_at=record.last_used_at,
+        )
+
+    async def revoke_api_key(self, user_id: uuid.UUID) -> bool:
+        record = await APIKeyRepository(self._db).get_by_user_id(user_id)
+        if record is None:
+            return False
+        await self._db.delete(record)
+        await self._db.commit()
+        return True
+
+    async def get_user_by_api_key(self, raw_key: str) -> User | None:
+        record = await APIKeyRepository(self._db).get_by_hash(hash_token(raw_key))
+        if record is None:
+            return None
+        user = await UserRepository(self._db).get_by_id(record.user_id)
+        if user is None:
+            return None
+        record.last_used_at = datetime.now(UTC)
+        await self._db.commit()
+        return user
 
     async def authenticate_basic_user(self, username: str, password: str) -> User | None:
         user = await UserRepository(self._db).get_by_username(username)

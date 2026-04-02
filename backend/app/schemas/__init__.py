@@ -15,6 +15,8 @@ from .albums import (
     AlbumUpdate,
 )
 from .auth import (
+    APIKeyCreateResponse,
+    APIKeyStatusResponse,
     RefreshTokenRequest,
     TokenResponse,
     UserListResponse,
@@ -61,6 +63,7 @@ from .tags import (
     CATEGORY_NAMES,
     CharacterSuggestion,
     NsfwFilter,
+    SeriesSuggestion,
     TagFilterMode,
     TagListResponse,
     TagManagementResult,
@@ -73,6 +76,8 @@ __all__ = [
     "AdminStatsResponse",
     "AdminUserDetail",
     "AdminUserUpdate",
+    "APIKeyCreateResponse",
+    "APIKeyStatusResponse",
     "AlbumAccessRole",
     "AlbumCreate",
     "AlbumListResponse",
@@ -136,6 +141,7 @@ __all__ = [
     "TaggingJobQueuedResponse",
     "TokenResponse",
     "SetupRequiredResponse",
+    "SeriesSuggestion",
     "UploadConfigResponse",
     "UploadResult",
     "UserListResponse",

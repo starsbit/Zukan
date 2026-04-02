@@ -11,6 +11,12 @@ const mockUser = {
   version: 1, created_at: '2026-01-01T00:00:00Z',
 };
 
+const mockApiKeyStatus = {
+  has_key: true,
+  created_at: '2026-04-02T09:15:00Z',
+  last_used_at: '2026-04-02T10:30:00Z',
+};
+
 describe('UsersClientService', () => {
   let service: UsersClientService;
   let http: HttpTestingController;
@@ -46,5 +52,24 @@ describe('UsersClientService', () => {
     expect(req.request.method).toBe('PATCH');
     expect(req.request.body).toEqual(update);
     req.flush(mockUser);
+  });
+
+  it('getApiKeyStatus sends GET /api/v1/me/api-key', () => {
+    service.getApiKeyStatus().subscribe(res => expect(res).toEqual(mockApiKeyStatus));
+
+    const req = http.expectOne('/api/v1/me/api-key');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockApiKeyStatus);
+  });
+
+  it('createApiKey sends POST /api/v1/me/api-key', () => {
+    const created = { ...mockApiKeyStatus, api_key: 'zk_test_key' };
+
+    service.createApiKey().subscribe(res => expect(res).toEqual(created));
+
+    const req = http.expectOne('/api/v1/me/api-key');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+    req.flush(created);
   });
 });

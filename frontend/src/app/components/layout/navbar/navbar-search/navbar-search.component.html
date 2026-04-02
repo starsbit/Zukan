@@ -7,6 +7,7 @@
         type="button"
         class="search-chip"
         [class.search-chip-character]="chip.type === 'character'"
+        [class.search-chip-series]="chip.type === 'series'"
         [class.search-chip-ocr]="chip.type === 'ocr'"
         [attr.aria-label]="'Remove ' + chipLabel(chip)"
         (click)="onRemoveChip(chip)"
@@ -23,7 +24,7 @@
       class="search-input"
       [formControl]="query"
       [matAutocomplete]="autocomplete"
-      [placeholder]="disabled() ? 'Search available after sign in' : (chips().length > 0 ? 'Add more tags, characters, or OCR text' : 'Search by tags, character, or OCR text')"
+      [placeholder]="disabled() ? 'Search available after sign in' : (chips().length > 0 ? 'Add more tags, characters, series, or OCR text' : 'Search by tags, character, series, or OCR text')"
       aria-label="Search your photos"
       (keydown.backspace)="onBackspace()"
       (keydown.enter)="onEnter($event)"
@@ -63,6 +64,17 @@
     @if (characterSuggestions().length > 0) {
       <mat-optgroup label="Characters">
         @for (suggestion of characterSuggestions(); track suggestion.type + ':' + suggestion.value) {
+          <mat-option [value]="suggestion">
+            <span>{{ suggestion.value }}</span>
+            <span class="option-secondary">{{ suggestion.subtitle }}</span>
+          </mat-option>
+        }
+      </mat-optgroup>
+    }
+
+    @if (seriesSuggestions().length > 0) {
+      <mat-optgroup label="Series">
+        @for (suggestion of seriesSuggestions(); track suggestion.type + ':' + suggestion.value) {
           <mat-option [value]="suggestion">
             <span>{{ suggestion.value }}</span>
             <span class="option-secondary">{{ suggestion.subtitle }}</span>

@@ -434,6 +434,32 @@ export class UploadTrackerService implements OnDestroy {
     this.dismissed.set(true);
   }
 
+  reset(): void {
+    for (const timerId of this.pollTimers.values()) {
+      clearTimeout(timerId);
+    }
+    for (const subscription of this.refreshSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+    for (const timerId of this.mediaPollTimers.values()) {
+      clearTimeout(timerId);
+    }
+    for (const subscription of this.mediaPollSubscriptions.values()) {
+      subscription.unsubscribe();
+    }
+
+    this.pollTimers.clear();
+    this.refreshSubscriptions.clear();
+    this.mediaPollTimers.clear();
+    this.mediaPollSubscriptions.clear();
+    this.resolvedMediaIds.clear();
+    this.pendingRequests.set([]);
+    this.trackedBatches.set({});
+    this.failedUploadFiles.set([]);
+    this.trackedMedia.set({});
+    this.dismissed.set(false);
+  }
+
   registerRetagging(mediaItems: MediaRead[]): void {
     if (mediaItems.length === 0) {
       return;
@@ -460,22 +486,7 @@ export class UploadTrackerService implements OnDestroy {
   }
 
   ngOnDestroy(): void {
-    for (const timerId of this.pollTimers.values()) {
-      clearTimeout(timerId);
-    }
-    for (const subscription of this.refreshSubscriptions.values()) {
-      subscription.unsubscribe();
-    }
-    for (const timerId of this.mediaPollTimers.values()) {
-      clearTimeout(timerId);
-    }
-    for (const subscription of this.mediaPollSubscriptions.values()) {
-      subscription.unsubscribe();
-    }
-    this.pollTimers.clear();
-    this.refreshSubscriptions.clear();
-    this.mediaPollTimers.clear();
-    this.mediaPollSubscriptions.clear();
+    this.reset();
     this.mediaRefreshSubscription.unsubscribe();
   }
 

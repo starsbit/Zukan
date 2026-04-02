@@ -417,6 +417,9 @@ export class GalleryStore {
   }
 
   private sortItems(items: MediaRead[]): MediaRead[] {
+    if (this._params().sort_by != null) {
+      return items;
+    }
     return items.slice().sort((left, right) => {
       const rightDate = right.metadata.captured_at || right.created_at;
       const leftDate = left.metadata.captured_at || left.created_at;

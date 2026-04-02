@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
-from backend.app.models.auth import RefreshToken
+from backend.app.models.auth import APIKey, RefreshToken
 from backend.app.schemas import UserRegister, UserUpdate
 from backend.app.services.auth import AuthService, _refresh_token_expiry_days
 
@@ -143,6 +143,67 @@ async def test_revoke_refresh_token_paths(fake_db):
         repo.get_by_hash = AsyncMock(return_value=token)
         assert await service.revoke_refresh_token("present") is True
         assert token.revoked is True
+
+
+@pytest.mark.asyncio
+async def test_get_api_key_status_returns_absent_when_missing(fake_db, user):
+    service = AuthService(fake_db)
+
+    with patch("backend.app.services.auth.APIKeyRepository") as repo_cls:
+        repo_cls.return_value.get_by_user_id = AsyncMock(return_value=None)
+        status = await service.get_api_key_status(user.id)
+
+    assert status.has_key is False
+    assert status.created_at is None
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_persists_hashed_record(fake_db, user):
+    service = AuthService(fake_db)
+
+    with patch("backend.app.services.auth.APIKeyRepository") as repo_cls, patch(
+        "backend.app.services.auth.secrets.token_hex", return_value="raw-api-key"
+    ):
+        repo_cls.return_value.get_by_user_id = AsyncMock(return_value=None)
+        created = await service.create_api_key(user.id)
+
+    assert created.api_key == "zk_raw-api-key"
+    assert isinstance(fake_db.added[-1], APIKey)
+    assert fake_db.added[-1].key_hash != created.api_key
+    fake_db.commit.assert_awaited_once()
+    fake_db.refresh.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_create_api_key_replaces_existing_key(fake_db, user):
+    service = AuthService(fake_db)
+    existing = SimpleNamespace()
+
+    with patch("backend.app.services.auth.APIKeyRepository") as repo_cls, patch(
+        "backend.app.services.auth.secrets.token_hex", return_value="new-api-key"
+    ):
+        repo_cls.return_value.get_by_user_id = AsyncMock(return_value=existing)
+        created = await service.create_api_key(user.id)
+
+    assert created.api_key == "zk_new-api-key"
+    assert fake_db.deleted == [existing]
+
+
+@pytest.mark.asyncio
+async def test_get_user_by_api_key_updates_last_used(fake_db, user):
+    service = AuthService(fake_db)
+    record = SimpleNamespace(user_id=user.id, last_used_at=None)
+
+    with patch("backend.app.services.auth.APIKeyRepository") as api_repo_cls, patch(
+        "backend.app.services.auth.UserRepository"
+    ) as user_repo_cls:
+        api_repo_cls.return_value.get_by_hash = AsyncMock(return_value=record)
+        user_repo_cls.return_value.get_by_id = AsyncMock(return_value=user)
+        authenticated = await service.get_user_by_api_key("zk_lookup")
+
+    assert authenticated is user
+    assert record.last_used_at is not None
+    fake_db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -23,6 +23,14 @@ describe('NavbarSearchService', () => {
     expect(service.draftChips().filter((chip) => chip.type === 'character')).toHaveLength(1);
   });
 
+  it('replaces the series chip', () => {
+    service.setSeries('Fate/zero');
+    service.setSeries('Fate/stay night');
+
+    expect(service.draftChips()).toContainEqual({ type: 'series', value: 'Fate/stay night' });
+    expect(service.draftChips().filter((chip) => chip.type === 'series')).toHaveLength(1);
+  });
+
   it('replaces the ocr chip', () => {
     service.setOcr('first text');
     service.setOcr('second text');
@@ -38,6 +46,7 @@ describe('NavbarSearchService', () => {
     expect(service.applied()).toEqual({
       tags: [],
       characterName: null,
+      seriesName: null,
       ocrText: 'fate stay night',
       advanced: {
         excludeTags: [],
@@ -62,6 +71,7 @@ describe('NavbarSearchService', () => {
   it('maps applied chips to media search params', () => {
     service.addTag('Saber');
     service.setCharacter('Rin');
+    service.setSeries('Fate');
     service.setOcr('text');
     service.setAdvancedFilters({
       excludeTags: ['spoiler'],
@@ -79,6 +89,7 @@ describe('NavbarSearchService', () => {
     expect(service.appliedParams()).toEqual({
       tag: ['Saber'],
       character_name: 'Rin',
+      series_name: 'Fate',
       ocr_text: 'text',
       exclude_tag: ['spoiler'],
       mode: TagFilterMode.AND,
@@ -162,6 +173,7 @@ describe('NavbarSearchService', () => {
     expect(service.applied()).toEqual({
       tags: [],
       characterName: null,
+      seriesName: null,
       ocrText: null,
       advanced: {
         excludeTags: [],

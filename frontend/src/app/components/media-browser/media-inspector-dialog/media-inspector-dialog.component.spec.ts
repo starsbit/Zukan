@@ -69,6 +69,15 @@ function makeDetail(id = 'm1', overrides: Partial<MediaDetail> = {}): MediaDetai
         source: 'manual',
         confidence: 0.93,
       },
+      {
+        id: 'entity-2',
+        entity_type: MediaEntityType.SERIES,
+        entity_id: null,
+        name: 'Fate/stay night',
+        role: 'primary',
+        source: 'tagger',
+        confidence: 0.88,
+      },
     ],
     ...overrides,
   };
@@ -86,6 +95,7 @@ describe('MediaInspectorDialogComponent', () => {
       getFileUrl: overrides?.getFileUrl ?? vi.fn((id: string) => of(`blob:${id}`)),
       update: overrides?.update ?? vi.fn((id: string, body: unknown) => of(makeDetail(id, body as Partial<MediaDetail>))),
       getCharacterSuggestions: vi.fn(() => of([{ name: 'Rin Tohsaka', media_count: 7 }])),
+      getSeriesSuggestions: vi.fn(() => of([{ name: 'Fate/zero', media_count: 5 }])),
     };
     const galleryStore = {
       patchItem: vi.fn(),
@@ -118,7 +128,7 @@ describe('MediaInspectorDialogComponent', () => {
     return { fixture, mediaService, galleryStore, dialogRef, tagsClient, items };
   }
 
-  it('loads media detail and renders metadata, characters, tags, and OCR sections', async () => {
+  it('loads media detail and renders metadata, characters, series, tags, and OCR sections', async () => {
     const { fixture, mediaService } = await createComponent();
 
     expect(mediaService.get).toHaveBeenCalledWith('m1');
@@ -126,6 +136,8 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Summary');
     expect(fixture.nativeElement.textContent).toContain('Characters');
     expect(fixture.nativeElement.textContent).toContain('Saber Alter');
+    expect(fixture.nativeElement.textContent).toContain('Series');
+    expect(fixture.nativeElement.textContent).toContain('Fate/stay night');
     expect(fixture.nativeElement.textContent).toContain('Tags');
     expect(fixture.nativeElement.textContent).toContain('white hair');
     expect(fixture.nativeElement.textContent).toContain('Detected text');
@@ -162,7 +174,7 @@ describe('MediaInspectorDialogComponent', () => {
 
     expect(mediaService.get).toHaveBeenCalledWith('m2');
     expect(fixture.componentInstance.activeIndex()).toBe(1);
-    expect(fixture.nativeElement.textContent).toContain('2 / 2');
+    expect(fixture.componentInstance.activeItem()?.id).toBe('m2');
   });
 
   it('supports keyboard navigation and escape close', async () => {
@@ -195,10 +207,19 @@ describe('MediaInspectorDialogComponent', () => {
       tags: ['hero'],
       entities: [
         {
-          id: 'entity-2',
+          id: 'entity-3',
           entity_type: MediaEntityType.CHARACTER,
           entity_id: null,
           name: 'Rin Tohsaka',
+          role: 'primary',
+          source: 'manual',
+          confidence: null,
+        },
+        {
+          id: 'entity-4',
+          entity_type: MediaEntityType.SERIES,
+          entity_id: null,
+          name: 'Fate/zero',
           role: 'primary',
           source: 'manual',
           confidence: null,
@@ -217,13 +238,18 @@ describe('MediaInspectorDialogComponent', () => {
     fixture.componentInstance.selectTag('hero');
     fixture.componentInstance.removeCharacter('Saber Alter');
     fixture.componentInstance.selectCharacter('Rin Tohsaka');
+    fixture.componentInstance.removeSeries('Fate/stay night');
+    fixture.componentInstance.selectSeries('Fate/zero');
     fixture.componentInstance.updateOcrOverride('   ');
     fixture.componentInstance.save();
     await fixture.whenStable();
 
     expect(mediaService.update).toHaveBeenCalledWith('m1', {
       tags: ['hero'],
-      entities: [{ entity_type: MediaEntityType.CHARACTER, name: 'Rin Tohsaka' }],
+      entities: [
+        { entity_type: MediaEntityType.CHARACTER, name: 'Rin Tohsaka' },
+        { entity_type: MediaEntityType.SERIES, name: 'Fate/zero' },
+      ],
       ocr_text_override: null,
       version: 1,
     });

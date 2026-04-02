@@ -3,6 +3,11 @@
 <mat-dialog-content>
   <form class="settings-form" [formGroup]="form">
     <mat-form-field>
+      <mat-label>User ID</mat-label>
+      <input matInput [value]="currentUser?.id ?? ''" disabled />
+    </mat-form-field>
+
+    <mat-form-field>
       <mat-label>Username</mat-label>
       <input matInput [value]="currentUser?.username ?? ''" disabled />
     </mat-form-field>
@@ -35,6 +40,52 @@
       <mat-label>Confirm Password</mat-label>
       <input matInput type="password" formControlName="confirmPassword" />
     </mat-form-field>
+
+    <section class="api-key-section">
+      <div class="api-key-section__header">
+        <div>
+          <h3>API Key</h3>
+          <p>Use this key from external apps with the `Authorization: Bearer &lt;key&gt;` header.</p>
+        </div>
+        <button mat-stroked-button type="button" (click)="createApiKey()" [disabled]="apiKeyLoading()">
+          @if (apiKeyStatus()?.has_key) {
+            <span>Regenerate Key</span>
+          } @else {
+            <span>Create API Key</span>
+          }
+        </button>
+      </div>
+
+      @if (apiKeyLoading()) {
+        <div class="api-key-section__status">
+          <mat-progress-spinner mode="indeterminate" diameter="20"></mat-progress-spinner>
+          <span>Loading API key details...</span>
+        </div>
+      } @else if (apiKeyStatus(); as status) {
+        <div class="api-key-meta">
+          <div><strong>Status:</strong> {{ status.has_key ? 'Active' : 'Not created yet' }}</div>
+          <div><strong>Created:</strong> {{ status.created_at ? (status.created_at | date:'medium') : 'Never' }}</div>
+          <div><strong>Last used:</strong> {{ status.last_used_at ? (status.last_used_at | date:'medium') : 'Never' }}</div>
+        </div>
+      }
+
+      @if (createdApiKey(); as apiKey) {
+        <div class="api-key-secret">
+          <div class="api-key-secret__header">
+            <strong>New API key</strong>
+            <button mat-icon-button type="button" aria-label="Copy API key" (click)="copyApiKey()">
+              <mat-icon>content_copy</mat-icon>
+            </button>
+          </div>
+          <code>{{ apiKey }}</code>
+          <p>This key is only shown once. Copy it now and store it somewhere safe.</p>
+        </div>
+      }
+
+      @if (apiKeyError()) {
+        <div class="form-error">{{ apiKeyError() }}</div>
+      }
+    </section>
 
     @if (error()) {
       <div class="form-error">{{ error() }}</div>

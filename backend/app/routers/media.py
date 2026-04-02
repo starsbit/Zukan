@@ -31,6 +31,7 @@ from backend.app.schemas import (
     MediaUploadRequest,
     MediaUpdate,
     NsfwFilter,
+    SeriesSuggestion,
     TagFilterMode,
     TaggingJobQueuedResponse,
     error_responses,
@@ -216,6 +217,7 @@ async def list_media(
         None,
         None,
         None,
+        None,
         TagFilterMode.AND,
         NsfwFilter.DEFAULT,
         None,
@@ -251,6 +253,7 @@ async def search_media(
     album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
     tag: Annotated[list[str] | None, Query(description="Tags that must be present. Repeat for multiple: ?tag=cat&tag=night")] = None,
     character_name: Annotated[str | None, Query(description="Case-insensitive partial match against derived character name.")] = None,
+    series_name: Annotated[str | None, Query(description="Case-insensitive partial match against derived series name.")] = None,
     exclude_tag: Annotated[list[str] | None, Query(description="Tags that must not be present. Repeat for multiple.")] = None,
     mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."),
@@ -273,6 +276,7 @@ async def search_media(
         state,
         tag,
         character_name,
+        series_name,
         exclude_tag,
         mode,
         nsfw,
@@ -308,6 +312,7 @@ async def get_media_timeline(
     album_id: uuid.UUID | None = Query(default=None),
     tag: Annotated[list[str] | None, Query(description="Tags that must be present.")] = None,
     character_name: str | None = Query(default=None),
+    series_name: str | None = Query(default=None),
     exclude_tag: Annotated[list[str] | None, Query()] = None,
     mode: TagFilterMode = Query(default=TagFilterMode.AND),
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT),
@@ -325,6 +330,7 @@ async def get_media_timeline(
         state=state,
         tags=tag,
         character_name=character_name,
+        series_name=series_name,
         exclude_tags=exclude_tag,
         mode=mode,
         nsfw=nsfw,
@@ -351,6 +357,22 @@ async def list_character_suggestions(
 ):
     query, _, _, _, _, _ = _media_services(db)
     return await query.list_character_suggestions(user, q=q, limit=limit)
+
+
+@router.get(
+    "/series-suggestions",
+    response_model=list[SeriesSuggestion],
+    summary="List Series Suggestions",
+    description="Return series name suggestions for autocomplete based on persisted annotations.",
+)
+async def list_series_suggestions(
+    q: str = Query(min_length=1, description="Prefix query for persisted series names."),
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.list_series_suggestions(user, q=q, limit=limit)
 
 
 @router.patch(
@@ -537,7 +559,7 @@ async def queue_bulk_media_tagging_jobs(
 
 
 @router.get(
-    "/{media_id}",
+    "/{media_id:uuid}",
     response_model=MediaDetail,
     summary="Get Media Detail",
     description="Return full media metadata, tagging details, and linked entities/references.",
@@ -549,7 +571,7 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
 
 
 @router.patch(
-    "/{media_id}",
+    "/{media_id:uuid}",
     response_model=MediaDetail,
     summary="Update Media",
     description=(
@@ -614,7 +636,7 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
 
 
 @router.get(
-    "/{media_id}/file",
+    "/{media_id:uuid}/file",
     summary="Download Original Media",
     description="Download the original uploaded media binary.",
     response_class=FileResponse,
@@ -637,7 +659,7 @@ async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user)
 
 
 @router.get(
-    "/{media_id}/thumbnail",
+    "/{media_id:uuid}/thumbnail",
     summary="Download Media Thumbnail",
     description="Download a generated thumbnail for supported media.",
     response_class=FileResponse,
@@ -662,7 +684,7 @@ async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_
 
 
 @router.get(
-    "/{media_id}/poster",
+    "/{media_id:uuid}/poster",
     summary="Download Media Poster",
     description="Download a generated poster image for animated media when available.",
     response_class=FileResponse,
@@ -687,7 +709,7 @@ async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_use
 
 
 @router.delete(
-    "/{media_id}",
+    "/{media_id:uuid}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete Media",
     description="Soft-delete a media item by moving it to trash.",
@@ -699,7 +721,7 @@ async def delete_media(media_id: uuid.UUID, user: User = Depends(current_user), 
 
 
 @router.post(
-    "/{media_id}/restore",
+    "/{media_id:uuid}/restore",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Restore Media",
     description="Restore a previously trashed media item back to active state.",
@@ -711,7 +733,7 @@ async def restore_media(media_id: uuid.UUID, user: User = Depends(current_user),
 
 
 @router.delete(
-    "/{media_id}/purge",
+    "/{media_id:uuid}/purge",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Purge Media",
     description="Permanently delete a media item and its associated files.",
@@ -723,7 +745,7 @@ async def purge_media(media_id: uuid.UUID, user: User = Depends(current_user), d
 
 
 @router.post(
-    "/{media_id}/tagging-jobs",
+    "/{media_id:uuid}/tagging-jobs",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TaggingJobQueuedResponse,
     summary="Queue Media Retagging",

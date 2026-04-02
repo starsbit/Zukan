@@ -4,7 +4,26 @@
   <form class="filters-form" [formGroup]="form">
     <mat-form-field>
       <mat-label>Exclude Tags</mat-label>
-      <input matInput formControlName="excludeTags" placeholder="Comma-separated tags" />
+      <mat-chip-grid #excludeChipGrid>
+        @for (tag of excludeTagChips(); track tag) {
+          <mat-chip-row (removed)="removeExcludeTag(tag)">
+            {{ tag }}
+            <button matChipRemove [attr.aria-label]="'Remove ' + tag"><mat-icon>cancel</mat-icon></button>
+          </mat-chip-row>
+        }
+      </mat-chip-grid>
+      <input
+        [formControl]="excludeTagInput"
+        [matChipInputFor]="excludeChipGrid"
+        [matAutocomplete]="excludeAutocomplete"
+        placeholder="Search tags to exclude..."
+        (keydown.enter)="onExcludeTagInputEnter()"
+      />
+      <mat-autocomplete #excludeAutocomplete (optionSelected)="onExcludeTagSelected($event)">
+        @for (tag of excludeTagSuggestions(); track tag) {
+          <mat-option [value]="tag">{{ tag }}</mat-option>
+        }
+      </mat-autocomplete>
     </mat-form-field>
 
     <div class="filters-grid">
@@ -74,7 +93,11 @@
 
     <mat-form-field>
       <mat-label>Status</mat-label>
-      <input matInput formControlName="status" placeholder="Backend status value" />
+      <mat-select formControlName="status">
+        @for (option of statusOptions; track option.label) {
+          <mat-option [value]="option.value">{{ option.label }}</mat-option>
+        }
+      </mat-select>
     </mat-form-field>
 
     <div class="filters-grid">

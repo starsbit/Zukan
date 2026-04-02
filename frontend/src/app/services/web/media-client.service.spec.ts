@@ -99,6 +99,7 @@ describe('MediaClientService', () => {
   it('search passes advanced filter and sort params', () => {
     service.search({
       status: 'reviewed',
+      series_name: 'Fate/stay night',
       visibility: MediaVisibility.PUBLIC,
       media_type: ['video', 'gif'],
       sort_by: 'filename',
@@ -114,6 +115,7 @@ describe('MediaClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
     expect(req.request.params.get('status')).toBe('reviewed');
+    expect(req.request.params.get('series_name')).toBe('Fate/stay night');
     expect(req.request.params.get('visibility')).toBe('public');
     expect(req.request.params.getAll('media_type')).toEqual(['video', 'gif']);
     expect(req.request.params.get('sort_by')).toBe('filename');
@@ -132,6 +134,7 @@ describe('MediaClientService', () => {
     service.getTimeline({
       tag: ['cat'],
       character_name: 'Rin Tohsaka',
+      series_name: 'Fate/stay night',
       exclude_tag: ['spoiler'],
       mode: TagFilterMode.OR,
       nsfw: NsfwFilter.ONLY,
@@ -145,6 +148,7 @@ describe('MediaClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
     expect(req.request.params.getAll('tag')).toEqual(['cat']);
     expect(req.request.params.get('character_name')).toBe('Rin Tohsaka');
+    expect(req.request.params.get('series_name')).toBe('Fate/stay night');
     expect(req.request.params.getAll('exclude_tag')).toEqual(['spoiler']);
     expect(req.request.params.get('mode')).toBe('or');
     expect(req.request.params.get('nsfw')).toBe('only');
@@ -194,6 +198,15 @@ describe('MediaClientService', () => {
     const req = http.expectOne('/api/v1/media/m1');
     expect(req.request.method).toBe('GET');
     req.flush(mockMedia);
+  });
+
+  it('getSeriesSuggestions sends GET /api/v1/media/series-suggestions with q', () => {
+    service.getSeriesSuggestions('fate', 5).subscribe();
+
+    const req = http.expectOne(r => r.url === '/api/v1/media/series-suggestions');
+    expect(req.request.params.get('q')).toBe('fate');
+    expect(req.request.params.get('limit')).toBe('5');
+    req.flush([{ name: 'Fate/stay night', media_count: 9 }]);
   });
 
   it('update sends PATCH /api/v1/media/{id} with body', () => {

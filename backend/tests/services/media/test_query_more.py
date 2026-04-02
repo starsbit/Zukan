@@ -118,10 +118,13 @@ async def test_visibility_and_detail_methods(service, user, media):
 
 
 @pytest.mark.asyncio
-async def test_list_character_suggestions_and_downloadables(service, user, media):
+async def test_list_character_and_series_suggestions_and_downloadables(service, user, media):
     service._entity_repo.list_character_suggestions = AsyncMock(return_value=[{"name": "Saber", "media_count": 3}])
+    service._entity_repo.list_series_suggestions = AsyncMock(return_value=[{"name": "Fate/stay night", "media_count": 2}])
     assert await service.list_character_suggestions(user, q="   ", limit=5) == []
     assert await service.list_character_suggestions(user, q=" sa ", limit=5) == [{"name": "Saber", "media_count": 3}]
+    assert await service.list_series_suggestions(user, q="   ", limit=5) == []
+    assert await service.list_series_suggestions(user, q=" fate ", limit=5) == [{"name": "Fate/stay night", "media_count": 2}]
 
     media.deleted_at = None
     media.uploader_id = user.id
@@ -241,6 +244,8 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
 
     with patch("backend.app.services.media.query.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_series_name_filter", side_effect=lambda stmt, *a: stmt
     ), patch("backend.app.services.media.query.media_filters.apply_visibility_filter", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.media_filters.apply_media_type_filters", side_effect=lambda stmt, *a: stmt
     ), patch(
@@ -253,6 +258,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             state=MediaListState.ACTIVE,
             tags=None,
             character_name=None,
+            series_name=None,
             exclude_tags=None,
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.DEFAULT,
@@ -288,6 +294,7 @@ async def test_get_timeline_applies_status_filter(service, user):
         user,
         state=MediaListState.ACTIVE,
         status_filter="reviewed",
+        series_name="Fate",
     )
 
     assert seen["status_filter"] == "reviewed"

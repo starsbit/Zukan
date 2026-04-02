@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from backend.app.models.auth import RefreshToken, User
-from backend.app.repositories.auth import RefreshTokenRepository, UserRepository
+from backend.app.models.auth import APIKey, RefreshToken, User
+from backend.app.repositories.auth import APIKeyRepository, RefreshTokenRepository, UserRepository
 
 
 @pytest.mark.asyncio
@@ -38,4 +38,17 @@ async def test_refresh_token_repository_get_by_hash(db_session, make_user):
 
     repo = RefreshTokenRepository(db_session)
     assert (await repo.get_by_hash("hash123")).user_id == user.id
+    assert await repo.get_by_hash("missing") is None
+
+
+@pytest.mark.asyncio
+async def test_api_key_repository_queries(db_session, make_user):
+    user = await make_user()
+    api_key = APIKey(user_id=user.id, key_hash="keyhash123")
+    db_session.add(api_key)
+    await db_session.flush()
+
+    repo = APIKeyRepository(db_session)
+    assert (await repo.get_by_hash("keyhash123")).user_id == user.id
+    assert (await repo.get_by_user_id(user.id)).key_hash == "keyhash123"
     assert await repo.get_by_hash("missing") is None
