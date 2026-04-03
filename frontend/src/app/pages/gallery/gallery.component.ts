@@ -1,4 +1,4 @@
-import { Component, DestroyRef, effect, inject } from '@angular/core';
+import { Component, DestroyRef, computed, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { EMPTY, catchError } from 'rxjs';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
@@ -7,6 +7,7 @@ import { GalleryStore } from '../../services/gallery.store';
 import { NavbarSearchService } from '../../services/navbar-search.service';
 import { AuthStore } from '../../services/web/auth.store';
 import { MediaListState } from '../../models/media';
+import { buildTodayStoriesParams } from '../../utils/today-stories.utils';
 
 @Component({
   selector: 'zukan-gallery',
@@ -19,6 +20,10 @@ export class GalleryComponent {
   private readonly authStore = inject(AuthStore);
   readonly galleryStore = inject(GalleryStore);
   private readonly searchService = inject(NavbarSearchService);
+  readonly storyParams = computed(() => buildTodayStoriesParams({
+    ...this.searchService.appliedParams(),
+    state: MediaListState.ACTIVE,
+  }));
 
   constructor() {
     effect(() => {

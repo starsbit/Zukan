@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpEvent, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
 import {
@@ -113,7 +113,7 @@ export class MediaClientService {
     return this.http.get<MediaCursorPage>(`${this.base}/api/v1/media/search`, { params });
   }
 
-  upload(files: File[], p: UploadParams = {}): Observable<BatchUploadResponse> {
+  upload(files: File[], p: UploadParams = {}): Observable<HttpEvent<BatchUploadResponse>> {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
     if (p.album_id != null) form.append('album_id', p.album_id);
@@ -124,7 +124,11 @@ export class MediaClientService {
     if (p.visibility != null) form.append('visibility', p.visibility);
     const headers: Record<string, string> = {};
     if (p.idempotencyKey) headers['Idempotency-Key'] = p.idempotencyKey;
-    return this.http.post<BatchUploadResponse>(`${this.base}/api/v1/media`, form, { headers });
+    return this.http.post<BatchUploadResponse>(`${this.base}/api/v1/media`, form, {
+      headers,
+      reportProgress: true,
+      observe: 'events',
+    });
   }
 
   batchUpdate(body: MediaBatchUpdate): Observable<BulkResult> {

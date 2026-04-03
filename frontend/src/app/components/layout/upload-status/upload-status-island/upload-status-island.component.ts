@@ -74,14 +74,18 @@ export class UploadStatusIslandComponent {
     this.summary().itemCounts.failed + this.summary().itemCounts.upload_error,
   );
   readonly reviewCount = computed(() => this.summary().reviewItems);
-  readonly progressMode = computed<'determinate' | 'indeterminate'>(() =>
-    this.phase() === 'uploading' && this.summary().completedItems === 0
-      ? 'indeterminate'
-      : 'determinate',
-  );
-  readonly progressValue = computed(() =>
-    this.progressMode() === 'indeterminate' ? 100 : this.summary().progressPercent,
-  );
+  readonly progressMode = computed<'determinate' | 'indeterminate'>(() => {
+    if (this.phase() === 'uploading') {
+      return this.summary().uploadProgressPercent !== null ? 'determinate' : 'indeterminate';
+    }
+    return 'determinate';
+  });
+  readonly progressValue = computed(() => {
+    if (this.phase() === 'uploading') {
+      return this.summary().uploadProgressPercent ?? 0;
+    }
+    return this.summary().progressPercent;
+  });
   readonly statusCopy = computed(() => {
     switch (this.phase()) {
       case 'processing':

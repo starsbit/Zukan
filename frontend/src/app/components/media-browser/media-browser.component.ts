@@ -31,12 +31,14 @@ import { TimelineBucket } from '../../models/timeline';
 import { DayGroup } from '../../utils/gallery-grouping.utils';
 import { MediaCardComponent } from './media-card/media-card.component';
 import { MediaTimelineComponent } from './media-timeline/media-timeline.component';
+import { TodayStoriesRailComponent } from '../today-stories/today-stories-rail.component';
 import { MatCard, MatCardContent, MatCardHeader, MatCardTitle } from '@angular/material/card';
 import {
   AlbumPickerDialogComponent,
   AlbumPickerDialogValue,
 } from '../album/album-picker-dialog/album-picker-dialog.component';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
+import { MediaSearchParams } from '../../services/web/media-client.service';
 
 interface GallerySectionAnchor {
   id: string;
@@ -84,6 +86,7 @@ const SKELETON_ASPECT_RATIO = 4 / 3;
     MatToolbarModule,
     MediaCardComponent,
     MediaTimelineComponent,
+    TodayStoriesRailComponent,
     MatCardContent,
     MatCard,
     MatCardTitle,
@@ -104,6 +107,8 @@ export class MediaBrowserComponent {
   readonly emptyStateTitle = input('No media yet');
   readonly emptyStateMessage = input('Media you have access to will appear here.');
   readonly showPublicBadge = input(true);
+  readonly showStories = input(false);
+  readonly storyParams = input<MediaSearchParams | null>(null);
 
   readonly mediaSelected = output<MediaRead>();
   readonly restoreSelected = output<string[]>();

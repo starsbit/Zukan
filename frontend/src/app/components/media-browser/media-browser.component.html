@@ -1,5 +1,12 @@
 <div class="media-browser" [class.media-browser--compact]="isCompactLayout()">
   <div #contentPane class="media-browser__content" (scroll)="onContentScroll()">
+    @if (showStories() && storyParams(); as params) {
+      <zukan-today-stories-rail
+        class="media-browser__stories"
+        [params]="params">
+      </zukan-today-stories-rail>
+    }
+
     @if (allowSelection() && isSelectionMode()) {
       <mat-toolbar class="media-browser__action-bar">
         <div class="media-browser__action-copy">

@@ -11,6 +11,7 @@ import { UploadTrackerService } from '../../services/upload-tracker.service';
 import { DayGroup } from '../../utils/gallery-grouping.utils';
 import { MediaBrowserComponent } from './media-browser.component';
 import { MediaService } from '../../services/media.service';
+import { MediaClientService } from '../../services/web/media-client.service';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 
 function makeMedia(id: string, width: number, height: number) {
@@ -88,6 +89,13 @@ async function configureBrowserTestingModule() {
           getThumbnailUrl: () => of('blob:thumb'),
           getPosterUrl: () => of('blob:poster'),
           getFileUrl: () => of('blob:file'),
+        },
+      },
+      {
+        provide: MediaClientService,
+        useValue: {
+          search: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
+          batchUpdate: vi.fn(() => of({ processed: 1, skipped: 0 })),
         },
       },
       { provide: AlbumStore, useValue: albumStoreMock },
@@ -194,6 +202,35 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.media-page__empty')).not.toBeNull();
+  });
+
+  it('renders stories inside the scrollable browser content when enabled', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('showStories', true);
+    fixture.componentRef.setInput('storyParams', {
+      captured_month: 4,
+      captured_day: 2,
+      captured_before_year: 2026,
+    });
+    fixture.componentRef.setInput('dayGroups', [
+      {
+        date: '2026-03-28',
+        label: 'March 28, 2026',
+        items: [makeMedia('m1', 1600, 900)],
+      },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', [{ year: 2026, month: 3, count: 1 }]);
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
+    const storiesRail = content.querySelector('zukan-today-stories-rail');
+    const browserHost = fixture.nativeElement.querySelector(':scope > zukan-today-stories-rail');
+
+    expect(storiesRail).not.toBeNull();
+    expect(browserHost).toBeNull();
+    expect(content.firstElementChild?.tagName.toLowerCase()).toBe('zukan-today-stories-rail');
   });
 
   it('renders custom empty-state copy when provided', async () => {

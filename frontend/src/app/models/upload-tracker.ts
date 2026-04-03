@@ -40,6 +40,7 @@ export interface UploadStatusSummary {
   totalTrackedItems: number;
   completedItems: number;
   progressPercent: number;
+  uploadProgressPercent: number | null;
   activeBatchCount: number;
   hasActiveWork: boolean;
   latestBatch: ImportBatchRead | null;

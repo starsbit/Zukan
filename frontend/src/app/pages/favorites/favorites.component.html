@@ -1,5 +1,7 @@
 <zukan-layout>
   <zukan-media-browser
+    [showStories]="true"
+    [storyParams]="storyParams()"
     [dayGroups]="galleryStore.groupedByDay()"
     [timeline]="galleryStore.timeline()"
     [loading]="galleryStore.loading()"

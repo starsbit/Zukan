@@ -1,12 +1,14 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { concatMap, finalize, from, map, toArray } from 'rxjs';
+import { concatMap, filter, finalize, from, map, tap, toArray } from 'rxjs';
+import { BatchUploadResponse } from '../../../../models/uploads';
 import { MediaVisibility } from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
@@ -231,10 +233,18 @@ export class NavbarUploadComponent implements OnInit {
       concatMap(([index, { files: batch, requestId }]) => {
         activeTrackedRequest = { files: batch, requestId, index };
         this.uploadTracker.markBatchUploading(requestId);
-        return this.mediaService.upload(batch, {
+        return this.mediaService.uploadWithProgress(batch, {
           visibility,
           captured_at_values: this.getCapturedAtValues(batch),
-        }).pipe(map((response) => ({ response, batch, requestId })));
+        }).pipe(
+          tap((event) => {
+            if (event.type === HttpEventType.UploadProgress) {
+              this.uploadTracker.updateUploadProgress(requestId, event.loaded, event.total ?? 0);
+            }
+          }),
+          filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
+          map((event) => ({ response: event.body!, batch, requestId })),
+        );
       }),
       toArray(),
       finalize(() => this.loading.set(false)),

@@ -207,6 +207,10 @@
 }
 
 .media-card__processing-indicator {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   justify-content: center;

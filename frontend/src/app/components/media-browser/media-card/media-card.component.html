@@ -29,13 +29,13 @@
       </button>
     }
 
-    <div class="media-card__badge-stack media-card__badge-stack--left">
-      @if (isProcessing()) {
-        <span class="media-card__processing-indicator" aria-label="Processing" title="Processing">
-          <span class="media-card__spinner" aria-hidden="true"></span>
-        </span>
-      }
+    @if (isProcessing()) {
+      <span class="media-card__processing-indicator" aria-label="Processing" title="Processing">
+        <span class="media-card__spinner" aria-hidden="true"></span>
+      </span>
+    }
 
+    <div class="media-card__badge-stack media-card__badge-stack--left">
       @if (isNsfw()) {
         <span class="media-card__badge media-card__badge--nsfw">NSFW</span>
       }

@@ -1,0 +1,117 @@
+<mat-dialog-content class="stories-viewer">
+  <div
+    class="stories-viewer__surface"
+    (pointerdown)="onHoldStart($event)"
+    (pointerup)="onHoldEnd($event)"
+    (pointercancel)="onHoldEnd($event)"
+  >
+    <div class="stories-viewer__progress" [attr.aria-label]="groupItems().length + ' stories'">
+          @for (segment of segmentStates(); track segment.id) {
+            <span class="stories-viewer__progress-track">
+              <span
+                class="stories-viewer__progress-fill"
+                [style.transform]="'scaleX(' + (segment.progress / 100) + ')'">
+              </span>
+            </span>
+          }
+    </div>
+
+    <header class="stories-viewer__topbar">
+      <button mat-icon-button type="button" aria-label="Close stories" data-story-control (click)="close()">
+        <mat-icon aria-hidden="true">close</mat-icon>
+      </button>
+
+      @if (activeItem(); as item) {
+        <div class="stories-viewer__titlebar">
+          <strong>{{ item.yearsAgoLabel }}</strong>
+          <span>{{ item.capturedDateLabel }}</span>
+        </div>
+      }
+
+      @if (activeItem(); as item) {
+        <button
+          mat-icon-button
+          type="button"
+          class="stories-viewer__favorite-button"
+          data-story-control
+          [disabled]="togglingFavorite()"
+          [attr.aria-pressed]="item.is_favorited"
+          [attr.aria-label]="item.is_favorited ? 'Remove from favorites' : 'Add to favorites'"
+          (click)="toggleFavorite()"
+        >
+          <mat-icon aria-hidden="true">{{ item.is_favorited ? 'favorite' : 'favorite_border' }}</mat-icon>
+        </button>
+      } @else {
+        <span class="stories-viewer__header-spacer" aria-hidden="true"></span>
+      }
+    </header>
+
+    <div class="stories-viewer__stage">
+      @if (loading()) {
+        <div class="stories-viewer__state">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p>Loading memory…</p>
+        </div>
+      } @else if (mediaBlocked()) {
+        <div class="stories-viewer__state">
+          <mat-icon aria-hidden="true">broken_image</mat-icon>
+          <p>Could not load this memory.</p>
+        </div>
+      } @else if (activeItem(); as item) {
+        <div class="stories-viewer__frame">
+          @if (canGoBack()) {
+            <button
+              mat-icon-button
+              type="button"
+              class="stories-viewer__nav stories-viewer__nav--prev"
+              aria-label="Previous memory"
+              data-story-control
+              (click)="previous()"
+            >
+              <mat-icon aria-hidden="true">chevron_left</mat-icon>
+            </button>
+          }
+
+          <div class="stories-viewer__media-shell">
+            @if (isVideo()) {
+              <video
+                #videoElement
+                class="stories-viewer__media"
+                [src]="mediaUrl()!"
+                [attr.aria-label]="item.original_filename ?? item.filename"
+                autoplay
+                controls
+                playsinline
+                preload="metadata"
+                (loadedmetadata)="onVideoLoadedMetadata()"
+                (timeupdate)="onVideoTimeUpdate()"
+                (pause)="onVideoPause()"
+                (play)="onVideoPlay()"
+                (ended)="onVideoEnded()"
+              ></video>
+            } @else {
+              <img
+                class="stories-viewer__media"
+                [src]="mediaUrl()!"
+                [alt]="item.original_filename ?? item.filename"
+              >
+            }
+          </div>
+
+          @if (canGoForward()) {
+            <button
+              mat-icon-button
+              type="button"
+              class="stories-viewer__nav stories-viewer__nav--next"
+              aria-label="Next memory"
+              data-story-control
+              (click)="next()"
+            >
+              <mat-icon aria-hidden="true">chevron_right</mat-icon>
+            </button>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</mat-dialog-content>

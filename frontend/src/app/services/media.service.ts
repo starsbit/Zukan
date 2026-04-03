@@ -1,5 +1,6 @@
 import { inject, Injectable, OnDestroy, signal } from '@angular/core';
-import { catchError, EMPTY, finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
+import { HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
+import { catchError, EMPTY, filter, finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
 import { MediaClientService, MediaSearchParams, UploadParams } from './web/media-client.service';
 import { BlobUrlCache } from '../utils/blob-url.utils';
 import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
@@ -151,6 +152,13 @@ export class MediaService implements OnDestroy {
   }
 
   upload(files: File[], params?: UploadParams): Observable<BatchUploadResponse> {
+    return this.client.upload(files, params).pipe(
+      filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
+      map((event) => event.body!),
+    );
+  }
+
+  uploadWithProgress(files: File[], params?: UploadParams): Observable<HttpEvent<BatchUploadResponse>> {
     return this.client.upload(files, params);
   }
 

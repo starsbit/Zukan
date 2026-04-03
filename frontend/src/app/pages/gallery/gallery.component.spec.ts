@@ -100,7 +100,13 @@ describe('GalleryComponent', () => {
         },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: MatDialog, useValue: { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) } },
-        { provide: MediaClientService, useValue: { getCharacterSuggestions: () => of([]) } },
+        {
+          provide: MediaClientService,
+          useValue: {
+            search: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
+            getCharacterSuggestions: () => of([]),
+          },
+        },
         { provide: NavbarSearchService, useValue: searchService },
         { provide: TagsClientService, useValue: { list: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 6 }) } },
         { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },

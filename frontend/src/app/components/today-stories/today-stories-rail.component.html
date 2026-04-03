@@ -1,0 +1,26 @@
+@if (hasItems()) {
+  <section class="today-stories" aria-label="Memories">
+    <div class="today-stories__rail">
+      @for (group of groups(); track group.yearsAgo) {
+        <button
+          class="today-stories__card"
+          type="button"
+          [attr.aria-label]="'Open memory from ' + group.yearsAgoLabel"
+          (click)="openStory(group.yearsAgo)"
+        >
+          <span class="today-stories__media">
+            @if (previewUrls()[group.coverItem.id]; as previewUrl) {
+              <img [src]="previewUrl" [alt]="group.coverItem.original_filename ?? group.coverItem.filename">
+            } @else {
+              <span class="today-stories__fallback">{{ initials() }}</span>
+            }
+            <span class="today-stories__scrim"></span>
+            <span class="today-stories__content">
+              <strong>{{ group.yearsAgoLabel }}</strong>
+            </span>
+          </span>
+        </button>
+      }
+    </div>
+  </section>
+}

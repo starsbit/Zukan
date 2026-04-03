@@ -1,0 +1,108 @@
+:host {
+  display: block;
+}
+
+.today-stories {
+  margin-bottom: 24px;
+}
+
+.today-stories__rail {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(260px, 380px);
+  gap: 20px;
+  overflow-x: auto;
+  padding: 4px 2px 8px;
+}
+
+.today-stories__card {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.today-stories__media,
+.today-stories__media img,
+.today-stories__fallback,
+.today-stories__scrim {
+  width: 100%;
+  height: 214px;
+  border-radius: 18px;
+}
+
+.today-stories__media {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  box-shadow: 0 16px 30px color-mix(in srgb, var(--mat-sys-shadow) 14%, transparent);
+  transition: transform 180ms ease, box-shadow 180ms ease;
+}
+
+.today-stories__card:hover .today-stories__media,
+.today-stories__card:focus-visible .today-stories__media {
+  transform: translateY(-2px);
+  box-shadow: 0 22px 42px color-mix(in srgb, var(--mat-sys-shadow) 20%, transparent);
+}
+
+.today-stories__media img {
+  display: block;
+  object-fit: cover;
+}
+
+.today-stories__fallback {
+  display: grid;
+  place-items: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(255, 240, 210, 0.7), transparent 25%),
+    linear-gradient(135deg, #9dd6ff, #779cff 54%, #d9efff);
+}
+
+.today-stories__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(16, 17, 24, 0.02), rgba(16, 17, 24, 0.55) 72%, rgba(16, 17, 24, 0.78));
+}
+
+.today-stories__content,
+.today-stories__count {
+  position: absolute;
+  z-index: 1;
+  color: white;
+}
+
+.today-stories__content {
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  display: block;
+}
+
+.today-stories__content strong {
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+@media (max-width: 767px) {
+  .today-stories {
+    margin-bottom: 18px;
+  }
+
+  .today-stories__rail {
+    gap: 14px;
+    grid-auto-columns: minmax(228px, 292px);
+  }
+
+  .today-stories__media,
+  .today-stories__media img,
+  .today-stories__fallback,
+  .today-stories__scrim {
+    height: 172px;
+  }
+}

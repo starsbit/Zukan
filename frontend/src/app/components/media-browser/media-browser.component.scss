@@ -60,6 +60,11 @@
   display: none;
 }
 
+.media-browser__stories {
+  display: block;
+  margin-bottom: 18px;
+}
+
 .media-browser__day + .media-browser__day {
   margin-top: 28px;
 }

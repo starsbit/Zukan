@@ -34,6 +34,8 @@ interface UploadPendingRequest {
   state: 'queued' | 'uploading' | 'completed' | 'failed';
   createdAt: string;
   error: string | null;
+  bytesLoaded: number;
+  bytesTotal: number;
 }
 
 interface TrackedBatchState {
@@ -300,6 +302,12 @@ export class UploadTrackerService implements OnDestroy {
       ? Math.round((completedItems / totalTrackedItems) * 100)
       : 0;
 
+    const uploadBytesTotal = this.pendingRequests().reduce((sum, r) => sum + r.bytesTotal, 0);
+    const uploadBytesLoaded = this.pendingRequests().reduce((sum, r) => sum + r.bytesLoaded, 0);
+    const uploadProgressPercent = uploadBytesTotal > 0
+      ? Math.round(Math.min((uploadBytesLoaded / uploadBytesTotal) * 100, 100))
+      : null;
+
     return {
       requestCounts: mutableRequestCounts,
       itemCounts,
@@ -309,6 +317,7 @@ export class UploadTrackerService implements OnDestroy {
       totalTrackedItems,
       completedItems,
       progressPercent,
+      uploadProgressPercent,
       activeBatchCount: Object.values(this.trackedBatches()).filter((batch) =>
         batch.batch === null || !isTerminalBatchStatus(batch.batch.status),
       ).length,
@@ -343,9 +352,23 @@ export class UploadTrackerService implements OnDestroy {
         state: 'queued',
         createdAt: new Date().toISOString(),
         error: null,
+        bytesLoaded: 0,
+        bytesTotal: files.reduce((sum, file) => sum + file.size, 0),
       },
     ]);
     return requestId;
+  }
+
+  updateUploadProgress(requestId: string, loaded: number, total: number): void {
+    this.pendingRequests.update((requests) => requests.map((request) =>
+      request.id === requestId
+        ? {
+            ...request,
+            bytesLoaded: loaded,
+            bytesTotal: total > 0 ? total : request.bytesTotal,
+          }
+        : request,
+    ));
   }
 
   markBatchUploading(requestId: string): void {
@@ -363,7 +386,9 @@ export class UploadTrackerService implements OnDestroy {
     const now = new Date().toISOString();
     this.dismissed.set(false);
     this.pendingRequests.update((requests) => requests.map((request) =>
-      request.id === requestId ? { ...request, state: 'completed', error: null } : request,
+      request.id === requestId
+        ? { ...request, state: 'completed', error: null, bytesLoaded: request.bytesTotal }
+        : request,
     ));
     this.trackedBatches.update((current) => ({
       ...current,
