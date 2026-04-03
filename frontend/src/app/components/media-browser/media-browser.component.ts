@@ -132,6 +132,8 @@ export class MediaBrowserComponent {
   readonly activeTimelineProgress = signal<number | null>(null);
   readonly contentWidth = signal(WIDTH_FALLBACK);
   readonly monthHeights = signal<Map<string, number>>(new Map());
+  readonly monthOffsets = signal<Map<string, number>>(new Map());
+  readonly maxScrollTop = signal(0);
   readonly hoveredDay = signal<string | null>(null);
   readonly selectedIds = signal<string[]>([]);
   readonly isCompactLayout = computed(() => this.contentWidth() < 768);
@@ -494,7 +496,7 @@ export class MediaBrowserComponent {
       clearTimeout(this.resizeDebounceTimer);
       this.resizeDebounceTimer = setTimeout(() => {
         this.contentWidth.set(Math.max(Math.floor(width), 320));
-        this.syncMonthHeights();
+        this.syncMonthMetrics();
       }, 60);
     });
     this.resizeObserver.observe(content);
@@ -506,11 +508,11 @@ export class MediaBrowserComponent {
     }
 
     this.monthSections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.syncMonthHeights();
+      this.syncMonthMetrics();
       this.tryResolvePendingJump();
       this.scheduleActiveSectionSync();
     });
-    this.syncMonthHeights();
+    this.syncMonthMetrics();
   }
 
   private watchContentScroll(): void {
@@ -526,17 +528,26 @@ export class MediaBrowserComponent {
       });
   }
 
-  private syncMonthHeights(): void {
+  private syncMonthMetrics(): void {
+    const content = this.contentPane?.nativeElement;
     const sections = this.monthSections?.toArray() ?? [];
-    const map = new Map<string, number>();
+    const heights = new Map<string, number>();
+    const offsets = new Map<string, number>();
     for (const ref of sections) {
       const el = ref.nativeElement;
       const key = el.dataset['month'];
       if (key) {
-        map.set(key, el.offsetHeight);
+        heights.set(key, el.offsetHeight);
+        if (content) {
+          offsets.set(key, this.measureOffsetWithinContent(el, content));
+        }
       }
     }
-    this.monthHeights.set(map);
+    this.monthHeights.set(heights);
+    this.monthOffsets.set(offsets);
+    this.maxScrollTop.set(
+      content ? Math.max(content.scrollHeight - content.clientHeight, 0) : 0,
+    );
   }
 
   private scheduleActiveSectionSync(): void {
@@ -599,6 +610,8 @@ export class MediaBrowserComponent {
     }
 
     const heights = this.monthHeights();
+    const offsets = this.monthOffsets();
+    const maxScrollTop = this.maxScrollTop();
     const monthGroups = this.justifiedMonthGroups();
 
     const renderedMonthKeys = new Set(
@@ -634,11 +647,18 @@ export class MediaBrowserComponent {
       }
 
       entry.count += bucket.count;
+      const offset = offsets.get(key);
+      const position =
+        offset !== undefined && maxScrollTop > 0
+          ? this.clamp((Math.min(offset, maxScrollTop) / maxScrollTop) * 100, 0, 100)
+          : totalHeight > 0
+            ? (cumulativeHeight / totalHeight) * 100
+            : 0;
       entry.months.push({
         year: bucket.year,
         month: bucket.month,
         count: bucket.count,
-        position: totalHeight > 0 ? (cumulativeHeight / totalHeight) * 100 : 0,
+        position,
         rendered: renderedMonthKeys.has(key),
         anchorId: this.monthSectionId(bucket.year, bucket.month),
       });

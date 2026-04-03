@@ -324,6 +324,35 @@ describe('MediaBrowserComponent', () => {
     expect(fixture.componentInstance.activeTimelineProgress()).toBe(100);
   });
 
+  it('positions timeline months from measured scroll offsets when available', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', [
+      { date: '2026-03-28', label: 'March 28, 2026', items: [] },
+      { date: '2026-02-10', label: 'February 10, 2026', items: [] },
+      { date: '2026-01-10', label: 'January 10, 2026', items: [] },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', [
+      { year: 2026, month: 3, count: 3 },
+      { year: 2026, month: 2, count: 2 },
+      { year: 2026, month: 1, count: 4 },
+    ]);
+    fixture.detectChanges();
+
+    fixture.componentInstance.monthOffsets.set(
+      new Map([
+        ['2026-03', 0],
+        ['2026-02', 250],
+        ['2026-01', 900],
+      ]),
+    );
+    fixture.componentInstance.maxScrollTop.set(500);
+
+    const months = fixture.componentInstance.timelineEntries()[0]?.months ?? [];
+    expect(months.map((month) => month.position)).toEqual([0, 50, 100]);
+  });
+
   it('packs media into justified rows', async () => {
     await configureBrowserTestingModule();
 

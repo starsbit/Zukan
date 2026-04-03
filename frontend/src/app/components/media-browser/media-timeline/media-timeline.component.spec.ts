@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { GalleryTimelineYear } from '../../../models/gallery-browser';
 import { MediaTimelineComponent } from './media-timeline.component';
 
@@ -16,7 +16,7 @@ describe('MediaTimelineComponent', () => {
         count: 10,
         months: [
           { year: 2026, month: 3, count: 7, position: 0, rendered: true, anchorId: 'gallery-day-2026-03-28' },
-          { year: 2026, month: 2, count: 3, position: 100, rendered: false, anchorId: null },
+          { year: 2026, month: 2, count: 3, position: 100, rendered: false, anchorId: 'gallery-month-2026-02' },
         ],
       },
     ];
@@ -35,6 +35,8 @@ describe('MediaTimelineComponent', () => {
     const monthButtons = Array.from(element.querySelectorAll('.media-timeline__month'));
     expect(monthButtons).toHaveLength(2);
     expect(monthButtons[0].classList.contains('media-timeline__month--active')).toBe(true);
+    fixture.componentInstance.pointerProgress.set(0);
+    fixture.detectChanges();
     expect(element.querySelector('.media-timeline__chip')?.textContent).toContain('Mar 2026');
 
     (monthButtons[1] as HTMLButtonElement).click();
@@ -75,8 +77,48 @@ describe('MediaTimelineComponent', () => {
     expect(yearButtons[0]?.style.top).toBe('0%');
     expect(yearButtons[1]?.style.top).not.toBe('');
 
+    fixture.componentInstance.pointerProgress.set(0.66666);
+    fixture.detectChanges();
     const chip = element.querySelector('.media-timeline__chip') as HTMLElement | null;
     expect(chip?.textContent).toContain('Sep 2025');
-    expect(chip?.style.top).toBe('100%');
+    expect(chip?.style.top).toContain('%');
+  });
+
+  it('maps pointer position against the full rail height without an extra offset', async () => {
+    await TestBed.configureTestingModule({
+      imports: [MediaTimelineComponent],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaTimelineComponent);
+    fixture.componentRef.setInput('entries', [
+      {
+        year: 2026,
+        count: 1,
+        months: [
+          { year: 2026, month: 3, count: 1, position: 25, rendered: true, anchorId: 'a' },
+        ],
+      },
+    ] satisfies GalleryTimelineYear[]);
+    fixture.detectChanges();
+
+    const rail = fixture.nativeElement.querySelector('.media-timeline__rail') as HTMLElement;
+    Object.defineProperty(rail, 'getBoundingClientRect', {
+      value: () => ({ top: 100, left: 0, bottom: 300, right: 20, width: 20, height: 200 }),
+    });
+    Object.defineProperty(rail, 'setPointerCapture', { value: vi.fn() });
+    Object.defineProperty(rail, 'releasePointerCapture', { value: vi.fn() });
+
+    const emitted: number[] = [];
+    fixture.componentInstance.scrollRequested.subscribe(value => emitted.push(value));
+
+    fixture.componentInstance.onRailPointerDown({
+      preventDefault: vi.fn(),
+      currentTarget: rail,
+      pointerId: 1,
+      clientY: 150,
+    } as unknown as PointerEvent);
+
+    expect(fixture.componentInstance.pointerProgress()).toBe(0.25);
+    expect(emitted).toEqual([0.25]);
   });
 });

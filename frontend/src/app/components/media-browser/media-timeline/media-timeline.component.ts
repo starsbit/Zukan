@@ -11,7 +11,6 @@ import {
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../../models/gallery-browser';
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const RAIL_PADDING = 20;
 const MIN_LABEL_DISTANCE = 12;
 
 @Component({
@@ -63,7 +62,7 @@ export class MediaTimelineComponent {
     return m ? `${this.monthLabel(m.month)} ${m.year}` : null;
   });
   readonly visibleEntries = computed(() => {
-    const usable = Math.max(this.railHeight() - RAIL_PADDING * 2, 1);
+    const usable = Math.max(this.railHeight(), 1);
     let lastLabelY = -Infinity;
     return this.entries().map(entry => {
       const y = (this.yearPosition(entry) / 100) * usable;
@@ -146,8 +145,8 @@ export class MediaTimelineComponent {
     const rail = this.railRef?.nativeElement;
     if (!rail) return;
     const rect = rail.getBoundingClientRect();
-    const usable = rect.height - RAIL_PADDING * 2;
-    const y = event.clientY - rect.top - RAIL_PADDING;
+    const usable = rect.height;
+    const y = event.clientY - rect.top;
     const progress = Math.max(0, Math.min(1, usable > 0 ? y / usable : 0));
     this.pointerProgress.set(progress);
     if (this.isDragging()) this.scrollRequested.emit(progress);
