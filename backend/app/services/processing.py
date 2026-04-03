@@ -1,19 +1,39 @@
 from __future__ import annotations
 
+from collections import Counter, defaultdict
+from itertools import combinations
+import math
+import re
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from backend.app.errors.error import AppError
-from backend.app.models.media import TaggingStatus
-from backend.app.models.relations import MediaEntityType
+from backend.app.models.media import Media, TaggingStatus
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.processing import ImportBatch, ImportBatchItem
+from backend.app.models.tags import MediaTag
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
-from backend.app.schemas import ImportBatchItemListResponse, ImportBatchListResponse, ImportBatchRead, ImportBatchReviewItemRead, ImportBatchReviewListResponse
+from backend.app.schemas import (
+    ImportBatchItemListResponse,
+    ImportBatchListResponse,
+    ImportBatchRead,
+    ImportBatchRecommendationGroupRead,
+    ImportBatchRecommendationSignalRead,
+    ImportBatchRecommendationSuggestionRead,
+    ImportBatchReviewItemRead,
+    ImportBatchReviewListResponse,
+)
 from backend.app.utils.media_projections import build_media_read
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
+
+TOKEN_RE = re.compile(r"[a-z0-9]+")
+MAX_GROUP_SUGGESTIONS = 3
+TAG_SIMILARITY_THRESHOLD = 0.34
+PAIR_SCORE_THRESHOLD = 0.46
 
 
 class ProcessingService:
@@ -130,6 +150,8 @@ class ProcessingService:
             media = item.media
             if media is None or media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
                 continue
+            if media.metadata_review_dismissed:
+                continue
 
             has_character = any(entity.entity_type == MediaEntityType.character and entity.name.strip() for entity in media.entities)
             has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
@@ -158,4 +180,447 @@ class ProcessingService:
                 )
             )
 
-        return ImportBatchReviewListResponse(total=len(items), items=items)
+        recommendation_groups = await self._build_recommendation_groups(items, candidates, user_id)
+        return ImportBatchReviewListResponse(
+            total=len(items),
+            items=items,
+            recommendation_groups=recommendation_groups,
+        )
+
+    async def _build_recommendation_groups(
+        self,
+        review_items: list[ImportBatchReviewItemRead],
+        candidates: list[ImportBatchItem],
+        user_id: uuid.UUID,
+    ) -> list[ImportBatchRecommendationGroupRead]:
+        review_item_by_media_id = {item.media.id: item for item in review_items}
+        review_candidates = [candidate for candidate in candidates if candidate.media and candidate.media.id in review_item_by_media_id]
+        if len(review_candidates) < 2:
+            return []
+
+        batch_tag_counts = Counter()
+        for candidate in review_candidates:
+            for tag_name, _, _ in self._iter_groupable_tags(candidate):
+                batch_tag_counts[tag_name] += 1
+
+        adjacency: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
+        pair_scores: dict[frozenset[uuid.UUID], float] = {}
+
+        for left, right in combinations(review_candidates, 2):
+            score = self._pair_similarity(left, right, batch_tag_counts, len(review_candidates))
+            if score < PAIR_SCORE_THRESHOLD:
+                continue
+            left_id = left.media.id
+            right_id = right.media.id
+            adjacency[left_id].add(right_id)
+            adjacency[right_id].add(left_id)
+            pair_scores[frozenset((left_id, right_id))] = score
+
+        groups: list[ImportBatchRecommendationGroupRead] = []
+        visited: set[uuid.UUID] = set()
+        for candidate in review_candidates:
+            media_id = candidate.media.id
+            if media_id in visited or media_id not in adjacency:
+                continue
+
+            component_ids: list[uuid.UUID] = []
+            stack = [media_id]
+            while stack:
+                current = stack.pop()
+                if current in visited:
+                    continue
+                visited.add(current)
+                component_ids.append(current)
+                stack.extend(neighbor for neighbor in adjacency[current] if neighbor not in visited)
+
+            if len(component_ids) < 2:
+                continue
+
+            component_candidates = [candidate for candidate in review_candidates if candidate.media.id in set(component_ids)]
+            groups.append(
+                await self._build_recommendation_group(
+                    component_candidates,
+                    review_item_by_media_id,
+                    pair_scores,
+                    len(groups),
+                    user_id,
+                )
+            )
+
+        groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
+        return groups
+
+    async def _build_recommendation_group(
+        self,
+        candidates: list[ImportBatchItem],
+        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
+        pair_scores: dict[frozenset[uuid.UUID], float],
+        group_index: int,
+        user_id: uuid.UUID,
+    ) -> ImportBatchRecommendationGroupRead:
+        media_ids = [candidate.media.id for candidate in candidates]
+        pair_values = [
+            pair_scores[key]
+            for key in pair_scores
+            if key.issubset(set(media_ids))
+        ]
+        confidence = round(sum(pair_values) / len(pair_values), 3) if pair_values else PAIR_SCORE_THRESHOLD
+
+        missing_character_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_character)
+        missing_series_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_series)
+
+        suggested_characters = self._build_name_suggestions(candidates, MediaEntityType.character)
+        suggested_characters = self._merge_suggestions(
+            suggested_characters,
+            await self._infer_entity_suggestions_from_library(
+                user_id,
+                candidates,
+                MediaEntityType.character,
+            ),
+        )
+        suggested_series = self._build_name_suggestions(candidates, MediaEntityType.series)
+        suggested_series = self._merge_suggestions(
+            suggested_series,
+            await self._infer_entity_suggestions_from_library(
+                user_id,
+                candidates,
+                MediaEntityType.series,
+            ),
+        )
+        if len(suggested_series) < MAX_GROUP_SUGGESTIONS:
+            suggested_series = self._merge_suggestions(
+                suggested_series,
+                await self._infer_series_suggestions_from_characters(
+                    user_id,
+                    [suggestion.name for suggestion in suggested_characters],
+                ),
+            )
+        shared_signals = self._build_shared_signals(candidates)
+
+        return ImportBatchRecommendationGroupRead(
+            id=f"batch-group-{group_index + 1}",
+            media_ids=media_ids,
+            item_count=len(media_ids),
+            missing_character_count=missing_character_count,
+            missing_series_count=missing_series_count,
+            suggested_characters=suggested_characters,
+            suggested_series=suggested_series,
+            shared_signals=shared_signals,
+            confidence=min(confidence, 0.999),
+        )
+
+    async def _infer_entity_suggestions_from_library(
+        self,
+        user_id: uuid.UUID,
+        candidates: list[ImportBatchItem],
+        entity_type: MediaEntityType,
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        shared_tag_weights = self._shared_tag_weights(candidates)
+        if not shared_tag_weights:
+            return []
+
+        current_media_ids = [candidate.media.id for candidate in candidates if candidate.media is not None]
+        stmt = (
+            select(
+                MediaEntity.name.label("name"),
+                MediaTag.tag_id.label("tag_id"),
+                func.count(Media.id.distinct()).label("media_count"),
+            )
+            .join(Media, Media.id == MediaEntity.media_id)
+            .join(MediaTag, MediaTag.media_id == Media.id)
+            .where(
+                MediaEntity.entity_type == entity_type,
+                MediaEntity.name != "",
+                Media.deleted_at.is_(None),
+                Media.uploader_id == user_id,
+                MediaTag.tag_id.in_(list(shared_tag_weights)),
+                Media.id.not_in(current_media_ids),
+            )
+            .group_by(MediaEntity.name, MediaTag.tag_id)
+        )
+        rows = (await self._db.execute(stmt)).all()
+        if not rows:
+            return []
+
+        name_scores: dict[str, float] = defaultdict(float)
+        for row in rows:
+            name = row.name.strip() if row.name else ""
+            if not name:
+                continue
+            tag_weight = shared_tag_weights.get(int(row.tag_id), 0.0)
+            media_count = int(row.media_count or 0)
+            if tag_weight <= 0 or media_count <= 0:
+                continue
+            name_scores[name] += tag_weight * media_count
+
+        if not name_scores:
+            return []
+
+        sorted_scores = sorted(name_scores.items(), key=lambda item: (-item[1], item[0].casefold()))
+        max_score = sorted_scores[0][1] or 1.0
+        return [
+            ImportBatchRecommendationSuggestionRead(
+                name=name,
+                confidence=round(score / max_score, 3),
+            )
+            for name, score in sorted_scores[:MAX_GROUP_SUGGESTIONS]
+        ]
+
+    async def _infer_series_suggestions_from_characters(
+        self,
+        user_id: uuid.UUID,
+        character_names: list[str],
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        if not character_names:
+            return []
+
+        character_model = aliased(MediaEntity)
+        series_model = aliased(MediaEntity)
+
+        count_expr = func.count(series_model.media_id.distinct())
+        stmt = (
+            select(
+                series_model.name.label("name"),
+                count_expr.label("media_count"),
+            )
+            .join(character_model, character_model.media_id == series_model.media_id)
+            .join(Media, Media.id == series_model.media_id)
+            .where(
+                series_model.entity_type == MediaEntityType.series,
+                character_model.entity_type == MediaEntityType.character,
+                character_model.name.in_(character_names),
+                Media.deleted_at.is_(None),
+                Media.uploader_id == user_id,
+            )
+            .group_by(series_model.name)
+            .order_by(count_expr.desc(), series_model.name.asc())
+            .limit(MAX_GROUP_SUGGESTIONS)
+        )
+        rows = (await self._db.execute(stmt)).all()
+        if not rows:
+            return []
+
+        max_count = max(int(row.media_count or 0) for row in rows) or 1
+        return [
+            ImportBatchRecommendationSuggestionRead(
+                name=row.name,
+                confidence=round((int(row.media_count or 0) / max_count), 3),
+            )
+            for row in rows
+            if row.name
+        ]
+
+    def _build_name_suggestions(
+        self,
+        candidates: list[ImportBatchItem],
+        entity_type: MediaEntityType,
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        entity_scores: dict[str, float] = defaultdict(float)
+        for candidate in candidates:
+            for entity in candidate.media.entities:
+                if entity.entity_type != entity_type or not entity.name.strip():
+                    continue
+                entity_scores[entity.name.strip()] += entity.confidence or 1.0
+
+        if not entity_scores:
+            tag_category = 4 if entity_type == MediaEntityType.character else 3
+            for candidate in candidates:
+                for _, media_tag, weight in self._iter_groupable_tags(candidate, include_common=True):
+                    tag = media_tag.tag
+                    if tag.category != tag_category:
+                        continue
+                    entity_scores[tag.name.strip()] += weight
+
+        sorted_scores = sorted(entity_scores.items(), key=lambda item: (-item[1], item[0].casefold()))
+        if not sorted_scores:
+            return []
+
+        max_score = sorted_scores[0][1] or 1.0
+        return [
+            ImportBatchRecommendationSuggestionRead(
+                name=name,
+                confidence=round(score / max_score, 3),
+            )
+            for name, score in sorted_scores[:MAX_GROUP_SUGGESTIONS]
+        ]
+
+    def _merge_suggestions(
+        self,
+        primary: list[ImportBatchRecommendationSuggestionRead],
+        secondary: list[ImportBatchRecommendationSuggestionRead],
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        if not secondary:
+            return primary[:MAX_GROUP_SUGGESTIONS]
+        if not primary:
+            return secondary[:MAX_GROUP_SUGGESTIONS]
+
+        merged_scores: dict[str, float] = {}
+        order: dict[str, int] = {}
+        for index, suggestion in enumerate(primary):
+            merged_scores[suggestion.name] = suggestion.confidence
+            order.setdefault(suggestion.name, index)
+        primary_count = len(order)
+        for index, suggestion in enumerate(secondary):
+            merged_scores[suggestion.name] = max(merged_scores.get(suggestion.name, 0.0), suggestion.confidence * 0.92)
+            order.setdefault(suggestion.name, primary_count + index)
+
+        sorted_scores = sorted(
+            merged_scores.items(),
+            key=lambda item: (-item[1], order.get(item[0], primary_count), item[0].casefold()),
+        )
+        return [
+            ImportBatchRecommendationSuggestionRead(name=name, confidence=round(score, 3))
+            for name, score in sorted_scores[:MAX_GROUP_SUGGESTIONS]
+        ]
+
+    def _build_shared_signals(self, candidates: list[ImportBatchItem]) -> list[ImportBatchRecommendationSignalRead]:
+        tag_scores: dict[str, float] = defaultdict(float)
+        phash_counts = Counter(candidate.media.phash for candidate in candidates if candidate.media.phash)
+        entity_counts: Counter[str] = Counter()
+        ocr_counts: Counter[str] = Counter()
+
+        for candidate in candidates:
+            for tag_name, _, weight in self._iter_groupable_tags(candidate, include_common=True):
+                tag_scores[tag_name] += weight
+            for entity in candidate.media.entities:
+                if entity.name.strip():
+                    entity_counts[entity.name.strip()] += 1
+            for token in self._ocr_tokens(candidate.media.ocr_text):
+                ocr_counts[token] += 1
+
+        signals: list[ImportBatchRecommendationSignalRead] = []
+        for name, score in sorted(tag_scores.items(), key=lambda item: (-item[1], item[0]))[:2]:
+            signals.append(ImportBatchRecommendationSignalRead(kind="tag", label=name, confidence=round(min(score / len(candidates), 1.0), 3)))
+
+        shared_phash = next((phash for phash, count in phash_counts.items() if count >= 2), None)
+        if shared_phash:
+            signals.append(ImportBatchRecommendationSignalRead(kind="visual", label="Visual match", confidence=0.9))
+
+        for name, count in entity_counts.most_common(1):
+            if count >= 2:
+                signals.append(ImportBatchRecommendationSignalRead(kind="entity", label=name, confidence=round(count / len(candidates), 3)))
+
+        for token, count in ocr_counts.most_common(1):
+            if count >= 2:
+                signals.append(ImportBatchRecommendationSignalRead(kind="ocr", label=token, confidence=round(count / len(candidates), 3)))
+
+        return signals[:4]
+
+    def _pair_similarity(
+        self,
+        left: ImportBatchItem,
+        right: ImportBatchItem,
+        batch_tag_counts: Counter[str],
+        batch_size: int,
+    ) -> float:
+        left_tags = self._tag_weight_map(left, batch_tag_counts, batch_size)
+        right_tags = self._tag_weight_map(right, batch_tag_counts, batch_size)
+        similarity = self._weighted_jaccard(left_tags, right_tags)
+        if similarity >= TAG_SIMILARITY_THRESHOLD:
+            similarity += 0.08
+
+        left_media = left.media
+        right_media = right.media
+        if left_media.phash and left_media.phash == right_media.phash:
+            similarity += 0.22
+
+        similarity += 0.16 * self._token_jaccard(self._ocr_tokens(left_media.ocr_text), self._ocr_tokens(right_media.ocr_text))
+        similarity += 0.24 * self._token_jaccard(self._entity_tokens(left_media), self._entity_tokens(right_media))
+        return min(similarity, 0.99)
+
+    def _iter_groupable_tags(
+        self,
+        candidate: ImportBatchItem,
+        *,
+        include_common: bool = False,
+    ) -> list[tuple[str, object, float]]:
+        tags: list[tuple[str, object, float]] = []
+        for media_tag in candidate.media.media_tags:
+            tag = media_tag.tag
+            normalized = self._normalize_token(tag.name)
+            if not normalized or tag.category == 9:
+                continue
+            if not include_common and tag.category == 5:
+                continue
+
+            category_weight = {
+                0: 1.0,
+                3: 1.35,
+                4: 1.45,
+                5: 0.45,
+            }.get(tag.category, 0.75)
+            confidence_weight = 0.6 + (media_tag.confidence or 0.0)
+            tags.append((normalized, media_tag, category_weight * confidence_weight))
+        return tags
+
+    def _tag_weight_map(
+        self,
+        candidate: ImportBatchItem,
+        batch_tag_counts: Counter[str],
+        batch_size: int,
+    ) -> dict[str, float]:
+        weights: dict[str, float] = {}
+        common_threshold = max(3, math.ceil(batch_size * 0.6))
+        for normalized, _, weight in self._iter_groupable_tags(candidate):
+            if batch_tag_counts[normalized] >= common_threshold:
+                continue
+            weights[normalized] = max(weights.get(normalized, 0.0), weight)
+        return weights
+
+    def _shared_tag_weights(self, candidates: list[ImportBatchItem]) -> dict[int, float]:
+        if len(candidates) < 2:
+            return {}
+
+        tag_weights: dict[int, float] = defaultdict(float)
+        tag_counts: Counter[int] = Counter()
+        for candidate in candidates:
+            per_candidate_weights: dict[int, float] = {}
+            for _, media_tag, weight in self._iter_groupable_tags(candidate):
+                tag_id = int(media_tag.tag_id)
+                per_candidate_weights[tag_id] = max(per_candidate_weights.get(tag_id, 0.0), weight)
+            for tag_id, weight in per_candidate_weights.items():
+                tag_counts[tag_id] += 1
+                tag_weights[tag_id] += weight
+
+        shared = {
+            tag_id: tag_weights[tag_id] * (tag_counts[tag_id] / len(candidates))
+            for tag_id in tag_counts
+            if tag_counts[tag_id] >= 2
+        }
+        if not shared:
+            return {}
+
+        sorted_shared = sorted(shared.items(), key=lambda item: (-item[1], item[0]))[:6]
+        return dict(sorted_shared)
+
+    def _entity_tokens(self, media) -> set[str]:
+        tokens: set[str] = set()
+        for entity in media.entities:
+            normalized = self._normalize_token(entity.name)
+            if normalized:
+                tokens.add(normalized)
+        return tokens
+
+    def _ocr_tokens(self, text: str | None) -> set[str]:
+        if not text:
+            return set()
+        return {token for token in TOKEN_RE.findall(text.casefold()) if len(token) >= 3}
+
+    def _weighted_jaccard(self, left: dict[str, float], right: dict[str, float]) -> float:
+        if not left or not right:
+            return 0.0
+        keys = set(left) | set(right)
+        intersection = sum(min(left.get(key, 0.0), right.get(key, 0.0)) for key in keys)
+        union = sum(max(left.get(key, 0.0), right.get(key, 0.0)) for key in keys)
+        return intersection / union if union else 0.0
+
+    def _token_jaccard(self, left: set[str], right: set[str]) -> float:
+        if not left or not right:
+            return 0.0
+        return len(left & right) / len(left | right)
+
+    def _normalize_token(self, value: str | None) -> str:
+        if not value:
+            return ""
+        normalized = " ".join(TOKEN_RE.findall(value.replace("_", " ").casefold()))
+        return normalized.strip()

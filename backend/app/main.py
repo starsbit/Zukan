@@ -219,32 +219,58 @@ def _augment_openapi_security(schema: dict) -> dict:
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
-    await init_db()
-    await _ensure_admin_user()
-    tagger.load()
-    ocr_backend.load()
-    set_tag_queue(tag_queue)
-    health_monitor.start()
-    recovered_count = await _recover_pending_media_jobs(tag_queue)
-    worker = asyncio.create_task(tagging_worker())
-    purge_worker = asyncio.create_task(trash_purge_worker())
-    logger.info("Background tagging worker started")
-    if recovered_count:
-        logger.info("Recovered %s pending media jobs after startup", recovered_count)
-    logger.info("Background trash purge worker started")
-    yield
-    logger.info("Application shutdown initiated")
-    worker.cancel()
-    purge_worker.cancel()
-    await health_monitor.stop()
+    worker: asyncio.Task | None = None
+    purge_worker: asyncio.Task | None = None
     try:
-        await worker
-    except asyncio.CancelledError:
-        logger.info("Background tagging worker stopped")
-    try:
-        await purge_worker
-    except asyncio.CancelledError:
-        logger.info("Background trash purge worker stopped")
+        logger.info("Startup phase: running database migrations")
+        await init_db()
+        logger.info("Startup phase complete: database migrations")
+
+        logger.info("Startup phase: ensuring admin user")
+        await _ensure_admin_user()
+        logger.info("Startup phase complete: ensuring admin user")
+
+        logger.info("Startup phase: loading tagger model")
+        tagger.load()
+        logger.info("Startup phase complete: loading tagger model")
+
+        logger.info("Startup phase: loading OCR model")
+        ocr_backend.load()
+        logger.info("Startup phase complete: loading OCR model")
+
+        logger.info("Startup phase: wiring background services")
+        set_tag_queue(tag_queue)
+        health_monitor.start()
+        recovered_count = await _recover_pending_media_jobs(tag_queue)
+        worker = asyncio.create_task(tagging_worker())
+        purge_worker = asyncio.create_task(trash_purge_worker())
+        logger.info("Background tagging worker started")
+        if recovered_count:
+            logger.info("Recovered %s pending media jobs after startup", recovered_count)
+        logger.info("Background trash purge worker started")
+        logger.info("Application startup completed successfully")
+
+        yield
+    except Exception:
+        logger.exception("Application startup failed")
+        raise
+    finally:
+        logger.info("Application shutdown initiated")
+        if worker is not None:
+            worker.cancel()
+        if purge_worker is not None:
+            purge_worker.cancel()
+        await health_monitor.stop()
+        if worker is not None:
+            try:
+                await worker
+            except asyncio.CancelledError:
+                logger.info("Background tagging worker stopped")
+        if purge_worker is not None:
+            try:
+                await purge_worker
+            except asyncio.CancelledError:
+                logger.info("Background trash purge worker stopped")
 
 
 api = FastAPI(

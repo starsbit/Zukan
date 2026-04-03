@@ -13,7 +13,7 @@ const mockBatch = {
   last_heartbeat_at: null, app_version: null, worker_version: null, error_summary: null,
 };
 const mockItemPage = { total: 0, next_cursor: null, has_more: false, page_size: 50, items: [] };
-const mockReviewPage = { total: 1, items: [] };
+const mockReviewPage = { total: 1, items: [], recommendation_groups: [] };
 
 describe('BatchesClientService', () => {
   let service: BatchesClientService;

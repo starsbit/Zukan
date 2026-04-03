@@ -12,15 +12,20 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { ImportBatchReviewItemRead } from '../../../../models/processing';
+import {
+  ImportBatchRecommendationGroupRead,
+  ImportBatchReviewItemRead,
+} from '../../../../models/processing';
 import { CharacterSuggestion, SeriesSuggestion } from '../../../../models/tags';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { BatchesClientService } from '../../../../services/web/batches-client.service';
 import { UploadStatusPreviewComponent } from '../upload-status-preview/upload-status-preview.component';
 import { MediaInspectorDialogComponent } from '../../../media-browser/media-inspector-dialog/media-inspector-dialog.component';
+import { normalizeMetadataNameForSubmission } from '../../../../utils/media-display.utils';
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
+type ReviewView = 'groups' | 'items';
 
 export interface UploadReviewDialogData {
   batchId: string;
@@ -56,8 +61,10 @@ export class UploadReviewDialogComponent {
   private readonly mediaService = inject(MediaService);
   private readonly batchesClient = inject(BatchesClientService);
   private readonly snackBar = inject(MatSnackBar);
+  private hasAutoSelectedGroupsView = false;
 
   readonly filter = signal<ReviewFilter>('all');
+  readonly view = signal<ReviewView>('items');
   readonly selectedIds = signal<string[]>([]);
   readonly saving = signal(false);
   readonly characterInputControl = new FormControl('', { nonNullable: true });
@@ -67,25 +74,63 @@ export class UploadReviewDialogComponent {
   readonly characterSuggestions = signal<CharacterSuggestion[]>([]);
   readonly seriesSuggestions = signal<SeriesSuggestion[]>([]);
   readonly remoteItems = signal<ImportBatchReviewItemRead[]>([]);
+  readonly remoteRecommendationGroups = signal<ImportBatchRecommendationGroupRead[]>([]);
+  readonly removedGroupMediaIds = signal<Record<string, string[]>>({});
+  readonly discardedMediaIds = signal<string[]>([]);
   readonly remoteRefreshing = signal(false);
   readonly remoteBaselineTotal = signal(0);
 
   readonly reviewState = computed(() => this.tracker.getBatchReview(this.data.batchId));
   readonly items = computed(() => this.reviewState()?.reviewItems ?? this.remoteItems());
+  readonly recommendationGroups = computed(() =>
+    (this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups())
+      .map((group) => {
+        const removedIds = new Set([
+          ...(this.removedGroupMediaIds()[group.id] ?? []),
+          ...this.discardedMediaIds(),
+        ]);
+        const mediaIds = group.media_ids.filter((id) => !removedIds.has(id));
+        return {
+          ...group,
+          media_ids: mediaIds,
+          item_count: mediaIds.length,
+          missing_character_count: mediaIds.filter((mediaId) => {
+            const item = this.items().find((entry) => entry.media.id === mediaId);
+            return !!item?.missing_character;
+          }).length,
+          missing_series_count: mediaIds.filter((mediaId) => {
+            const item = this.items().find((entry) => entry.media.id === mediaId);
+            return !!item?.missing_series;
+          }).length,
+        };
+      })
+      .filter((group) => group.media_ids.length >= 2),
+  );
   readonly baselineTotal = computed(() => this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal());
   readonly reviewedCount = computed(() => Math.max(this.baselineTotal() - this.items().length, 0));
   readonly visibleItems = computed(() => {
+    const discardedIds = new Set(this.discardedMediaIds());
     switch (this.filter()) {
       case 'missing_character':
-        return this.items().filter((item) => item.missing_character && !item.missing_series);
+        return this.items().filter((item) => !discardedIds.has(item.media.id) && item.missing_character && !item.missing_series);
       case 'missing_series':
-        return this.items().filter((item) => !item.missing_character && item.missing_series);
+        return this.items().filter((item) => !discardedIds.has(item.media.id) && !item.missing_character && item.missing_series);
       case 'missing_both':
-        return this.items().filter((item) => item.missing_character && item.missing_series);
+        return this.items().filter((item) => !discardedIds.has(item.media.id) && item.missing_character && item.missing_series);
       default:
-        return this.items();
+        return this.items().filter((item) => !discardedIds.has(item.media.id));
     }
   });
+  readonly hasRecommendationGroups = computed(() => this.recommendationGroups().length > 0);
+  readonly groupedMediaIds = computed(() =>
+    new Set(this.recommendationGroups().flatMap((group) => group.media_ids)),
+  );
+  readonly ungroupedVisibleItems = computed(() =>
+    this.visibleItems().filter((item) => !this.groupedMediaIds().has(item.media.id)),
+  );
+  readonly visibleRecommendationGroups = computed(() =>
+    this.recommendationGroups().filter((group) => this.groupMatchesFilter(group)),
+  );
   readonly selectedCount = computed(() => {
     const visibleIds = new Set(this.visibleItems().map((item) => item.media.id));
     return this.selectedIds().filter((id) => visibleIds.has(id)).length;
@@ -95,8 +140,23 @@ export class UploadReviewDialogComponent {
     && this.selectedIds().length > 0
     && (this.characterNames().length > 0 || this.seriesNames().length > 0),
   );
+  readonly discarding = signal(false);
 
   constructor() {
+    effect(() => {
+      if (this.hasRecommendationGroups()) {
+        if (!this.hasAutoSelectedGroupsView) {
+          this.view.set('groups');
+          this.hasAutoSelectedGroupsView = true;
+        }
+      } else {
+        if (this.view() !== 'items') {
+          this.view.set('items');
+        }
+        this.hasAutoSelectedGroupsView = false;
+      }
+    });
+
     effect(() => {
       const currentIds = new Set(this.items().map((item) => item.media.id));
       const nextSelection = this.selectedIds().filter((id) => currentIds.has(id));
@@ -142,9 +202,43 @@ export class UploadReviewDialogComponent {
     return this.selectedIds().includes(mediaId);
   }
 
+  isGroupSelected(group: ImportBatchRecommendationGroupRead): boolean {
+    const selectedIds = new Set(this.selectedIds());
+    return group.media_ids.length > 0 && group.media_ids.every((id) => selectedIds.has(id));
+  }
+
   selectAllVisible(): void {
     const visibleIds = this.visibleItems().map((item) => item.media.id);
     this.selectedIds.update((ids) => Array.from(new Set([...ids, ...visibleIds])));
+  }
+
+  toggleGroupSelection(group: ImportBatchRecommendationGroupRead): void {
+    this.selectedIds.update((ids) => {
+      const next = new Set(ids);
+      const allSelected = group.media_ids.every((id) => next.has(id));
+      if (allSelected) {
+        group.media_ids.forEach((id) => next.delete(id));
+      } else {
+        group.media_ids.forEach((id) => next.add(id));
+      }
+      return Array.from(next);
+    });
+  }
+
+  discardItem(item: ImportBatchReviewItemRead): void {
+    this.discardReviewItems([item.media.id], 'Image discarded from missing-name review.');
+  }
+
+  discardGroup(group: ImportBatchRecommendationGroupRead): void {
+    this.discardReviewItems(group.media_ids, 'Group discarded from missing-name review.');
+  }
+
+  discardItemFromGroup(group: ImportBatchRecommendationGroupRead, mediaId: string): void {
+    const item = this.items().find((entry) => entry.media.id === mediaId);
+    if (!item) {
+      return;
+    }
+    this.discardReviewItems([mediaId], 'Image discarded from missing-name review.');
   }
 
   clearSelection(): void {
@@ -171,6 +265,14 @@ export class UploadReviewDialogComponent {
     this.seriesNames.update((items) => items.filter((item) => item !== value));
   }
 
+  useCharacterSuggestion(name: string): void {
+    this.commitName(this.characterNames, name);
+  }
+
+  useSeriesSuggestion(name: string): void {
+    this.commitName(this.seriesNames, name);
+  }
+
   applySelected(): void {
     if (!this.canApply()) {
       return;
@@ -179,13 +281,23 @@ export class UploadReviewDialogComponent {
     this.saving.set(true);
     this.mediaService.batchUpdateEntities({
       media_ids: this.selectedIds(),
-      character_names: this.characterNames().length > 0 ? this.characterNames() : undefined,
-      series_names: this.seriesNames().length > 0 ? this.seriesNames() : undefined,
+      character_names: this.characterNames().length > 0
+        ? this.characterNames()
+            .map((name) => normalizeMetadataNameForSubmission(name))
+            .filter((name) => !!name)
+        : undefined,
+      series_names: this.seriesNames().length > 0
+        ? this.seriesNames()
+            .map((name) => normalizeMetadataNameForSubmission(name))
+            .filter((name) => !!name)
+        : undefined,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
         this.selectedIds.set([]);
         this.characterNames.set([]);
         this.seriesNames.set([]);
+        this.removedGroupMediaIds.set({});
+        this.discardedMediaIds.set([]);
         this.saving.set(false);
         this.refreshReview();
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
@@ -234,6 +346,11 @@ export class UploadReviewDialogComponent {
     return item.media.id;
   }
 
+  previewItemsForGroup(group: ImportBatchRecommendationGroupRead): ImportBatchReviewItemRead[] {
+    const ids = new Set(group.media_ids);
+    return this.items().filter((item) => ids.has(item.media.id));
+  }
+
   private refreshReview(): void {
     if (this.reviewState()) {
       this.tracker.refreshBatchReview(this.data.batchId);
@@ -246,6 +363,9 @@ export class UploadReviewDialogComponent {
     ).subscribe({
       next: (response) => {
         this.remoteItems.set(response.items);
+        this.remoteRecommendationGroups.set(response.recommendation_groups);
+        this.removedGroupMediaIds.set({});
+        this.discardedMediaIds.set([]);
         this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
         this.remoteRefreshing.set(false);
       },
@@ -268,6 +388,53 @@ export class UploadReviewDialogComponent {
       .filter((entity) => entity.entity_type === entityType)
       .map((entity) => entity.name);
     return names.length > 0 ? names.join(', ') : 'None';
+  }
+
+  private groupMatchesFilter(group: ImportBatchRecommendationGroupRead): boolean {
+    switch (this.filter()) {
+      case 'missing_character':
+        return group.media_ids.some((mediaId) => {
+          const item = this.items().find((entry) => entry.media.id === mediaId);
+          return !!item?.missing_character && !item?.missing_series;
+        });
+      case 'missing_series':
+        return group.media_ids.some((mediaId) => {
+          const item = this.items().find((entry) => entry.media.id === mediaId);
+          return !item?.missing_character && !!item?.missing_series;
+        });
+      case 'missing_both':
+        return group.media_ids.some((mediaId) => {
+          const item = this.items().find((entry) => entry.media.id === mediaId);
+          return !!item?.missing_character && !!item?.missing_series;
+        });
+      default:
+        return true;
+    }
+  }
+
+  private discardReviewItems(mediaIds: string[], successMessage: string): void {
+    if (mediaIds.length === 0 || this.discarding()) {
+      return;
+    }
+
+    this.discarding.set(true);
+    this.discardedMediaIds.update((current) => Array.from(new Set([...current, ...mediaIds])));
+    this.selectedIds.update((ids) => ids.filter((id) => !mediaIds.includes(id)));
+
+    this.mediaService.batchDismissMetadataReview(mediaIds, true)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.discarding.set(false);
+          this.refreshReview();
+          this.snackBar.open(successMessage, 'Close', { duration: 3000 });
+        },
+        error: () => {
+          this.discardedMediaIds.update((current) => current.filter((id) => !mediaIds.includes(id)));
+          this.discarding.set(false);
+          this.snackBar.open('Could not discard those items from review.', 'Close', { duration: 4000 });
+        },
+      });
   }
 }
 

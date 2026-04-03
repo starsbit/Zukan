@@ -413,6 +413,12 @@ async def batch_update_media(
         result = await interactions.bulk_unfavorite_media(body.media_ids, user)
     elif body.visibility is not None:
         result = await metadata.bulk_update_visibility(body.media_ids, user, body.visibility)
+    elif body.metadata_review_dismissed is not None:
+        result = await metadata.bulk_update_metadata_review_dismissed(
+            body.media_ids,
+            user,
+            body.metadata_review_dismissed,
+        )
     else:
         result = BulkResult(processed=0, skipped=0)
     await idempotency_store.remember(

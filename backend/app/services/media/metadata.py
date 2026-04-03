@@ -31,7 +31,7 @@ class MediaMetadataService:
 
     async def update_media_metadata(self, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
         metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
-        needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "entities", "metadata", "deleted", "ocr_text_override", "external_refs", "visibility"})
+        needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "entities", "metadata", "deleted", "ocr_text_override", "external_refs", "visibility", "metadata_review_dismissed"})
         if needs_owner_access:
             media = await self._query.get_owned_or_admin_media(media_id, user, trashed=None)
         else:
@@ -73,6 +73,8 @@ class MediaMetadataService:
             media.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
         if "ocr_text_override" in payload.model_fields_set:
             media.ocr_text_override = payload.ocr_text_override or None
+        if "metadata_review_dismissed" in payload.model_fields_set and payload.metadata_review_dismissed is not None:
+            media.metadata_review_dismissed = payload.metadata_review_dismissed
         if "external_refs" in payload.model_fields_set and payload.external_refs is not None:
             for ref in await self._query.get_media_external_refs(media.id):
                 await self._db.delete(ref)
@@ -103,6 +105,31 @@ class MediaMetadataService:
                 continue
 
             media.visibility = visibility
+            processed += 1
+
+        await self._db.commit()
+        return BulkResult(processed=processed, skipped=skipped)
+
+    async def bulk_update_metadata_review_dismissed(
+        self,
+        media_ids: list[uuid.UUID],
+        user: User,
+        metadata_review_dismissed: bool,
+    ) -> BulkResult:
+        rows = await self._query.get_media_by_ids(media_ids)
+        found_ids = {row.id for row in rows}
+        skipped = len(media_ids) - len(found_ids)
+        processed = 0
+
+        for media in rows:
+            if media.uploader_id != user.id and not user.is_admin:
+                skipped += 1
+                continue
+            if media.metadata_review_dismissed == metadata_review_dismissed:
+                skipped += 1
+                continue
+
+            media.metadata_review_dismissed = metadata_review_dismissed
             processed += 1
 
         await self._db.commit()

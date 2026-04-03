@@ -105,6 +105,19 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
         media_id = str(uuid.uuid4())
         return {
             "total": 1,
+            "recommendation_groups": [
+                {
+                    "id": "batch-group-1",
+                    "media_ids": [media_id],
+                    "item_count": 1,
+                    "missing_character_count": 1,
+                    "missing_series_count": 1,
+                    "suggested_characters": [{"name": "Saber", "confidence": 0.95}],
+                    "suggested_series": [{"name": "Fate/stay night", "confidence": 0.92}],
+                    "shared_signals": [{"kind": "tag", "label": "blue dress", "confidence": 0.8}],
+                    "confidence": 0.81,
+                }
+            ],
             "items": [
                 {
                     "batch_item_id": str(uuid.uuid4()),
@@ -155,3 +168,4 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
+    assert response.json()["recommendation_groups"][0]["suggested_characters"][0]["name"] == "Saber"

@@ -17,6 +17,17 @@
       <mat-button-toggle value="missing_series">Series</mat-button-toggle>
       <mat-button-toggle value="missing_both">Both</mat-button-toggle>
     </mat-button-toggle-group>
+
+    @if (hasRecommendationGroups()) {
+      <mat-button-toggle-group
+        [value]="view()"
+        (valueChange)="view.set($event)"
+        class="review-filter"
+      >
+        <mat-button-toggle value="groups">Recommended</mat-button-toggle>
+        <mat-button-toggle value="items">All items</mat-button-toggle>
+      </mat-button-toggle-group>
+    }
   </section>
 
   <section class="review-actions">
@@ -110,45 +121,205 @@
       <span>No matching items remain in this filter.</span>
     </div>
   } @else {
-    <section class="review-grid">
-      @for (item of visibleItems(); track trackByMediaId($index, item)) {
-        <article
-          class="review-card"
-          [class.review-card--selected]="isSelected(item.media.id)"
-          (click)="toggleSelected(item.media.id)"
-        >
-          <div class="review-card__preview">
-            <div class="review-card__selection-indicator">
-              <mat-icon>{{ isSelected(item.media.id) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
-              <span>{{ isSelected(item.media.id) ? 'Selected' : 'Click to select' }}</span>
-            </div>
-            <zukan-upload-status-preview [mediaId]="item.media.id" />
+    @if (view() === 'groups' && hasRecommendationGroups()) {
+      <section class="review-groups">
+        @if (visibleRecommendationGroups().length > 0) {
+          <div class="review-groups__header">
+            <strong>Recommended groups</strong>
+            <span>One click selects related media and the suggestion chips fill the naming inputs above.</span>
           </div>
 
-          <div class="review-card__body">
-            <div class="review-card__header">
-              <strong>{{ item.media.original_filename ?? item.media.filename }}</strong>
-              <span>{{ badgeLabel(item) }}</span>
-            </div>
-
-            <div class="review-card__entities">
-              <span>Characters: {{ characterLabel(item) }}</span>
-              <span>Series: {{ seriesLabel(item) }}</span>
-            </div>
-
-            <div class="review-card__actions">
-              <button
-                mat-button
-                type="button"
-                (click)="$event.stopPropagation(); openInspector(item)"
+          <div class="review-groups__grid">
+            @for (group of visibleRecommendationGroups(); track group.id) {
+              <article
+                class="review-group-card"
+                [class.review-group-card--selected]="isGroupSelected(group)"
               >
-                Open Inspector
-              </button>
-            </div>
+                <div class="review-group-card__header">
+                  <div class="review-group-card__title">
+                    <strong>{{ group.item_count }} related items</strong>
+                    <span>{{ (group.confidence * 100).toFixed(0) }}% match confidence</span>
+                  </div>
+
+                  <div class="review-group-card__header-actions">
+                    <button
+                      class="review-group-card__selection-indicator"
+                      type="button"
+                      (click)="toggleGroupSelection(group)"
+                    >
+                      <mat-icon>{{ isGroupSelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      <span>{{ isGroupSelected(group) ? 'Selected' : 'Click to select' }}</span>
+                    </button>
+
+                    <button mat-button type="button" [disabled]="discarding()" (click)="discardGroup(group)">
+                      Discard group
+                    </button>
+                  </div>
+                </div>
+
+                <div class="review-group-card__previews">
+                  @for (item of previewItemsForGroup(group); track item.media.id) {
+                    <div class="review-group-card__preview-shell">
+                      <button
+                        class="review-group-card__preview"
+                        type="button"
+                        (click)="openInspector(item)"
+                      >
+                        <zukan-upload-status-preview [mediaId]="item.media.id" />
+                      </button>
+
+                      <button
+                        class="review-group-card__remove"
+                        type="button"
+                        aria-label="Discard {{ item.media.original_filename ?? item.media.filename }} from review"
+                        (click)="discardItemFromGroup(group, item.media.id)"
+                      >
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </div>
+                  }
+                </div>
+
+                @if (group.shared_signals.length > 0) {
+                  <mat-chip-set aria-label="Shared signals">
+                    @for (signal of group.shared_signals; track signal.kind + ':' + signal.label) {
+                      <mat-chip>{{ signal.kind }}: {{ signal.label }}</mat-chip>
+                    }
+                  </mat-chip-set>
+                }
+
+                @if (group.suggested_characters.length > 0) {
+                  <div class="review-group-card__suggestions">
+                    <strong>Character suggestions</strong>
+                    <mat-chip-set aria-label="Character suggestions">
+                      @for (suggestion of group.suggested_characters; track suggestion.name) {
+                        <mat-chip-row (click)="useCharacterSuggestion(suggestion.name)">
+                          {{ suggestion.name }}
+                        </mat-chip-row>
+                      }
+                    </mat-chip-set>
+                  </div>
+                }
+
+                @if (group.suggested_series.length > 0) {
+                  <div class="review-group-card__suggestions">
+                    <strong>Series suggestions</strong>
+                    <mat-chip-set aria-label="Series suggestions">
+                      @for (suggestion of group.suggested_series; track suggestion.name) {
+                        <mat-chip-row (click)="useSeriesSuggestion(suggestion.name)">
+                          {{ suggestion.name }}
+                        </mat-chip-row>
+                      }
+                    </mat-chip-set>
+                  </div>
+                }
+              </article>
+            }
           </div>
-        </article>
-      }
-    </section>
+        }
+
+        <div class="review-groups__header">
+          <strong>No recommendation</strong>
+          <span>These items stay available for manual review.</span>
+        </div>
+
+        <section class="review-grid">
+          @for (item of ungroupedVisibleItems(); track trackByMediaId($index, item)) {
+            <article
+              class="review-card"
+              [class.review-card--selected]="isSelected(item.media.id)"
+              (click)="toggleSelected(item.media.id)"
+            >
+              <div class="review-card__preview">
+                <div class="review-card__selection-indicator">
+                  <mat-icon>{{ isSelected(item.media.id) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                  <span>{{ isSelected(item.media.id) ? 'Selected' : 'Click to select' }}</span>
+                </div>
+                <zukan-upload-status-preview [mediaId]="item.media.id" />
+              </div>
+
+              <div class="review-card__body">
+                <div class="review-card__header">
+                  <strong>{{ item.media.original_filename ?? item.media.filename }}</strong>
+                  <span>{{ badgeLabel(item) }}</span>
+                </div>
+
+                <div class="review-card__entities">
+                  <span>Characters: {{ characterLabel(item) }}</span>
+                  <span>Series: {{ seriesLabel(item) }}</span>
+                </div>
+
+                <div class="review-card__actions">
+                  <button
+                    mat-button
+                    type="button"
+                    (click)="$event.stopPropagation(); openInspector(item)"
+                  >
+                    Open Inspector
+                  </button>
+                  <button
+                    mat-button
+                    type="button"
+                    [disabled]="discarding()"
+                    (click)="$event.stopPropagation(); discardItem(item)"
+                  >
+                    Discard image
+                  </button>
+                </div>
+              </div>
+            </article>
+          }
+        </section>
+      </section>
+    } @else {
+      <section class="review-grid">
+        @for (item of visibleItems(); track trackByMediaId($index, item)) {
+          <article
+            class="review-card"
+            [class.review-card--selected]="isSelected(item.media.id)"
+            (click)="toggleSelected(item.media.id)"
+          >
+            <div class="review-card__preview">
+              <div class="review-card__selection-indicator">
+                <mat-icon>{{ isSelected(item.media.id) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                <span>{{ isSelected(item.media.id) ? 'Selected' : 'Click to select' }}</span>
+              </div>
+              <zukan-upload-status-preview [mediaId]="item.media.id" />
+            </div>
+
+            <div class="review-card__body">
+              <div class="review-card__header">
+                <strong>{{ item.media.original_filename ?? item.media.filename }}</strong>
+                <span>{{ badgeLabel(item) }}</span>
+              </div>
+
+              <div class="review-card__entities">
+                <span>Characters: {{ characterLabel(item) }}</span>
+                <span>Series: {{ seriesLabel(item) }}</span>
+              </div>
+
+              <div class="review-card__actions">
+                <button
+                  mat-button
+                  type="button"
+                  (click)="$event.stopPropagation(); openInspector(item)"
+                >
+                  Open Inspector
+                </button>
+                <button
+                  mat-button
+                  type="button"
+                  [disabled]="discarding()"
+                  (click)="$event.stopPropagation(); discardItem(item)"
+                >
+                  Discard image
+                </button>
+              </div>
+            </div>
+          </article>
+        }
+      </section>
+    }
   }
 </mat-dialog-content>
 

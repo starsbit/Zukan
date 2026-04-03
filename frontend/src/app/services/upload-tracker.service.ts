@@ -4,6 +4,7 @@ import { MediaRead, MediaVisibility, TaggingStatus } from '../models/media';
 import {
   ImportBatchItemListResponse,
   ImportBatchItemRead,
+  ImportBatchRecommendationGroupRead,
   ImportBatchRead,
   ImportBatchReviewItemRead,
 } from '../models/processing';
@@ -48,6 +49,7 @@ interface TrackedBatchState {
   batch: ImportBatchRead | null;
   items: ImportBatchItemRead[];
   reviewItems: ImportBatchReviewItemRead[];
+  recommendationGroups: ImportBatchRecommendationGroupRead[];
   reviewTotal: number;
   reviewBaselineTotal: number;
   reviewRefreshing: boolean;
@@ -413,6 +415,7 @@ export class UploadTrackerService implements OnDestroy {
         batch: null,
         items: [],
         reviewItems: [],
+        recommendationGroups: [],
         reviewTotal: 0,
         reviewBaselineTotal: 0,
         reviewRefreshing: false,
@@ -498,6 +501,7 @@ export class UploadTrackerService implements OnDestroy {
         const previousBaseline = this.trackedBatches()[batchId]?.reviewBaselineTotal ?? 0;
         this.patchBatch(batchId, {
           reviewItems: response.items,
+          recommendationGroups: response.recommendation_groups,
           reviewTotal: response.total,
           reviewBaselineTotal: Math.max(previousBaseline, response.total),
           reviewRefreshing: false,

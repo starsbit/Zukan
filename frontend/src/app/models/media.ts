@@ -77,6 +77,7 @@ export interface MediaRead {
   deleted_at: string | null;
   tags: string[];
   ocr_text_override: string | null;
+  metadata_review_dismissed?: boolean;
   is_nsfw: boolean;
   tagging_status: TaggingStatus;
   tagging_error: string | null;
@@ -108,6 +109,7 @@ export interface MediaUpdate {
   deleted?: boolean | null;
   favorited?: boolean | null;
   visibility?: MediaVisibility | null;
+  metadata_review_dismissed?: boolean | null;
   ocr_text_override?: string | null;
   external_refs?: ExternalRefCreate[] | null;
   version?: number | null;
@@ -140,6 +142,7 @@ export interface MediaBatchUpdate {
   deleted?: boolean | null;
   favorited?: boolean | null;
   visibility?: MediaVisibility | null;
+  metadata_review_dismissed?: boolean | null;
 }
 
 export interface MediaEntityBatchUpdate {

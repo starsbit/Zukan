@@ -147,6 +147,10 @@ export class MediaService implements OnDestroy {
     );
   }
 
+  batchDismissMetadataReview(ids: string[], dismissed: boolean): Observable<BulkResult> {
+    return this.client.batchUpdate({ media_ids: ids, metadata_review_dismissed: dismissed });
+  }
+
   batchUpdateEntities(body: MediaEntityBatchUpdate): Observable<BulkResult> {
     return this.client.batchUpdateEntities(body);
   }

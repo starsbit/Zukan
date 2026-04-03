@@ -10,10 +10,11 @@ class MediaBatchUpdate(BaseModel):
     deleted: bool | None = None
     favorited: bool | None = None
     visibility: MediaVisibility | None = None
+    metadata_review_dismissed: bool | None = None
 
     @model_validator(mode="after")
     def validate_non_empty(self):
-        if self.deleted is None and self.favorited is None and self.visibility is None:
+        if self.deleted is None and self.favorited is None and self.visibility is None and self.metadata_review_dismissed is None:
             raise ValueError("At least one mutable field must be provided")
         return self
 

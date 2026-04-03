@@ -45,6 +45,22 @@ export function formatMetadataName(value: string | null | undefined): string {
   );
 }
 
+export function normalizeMetadataNameForSubmission(value: string | null | undefined): string {
+  if (!value?.trim()) {
+    return '';
+  }
+
+  return value
+    .trim()
+    .normalize('NFKC')
+    .replace(/['".,!?]+/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-zA-Z0-9()]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
 export function formatFileSize(bytes: number | null | undefined): string {
   if (bytes == null || !Number.isFinite(bytes) || bytes < 0) {
     return '';

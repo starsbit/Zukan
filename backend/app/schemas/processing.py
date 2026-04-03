@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -98,6 +99,36 @@ class ImportBatchReviewItemRead(BaseModel):
     missing_series: bool
 
 
+class ImportBatchRecommendationSuggestionRead(BaseModel):
+    name: str
+    confidence: float = Field(description="Relative confidence for this suggestion within the recommendation group.")
+
+
+class ImportBatchRecommendationSignalRead(BaseModel):
+    kind: Literal["tag", "visual", "ocr", "entity"]
+    label: str
+    confidence: float | None = Field(
+        default=None,
+        description="Optional relative confidence for the shared signal.",
+    )
+
+
+class ImportBatchRecommendationGroupRead(BaseModel):
+    id: str
+    media_ids: list[uuid.UUID]
+    item_count: int
+    missing_character_count: int
+    missing_series_count: int
+    suggested_characters: list[ImportBatchRecommendationSuggestionRead]
+    suggested_series: list[ImportBatchRecommendationSuggestionRead]
+    shared_signals: list[ImportBatchRecommendationSignalRead]
+    confidence: float
+
+
 class ImportBatchReviewListResponse(BaseModel):
     total: int = Field(description="Number of currently reviewable items in the batch.")
     items: list[ImportBatchReviewItemRead]
+    recommendation_groups: list[ImportBatchRecommendationGroupRead] = Field(
+        default_factory=list,
+        description="Recommendation groups for unresolved review items in this batch.",
+    )

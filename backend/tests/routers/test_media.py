@@ -185,6 +185,22 @@ def test_batch_update_visibility_contract(api_client, monkeypatch):
     assert response.json() == {"processed": 2, "skipped": 1}
 
 
+def test_batch_update_metadata_review_dismissed_contract(api_client, monkeypatch):
+    async def _fake_bulk_dismissed(self, media_ids, user, metadata_review_dismissed):
+        assert metadata_review_dismissed is True
+        return {"processed": 2, "skipped": 1}
+
+    monkeypatch.setattr(MediaMetadataService, "bulk_update_metadata_review_dismissed", _fake_bulk_dismissed)
+
+    response = api_client.patch(
+        "/api/v1/media",
+        json={"media_ids": [str(uuid.uuid4())], "metadata_review_dismissed": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 2, "skipped": 1}
+
+
 def test_batch_update_entities_contract(api_client, monkeypatch):
     async def _fake_bulk_entities(self, body, user):
         assert body.character_names == ["Saber"]

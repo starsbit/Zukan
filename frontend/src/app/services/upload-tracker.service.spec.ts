@@ -8,7 +8,7 @@ import { MediaService } from './media.service';
 import { BatchesClientService } from './web/batches-client.service';
 import { UploadTrackerService } from './upload-tracker.service';
 
-const emptyReviewPage = { total: 0, items: [] };
+const emptyReviewPage = { total: 0, items: [], recommendation_groups: [] };
 
 describe('UploadTrackerService', () => {
   afterEach(() => {
@@ -130,6 +130,7 @@ describe('UploadTrackerService', () => {
     }));
     const listReviewItems = vi.fn().mockReturnValue(of({
       total: 1,
+      recommendation_groups: [],
       items: [{
         batch_item_id: 'i1',
         source_filename: 'done.jpg',

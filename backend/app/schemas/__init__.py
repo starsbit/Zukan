@@ -62,6 +62,9 @@ from .notifications import (
 )
 from .processing import (
     BatchItemStatus,
+    ImportBatchRecommendationGroupRead,
+    ImportBatchRecommendationSignalRead,
+    ImportBatchRecommendationSuggestionRead,
     ImportBatchReviewItemRead,
     ImportBatchReviewListResponse,
     BatchStatus,
@@ -133,6 +136,9 @@ __all__ = [
     "ImportBatchItemRead",
     "ImportBatchItemListResponse",
     "ImportBatchListResponse",
+    "ImportBatchRecommendationGroupRead",
+    "ImportBatchRecommendationSignalRead",
+    "ImportBatchRecommendationSuggestionRead",
     "ImportBatchRead",
     "ImportBatchReviewItemRead",
     "ImportBatchReviewListResponse",

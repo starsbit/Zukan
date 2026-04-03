@@ -36,6 +36,7 @@ def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0) 
         tags=sorted(mt.tag.name for mt in media.media_tags),
         ocr_text=media.ocr_text,
         ocr_text_override=media.ocr_text_override,
+        metadata_review_dismissed=bool(media.metadata_review_dismissed),
         is_nsfw=media.is_nsfw,
         tagging_status=media.tagging_status,
         tagging_error=media.tagging_error,

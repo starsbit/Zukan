@@ -123,6 +123,25 @@ async def test_bulk_update_visibility_updates_only_manageable_media(fake_db, stu
 
 
 @pytest.mark.asyncio
+async def test_bulk_update_metadata_review_dismissed_updates_only_manageable_media(fake_db, stub_query, user):
+    own_active = SimpleNamespace(id=1, uploader_id=user.id, metadata_review_dismissed=False)
+    own_dismissed = SimpleNamespace(id=2, uploader_id=user.id, metadata_review_dismissed=True)
+    foreign_active = SimpleNamespace(id=3, uploader_id='someone-else', metadata_review_dismissed=False)
+    stub_query.get_media_by_ids.return_value = [own_active, own_dismissed, foreign_active]
+
+    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
+
+    result = await service.bulk_update_metadata_review_dismissed([1, 2, 3, 4], user, True)
+
+    assert result.processed == 1
+    assert result.skipped == 3
+    assert own_active.metadata_review_dismissed is True
+    assert own_dismissed.metadata_review_dismissed is True
+    assert foreign_active.metadata_review_dismissed is False
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_entities_replaces_only_requested_types(fake_db, stub_query, user):
     media_one = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id)
     media_two = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4())

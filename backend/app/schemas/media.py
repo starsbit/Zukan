@@ -80,6 +80,10 @@ class MediaRead(BaseModel):
         default=None,
         description="User-supplied transcript or OCR correction. Takes precedence over system-derived ocr_text.",
     )
+    metadata_review_dismissed: bool = Field(
+        default=False,
+        description="Whether this media has been explicitly dismissed from missing metadata review flows.",
+    )
     is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
     tagging_status: TaggingStatus = Field(description="Current AI tagging lifecycle state. One of: pending, processing, done, failed.")
     tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
@@ -200,6 +204,10 @@ class MediaUpdate(BaseModel):
     ocr_text_override: str | None = Field(
         default=None,
         description="User-supplied transcript or OCR correction. Send null to clear. Omit to keep unchanged.",
+    )
+    metadata_review_dismissed: bool | None = Field(
+        default=None,
+        description="Whether this media should be excluded from missing metadata review flows.",
     )
     external_refs: list[ExternalRefCreate] | None = Field(
         default=None,

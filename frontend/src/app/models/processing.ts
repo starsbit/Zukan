@@ -77,7 +77,31 @@ export interface ImportBatchReviewItemRead {
   missing_series: boolean;
 }
 
+export interface ImportBatchRecommendationSuggestionRead {
+  name: string;
+  confidence: number;
+}
+
+export interface ImportBatchRecommendationSignalRead {
+  kind: 'tag' | 'visual' | 'ocr' | 'entity';
+  label: string;
+  confidence: number | null;
+}
+
+export interface ImportBatchRecommendationGroupRead {
+  id: string;
+  media_ids: string[];
+  item_count: number;
+  missing_character_count: number;
+  missing_series_count: number;
+  suggested_characters: ImportBatchRecommendationSuggestionRead[];
+  suggested_series: ImportBatchRecommendationSuggestionRead[];
+  shared_signals: ImportBatchRecommendationSignalRead[];
+  confidence: number;
+}
+
 export interface ImportBatchReviewListResponse {
   total: number;
   items: ImportBatchReviewItemRead[];
+  recommendation_groups: ImportBatchRecommendationGroupRead[];
 }
