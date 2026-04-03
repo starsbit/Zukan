@@ -160,6 +160,7 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+  min-width: 0;
   min-height: 0;
   padding: var(--inspector-media-padding-block) var(--inspector-media-padding-inline);
   overflow: hidden;
@@ -167,10 +168,12 @@
 
 .inspector-media {
   display: block;
+  min-width: 0;
+  min-height: 0;
   width: auto;
-  max-width: calc(100% - (var(--inspector-media-padding-inline) * 2));
+  max-width: 100%;
   height: auto;
-  max-height: calc(100% - (var(--inspector-media-padding-block) * 2));
+  max-height: 100%;
   object-fit: contain;
   border-radius: 1rem;
   box-shadow: var(--mat-sys-level3);
@@ -190,8 +193,8 @@
 
 video.inspector-media {
   width: 100%;
-  max-width: calc(100% - (var(--inspector-media-padding-inline) * 2));
-  max-height: calc(100% - (var(--inspector-media-padding-block) * 2));
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .inspector-nav {
