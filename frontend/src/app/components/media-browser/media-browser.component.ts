@@ -21,7 +21,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { fromEvent } from 'rxjs';
-import { GalleryTimelineYear } from '../../models/gallery-browser';
+import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead, MediaVisibility } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { AlbumStore } from '../../services/album.store';
@@ -40,13 +40,6 @@ import {
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 
-interface GallerySectionAnchor {
-  id: string;
-  date: string;
-  year: number;
-  month: number;
-}
-
 interface JustifiedRowItem {
   media: MediaRead | null;
   width: number;
@@ -64,6 +57,13 @@ interface JustifiedDayGroup {
   itemCount: number;
   rows: JustifiedRow[];
   isSkeleton: boolean;
+}
+
+interface JustifiedMonthGroup {
+  year: number;
+  month: number;
+  label: string;
+  days: JustifiedDayGroup[];
 }
 
 const DESKTOP_GRID_GAP = 16;
@@ -121,8 +121,8 @@ export class MediaBrowserComponent {
   private readonly uploadTracker = inject(UploadTrackerService);
   private readonly snackBar = inject(MatSnackBar);
 
-  @ViewChildren('daySection', { read: ElementRef })
-  private readonly daySections?: QueryList<ElementRef<HTMLElement>>;
+  @ViewChildren('monthSection', { read: ElementRef })
+  private readonly monthSections?: QueryList<ElementRef<HTMLElement>>;
 
   @ViewChild('contentPane', { read: ElementRef })
   private readonly contentPane?: ElementRef<HTMLElement>;
@@ -131,13 +131,14 @@ export class MediaBrowserComponent {
   readonly activeMonthKey = signal<string | null>(null);
   readonly activeTimelineProgress = signal<number | null>(null);
   readonly contentWidth = signal(WIDTH_FALLBACK);
+  readonly monthHeights = signal<Map<string, number>>(new Map());
   readonly hoveredDay = signal<string | null>(null);
   readonly selectedIds = signal<string[]>([]);
   readonly isCompactLayout = computed(() => this.contentWidth() < 768);
   readonly isEmpty = computed(
     () => !this.loading() && this.dayGroups().length === 0 && this.timeline().length === 0,
   );
-  readonly justifiedDayGroups = computed(() => this.buildJustifiedDayGroups());
+  readonly justifiedMonthGroups = computed(() => this.buildJustifiedMonthGroups());
   readonly timelineEntries = computed(() => this.buildTimelineEntries());
   readonly allMediaIds = computed(() =>
     this.dayGroups().flatMap((group) => group.items.map((item) => item.id)),
@@ -150,8 +151,8 @@ export class MediaBrowserComponent {
     return allIds.length > 0 && allIds.every((id) => this.selectedIdSet().has(id));
   });
 
-  private readonly _sectionAnchors = signal<GallerySectionAnchor[]>([]);
   private resizeObserver?: ResizeObserver;
+  private resizeDebounceTimer?: ReturnType<typeof setTimeout>;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
 
@@ -179,12 +180,13 @@ export class MediaBrowserComponent {
   ngAfterViewInit(): void {
     this.observeContentWidth();
     this.watchContentScroll();
-    this.watchDaySections();
+    this.watchMonthSections();
     this.scheduleActiveSectionSync();
   }
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
+    clearTimeout(this.resizeDebounceTimer);
     if (this.frameId != null) {
       cancelAnimationFrame(this.frameId);
     }
@@ -194,14 +196,12 @@ export class MediaBrowserComponent {
     this.scheduleActiveSectionSync();
   }
 
-  @HostListener('window:resize')
-  onWindowResize(): void {
-    this.syncContentWidth();
-    this.scheduleActiveSectionSync();
-  }
-
   sectionId(date: string): string {
     return `gallery-day-${date}`;
+  }
+
+  monthSectionId(year: number, month: number): string {
+    return `gallery-month-${this.monthKey(year, month)}`;
   }
 
   monthKey(year: number, month: number): string {
@@ -491,20 +491,26 @@ export class MediaBrowserComponent {
 
     this.resizeObserver = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? this.measureContentWidth(content);
-      this.contentWidth.set(Math.max(Math.floor(width), 320));
+      clearTimeout(this.resizeDebounceTimer);
+      this.resizeDebounceTimer = setTimeout(() => {
+        this.contentWidth.set(Math.max(Math.floor(width), 320));
+        this.syncMonthHeights();
+      }, 60);
     });
     this.resizeObserver.observe(content);
   }
 
-  private watchDaySections(): void {
-    if (!this.daySections) {
+  private watchMonthSections(): void {
+    if (!this.monthSections) {
       return;
     }
 
-    this.daySections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.syncSectionAnchors();
+    this.monthSections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.syncMonthHeights();
+      this.tryResolvePendingJump();
+      this.scheduleActiveSectionSync();
     });
-    this.syncSectionAnchors();
+    this.syncMonthHeights();
   }
 
   private watchContentScroll(): void {
@@ -520,21 +526,17 @@ export class MediaBrowserComponent {
       });
   }
 
-  private syncSectionAnchors(): void {
-    const sections = this.daySections?.toArray() ?? [];
-    this._sectionAnchors.set(sections.map((sectionRef) => {
-      const element = sectionRef.nativeElement;
-      const date = element.dataset['date'] ?? '';
-      const [year, month] = date.split('-').map((part) => Number(part));
-      return {
-        id: element.id,
-        date,
-        year,
-        month,
-      };
-    }));
-    this.tryResolvePendingJump();
-    this.scheduleActiveSectionSync();
+  private syncMonthHeights(): void {
+    const sections = this.monthSections?.toArray() ?? [];
+    const map = new Map<string, number>();
+    for (const ref of sections) {
+      const el = ref.nativeElement;
+      const key = el.dataset['month'];
+      if (key) {
+        map.set(key, el.offsetHeight);
+      }
+    }
+    this.monthHeights.set(map);
   }
 
   private scheduleActiveSectionSync(): void {
@@ -549,30 +551,41 @@ export class MediaBrowserComponent {
   }
 
   private syncActiveSection(): void {
-    const timelineMonths = this.flattenTimelineMonths();
     const content = this.contentPane?.nativeElement;
-    if (!content || timelineMonths.length === 0) {
+    const sections = this.monthSections?.toArray() ?? [];
+    if (!content || sections.length === 0) {
       this.activeYear.set(null);
       this.activeMonthKey.set(null);
       this.activeTimelineProgress.set(null);
       return;
     }
 
+    const scrollTop = content.scrollTop;
+    let activeKey: string | null = null;
+
+    for (const ref of sections) {
+      const el = ref.nativeElement;
+      const offset = this.measureOffsetWithinContent(el, content);
+      if (offset <= scrollTop + 1) {
+        activeKey = el.dataset['month'] ?? null;
+      } else {
+        break;
+      }
+    }
+
+    if (!activeKey) {
+      activeKey = sections[0]?.nativeElement.dataset['month'] ?? null;
+    }
+
+    const months = this.flattenTimelineMonths();
+    const activeMonth =
+      months.find((m) => this.monthKey(m.year, m.month) === activeKey) ?? months[0];
+
     const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
     const scrollProgress =
       maxScrollTop <= 0 ? 0 : this.clamp(content.scrollTop / maxScrollTop, 0, 1);
-    const startPosition = timelineMonths[0]?.position ?? 0;
-    const endPosition = timelineMonths[timelineMonths.length - 1]?.position ?? startPosition;
-    const activePosition = startPosition + (endPosition - startPosition) * scrollProgress;
-    const activeIndex = this.resolveActiveMonthIndex(
-      timelineMonths,
-      0,
-      timelineMonths.length - 1,
-      activePosition,
-    );
-    const activeMonth = timelineMonths[activeIndex] ?? timelineMonths[0];
 
-    this.activeTimelineProgress.set(activePosition);
+    this.activeTimelineProgress.set(scrollProgress * 100);
     this.activeYear.set(activeMonth?.year ?? null);
     this.activeMonthKey.set(
       activeMonth ? this.monthKey(activeMonth.year, activeMonth.month) : null,
@@ -580,35 +593,39 @@ export class MediaBrowserComponent {
   }
 
   private buildTimelineEntries(): GalleryTimelineYear[] {
-    const anchorMap = new Map<string, string>();
-    const sectionAnchors = this._sectionAnchors();
-    const sources =
-      sectionAnchors.length > 0
-        ? sectionAnchors
-        : this.justifiedDayGroups().map((group) => {
-            const parts = group.date.split('-').map((part) => Number(part));
-            return {
-              id: this.sectionId(group.date),
-              date: group.date,
-              year: parts[0]!,
-              month: parts[1]!,
-            };
-          });
+    const buckets = this.timeline();
+    if (buckets.length === 0) {
+      return [];
+    }
 
-    for (const anchor of sources) {
-      const key = this.monthKey(anchor.year, anchor.month);
-      if (!anchorMap.has(key)) {
-        anchorMap.set(key, anchor.id);
-      }
+    const heights = this.monthHeights();
+    const monthGroups = this.justifiedMonthGroups();
+
+    const renderedMonthKeys = new Set(
+      monthGroups
+        .filter((mg) => mg.days.some((d) => !d.isSkeleton))
+        .map((mg) => this.monthKey(mg.year, mg.month)),
+    );
+
+    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
+
+    let totalHeight = 0;
+    const monthHeightList: { key: string; h: number; bucket: TimelineBucket }[] = [];
+
+    for (const bucket of buckets) {
+      const key = this.monthKey(bucket.year, bucket.month);
+      const measured = heights.get(key);
+      const estimated = totalCount > 0 ? (bucket.count / totalCount) * 1000 : 1;
+      const h = measured ?? estimated;
+      monthHeightList.push({ key, h, bucket });
+      totalHeight += h;
     }
 
     const years: GalleryTimelineYear[] = [];
     const yearMap = new Map<number, GalleryTimelineYear>();
+    let cumulativeHeight = 0;
 
-    const buckets = this.timeline();
-    const totalBuckets = buckets.length;
-
-    for (const [index, bucket] of buckets.entries()) {
+    for (const { key, h, bucket } of monthHeightList) {
       let entry = yearMap.get(bucket.year);
       if (!entry) {
         entry = { year: bucket.year, count: 0, months: [] };
@@ -621,10 +638,12 @@ export class MediaBrowserComponent {
         year: bucket.year,
         month: bucket.month,
         count: bucket.count,
-        position: totalBuckets <= 1 ? 0 : (index / (totalBuckets - 1)) * 100,
-        rendered: anchorMap.has(this.monthKey(bucket.year, bucket.month)),
-        anchorId: anchorMap.get(this.monthKey(bucket.year, bucket.month)) ?? null,
+        position: totalHeight > 0 ? (cumulativeHeight / totalHeight) * 100 : 0,
+        rendered: renderedMonthKeys.has(key),
+        anchorId: this.monthSectionId(bucket.year, bucket.month),
       });
+
+      cumulativeHeight += h;
     }
 
     return years;
@@ -636,18 +655,34 @@ export class MediaBrowserComponent {
       return;
     }
 
-    const timelineMonths = this.flattenTimelineMonths();
-    const targetIndex = timelineMonths.findIndex(
-      (month) => this.monthKey(month.year, month.month) === targetKey,
-    );
+    const months = this.flattenTimelineMonths();
+    const target = months.find((m) => this.monthKey(m.year, m.month) === targetKey);
 
-    if (targetIndex === -1) {
+    if (!target) {
       this.pendingJumpTargetKey = null;
       return;
     }
 
-    const target = timelineMonths[targetIndex];
-    if (target?.anchorId && this.scrollToAnchor(target.anchorId)) {
+    if (this.scrollToAnchor(target.anchorId)) {
+      this.pendingJumpTargetKey = null;
+      return;
+    }
+
+    const rendered = months.filter((m) => m.rendered);
+    if (rendered.length === 0) {
+      this.pendingJumpTargetKey = null;
+      return;
+    }
+
+    const nearest = rendered.reduce<GalleryTimelineMonth>(
+      (best, m) =>
+        Math.abs(m.position - target.position) < Math.abs(best.position - target.position)
+          ? m
+          : best,
+      rendered[0]!,
+    );
+
+    if (this.scrollToAnchor(nearest.anchorId)) {
       this.pendingJumpTargetKey = null;
     }
   }
@@ -690,27 +725,7 @@ export class MediaBrowserComponent {
     return this.timelineEntries().flatMap((entry) => entry.months);
   }
 
-  private resolveActiveMonthIndex(
-    timelineMonths: Array<{ position: number }>,
-    startIndex: number,
-    endIndex: number,
-    activePosition: number,
-  ): number {
-    let activeIndex = startIndex;
-    let bestDistance = Number.POSITIVE_INFINITY;
-
-    for (let index = startIndex; index <= endIndex; index += 1) {
-      const distance = Math.abs((timelineMonths[index]?.position ?? 0) - activePosition);
-      if (distance <= bestDistance) {
-        bestDistance = distance;
-        activeIndex = index;
-      }
-    }
-
-    return activeIndex;
-  }
-
-  private buildJustifiedDayGroups(): JustifiedDayGroup[] {
+  private buildJustifiedMonthGroups(): JustifiedMonthGroup[] {
     const contentWidth = this.contentWidth();
     const rowHeight = this.preferredRowHeight(contentWidth);
     const gap = this.gridGap(contentWidth);
@@ -725,21 +740,47 @@ export class MediaBrowserComponent {
     }
 
     if (this.timeline().length === 0 && this.dayGroups().length > 0) {
-      return this.dayGroups().map((group) => ({
-        date: group.date,
-        label: group.label,
-        itemCount: group.items.length,
-        rows: this.justifyRows(group.items, contentWidth, rowHeight, gap),
-        isSkeleton: false,
-      }));
+      const monthMap = new Map<string, JustifiedMonthGroup>();
+      const result: JustifiedMonthGroup[] = [];
+      for (const group of this.dayGroups()) {
+        const key = group.date.slice(0, 7);
+        const parts = key.split('-').map(Number);
+        const year = parts[0]!;
+        const month = parts[1]!;
+        if (!monthMap.has(key)) {
+          const mg: JustifiedMonthGroup = {
+            year,
+            month,
+            label: this.formatMonthLabel(year, month),
+            days: [],
+          };
+          monthMap.set(key, mg);
+          result.push(mg);
+        }
+        monthMap.get(key)!.days.push({
+          date: group.date,
+          label: group.label,
+          itemCount: group.items.length,
+          rows: this.justifyRows(group.items, contentWidth, rowHeight, gap),
+          isSkeleton: false,
+        });
+      }
+      return result;
     }
 
-    const result: JustifiedDayGroup[] = [];
+    const result: JustifiedMonthGroup[] = [];
     for (const bucket of this.timeline()) {
       const key = this.monthKey(bucket.year, bucket.month);
+      const monthGroup: JustifiedMonthGroup = {
+        year: bucket.year,
+        month: bucket.month,
+        label: this.formatMonthLabel(bucket.year, bucket.month),
+        days: [],
+      };
+
       if (realGroupsByMonth.has(key)) {
         for (const group of realGroupsByMonth.get(key)!) {
-          result.push({
+          monthGroup.days.push({
             date: group.date,
             label: group.label,
             itemCount: group.items.length,
@@ -748,7 +789,11 @@ export class MediaBrowserComponent {
           });
         }
       } else if (this.loading() || this.galleryStore.hasMore()) {
-        result.push(this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap));
+        monthGroup.days.push(this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap));
+      }
+
+      if (monthGroup.days.length > 0) {
+        result.push(monthGroup);
       }
     }
     return result;

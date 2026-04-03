@@ -59,60 +59,67 @@
         </mat-card-content>
       </mat-card>
     } @else {
-      @for (group of justifiedDayGroups(); track group.date) {
+      @for (monthGroup of justifiedMonthGroups(); track monthKey(monthGroup.year, monthGroup.month)) {
         <section
-          #daySection
-          class="media-browser__day"
-          [class.media-browser__day--skeleton]="group.isSkeleton"
-          [id]="sectionId(group.date)"
-          [attr.data-date]="group.date"
-          (mouseenter)="!group.isSkeleton && onDayHover(group.date)"
-          (mouseleave)="!group.isSkeleton && onDayHover(null)">
-          <header class="media-browser__day-header">
-            <h2>{{ group.label }}</h2>
-            <div
-              class="media-browser__day-header-actions"
-              [class.media-browser__day-header-actions--with-selection]="allowSelection() && !group.isSkeleton && (hoveredDay() === group.date || isDaySelected(group) || isSelectionMode())">
-              <span>{{ group.itemCount }} item{{ group.itemCount === 1 ? '' : 's' }}</span>
-              @if (allowSelection() && !group.isSkeleton) {
-                <button
-                  mat-icon-button
-                  class="media-browser__day-selection-button"
-                  [class.media-browser__day-selection-button--visible]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode()"
-                  [class.media-browser__day-selection-button--selected]="isDaySelected(group)"
-                  type="button"
-                  [attr.aria-label]="isDaySelected(group) ? 'Unselect date group' : 'Select date group'"
-                  [attr.aria-pressed]="isDaySelected(group)"
-                  [attr.tabindex]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode() ? 0 : -1"
-                  (click)="toggleDaySelection(group, $event)">
-                  <mat-icon aria-hidden="true">{{ isDaySelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
-                </button>
-              }
-            </div>
-          </header>
+          #monthSection
+          class="media-browser__month"
+          [id]="monthSectionId(monthGroup.year, monthGroup.month)"
+          [attr.data-month]="monthKey(monthGroup.year, monthGroup.month)">
+          @for (group of monthGroup.days; track group.date) {
+            <section
+              class="media-browser__day"
+              [class.media-browser__day--skeleton]="group.isSkeleton"
+              [id]="sectionId(group.date)"
+              [attr.data-date]="group.date"
+              (mouseenter)="!group.isSkeleton && onDayHover(group.date)"
+              (mouseleave)="!group.isSkeleton && onDayHover(null)">
+              <header class="media-browser__day-header">
+                <h2>{{ group.label }}</h2>
+                <div
+                  class="media-browser__day-header-actions"
+                  [class.media-browser__day-header-actions--with-selection]="allowSelection() && !group.isSkeleton && (hoveredDay() === group.date || isDaySelected(group) || isSelectionMode())">
+                  <span>{{ group.itemCount }} item{{ group.itemCount === 1 ? '' : 's' }}</span>
+                  @if (allowSelection() && !group.isSkeleton) {
+                    <button
+                      mat-icon-button
+                      class="media-browser__day-selection-button"
+                      [class.media-browser__day-selection-button--visible]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode()"
+                      [class.media-browser__day-selection-button--selected]="isDaySelected(group)"
+                      type="button"
+                      [attr.aria-label]="isDaySelected(group) ? 'Unselect date group' : 'Select date group'"
+                      [attr.aria-pressed]="isDaySelected(group)"
+                      [attr.tabindex]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode() ? 0 : -1"
+                      (click)="toggleDaySelection(group, $event)">
+                      <mat-icon aria-hidden="true">{{ isDaySelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                    </button>
+                  }
+                </div>
+              </header>
 
-          @for (row of group.rows; track $index) {
-            <div class="media-browser__row" [style.height.px]="row.height">
-              @for (item of row.items; track $index) {
-                <div class="media-browser__cell" [style.width.px]="item.width">
-                  @if (item.media; as media) {
-                    <zukan-media-card
-                      [media]="media"
-                      [selectable]="allowSelection()"
-                      [selected]="isMediaSelected(media.id)"
-                      [selectionMode]="isSelectionMode()"
-                      [showFavorite]="true"
-                      [showPublicBadge]="showPublicBadge()"
-                      (activated)="onMediaActivated($event)"
-                      (selectionToggled)="onMediaSelectionToggled($event)"
-                      (favoriteToggled)="onFavoriteToggled($event)">
-                    </zukan-media-card>
-                  } @else {
-                    <div class="media-browser__skeleton-card" aria-hidden="true"></div>
+              @for (row of group.rows; track $index) {
+                <div class="media-browser__row" [style.height.px]="row.height">
+                  @for (item of row.items; track $index) {
+                    <div class="media-browser__cell" [style.width.px]="item.width">
+                      @if (item.media; as media) {
+                        <zukan-media-card
+                          [media]="media"
+                          [selectable]="allowSelection()"
+                          [selected]="isMediaSelected(media.id)"
+                          [selectionMode]="isSelectionMode()"
+                          [showFavorite]="true"
+                          [showPublicBadge]="showPublicBadge()"
+                          (activated)="onMediaActivated($event)"
+                          (selectionToggled)="onMediaSelectionToggled($event)"
+                          (favoriteToggled)="onFavoriteToggled($event)">
+                        </zukan-media-card>
+                      } @else {
+                        <div class="media-browser__skeleton-card" aria-hidden="true"></div>
+                      }
+                    </div>
                   }
                 </div>
               }
-            </div>
+            </section>
           }
         </section>
       }

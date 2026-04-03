@@ -65,6 +65,10 @@
   margin-bottom: 18px;
 }
 
+.media-browser__month + .media-browser__month {
+  margin-top: 40px;
+}
+
 .media-browser__day + .media-browser__day {
   margin-top: 28px;
 }
@@ -227,6 +231,10 @@
     gap: 14px;
   }
 
+  .media-browser__month + .media-browser__month {
+    margin-top: 32px;
+  }
+
   .media-browser__day + .media-browser__day {
     margin-top: 22px;
   }
@@ -267,6 +275,10 @@
 @media (max-width: 479px) {
   .media-browser {
     gap: 12px;
+  }
+
+  .media-browser__month + .media-browser__month {
+    margin-top: 26px;
   }
 
   .media-browser__day + .media-browser__day {

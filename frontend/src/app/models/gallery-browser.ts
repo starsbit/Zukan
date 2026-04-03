@@ -4,7 +4,7 @@ export interface GalleryTimelineMonth {
   count: number;
   position: number;
   rendered: boolean;
-  anchorId: string | null;
+  anchorId: string;
 }
 
 export interface GalleryTimelineYear {

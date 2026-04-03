@@ -347,7 +347,7 @@ describe('MediaBrowserComponent', () => {
     const rows = fixture.nativeElement.querySelectorAll('.media-browser__row');
     expect(rows.length).toBeGreaterThan(0);
     expect(fixture.nativeElement.querySelector('.media-browser__grid')).toBeNull();
-    expect(fixture.componentInstance.justifiedDayGroups()[0]?.rows.length).toBeGreaterThan(0);
+    expect(fixture.componentInstance.justifiedMonthGroups()[0]?.days[0]?.rows.length).toBeGreaterThan(0);
   });
 
   it('switches to compact row sizing on narrow content widths', async () => {
@@ -366,7 +366,7 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.isCompactLayout()).toBe(true);
-    expect(fixture.componentInstance.justifiedDayGroups()[0]?.rows[0]?.height).toBeLessThanOrEqual(
+    expect(fixture.componentInstance.justifiedMonthGroups()[0]?.days[0]?.rows[0]?.height).toBeLessThanOrEqual(
       260,
     );
   });
@@ -549,7 +549,7 @@ describe('MediaBrowserComponent', () => {
     fixture.componentRef.setInput('timeline', []);
     fixture.detectChanges();
 
-    const justifiedGroup = fixture.componentInstance.justifiedDayGroups()[0]!;
+    const justifiedGroup = fixture.componentInstance.justifiedMonthGroups()[0]!.days[0]!;
     fixture.componentInstance.toggleDaySelection(justifiedGroup);
 
     expect(fixture.componentInstance.selectionCount()).toBe(2);
@@ -610,7 +610,7 @@ describe('MediaBrowserComponent', () => {
     fixture.componentRef.setInput('timeline', []);
     fixture.detectChanges();
 
-    const justifiedGroup = fixture.componentInstance.justifiedDayGroups()[0]!;
+    const justifiedGroup = fixture.componentInstance.justifiedMonthGroups()[0]!.days[0]!;
     fixture.componentInstance.toggleDaySelection(justifiedGroup);
     fixture.detectChanges();
 

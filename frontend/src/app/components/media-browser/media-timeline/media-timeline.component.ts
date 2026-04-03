@@ -12,7 +12,7 @@ import { GalleryTimelineMonth, GalleryTimelineYear } from '../../../models/galle
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const RAIL_PADDING = 20;
-const MIN_LABEL_DISTANCE = 16;
+const MIN_LABEL_DISTANCE = 12;
 
 @Component({
   selector: 'zukan-media-timeline',
