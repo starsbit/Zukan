@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
+import { HttpEventType, HttpResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MediaClientService } from './media-client.service';
 import { API_BASE_URL } from './api.config';
@@ -375,7 +375,11 @@ describe('MediaClientService', () => {
     const file = new File(['content'], 'test.jpg', { type: 'image/jpeg' });
     const mock = { batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items', poll_after_seconds: 2, webhooks_supported: false, accepted: 1, duplicates: 0, errors: 0, results: [] };
 
-    service.upload([file], { tags: ['saber'] }).subscribe(res => expect(res).toEqual(mock));
+    service.upload([file], { tags: ['saber'] }).subscribe(res => {
+      if (res.type === HttpEventType.Response) {
+        expect((res as HttpResponse<unknown>).body).toEqual(mock);
+      }
+    });
 
     const req = http.expectOne('/api/v1/media');
     expect(req.request.method).toBe('POST');

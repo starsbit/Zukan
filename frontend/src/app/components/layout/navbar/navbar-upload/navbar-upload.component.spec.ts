@@ -1,4 +1,5 @@
 import { TestBed } from '@angular/core/testing';
+import { HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
@@ -35,12 +36,29 @@ describe('NavbarUploadComponent', () => {
     } as unknown as DragEvent;
   }
 
-function makeDialogMock(result: { isPublic: boolean } | undefined) {
+  function makeDialogMock(result: { isPublic: boolean } | undefined) {
     return {
       open: vi.fn().mockReturnValue({
         afterClosed: () => of(result),
       }),
     };
+  }
+
+  function uploadResponse(files: File[]) {
+    return of(new HttpResponse({
+      body: {
+        batch_id: 'b1',
+        batch_url: '/api/v1/me/import-batches/b1',
+        batch_items_url: '/api/v1/me/import-batches/b1/items',
+        poll_after_seconds: 2,
+        webhooks_supported: false,
+        accepted: files.length,
+        duplicates: 0,
+        errors: 0,
+        results: [],
+      },
+      status: 200,
+    }));
   }
 
   async function createComponent(overrides?: {
@@ -54,17 +72,7 @@ function makeDialogMock(result: { isPublic: boolean } | undefined) {
       registerRejectedFiles: ReturnType<typeof vi.fn>;
     };
   }) {
-    const upload = overrides?.upload ?? vi.fn().mockImplementation((files: File[]) => of({
-      batch_id: 'b1',
-      batch_url: '/api/v1/me/import-batches/b1',
-      batch_items_url: '/api/v1/me/import-batches/b1/items',
-      poll_after_seconds: 2,
-      webhooks_supported: false,
-      accepted: files.length,
-      duplicates: 0,
-      errors: 0,
-      results: [],
-    }));
+    const upload = overrides?.upload ?? vi.fn().mockImplementation((files: File[]) => uploadResponse(files));
 
     // Default: dialog confirms with isPublic=false
     const dialogResult = 'dialogResult' in (overrides ?? {})
@@ -83,7 +91,7 @@ function makeDialogMock(result: { isPublic: boolean } | undefined) {
       imports: [NavbarUploadComponent, NoopAnimationsModule],
       providers: [
         { provide: ConfigClientService, useValue: { getUploadConfig: () => of(uploadConfig) } },
-        { provide: MediaService, useValue: { upload } },
+        { provide: MediaService, useValue: { uploadWithProgress: upload } },
         { provide: UploadTrackerService, useValue: tracker },
         { provide: MatDialog, useValue: dialog },
       ],
@@ -472,6 +480,10 @@ function makeDialogMock(result: { isPublic: boolean } | undefined) {
 
     expect(() => component.onFileSelection(toFileList([file]))).not.toThrow();
 
-    expect(tracker.registerBatchRequestFailed).toHaveBeenCalledWith('request-1', [file], 'boom');
+    expect(tracker.registerBatchRequestFailed).toHaveBeenCalledWith(
+      'request-1',
+      [file],
+      'boom',
+    );
   });
 });
