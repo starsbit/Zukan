@@ -39,8 +39,8 @@ def _to_async_url(url: str) -> str:
 
 @pytest.fixture(scope="session")
 def postgres_async_url() -> str:
-    container = PostgresContainer("postgres:16-alpine")
     try:
+        container = PostgresContainer("postgres:16-alpine")
         container.start()
     except Exception as exc:  # pragma: no cover
         pytest.skip(f"Docker/Testcontainers unavailable: {exc}")
