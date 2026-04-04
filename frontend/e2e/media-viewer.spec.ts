@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { seedAuthenticatedSession } from './helpers/auth';
+import { ensureAdminAuthenticated } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -85,7 +85,6 @@ function mediaDetail(media: ReturnType<typeof mediaItem>) {
 }
 
 async function registerViewerRoutes(page: Page) {
-  await seedAuthenticatedSession(page);
   const state = new Map([
     ['m1', mediaDetail(mediaItem('m1', 'image'))],
     ['m2', mediaDetail(mediaItem('m2', 'gif'))],
@@ -223,11 +222,7 @@ test.describe.serial('Media viewer', () => {
     page,
   }) => {
     const { patchBodies } = await registerViewerRoutes(page);
-    await page.goto('/login');
-    await page.evaluate(() => {
-      localStorage.setItem('zukan_at', 'test-access-token');
-      localStorage.setItem('zukan_rt', 'test-refresh-token');
-    });
+    await ensureAdminAuthenticated(page);
     await page.goto('/gallery');
     await expect(page).toHaveURL('/gallery');
 

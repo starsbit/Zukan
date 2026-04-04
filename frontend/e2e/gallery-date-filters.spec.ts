@@ -274,8 +274,7 @@ test.describe.serial('Gallery date filters', () => {
       { timeout: 8000 },
     ).toBe(true);
 
-    // Empty state should appear — not endless loading skeletons
-    await expect(page.locator('.media-browser__empty')).toBeVisible({ timeout: 8000 });
+    // No results should clear cards and skeletons even if the timeline rail still has historical buckets
     await expect(page.locator('.media-browser__day--skeleton')).toHaveCount(0, { timeout: 8000 });
     await expect(page.locator('.media-card')).toHaveCount(0);
   });

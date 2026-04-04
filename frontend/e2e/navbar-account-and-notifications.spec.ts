@@ -60,25 +60,60 @@ test.describe.serial('Navbar account settings and notifications', () => {
     await expect(page).toHaveURL('/');
 
     const token = await getAccessToken(page);
-    const notifications = await page.evaluate(async (accessToken) => {
-      const response = await fetch('/api/v1/me/notifications?page_size=8', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      return response.json();
+    const menuState = await page.evaluate(async (accessToken) => {
+      const [notificationsResponse, batchesResponse] = await Promise.all([
+        fetch('/api/v1/me/notifications?page_size=8', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+        fetch('/api/v1/me/import-batches?page_size=10', {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        }),
+      ]);
+      const notifications = await notificationsResponse.json() as {
+        items: Array<{ title: string; body: string }>;
+      };
+      const batchesPayload = await batchesResponse.json() as
+        | { items?: Array<{ id: string; created_at: string; type: string }> }
+        | Array<{ id: string; created_at: string; type: string }>;
+      const batches = Array.isArray(batchesPayload) ? batchesPayload : (batchesPayload.items ?? []);
+
+      const uploadBatches = batches.filter((batch) => batch.type === 'upload').slice(0, 10);
+      const reviewTotals = await Promise.all(uploadBatches.map(async (batch) => {
+        const response = await fetch(`/api/v1/me/import-batches/${batch.id}/review-items?page_size=1`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+        const payload = await response.json() as { total: number };
+        return payload.total;
+      }));
+
+      const unresolvedCount = reviewTotals.reduce((sum, total) => sum + total, 0);
+      return {
+        notificationItems: notifications.items,
+        hasReviewReminder: unresolvedCount > 0,
+      };
     }, token) as {
-      items: Array<{ title: string; body: string }>;
-      total: number;
+      notificationItems: Array<{ title: string; body: string }>;
+      hasReviewReminder: boolean;
     };
 
     await page.getByRole('button', { name: 'Notifications' }).click();
 
-    if (notifications.items.length === 0) {
+    if (menuState.hasReviewReminder) {
+      await expect(page.getByText('Some uploaded media still need names')).toBeVisible();
+      return;
+    }
+
+    if (menuState.notificationItems.length === 0) {
       await expect(page.getByText('No notifications yet.')).toBeVisible();
     } else {
-      await expect(page.getByText(notifications.items[0].title)).toBeVisible();
-      await expect(page.getByText(notifications.items[0].body)).toBeVisible();
+      await expect(page.getByText(menuState.notificationItems[0].title)).toBeVisible();
+      await expect(page.getByText(menuState.notificationItems[0].body)).toBeVisible();
     }
   });
 });

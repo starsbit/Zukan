@@ -184,11 +184,11 @@ test.describe.serial('Gallery timeline', () => {
 
     const content = page.locator('.media-browser__content');
     const timeline = page.locator('.media-timeline');
-    const chip = page.locator('.media-timeline__chip');
+    const activeMonth = page.locator('.media-timeline__month--active').first();
 
     await expect(content).toBeVisible();
     await expect(timeline).toBeVisible();
-    await expect(chip).toContainText('Sep 2026');
+    await expect(activeMonth).toHaveAttribute('aria-label', 'Sep 2026');
 
     // Timeline rail height matches content pane height
     const contentBox = await content.boundingBox();
@@ -202,18 +202,18 @@ test.describe.serial('Gallery timeline', () => {
       node.scrollTop = node.scrollHeight * 0.45;
       node.dispatchEvent(new Event('scroll'));
     });
-    await expect(chip).not.toContainText('Sep 2026');
+    await expect(activeMonth).not.toHaveAttribute('aria-label', 'Sep 2026');
 
     // Clicking a month in the timeline scrolls to it — even before that page is fetched
-    await page.locator('.media-timeline__month[title="Jan 2020"]').evaluate((el: HTMLElement) => el.click());
-    await expect(chip).toContainText('Jan 2020');
+    await page.getByRole('button', { name: 'Jan 2020' }).click();
+    await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeInViewport();
 
-    // Scrolling to the bottom keeps Jan 2020 as the active month
+    // Scrolling to the bottom keeps the oldest section visible
     await content.evaluate((node) => {
       node.scrollTop = node.scrollHeight - node.clientHeight;
       node.dispatchEvent(new Event('scroll'));
     });
-    await expect(chip).toContainText('Jan 2020');
+    await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeInViewport();
   });
 
   test('shows empty state when gallery has no media', async ({ page }) => {

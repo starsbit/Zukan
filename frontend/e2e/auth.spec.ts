@@ -32,7 +32,7 @@ test.describe.serial('Authentication workflows', () => {
 
       if (setupRequired) {
         await expect(page).toHaveURL('/');
-        await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+        await expect(page.locator('zukan-setup-wizard')).toBeVisible();
         return;
       }
 

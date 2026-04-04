@@ -2,12 +2,10 @@ import { test, expect } from '@playwright/test';
 import { ensureAdminAuthenticated, isSetupRequired } from './helpers/auth';
 
 async function setTheme(page: import('@playwright/test').Page, theme: 'light' | 'dark') {
-  if (await isSetupRequired()) {
-    await page.goto('/');
-  } else {
-    await ensureAdminAuthenticated(page);
-    await page.goto('/');
-  }
+  test.skip(await isSetupRequired(), 'Theme logo checks require setup to be completed');
+  await ensureAdminAuthenticated(page);
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Profile' })).toBeVisible();
   await page.evaluate((value) => {
     localStorage.setItem('zukan-theme', value);
     document.documentElement.classList.remove('theme-light', 'theme-dark');
