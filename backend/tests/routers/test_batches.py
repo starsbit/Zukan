@@ -99,7 +99,7 @@ def test_list_batch_items_contract(api_client, monkeypatch):
 def test_list_batch_review_items_contract(api_client, monkeypatch):
     batch_id = uuid.uuid4()
 
-    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False):
+    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False, force_refresh=False):
         assert request_batch_id == batch_id
         assert include_recommendations is False
         now = datetime.now(timezone.utc).isoformat()
@@ -175,7 +175,7 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
 def test_list_batch_review_items_with_recommendations_contract(api_client, monkeypatch):
     batch_id = uuid.uuid4()
 
-    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False):
+    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False, force_refresh=False):
         assert request_batch_id == batch_id
         assert include_recommendations is True
         return {

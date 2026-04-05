@@ -37,7 +37,7 @@ test.describe.serial('Navbar account settings and notifications', () => {
     const thresholdInput = page.getByLabel('Tag Confidence Threshold');
     await nsfwCheckbox.check();
     await thresholdInput.fill('0.61');
-    await page.getByRole('button', { name: 'Save' }).click();
+    await page.getByRole('button', { name: 'Save settings' }).click();
 
     await expect(page.getByRole('dialog')).toHaveCount(0);
 

@@ -13,6 +13,7 @@ from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus
+from backend.app.schemas import ImportBatchRecommendationGroupRead
 from backend.app.services.processing import ProcessingService
 from backend.tests.services.conftest import RowResult, ScalarResult
 
@@ -214,17 +215,17 @@ async def test_list_batch_review_items_builds_recommendations_when_requested(fak
     review_item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename="one.webp", status=ItemStatus.done)
     review_item.id = uuid.uuid4()
     review_item.media = media
-    expected_groups = [{
-        "id": "batch-group-1",
-        "media_ids": [media.id],
-        "item_count": 1,
-        "missing_character_count": 1,
-        "missing_series_count": 1,
-        "suggested_characters": [],
-        "suggested_series": [],
-        "shared_signals": [],
-        "confidence": 0.9,
-    }]
+    expected_groups = [ImportBatchRecommendationGroupRead(
+        id="batch-group-1",
+        media_ids=[media.id],
+        item_count=1,
+        missing_character_count=1,
+        missing_series_count=1,
+        suggested_characters=[],
+        suggested_series=[],
+        shared_signals=[],
+        confidence=0.9,
+    )]
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
          patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=expected_groups)) as build_groups, \
@@ -354,6 +355,7 @@ async def test_list_batch_review_items_groups_related_media_and_suggests_names(f
             RowResult(rows=[]),
             RowResult(rows=[]),
             RowResult(rows=[]),
+            None,
         ]
     )
 
@@ -431,6 +433,7 @@ async def test_list_batch_review_items_infers_series_from_character_history(fake
             RowResult(rows=[]),
             RowResult(rows=[]),
             RowResult(rows=[SimpleNamespace(name="Steins;Gate", media_count=4)]),
+            None,
         ]
     )
 
@@ -514,6 +517,7 @@ async def test_list_batch_review_items_uses_historical_tagged_library_for_entity
                 ]
             ),
             RowResult(rows=[]),
+            None,
         ]
     )
 
@@ -575,6 +579,7 @@ async def test_character_name_groups_use_anilist_for_series_suggestions(fake_db,
             RowResult(rows=[]),
             RowResult(rows=[]),
             RowResult(rows=[]),
+            None,
         ]
     )
 
@@ -635,7 +640,7 @@ async def test_anilist_series_groups_include_distinct_characters_with_shared_ser
     item_one = make_item("one.webp", "Saber")
     item_two = make_item("two.webp", "Rin Tohsaka")
 
-    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[])])
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
          patch.object(service, "_get_anilist_token", AsyncMock(return_value="test-token")), \
@@ -700,7 +705,7 @@ async def test_anilist_series_groups_can_expand_to_many_single_character_items(f
         make_item(4, "Illyasviel"),
     ]
 
-    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[])])
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
          patch.object(service, "_get_anilist_token", AsyncMock(return_value=None)), \
@@ -757,7 +762,7 @@ async def test_character_name_groups_case_insensitive_bucketing(fake_db, user):
     item_one = make_item("one.webp", "saber")
     item_two = make_item("two.webp", "SABER")
 
-    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[])])
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
          patch.object(service, "_get_anilist_token", AsyncMock(return_value="test-token")), \
@@ -922,7 +927,7 @@ async def test_character_name_groups_not_duplicated_in_similarity_groups(fake_db
     item_one = make_item("one.webp", "Saber")
     item_two = make_item("two.webp", "Saber")
 
-    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[])])
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
          patch.object(service, "_get_anilist_token", AsyncMock(return_value="test-token")), \

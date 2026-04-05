@@ -3,13 +3,14 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from collections.abc import Coroutine
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from itertools import combinations
 import math
 import re
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -36,7 +37,7 @@ from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
-PAIR_SCORE_THRESHOLD = 0.46
+PAIR_SCORE_THRESHOLD = 0.36
 
 SuggestionSource = Coroutine[Any, Any, list[ImportBatchRecommendationSuggestionRead]]
 
@@ -155,8 +156,9 @@ class ProcessingService:
         user_id: uuid.UUID,
         *,
         include_recommendations: bool = False,
+        force_refresh: bool = False,
     ) -> ImportBatchReviewListResponse:
-        await self.get_batch_for_user(batch_id, user_id)
+        batch = await self.get_batch_for_user(batch_id, user_id)
         candidates = await ImportBatchItemRepository(self._db).list_review_candidates_for_batch(batch_id)
         media_ids = [item.media.id for item in candidates if item.media is not None]
         favorite_repo = UserFavoriteRepository(self._db)
@@ -198,11 +200,26 @@ class ProcessingService:
                 )
             )
 
-        recommendation_groups = (
-            await self._build_recommendation_groups(items, candidates, user_id)
-            if include_recommendations
-            else []
-        )
+        recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
+        if include_recommendations:
+            if not force_refresh and isinstance(batch.recommendation_groups, list):
+                recommendation_groups = [
+                    ImportBatchRecommendationGroupRead.model_validate(g)
+                    for g in batch.recommendation_groups
+                ]
+            else:
+                recommendation_groups = await self._build_recommendation_groups(items, candidates, user_id)
+                serialized = [g.model_dump(mode="json") for g in recommendation_groups]
+                await self._db.execute(
+                    update(ImportBatch)
+                    .where(ImportBatch.id == batch_id)
+                    .values(
+                        recommendation_groups=serialized,
+                        recommendations_computed_at=datetime.now(timezone.utc),
+                    )
+                )
+                await self._db.commit()
+
         return ImportBatchReviewListResponse(
             total=len(items),
             items=items,
@@ -227,6 +244,14 @@ class ProcessingService:
             review_candidates, review_item_by_media_id, user_id, anilist_token, len(groups)
         )
         groups.extend(anilist_groups)
+
+        remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
+        if len(remaining) >= 2:
+            entity_groups, entity_grouped_ids = await self._build_entity_name_groups(
+                remaining, review_item_by_media_id, len(groups), user_id
+            )
+            groups.extend(entity_groups)
+            grouped_ids |= entity_grouped_ids
 
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
@@ -363,6 +388,67 @@ class ProcessingService:
             )
             groups.append(group)
             grouped_ids.update(media_ids)
+
+        return groups, grouped_ids
+
+    async def _build_entity_name_groups(
+        self,
+        candidates: list[ImportBatchItem],
+        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
+        group_index_start: int,
+        user_id: uuid.UUID,
+    ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
+        series_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
+        character_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
+
+        for candidate in candidates:
+            review_item = review_item_by_media_id[candidate.media.id]
+            if review_item.missing_character and not review_item.missing_series:
+                series_name = next(
+                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.series and e.name.strip()),
+                    None,
+                )
+                if series_name is not None:
+                    series_buckets[series_name.casefold()].append(candidate)
+            elif review_item.missing_series and not review_item.missing_character:
+                char_name = next(
+                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
+                    None,
+                )
+                if char_name is not None:
+                    character_buckets[char_name.casefold()].append(candidate)
+
+        groups: list[ImportBatchRecommendationGroupRead] = []
+        grouped_ids: set[uuid.UUID] = set()
+
+        for bucket_candidates in series_buckets.values():
+            if len(bucket_candidates) < 2:
+                continue
+            group = await self._build_recommendation_group(
+                bucket_candidates,
+                review_item_by_media_id,
+                {},
+                group_index_start + len(groups),
+                user_id,
+                confidence_override=0.90,
+            )
+            groups.append(group)
+            grouped_ids.update(c.media.id for c in bucket_candidates)
+
+        for bucket_candidates in character_buckets.values():
+            ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
+            if len(ungrouped) < 2:
+                continue
+            group = await self._build_recommendation_group(
+                ungrouped,
+                review_item_by_media_id,
+                {},
+                group_index_start + len(groups),
+                user_id,
+                confidence_override=0.80,
+            )
+            groups.append(group)
+            grouped_ids.update(c.media.id for c in ungrouped)
 
         return groups, grouped_ids
 

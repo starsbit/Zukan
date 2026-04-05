@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database import Base
@@ -67,6 +67,8 @@ class ImportBatch(Base):
     app_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     worker_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    recommendation_groups: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    recommendations_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     items: Mapped[list["ImportBatchItem"]] = relationship(
         "ImportBatchItem",

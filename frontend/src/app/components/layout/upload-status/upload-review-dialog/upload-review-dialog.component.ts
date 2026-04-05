@@ -305,7 +305,7 @@ export class UploadReviewDialogComponent {
         this.discardedMediaIds.set([]);
         this.saving.set(false);
         this.refreshReview();
-        this.refreshRecommendations();
+        this.refreshRecommendations(true);
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
       },
       error: () => {
@@ -381,14 +381,14 @@ export class UploadReviewDialogComponent {
     });
   }
 
-  private refreshRecommendations(): void {
+  private refreshRecommendations(forceRefresh = false): void {
     if (this.reviewState()) {
-      this.tracker.refreshBatchRecommendations(this.data.batchId);
+      this.tracker.refreshBatchRecommendations(this.data.batchId, forceRefresh);
       return;
     }
 
     this.remoteRecommendationsRefreshing.set(true);
-    this.batchesClient.listReviewItems(this.data.batchId, { include_recommendations: true }).pipe(
+    this.batchesClient.listReviewItems(this.data.batchId, { include_recommendations: true, force_refresh: forceRefresh }).pipe(
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
       next: (response) => {

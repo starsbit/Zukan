@@ -514,14 +514,14 @@ export class UploadTrackerService implements OnDestroy {
     });
   }
 
-  refreshBatchRecommendations(batchId: string): void {
+  refreshBatchRecommendations(batchId: string, forceRefresh = false): void {
     const batch = this.trackedBatches()[batchId];
     if (!batch || batch.recommendationsRefreshing) {
       return;
     }
 
     this.patchBatch(batchId, { recommendationsRefreshing: true });
-    this.batchesClient.listReviewItems(batchId, { include_recommendations: true }).subscribe({
+    this.batchesClient.listReviewItems(batchId, { include_recommendations: true, force_refresh: forceRefresh }).subscribe({
       next: (response) => {
         const previousBaseline = this.trackedBatches()[batchId]?.reviewBaselineTotal ?? 0;
         this.patchBatch(batchId, {

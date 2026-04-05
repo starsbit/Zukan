@@ -21,6 +21,7 @@ export interface BatchItemListParams {
 
 export interface BatchReviewListParams {
   include_recommendations?: boolean;
+  force_refresh?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -55,6 +56,9 @@ export class BatchesClientService {
     let params = new HttpParams();
     if (p.include_recommendations != null) {
       params = params.set('include_recommendations', String(p.include_recommendations));
+    }
+    if (p.force_refresh) {
+      params = params.set('force_refresh', 'true');
     }
     return this.http.get<ImportBatchReviewListResponse>(
       `${this.base}/api/v1/me/import-batches/${batchId}/review-items`,

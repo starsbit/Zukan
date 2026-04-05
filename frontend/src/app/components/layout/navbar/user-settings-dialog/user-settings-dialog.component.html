@@ -115,8 +115,14 @@
             <mat-label>Replace token</mat-label>
             <input matInput type="password" [formControl]="aniListTokenInput" autocomplete="off" />
           </mat-form-field>
-          <button mat-stroked-button type="button" (click)="saveAniListToken()" [disabled]="!aniListTokenInput.value.trim() || aniListLoading()">
-            Save
+          <button
+            mat-stroked-button
+            type="button"
+            aria-label="Save AniList token"
+            (click)="saveAniListToken()"
+            [disabled]="!aniListTokenInput.value.trim() || aniListLoading()"
+          >
+            Save token
           </button>
         </div>
       } @else {
@@ -125,8 +131,14 @@
             <mat-label>AniList token</mat-label>
             <input matInput type="password" [formControl]="aniListTokenInput" autocomplete="off" />
           </mat-form-field>
-          <button mat-stroked-button type="button" (click)="saveAniListToken()" [disabled]="!aniListTokenInput.value.trim() || aniListLoading()">
-            Save
+          <button
+            mat-stroked-button
+            type="button"
+            aria-label="Save AniList token"
+            (click)="saveAniListToken()"
+            [disabled]="!aniListTokenInput.value.trim() || aniListLoading()"
+          >
+            Save token
           </button>
         </div>
       }
@@ -144,11 +156,11 @@
 
 <mat-dialog-actions align="end">
   <button mat-button mat-dialog-close type="button">Cancel</button>
-  <button mat-flat-button type="button" (click)="save()" [disabled]="loading()">
+  <button mat-flat-button type="button" aria-label="Save settings" (click)="save()" [disabled]="loading()">
     @if (loading()) {
       <mat-progress-spinner mode="indeterminate" diameter="18"></mat-progress-spinner>
     } @else {
-      <span>Save</span>
+      <span>Save settings</span>
     }
   </button>
 </mat-dialog-actions>

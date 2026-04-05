@@ -53,6 +53,7 @@ async def list_batch_items(
 async def list_batch_review_items(
     batch_id: uuid.UUID,
     include_recommendations: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -60,4 +61,5 @@ async def list_batch_review_items(
         batch_id,
         user.id,
         include_recommendations=include_recommendations,
+        force_refresh=force_refresh,
     )
