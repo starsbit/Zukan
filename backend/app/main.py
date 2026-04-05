@@ -21,6 +21,7 @@ from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
 from backend.app.models.media import Media
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
+from backend.app.models import integrations as _integrations_models  # noqa: F401
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.runtime import health_monitor

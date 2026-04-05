@@ -4,10 +4,12 @@ const isCI = !!process.env['CI'];
 
 export default defineConfig({
   testDir: './e2e',
-  fullyParallel: !isCI,
+  // These e2e specs share a single mutable backend and first-time setup state,
+  // so running them in parallel creates cross-test races in auth and uploads.
+  fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
+  workers: 1,
   reporter: isCI ? 'github' : 'html',
   use: {
     baseURL: process.env['PLAYWRIGHT_TEST_BASE_URL'] ?? 'http://localhost:4200',

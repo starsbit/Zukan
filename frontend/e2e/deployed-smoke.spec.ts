@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import {
   API_BASE,
   TEST_ADMIN,
+  ensureAdminAuthenticated,
   fillLoginForm,
   fillPasswordFields,
   isSetupRequired,
@@ -65,7 +66,8 @@ test.describe.serial('Deployed smoke workflow', () => {
   test('containerized app supports setup, auth, registration, and batch upload', async ({ page }) => {
     const setupRequiredInitially = await isSetupRequired();
     if (setupRequiredInitially) {
-      await completeSetup(page);
+      await ensureAdminAuthenticated(page);
+      await expect(page).toHaveURL('/');
 
       await expect.poll(async () => isSetupRequired(), {
         message: `${API_BASE}/api/v1/config/setup-required should turn false after setup`,

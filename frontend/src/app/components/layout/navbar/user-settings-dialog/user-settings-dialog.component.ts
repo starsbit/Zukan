@@ -11,7 +11,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { finalize } from 'rxjs';
-import { ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
+import { AniListIntegrationRead, ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
 import { UserStore } from '../../../../services/user.store';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 
@@ -47,6 +47,10 @@ export class UserSettingsDialogComponent implements OnInit {
   readonly apiKeyError = signal<string | null>(null);
   readonly apiKeyStatus = signal<ApiKeyStatusResponse | null>(null);
   readonly createdApiKey = signal<string | null>(null);
+  readonly aniListLoading = signal(false);
+  readonly aniListError = signal<string | null>(null);
+  readonly aniListStatus = signal<AniListIntegrationRead | null>(null);
+  readonly aniListTokenInput = this.fb.nonNullable.control('');
   readonly currentUser = this.userStore.currentUser();
 
   readonly form = this.fb.nonNullable.group({
@@ -61,6 +65,7 @@ export class UserSettingsDialogComponent implements OnInit {
 
   ngOnInit(): void {
     this.loadApiKeyStatus();
+    this.loadAniListStatus();
   }
 
   save(): void {
@@ -142,6 +147,52 @@ export class UserSettingsDialogComponent implements OnInit {
     );
   }
 
+  saveAniListToken(): void {
+    const token = this.aniListTokenInput.value.trim();
+    if (!token || this.aniListLoading()) {
+      return;
+    }
+
+    this.aniListLoading.set(true);
+    this.aniListError.set(null);
+
+    this.usersClient.upsertAniListIntegration(token).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.aniListLoading.set(false)),
+    ).subscribe({
+      next: (status) => {
+        this.aniListStatus.set(status);
+        this.aniListTokenInput.reset();
+        this.snackBar.open('AniList token saved.', 'Close', { duration: 3000 });
+      },
+      error: (err: { error?: { detail?: string } }) => {
+        this.aniListError.set(err.error?.detail ?? 'Unable to save AniList token.');
+      },
+    });
+  }
+
+  removeAniListToken(): void {
+    if (this.aniListLoading()) {
+      return;
+    }
+
+    this.aniListLoading.set(true);
+    this.aniListError.set(null);
+
+    this.usersClient.deleteAniListIntegration().pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.aniListLoading.set(false)),
+    ).subscribe({
+      next: () => {
+        this.aniListStatus.set(null);
+        this.snackBar.open('AniList token removed.', 'Close', { duration: 3000 });
+      },
+      error: (err: { error?: { detail?: string } }) => {
+        this.aniListError.set(err.error?.detail ?? 'Unable to remove AniList token.');
+      },
+    });
+  }
+
   private loadApiKeyStatus(): void {
     this.apiKeyLoading.set(true);
     this.apiKeyError.set(null);
@@ -156,6 +207,25 @@ export class UserSettingsDialogComponent implements OnInit {
       error: (err: { error?: { detail?: string } }) => {
         this.apiKeyStatus.set(null);
         this.apiKeyError.set(err.error?.detail ?? 'Unable to load API key status.');
+      },
+    });
+  }
+
+  private loadAniListStatus(): void {
+    this.aniListLoading.set(true);
+    this.aniListError.set(null);
+
+    this.usersClient.getAniListIntegration().pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.aniListLoading.set(false)),
+    ).subscribe({
+      next: (status) => {
+        this.aniListStatus.set(status);
+      },
+      error: (err: { status?: number; error?: { detail?: string } }) => {
+        if (err.status !== 404) {
+          this.aniListError.set(err.error?.detail ?? 'Unable to load AniList status.');
+        }
       },
     });
   }

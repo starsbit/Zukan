@@ -57,3 +57,9 @@ export interface ApiKeyStatusResponse {
 export interface ApiKeyCreateResponse extends ApiKeyStatusResponse {
   api_key: string;
 }
+
+export interface AniListIntegrationRead {
+  service: string;
+  created_at: string;
+  updated_at: string;
+}

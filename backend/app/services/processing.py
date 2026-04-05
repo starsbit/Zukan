@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Coroutine
+from dataclasses import dataclass
 from itertools import combinations
 import math
 import re
 import uuid
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +37,19 @@ TOKEN_RE = re.compile(r"[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.46
+
+SuggestionSource = Coroutine[Any, Any, list[ImportBatchRecommendationSuggestionRead]]
+
+
+@dataclass
+class AniListResolution:
+    candidate: ImportBatchItem
+    character_name: str
+    series_titles: list[str]
+
+
+async def _resolved(value: list[ImportBatchRecommendationSuggestionRead]) -> list[ImportBatchRecommendationSuggestionRead]:
+    return value
 
 
 class ProcessingService:
@@ -137,6 +153,8 @@ class ProcessingService:
         self,
         batch_id: uuid.UUID,
         user_id: uuid.UUID,
+        *,
+        include_recommendations: bool = False,
     ) -> ImportBatchReviewListResponse:
         await self.get_batch_for_user(batch_id, user_id)
         candidates = await ImportBatchItemRepository(self._db).list_review_candidates_for_batch(batch_id)
@@ -180,7 +198,11 @@ class ProcessingService:
                 )
             )
 
-        recommendation_groups = await self._build_recommendation_groups(items, candidates, user_id)
+        recommendation_groups = (
+            await self._build_recommendation_groups(items, candidates, user_id)
+            if include_recommendations
+            else []
+        )
         return ImportBatchReviewListResponse(
             total=len(items),
             items=items,
@@ -198,16 +220,169 @@ class ProcessingService:
         if len(review_candidates) < 2:
             return []
 
+        groups: list[ImportBatchRecommendationGroupRead] = []
+
+        anilist_token = await self._get_anilist_token(user_id)
+        anilist_groups, grouped_ids = await self._build_anilist_series_groups(
+            review_candidates, review_item_by_media_id, user_id, anilist_token, len(groups)
+        )
+        groups.extend(anilist_groups)
+
+        remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
+        if len(remaining) >= 2:
+            groups.extend(await self._build_similarity_groups(remaining, review_item_by_media_id, len(groups), user_id))
+
+        groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
+        return groups
+
+    async def _build_anilist_series_groups(
+        self,
+        candidates: list[ImportBatchItem],
+        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
+        user_id: uuid.UUID,
+        anilist_token: str | None,
+        group_index_start: int,
+    ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
+        from backend.app.services.anilist import search_character_series
+
+        eligible = [
+            c for c in candidates
+            if review_item_by_media_id[c.media.id].missing_series
+            and not review_item_by_media_id[c.media.id].missing_character
+        ]
+        if len(eligible) < 2:
+            return [], set()
+
+        resolutions: list[AniListResolution] = []
+        char_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
+        series_titles_by_character: dict[str, list[str]] = {}
+        for candidate in eligible:
+            char_name = next(
+                (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
+                None,
+            )
+            if char_name is None:
+                continue
+            char_key = char_name.casefold()
+            series_titles = series_titles_by_character.get(char_key)
+            if series_titles is None:
+                series_titles = await search_character_series(char_name, token=anilist_token)
+                series_titles_by_character[char_key] = series_titles
+            resolutions.append(AniListResolution(candidate=candidate, character_name=char_name, series_titles=series_titles))
+            char_buckets[char_key].append(candidate)
+
+        groups: list[ImportBatchRecommendationGroupRead] = []
+        grouped_ids: set[uuid.UUID] = set()
+        exact_char_media_ids = {
+            candidate.media.id
+            for bucket in char_buckets.values()
+            if len(bucket) >= 2
+            for candidate in bucket
+        }
+
+        series_buckets: dict[str, dict[str, Any]] = {}
+        for resolution in resolutions:
+            for rank, title in enumerate(resolution.series_titles):
+                key = title.casefold()
+                bucket = series_buckets.setdefault(key, {
+                    "series_title": title,
+                    "resolutions": [],
+                    "series_rank_sum": 0,
+                })
+                bucket["resolutions"].append(resolution)
+                bucket["series_rank_sum"] += rank
+
+        ranked_buckets: list[tuple[float, dict[str, Any]]] = []
+        for bucket in series_buckets.values():
+            bucket_resolutions: list[AniListResolution] = bucket["resolutions"]
+            media_ids = {resolution.candidate.media.id for resolution in bucket_resolutions}
+            if len(media_ids) < 2:
+                continue
+
+            distinct_characters = {resolution.character_name.casefold() for resolution in bucket_resolutions}
+            average_rank = bucket["series_rank_sum"] / len(bucket_resolutions)
+            repeated_character_matches = sum(
+                1 for resolution in bucket_resolutions if resolution.candidate.media.id in exact_char_media_ids
+            )
+            score = (
+                len(media_ids) * 1.0
+                + len(distinct_characters) * 0.45
+                + repeated_character_matches * 0.2
+                + max(0.0, 1.0 - average_rank * 0.25)
+            )
+            ranked_buckets.append((score, bucket))
+
+        ranked_buckets.sort(
+            key=lambda item: (
+                -item[0],
+                -len({resolution.candidate.media.id for resolution in item[1]["resolutions"]}),
+                item[1]["series_title"].casefold(),
+            )
+        )
+
+        for score, bucket in ranked_buckets:
+            bucket_resolutions = [
+                resolution for resolution in bucket["resolutions"]
+                if resolution.candidate.media.id not in grouped_ids
+            ]
+            media_ids = {resolution.candidate.media.id for resolution in bucket_resolutions}
+            if len(media_ids) < 2:
+                continue
+
+            unique_candidates = list({
+                resolution.candidate.media.id: resolution.candidate
+                for resolution in bucket_resolutions
+            }.values())
+            confidences = [1.0, 0.9, 0.8]
+            extra_series_suggestions = [
+                ImportBatchRecommendationSuggestionRead(name=bucket["series_title"], confidence=confidences[0])
+            ]
+            related_titles = [
+                title
+                for title in self._merge_suggestions(
+                    [],
+                    [
+                        ImportBatchRecommendationSuggestionRead(name=title, confidence=confidences[min(rank, len(confidences) - 1)])
+                        for resolution in bucket_resolutions
+                        for rank, title in enumerate(resolution.series_titles)
+                    ],
+                )
+                if title.name.casefold() != bucket["series_title"].casefold()
+            ]
+            extra_series_suggestions.extend(related_titles[: MAX_GROUP_SUGGESTIONS - 1])
+            confidence = min(0.999, round(0.55 + min(score, 4.0) * 0.1, 3))
+
+            group = await self._build_recommendation_group(
+                unique_candidates,
+                review_item_by_media_id,
+                {},
+                group_index_start + len(groups),
+                user_id,
+                extra_series_suggestions=extra_series_suggestions,
+                confidence_override=confidence,
+            )
+            groups.append(group)
+            grouped_ids.update(media_ids)
+
+        return groups, grouped_ids
+
+    async def _build_similarity_groups(
+        self,
+        candidates: list[ImportBatchItem],
+        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
+        group_index_start: int,
+        user_id: uuid.UUID,
+    ) -> list[ImportBatchRecommendationGroupRead]:
         batch_tag_counts = Counter()
-        for candidate in review_candidates:
+        for candidate in candidates:
             for tag_name, _, _ in self._iter_groupable_tags(candidate):
                 batch_tag_counts[tag_name] += 1
 
         adjacency: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
         pair_scores: dict[frozenset[uuid.UUID], float] = {}
 
-        for left, right in combinations(review_candidates, 2):
-            score = self._pair_similarity(left, right, batch_tag_counts, len(review_candidates))
+        for left, right in combinations(candidates, 2):
+            score = self._pair_similarity(left, right, batch_tag_counts, len(candidates))
             if score < PAIR_SCORE_THRESHOLD:
                 continue
             left_id = left.media.id
@@ -218,7 +393,7 @@ class ProcessingService:
 
         groups: list[ImportBatchRecommendationGroupRead] = []
         visited: set[uuid.UUID] = set()
-        for candidate in review_candidates:
+        for candidate in candidates:
             media_id = candidate.media.id
             if media_id in visited or media_id not in adjacency:
                 continue
@@ -236,18 +411,17 @@ class ProcessingService:
             if len(component_ids) < 2:
                 continue
 
-            component_candidates = [candidate for candidate in review_candidates if candidate.media.id in set(component_ids)]
+            component_candidates = [c for c in candidates if c.media.id in set(component_ids)]
             groups.append(
                 await self._build_recommendation_group(
                     component_candidates,
                     review_item_by_media_id,
                     pair_scores,
-                    len(groups),
+                    group_index_start + len(groups),
                     user_id,
                 )
             )
 
-        groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
         return groups
 
     async def _build_recommendation_group(
@@ -257,6 +431,9 @@ class ProcessingService:
         pair_scores: dict[frozenset[uuid.UUID], float],
         group_index: int,
         user_id: uuid.UUID,
+        *,
+        extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
+        confidence_override: float | None = None,
     ) -> ImportBatchRecommendationGroupRead:
         media_ids = [candidate.media.id for candidate in candidates]
         pair_values = [
@@ -264,37 +441,28 @@ class ProcessingService:
             for key in pair_scores
             if key.issubset(set(media_ids))
         ]
-        confidence = round(sum(pair_values) / len(pair_values), 3) if pair_values else PAIR_SCORE_THRESHOLD
+        confidence = confidence_override if confidence_override is not None else (
+            round(sum(pair_values) / len(pair_values), 3) if pair_values else PAIR_SCORE_THRESHOLD
+        )
 
         missing_character_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_character)
         missing_series_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_series)
 
-        suggested_characters = self._build_name_suggestions(candidates, MediaEntityType.character)
-        suggested_characters = self._merge_suggestions(
-            suggested_characters,
-            await self._infer_entity_suggestions_from_library(
-                user_id,
-                candidates,
-                MediaEntityType.character,
-            ),
-        )
-        suggested_series = self._build_name_suggestions(candidates, MediaEntityType.series)
-        suggested_series = self._merge_suggestions(
-            suggested_series,
-            await self._infer_entity_suggestions_from_library(
-                user_id,
-                candidates,
-                MediaEntityType.series,
-            ),
-        )
-        if len(suggested_series) < MAX_GROUP_SUGGESTIONS:
-            suggested_series = self._merge_suggestions(
-                suggested_series,
-                await self._infer_series_suggestions_from_characters(
-                    user_id,
-                    [suggestion.name for suggestion in suggested_characters],
-                ),
-            )
+        suggested_characters = await self._collect_suggestions([
+            self._build_name_suggestions(candidates, MediaEntityType.character),
+            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.character),
+        ])
+
+        series_sources: list[SuggestionSource] = []
+        if extra_series_suggestions:
+            series_sources.append(_resolved(extra_series_suggestions))
+        series_sources.extend([
+            self._build_name_suggestions(candidates, MediaEntityType.series),
+            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.series),
+            self._infer_series_suggestions_from_characters(user_id, [s.name for s in suggested_characters]),
+        ])
+        suggested_series = await self._collect_suggestions(series_sources)
+
         shared_signals = self._build_shared_signals(candidates)
 
         return ImportBatchRecommendationGroupRead(
@@ -308,6 +476,24 @@ class ProcessingService:
             shared_signals=shared_signals,
             confidence=min(confidence, 0.999),
         )
+
+    async def _collect_suggestions(
+        self,
+        sources: list[SuggestionSource],
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        results: list[ImportBatchRecommendationSuggestionRead] = []
+        for source in sources:
+            if len(results) >= MAX_GROUP_SUGGESTIONS:
+                source.close()
+                continue
+            results = self._merge_suggestions(results, await source)
+        return results
+
+    async def _get_anilist_token(self, user_id: uuid.UUID) -> str | None:
+        from backend.app.repositories.integrations import UserIntegrationRepository
+        from backend.app.models.integrations import IntegrationService
+        record = await UserIntegrationRepository(self._db).get_by_user_and_service(user_id, IntegrationService.anilist)
+        return record.token if record else None
 
     async def _infer_entity_suggestions_from_library(
         self,
@@ -410,7 +596,7 @@ class ProcessingService:
             if row.name
         ]
 
-    def _build_name_suggestions(
+    async def _build_name_suggestions(
         self,
         candidates: list[ImportBatchItem],
         entity_type: MediaEntityType,

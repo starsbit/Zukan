@@ -41,6 +41,11 @@ class User(Base):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    integrations: Mapped[list["UserIntegration"]] = relationship(
+        "UserIntegration",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
 
 class RefreshToken(Base):
@@ -77,3 +82,6 @@ class APIKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="api_key")
+
+
+from backend.app.models.integrations import UserIntegration  # noqa: E402,F401

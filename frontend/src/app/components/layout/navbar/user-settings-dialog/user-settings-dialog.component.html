@@ -87,6 +87,55 @@
       }
     </section>
 
+    <section class="api-key-section">
+      <div class="api-key-section__header">
+        <div>
+          <h3>AniList Integration</h3>
+          <p>Optional. Add a token if you want AniList-authenticated requests for series suggestions while naming characters in the review queue. This will also be used later for scraping images from series you watched or are watching.</p>
+        </div>
+        @if (aniListStatus()) {
+          <button mat-stroked-button type="button" (click)="removeAniListToken()" [disabled]="aniListLoading()">
+            Remove
+          </button>
+        }
+      </div>
+
+      @if (aniListLoading()) {
+        <div class="api-key-section__status">
+          <mat-progress-spinner mode="indeterminate" diameter="20"></mat-progress-spinner>
+          <span>Loading...</span>
+        </div>
+      } @else if (aniListStatus(); as status) {
+        <div class="api-key-meta">
+          <div><strong>Status:</strong> Connected</div>
+          <div><strong>Last updated:</strong> {{ status.updated_at | date:'medium' }}</div>
+        </div>
+        <div class="anilist-token-row">
+          <mat-form-field>
+            <mat-label>Replace token</mat-label>
+            <input matInput type="password" [formControl]="aniListTokenInput" autocomplete="off" />
+          </mat-form-field>
+          <button mat-stroked-button type="button" (click)="saveAniListToken()" [disabled]="!aniListTokenInput.value.trim() || aniListLoading()">
+            Save
+          </button>
+        </div>
+      } @else {
+        <div class="anilist-token-row">
+          <mat-form-field>
+            <mat-label>AniList token</mat-label>
+            <input matInput type="password" [formControl]="aniListTokenInput" autocomplete="off" />
+          </mat-form-field>
+          <button mat-stroked-button type="button" (click)="saveAniListToken()" [disabled]="!aniListTokenInput.value.trim() || aniListLoading()">
+            Save
+          </button>
+        </div>
+      }
+
+      @if (aniListError()) {
+        <div class="form-error">{{ aniListError() }}</div>
+      }
+    </section>
+
     @if (error()) {
       <div class="form-error">{{ error() }}</div>
     }

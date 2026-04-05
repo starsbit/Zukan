@@ -1,10 +1,16 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
+from backend.app.errors.error import AppError
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
+from backend.app.models.integrations import IntegrationService
+from backend.app.repositories.integrations import UserIntegrationRepository
 from backend.app.schemas import (
+    AniListIntegrationRead,
+    AniListIntegrationUpsert,
     APIKeyCreateResponse,
     APIKeyStatusResponse,
     AUTHENTICATED_ERROR_RESPONSES,
@@ -66,3 +72,51 @@ async def create_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     return await AuthService(db).create_api_key(user.id)
+
+
+@router.get(
+    "/integrations/anilist",
+    response_model=AniListIntegrationRead,
+    summary="Get AniList Integration",
+    description="Return the authenticated user's AniList integration status.",
+    responses=error_responses(404),
+)
+async def get_anilist_integration(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    record = await UserIntegrationRepository(db).get_by_user_and_service(user.id, IntegrationService.anilist)
+    if record is None:
+        raise AppError(status_code=404, code="integration_not_found", detail="AniList integration not configured")
+    return record
+
+
+@router.put(
+    "/integrations/anilist",
+    response_model=AniListIntegrationRead,
+    summary="Set AniList Integration",
+    description="Create or update the authenticated user's AniList token.",
+)
+async def upsert_anilist_integration(
+    body: AniListIntegrationUpsert,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await UserIntegrationRepository(db).upsert(user.id, IntegrationService.anilist, body.token)
+
+
+@router.delete(
+    "/integrations/anilist",
+    status_code=204,
+    summary="Delete AniList Integration",
+    description="Remove the authenticated user's AniList token.",
+    responses=error_responses(404),
+)
+async def delete_anilist_integration(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    deleted = await UserIntegrationRepository(db).delete(user.id, IntegrationService.anilist)
+    if not deleted:
+        raise AppError(status_code=404, code="integration_not_found", detail="AniList integration not configured")
+    return Response(status_code=204)

@@ -52,7 +52,12 @@ async def list_batch_items(
 @router.get("/{batch_id}/review-items", response_model=ImportBatchReviewListResponse, responses=error_responses(404))
 async def list_batch_review_items(
     batch_id: uuid.UUID,
+    include_recommendations: bool = Query(default=False),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await ProcessingService(db).list_batch_review_items(batch_id, user.id)
+    return await ProcessingService(db).list_batch_review_items(
+        batch_id,
+        user.id,
+        include_recommendations=include_recommendations,
+    )

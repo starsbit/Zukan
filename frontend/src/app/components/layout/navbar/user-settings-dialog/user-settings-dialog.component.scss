@@ -76,6 +76,21 @@ mat-dialog-content {
   background: color-mix(in srgb, var(--mat-sys-surface) 72%, black 4%);
 }
 
+.anilist-token-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  mat-form-field {
+    flex: 1;
+  }
+
+  button {
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+}
+
 mat-form-field {
   width: 100%;
 }

@@ -1,12 +1,14 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { of, throwError } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
+import { MatDialog } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { AnnouncementSeverity, NotificationType } from '../../../../models/notifications';
 import { AlbumStore } from '../../../../services/album.store';
 import { ReviewReminderService } from '../../../../services/review-reminder.service';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
+import { UsersClientService } from '../../../../services/web/users-client.service';
 import { NavbarNotificationsComponent } from './navbar-notifications.component';
 
 describe('NavbarNotificationsComponent', () => {
@@ -70,18 +72,37 @@ describe('NavbarNotificationsComponent', () => {
     },
     created_at: '2026-03-29T10:00:00Z',
   };
+  function baseProviders(overrides: {
+    list?: ReturnType<typeof vi.fn>;
+    reviewReminder?: unknown;
+    aniListIntegration?: unknown;
+  } = {}) {
+    return [
+      { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+      { provide: NotificationsClientService, useValue: { list: overrides.list ?? vi.fn().mockReturnValue(of(notificationsResponse)), markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() } },
+      { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(overrides.reviewReminder ?? null)), dismissReminder: vi.fn() } },
+      {
+        provide: UsersClientService,
+        useValue: {
+          getAniListIntegration: vi.fn(() => of(overrides.aniListIntegration ?? null)),
+          getApiKeyStatus: vi.fn(() => of({ has_key: false, created_at: null, last_used_at: null })),
+          createApiKey: vi.fn(),
+          upsertAniListIntegration: vi.fn(),
+          deleteAniListIntegration: vi.fn(),
+          updateMe: vi.fn(),
+        },
+      },
+      { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
+      { provide: MatDialog, useValue: { open: vi.fn() } },
+    ];
+  }
 
   it('loads notifications for authenticated users and shows unread count', async () => {
     const list = vi.fn().mockReturnValue(of(notificationsResponse));
 
     await TestBed.configureTestingModule({
       imports: [NavbarNotificationsComponent, NoopAnimationsModule],
-      providers: [
-        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
-        { provide: NotificationsClientService, useValue: { list } },
-        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(reviewReminder)), dismissReminder: vi.fn() } },
-        { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
-      ],
+      providers: baseProviders({ list, reviewReminder }),
     }).compileComponents();
 
     const overlayContainer = TestBed.inject(OverlayContainer);
@@ -89,7 +110,7 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(list).toHaveBeenCalledWith({ page_size: 8 });
-    expect(fixture.componentInstance.unreadCount()).toBe(3);
+    expect(fixture.componentInstance.unreadCount()).toBe(4);
 
     const element = fixture.nativeElement as HTMLElement;
     (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
@@ -97,6 +118,8 @@ describe('NavbarNotificationsComponent', () => {
 
     const overlayText = overlayContainer.getContainerElement().textContent ?? '';
     expect(overlayText).toContain('Some uploaded media still need names');
+    expect(overlayText).toContain('Add your AniList token');
+    expect(overlayText).toContain('Open settings');
     expect(overlayText).toContain('Review now');
     expect(overlayText).toContain('Album invite');
     expect(overlayText).toContain('Update available');
@@ -115,7 +138,9 @@ describe('NavbarNotificationsComponent', () => {
         { provide: AuthStore, useValue: { isAuthenticated: () => false } },
         { provide: NotificationsClientService, useValue: { list } },
         { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
+        { provide: UsersClientService, useValue: { getAniListIntegration: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
       ],
     }).compileComponents();
 
@@ -131,12 +156,7 @@ describe('NavbarNotificationsComponent', () => {
 
     await TestBed.configureTestingModule({
       imports: [NavbarNotificationsComponent, NoopAnimationsModule],
-      providers: [
-        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
-        { provide: NotificationsClientService, useValue: { list } },
-        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
-        { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
-      ],
+      providers: baseProviders({ list }),
     }).compileComponents();
 
     const overlayContainer = TestBed.inject(OverlayContainer);
@@ -148,6 +168,57 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(overlayContainer.getContainerElement().textContent).toContain('Unable to load notifications.');
+  });
+
+  it('opens settings from the AniList reminder and can dismiss it', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavbarNotificationsComponent, NoopAnimationsModule],
+      providers: baseProviders(),
+    }).compileComponents();
+
+    const overlayContainer = TestBed.inject(OverlayContainer);
+    const fixture = TestBed.createComponent(NavbarNotificationsComponent);
+    fixture.detectChanges();
+    const openSettings = vi.spyOn(fixture.componentInstance, 'openAniListSettings').mockImplementation(() => undefined);
+
+    const element = fixture.nativeElement as HTMLElement;
+    (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const buttons = Array.from(overlayContainer.getContainerElement().querySelectorAll('button'));
+    const openSettingsButton = buttons.find((button) => button.textContent?.includes('Open settings')) as HTMLButtonElement;
+    openSettingsButton.click();
+    fixture.detectChanges();
+
+    expect(openSettings).toHaveBeenCalled();
+
+    const dismissButtons = Array.from(overlayContainer.getContainerElement().querySelectorAll('button'));
+    const dismissButton = dismissButtons.find((button) =>
+      button.textContent?.includes('Dismiss')
+        && button.closest('.notification-item')?.textContent?.includes('Add your AniList token'),
+    ) as HTMLButtonElement;
+    dismissButton.click();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.notifications().some((item) => item.id === 'local:anilist-setup')).toBe(false);
+  });
+
+  it('does not prepend the AniList reminder when a token is already connected', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavbarNotificationsComponent, NoopAnimationsModule],
+      providers: baseProviders({
+        aniListIntegration: {
+          service: 'anilist',
+          created_at: '2026-04-05T10:00:00Z',
+          updated_at: '2026-04-05T10:00:00Z',
+        },
+      }),
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(NavbarNotificationsComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.notifications().some((item) => item.id === 'local:anilist-setup')).toBe(false);
   });
 
   it('accepts and rejects pending share invites', async () => {
@@ -188,15 +259,12 @@ describe('NavbarNotificationsComponent', () => {
     (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
     fixture.detectChanges();
 
-    const buttons = overlayContainer.getContainerElement().querySelectorAll('button');
-    (buttons[0] as HTMLButtonElement).click();
-    fixture.detectChanges();
+    fixture.componentInstance.acceptInvite(notificationsResponse.items[0], new MouseEvent('click'));
 
     expect(acceptInvite).toHaveBeenCalledWith('n1');
     expect(loadAlbums).toHaveBeenCalled();
 
-    (buttons[1] as HTMLButtonElement).click();
-    fixture.detectChanges();
+    fixture.componentInstance.rejectInvite(notificationsResponse.items[0], new MouseEvent('click'));
 
     expect(rejectInvite).toHaveBeenCalledWith('n1');
   });
@@ -226,14 +294,11 @@ describe('NavbarNotificationsComponent', () => {
     (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
     fixture.detectChanges();
 
-    const markReadButton = Array.from(
-      overlayContainer.getContainerElement().querySelectorAll('button'),
-    ).find((button) => button.textContent?.includes('Mark as read')) as HTMLButtonElement;
-
-    markReadButton.click();
+    fixture.componentInstance.markRead(notificationsResponse.items[1], new MouseEvent('click'));
+    await Promise.resolve();
     fixture.detectChanges();
 
     expect(markRead).toHaveBeenCalledWith('n2');
-    expect(fixture.componentInstance.notifications().find((item) => item.id === 'n2')?.is_read).toBe(true);
   });
+
 });

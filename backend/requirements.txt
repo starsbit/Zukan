@@ -16,3 +16,4 @@ numpy>=2.4.3
 pytesseract>=0.3.13
 python-jose[cryptography]>=3.5.0
 bcrypt>=5.0.0
+httpx>=0.28.1

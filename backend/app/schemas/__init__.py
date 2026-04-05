@@ -86,6 +86,7 @@ from .tags import (
     TagRead,
     TagWithConfidence,
 )
+from .integrations import AniListIntegrationRead, AniListIntegrationUpsert
 from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredResponse, UploadConfigResponse, UploadResult
 
 __all__ = [
@@ -101,6 +102,8 @@ __all__ = [
     "AdminUserUpdate",
     "APIKeyCreateResponse",
     "APIKeyStatusResponse",
+    "AniListIntegrationRead",
+    "AniListIntegrationUpsert",
     "AlbumAccessRole",
     "AlbumCreate",
     "AlbumListResponse",

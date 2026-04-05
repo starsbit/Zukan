@@ -11,10 +11,11 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { EMPTY, catchError, finalize, forkJoin, of } from 'rxjs';
+import { UsersClientService } from '../../../../services/web/users-client.service';
 import { AlbumStore } from '../../../../services/album.store';
 import {
-  AnnouncementSeverity,
   AppUpdateNotificationData,
+  AnnouncementSeverity,
   MetadataReviewNotificationData,
   NotificationRead,
   NotificationType,
@@ -24,6 +25,7 @@ import { ReviewReminderService } from '../../../../services/review-reminder.serv
 import { UploadReviewDialogComponent } from '../../upload-status/upload-review-dialog/upload-review-dialog.component';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
+import { UserSettingsDialogComponent } from '../user-settings-dialog/user-settings-dialog.component';
 
 @Component({
   selector: 'zukan-navbar-notifications',
@@ -46,6 +48,7 @@ export class NavbarNotificationsComponent implements OnInit {
   private readonly authStore = inject(AuthStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly notificationsClient = inject(NotificationsClientService);
+  private readonly usersClient = inject(UsersClientService);
   private readonly albumStore = inject(AlbumStore);
   private readonly snackBar = inject(MatSnackBar);
   private readonly reviewReminderService = inject(ReviewReminderService);
@@ -55,6 +58,7 @@ export class NavbarNotificationsComponent implements OnInit {
   readonly loading = signal(false);
   readonly error = signal(false);
   readonly actioningIds = signal<string[]>([]);
+  readonly aniListReminderDismissed = signal(false);
   readonly unreadCount = computed(() => this.notifications().filter((item) => !item.is_read).length);
   readonly announcementSeverity = AnnouncementSeverity;
 
@@ -71,18 +75,25 @@ export class NavbarNotificationsComponent implements OnInit {
     forkJoin({
       notifications: this.notificationsClient.list({ page_size: 8 }).pipe(catchError(() => of(null))),
       reminder: this.reviewReminderService.loadReminder().pipe(catchError(() => of(null))),
+      aniListIntegration: this.usersClient.getAniListIntegration().pipe(
+        catchError((error: { status?: number }) => error.status === 404 ? of(null) : of('error' as const)),
+      ),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ notifications, reminder }) => {
-          if (!notifications) {
+        next: ({ notifications, reminder, aniListIntegration }) => {
+          if (!notifications || aniListIntegration === 'error') {
             this.notifications.set([]);
             this.loading.set(false);
             this.error.set(true);
             return;
           }
 
-          this.notifications.set(reminder ? [reminder, ...notifications.items] : notifications.items);
+          const prepended = [
+            reminder,
+            !aniListIntegration && !this.aniListReminderDismissed() ? this.buildAniListReminder() : null,
+          ].filter((n): n is NotificationRead => n !== null);
+          this.notifications.set([...prepended, ...notifications.items]);
           this.loading.set(false);
           this.error.set(false);
         },
@@ -111,6 +122,14 @@ export class NavbarNotificationsComponent implements OnInit {
       && 'latest_batch_id' in notification.data;
   }
 
+  isAniListReminder(notification: NotificationRead): notification is NotificationRead & { data: AppUpdateNotificationData & { kind: 'anilist_setup' } } {
+    return notification.type === NotificationType.APP_UPDATE
+      && notification.id === 'local:anilist-setup'
+      && !!notification.data
+      && 'kind' in notification.data
+      && notification.data['kind'] === 'anilist_setup';
+  }
+
   announcementSeverityFor(notification: NotificationRead): AnnouncementSeverity | null {
     if (!this.isAppUpdate(notification) || !notification.data || !('severity' in notification.data)) {
       return null;
@@ -123,7 +142,9 @@ export class NavbarNotificationsComponent implements OnInit {
   }
 
   canMarkRead(notification: NotificationRead): boolean {
-    return !notification.is_read && !this.isPendingShareInvite(notification) && !this.isMetadataReview(notification);
+    return !notification.is_read
+      && !this.isPendingShareInvite(notification)
+      && !this.isMetadataReview(notification);
   }
 
   markRead(notification: NotificationRead, event: Event): void {
@@ -211,6 +232,25 @@ export class NavbarNotificationsComponent implements OnInit {
     this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
   }
 
+  openAniListSettings(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.isAniListReminder(notification)) {
+      return;
+    }
+
+    this.dialog.open(UserSettingsDialogComponent, { width: '520px' });
+  }
+
+  dismissAniListReminder(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.isAniListReminder(notification)) {
+      return;
+    }
+
+    this.aniListReminderDismissed.set(true);
+    this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
+  }
+
   iconFor(type: NotificationType): string {
     switch (type) {
       case NotificationType.BATCH_DONE:
@@ -230,5 +270,26 @@ export class NavbarNotificationsComponent implements OnInit {
     this.actioningIds.update((ids) => active
       ? ids.includes(notificationId) ? ids : [...ids, notificationId]
       : ids.filter((id) => id !== notificationId));
+  }
+
+  private buildAniListReminder(): NotificationRead {
+    return {
+      id: 'local:anilist-setup',
+      user_id: 'local',
+      type: NotificationType.APP_UPDATE,
+      title: 'Add your AniList token',
+      body: 'Connect AniList in settings for better series matching now, and later for scraping images from series you watched or are watching.',
+      is_read: false,
+      link_url: null,
+      data: {
+        announcement_id: 'local:anilist-setup',
+        severity: AnnouncementSeverity.INFO,
+        version: null,
+        starts_at: null,
+        ends_at: null,
+        kind: 'anilist_setup',
+      } as AppUpdateNotificationData & { kind: 'anilist_setup' },
+      created_at: new Date().toISOString(),
+    };
   }
 }

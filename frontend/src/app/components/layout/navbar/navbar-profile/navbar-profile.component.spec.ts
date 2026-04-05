@@ -12,7 +12,7 @@ describe('NavbarProfileComponent', () => {
     currentUser: () => ({
       id: 'u1',
       username: 'stars',
-      email: 'nico230300@gmail.com',
+      email: 'saber@starsbit.space',
       is_admin: isAdmin,
       show_nsfw: false,
       tag_confidence_threshold: 0.5,
@@ -44,7 +44,7 @@ describe('NavbarProfileComponent', () => {
 
     const overlayText = overlayContainer.getContainerElement().textContent ?? '';
     expect(overlayText).toContain('stars');
-    expect(overlayText).toContain('nico230300@gmail.com');
+    expect(overlayText).toContain('saber@starsbit.space');
     expect(overlayText).not.toContain('Administration');
   });
 

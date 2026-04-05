@@ -31,8 +31,8 @@ test.describe.serial('Authentication workflows', () => {
       await page.goto('/');
 
       if (setupRequired) {
-        await expect(page).toHaveURL('/');
         await expect(page.locator('zukan-setup-wizard')).toBeVisible();
+        await expect(page).toHaveURL(/\/(?:login)?(?:\?.*)?$/);
         return;
       }
 

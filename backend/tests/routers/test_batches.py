@@ -99,8 +99,9 @@ def test_list_batch_items_contract(api_client, monkeypatch):
 def test_list_batch_review_items_contract(api_client, monkeypatch):
     batch_id = uuid.uuid4()
 
-    async def _fake_review(self, request_batch_id, user_id):
+    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False):
         assert request_batch_id == batch_id
+        assert include_recommendations is False
         now = datetime.now(timezone.utc).isoformat()
         media_id = str(uuid.uuid4())
         return {
@@ -169,3 +170,25 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["total"] == 1
     assert response.json()["recommendation_groups"][0]["suggested_characters"][0]["name"] == "Saber"
+
+
+def test_list_batch_review_items_with_recommendations_contract(api_client, monkeypatch):
+    batch_id = uuid.uuid4()
+
+    async def _fake_review(self, request_batch_id, user_id, include_recommendations=False):
+        assert request_batch_id == batch_id
+        assert include_recommendations is True
+        return {
+            "total": 0,
+            "recommendation_groups": [],
+            "items": [],
+        }
+
+    monkeypatch.setattr(ProcessingService, "list_batch_review_items", _fake_review)
+
+    response = api_client.get(
+        f"/api/v1/me/import-batches/{batch_id}/review-items",
+        params={"include_recommendations": "true"},
+    )
+
+    assert response.status_code == 200

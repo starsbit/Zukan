@@ -72,4 +72,33 @@ describe('UsersClientService', () => {
     expect(req.request.body).toEqual({});
     req.flush(created);
   });
+
+  it('getAniListIntegration sends GET /api/v1/me/integrations/anilist', () => {
+    const status = { service: 'anilist', created_at: '2026-04-05T10:00:00Z', updated_at: '2026-04-05T10:00:00Z' };
+
+    service.getAniListIntegration().subscribe(res => expect(res).toEqual(status));
+
+    const req = http.expectOne('/api/v1/me/integrations/anilist');
+    expect(req.request.method).toBe('GET');
+    req.flush(status);
+  });
+
+  it('upsertAniListIntegration sends PUT /api/v1/me/integrations/anilist with token', () => {
+    const status = { service: 'anilist', created_at: '2026-04-05T10:00:00Z', updated_at: '2026-04-05T10:00:00Z' };
+
+    service.upsertAniListIntegration('my-token').subscribe(res => expect(res).toEqual(status));
+
+    const req = http.expectOne('/api/v1/me/integrations/anilist');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ token: 'my-token' });
+    req.flush(status);
+  });
+
+  it('deleteAniListIntegration sends DELETE /api/v1/me/integrations/anilist', () => {
+    service.deleteAniListIntegration().subscribe();
+
+    const req = http.expectOne('/api/v1/me/integrations/anilist');
+    expect(req.request.method).toBe('DELETE');
+    req.flush(null, { status: 204, statusText: 'No Content' });
+  });
 });

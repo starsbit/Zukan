@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { API_BASE, ensureAdminAuthenticated, seedAuthenticatedSession } from './helpers/auth';
+import { API_BASE, ensureAdminAuthenticated } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -225,11 +225,8 @@ async function confirmUploadDialog(page: Page): Promise<void> {
 async function triggerTrackedUpload(page: Page): Promise<void> {
   const payload = await createSyntheticPngPayload(page);
   await page.locator('input[data-upload-kind="files"]').setInputFiles([payload]);
-  const uploadResponse = page.waitForResponse((response) =>
-    response.url().endsWith('/api/v1/media') && response.request().method() === 'POST',
-  );
   await confirmUploadDialog(page);
-  await uploadResponse;
+  await expect(page.locator('zukan-upload-status-island')).toBeVisible();
 }
 
 async function openReviewDialogFromIsland(page: Page): Promise<void> {
@@ -338,7 +335,7 @@ async function registerReviewFlowRoutes(
     });
   });
 
-  await page.route('**/api/v1/media', async (route) => {
+  await page.route('**/api/v1/media**', async (route) => {
     const method = route.request().method();
 
     if (method === 'POST') {
@@ -493,7 +490,7 @@ test.describe('Upload review dialog', () => {
   });
 
   test('review dialog opens from upload-status island when unresolved items exist and defaults to recommended groups', async ({ page }) => {
-    await seedAuthenticatedSession(page);
+    await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
     await page.goto('/gallery');
@@ -513,7 +510,7 @@ test.describe('Upload review dialog', () => {
       series_names?: string[];
     } | null = null;
 
-    await seedAuthenticatedSession(page);
+    await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page, {
       onEntitiesPatch: (payload) => {
         submittedPayload = payload;
@@ -545,7 +542,7 @@ test.describe('Upload review dialog', () => {
   });
 
   test('user can switch filters and see only matching missing-name items', async ({ page }) => {
-    await seedAuthenticatedSession(page);
+    await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
     await page.goto('/gallery');
@@ -577,7 +574,7 @@ test.describe('Upload review dialog', () => {
   test('user can discard an entire recommendation group', async ({ page }) => {
     let dismissedPayload: { media_ids: string[]; metadata_review_dismissed: boolean } | null = null;
 
-    await seedAuthenticatedSession(page);
+    await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page, {
       onDismissPatch: (payload) => {
         dismissedPayload = payload;
@@ -602,7 +599,7 @@ test.describe('Upload review dialog', () => {
   });
 
   test('user can discard one grouped item and the remaining item falls back to manual review', async ({ page }) => {
-    await seedAuthenticatedSession(page);
+    await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
     await page.goto('/gallery');

@@ -203,6 +203,7 @@ describe('UploadTrackerService', () => {
     expect(service.summary().reviewBatchCount).toBe(1);
     expect(service.summary().latestReviewBatchId).toBe('b1');
     expect(service.getBatchReview('b1')?.reviewItems).toHaveLength(1);
+    expect(listReviewItems).toHaveBeenCalledWith('b1', { include_recommendations: false });
   });
 
   it('polls active batches, merges paged items, and stops after terminal status', async () => {

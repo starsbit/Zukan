@@ -82,6 +82,7 @@ export async function seedAuthenticatedSession(
     localStorage.setItem('zukan_at', 'test-access-token');
     localStorage.setItem('zukan_rt', 'test-refresh-token');
   });
+  await page.goto('/');
 }
 
 export async function isSetupRequired(): Promise<boolean> {

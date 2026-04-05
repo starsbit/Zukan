@@ -78,10 +78,14 @@ export class UploadReviewDialogComponent {
   readonly removedGroupMediaIds = signal<Record<string, string[]>>({});
   readonly discardedMediaIds = signal<string[]>([]);
   readonly remoteRefreshing = signal(false);
+  readonly remoteRecommendationsRefreshing = signal(false);
   readonly remoteBaselineTotal = signal(0);
 
   readonly reviewState = computed(() => this.tracker.getBatchReview(this.data.batchId));
   readonly items = computed(() => this.reviewState()?.reviewItems ?? this.remoteItems());
+  readonly recommendationsRefreshing = computed(
+    () => this.reviewState()?.recommendationsRefreshing ?? this.remoteRecommendationsRefreshing(),
+  );
   readonly recommendationGroups = computed(() =>
     (this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups())
       .map((group) => {
@@ -186,6 +190,7 @@ export class UploadReviewDialogComponent {
     ).subscribe((items) => this.seriesSuggestions.set(items));
 
     this.refreshReview();
+    this.refreshRecommendations();
   }
 
   close(): void {
@@ -300,6 +305,7 @@ export class UploadReviewDialogComponent {
         this.discardedMediaIds.set([]);
         this.saving.set(false);
         this.refreshReview();
+        this.refreshRecommendations();
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
       },
       error: () => {
@@ -371,6 +377,28 @@ export class UploadReviewDialogComponent {
       },
       error: () => {
         this.remoteRefreshing.set(false);
+      },
+    });
+  }
+
+  private refreshRecommendations(): void {
+    if (this.reviewState()) {
+      this.tracker.refreshBatchRecommendations(this.data.batchId);
+      return;
+    }
+
+    this.remoteRecommendationsRefreshing.set(true);
+    this.batchesClient.listReviewItems(this.data.batchId, { include_recommendations: true }).pipe(
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: (response) => {
+        this.remoteItems.set(response.items);
+        this.remoteRecommendationGroups.set(response.recommendation_groups);
+        this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+        this.remoteRecommendationsRefreshing.set(false);
+      },
+      error: () => {
+        this.remoteRecommendationsRefreshing.set(false);
       },
     });
   }

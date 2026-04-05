@@ -81,4 +81,12 @@ describe('BatchesClientService', () => {
     expect(req.request.method).toBe('GET');
     req.flush(mockReviewPage);
   });
+
+  it('listReviewItems passes include_recommendations', () => {
+    service.listReviewItems('b1', { include_recommendations: true }).subscribe();
+
+    const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/b1/review-items');
+    expect(req.request.params.get('include_recommendations')).toBe('true');
+    req.flush(mockReviewPage);
+  });
 });

@@ -53,6 +53,7 @@ interface TrackedBatchState {
   reviewTotal: number;
   reviewBaselineTotal: number;
   reviewRefreshing: boolean;
+  recommendationsRefreshing: boolean;
   error: string | null;
   refreshing: boolean;
 }
@@ -419,6 +420,7 @@ export class UploadTrackerService implements OnDestroy {
         reviewTotal: 0,
         reviewBaselineTotal: 0,
         reviewRefreshing: false,
+        recommendationsRefreshing: false,
         error: null,
         refreshing: false,
       },
@@ -496,12 +498,11 @@ export class UploadTrackerService implements OnDestroy {
     }
 
     this.patchBatch(batchId, { reviewRefreshing: true });
-    this.batchesClient.listReviewItems(batchId).subscribe({
+    this.batchesClient.listReviewItems(batchId, { include_recommendations: false }).subscribe({
       next: (response) => {
         const previousBaseline = this.trackedBatches()[batchId]?.reviewBaselineTotal ?? 0;
         this.patchBatch(batchId, {
           reviewItems: response.items,
-          recommendationGroups: response.recommendation_groups,
           reviewTotal: response.total,
           reviewBaselineTotal: Math.max(previousBaseline, response.total),
           reviewRefreshing: false,
@@ -509,6 +510,30 @@ export class UploadTrackerService implements OnDestroy {
       },
       error: () => {
         this.patchBatch(batchId, { reviewRefreshing: false });
+      },
+    });
+  }
+
+  refreshBatchRecommendations(batchId: string): void {
+    const batch = this.trackedBatches()[batchId];
+    if (!batch || batch.recommendationsRefreshing) {
+      return;
+    }
+
+    this.patchBatch(batchId, { recommendationsRefreshing: true });
+    this.batchesClient.listReviewItems(batchId, { include_recommendations: true }).subscribe({
+      next: (response) => {
+        const previousBaseline = this.trackedBatches()[batchId]?.reviewBaselineTotal ?? 0;
+        this.patchBatch(batchId, {
+          reviewItems: response.items,
+          recommendationGroups: response.recommendation_groups,
+          reviewTotal: response.total,
+          reviewBaselineTotal: Math.max(previousBaseline, response.total),
+          recommendationsRefreshing: false,
+        });
+      },
+      error: () => {
+        this.patchBatch(batchId, { recommendationsRefreshing: false });
       },
     });
   }
