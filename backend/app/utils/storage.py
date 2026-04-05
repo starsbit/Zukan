@@ -56,12 +56,16 @@ def ffmpeg_available() -> bool:
 
 
 async def save_upload(upload: UploadFile) -> SavedUpload | None:
-    file_info = ALLOWED_MIME_TYPES.get(upload.content_type or "")
+    content = await upload.read()
+    return await save_bytes(content, upload.content_type or "")
+
+
+async def save_bytes(content: bytes, content_type: str) -> SavedUpload | None:
+    file_info = ALLOWED_MIME_TYPES.get(content_type)
     if file_info is None:
         return None
 
     ext, media_type = file_info
-    content = await upload.read()
     if len(content) > settings.max_upload_size_mb * 1024 * 1024:
         return None
 
@@ -78,7 +82,7 @@ async def save_upload(upload: UploadFile) -> SavedUpload | None:
         sha256=sha256,
         file_size=len(content),
         media_type=media_type,
-        mime_type=upload.content_type or "",
+        mime_type=content_type,
     )
 
 

@@ -32,6 +32,7 @@ from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.services.anilist_sync import AniListSyncService, anilist_sync_worker
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.ml.tagger import tagger
@@ -114,6 +115,11 @@ async def trash_purge_worker() -> None:
         except Exception:
             logger.exception("Scheduled trash purge run failed")
         await asyncio.sleep(interval_seconds)
+
+
+async def _run_anilist_sync_once() -> int:
+    async with AsyncSessionLocal() as db:
+        return await AniListSyncService(db).sync_all_linked_users()
 
 
 async def _ensure_admin_user():
@@ -222,6 +228,7 @@ async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
     worker: asyncio.Task | None = None
     purge_worker: asyncio.Task | None = None
+    sync_worker: asyncio.Task | None = None
     try:
         logger.info("Startup phase: running database migrations")
         await init_db()
@@ -245,10 +252,12 @@ async def lifespan(_api: FastAPI):
         recovered_count = await _recover_pending_media_jobs(tag_queue)
         worker = asyncio.create_task(tagging_worker())
         purge_worker = asyncio.create_task(trash_purge_worker())
+        sync_worker = asyncio.create_task(anilist_sync_worker())
         logger.info("Background tagging worker started")
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
         logger.info("Background trash purge worker started")
+        logger.info("Background AniList sync worker started")
         logger.info("Application startup completed successfully")
 
         yield
@@ -261,6 +270,8 @@ async def lifespan(_api: FastAPI):
             worker.cancel()
         if purge_worker is not None:
             purge_worker.cancel()
+        if sync_worker is not None:
+            sync_worker.cancel()
         await health_monitor.stop()
         if worker is not None:
             try:
@@ -272,6 +283,11 @@ async def lifespan(_api: FastAPI):
                 await purge_worker
             except asyncio.CancelledError:
                 logger.info("Background trash purge worker stopped")
+        if sync_worker is not None:
+            try:
+                await sync_worker
+            except asyncio.CancelledError:
+                logger.info("Background AniList sync worker stopped")
 
 
 api = FastAPI(

@@ -4,7 +4,13 @@ import pytest
 import respx
 import httpx
 
-from backend.app.services.anilist import _ANILIST_URL, _character_series_cache, search_character_series
+from backend.app.services.anilist import (
+    _ANILIST_URL,
+    _character_series_cache,
+    fetch_series_characters,
+    fetch_user_anime_series,
+    search_character_series,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -221,6 +227,100 @@ async def test_search_character_series_works_without_auth_header():
 
     assert route.called
     assert "Authorization" not in route.calls[0].request.headers
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_user_anime_series_returns_current_and_completed_titles():
+    respx.post(_ANILIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": {"Viewer": {"name": "alice"}}}),
+            httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "MediaListCollection": {
+                            "lists": [
+                                {
+                                    "entries": [
+                                        {"media": {"id": 1, "title": {"english": "Fate/Zero", "romaji": "Fate/Zero", "native": "\u30d5\u30a7\u30a4\u30c8/\u30bc\u30ed"}}},
+                                        {"media": {"id": 2, "title": {"english": None, "romaji": "Mahoutsukai no Yome", "native": None}}},
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            ),
+        ]
+    )
+
+    result = await fetch_user_anime_series(token="secret")
+
+    assert [item.media_id for item in result] == [1, 2]
+    assert result[0].preferred_title == "Fate/Zero"
+    assert result[0].titles == ["Fate/Zero", "\u30d5\u30a7\u30a4\u30c8/\u30bc\u30ed"]
+    assert result[1].titles == ["Mahoutsukai no Yome"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_user_anime_series_deduplicates_by_media_id():
+    respx.post(_ANILIST_URL).mock(
+        side_effect=[
+            httpx.Response(200, json={"data": {"Viewer": {"name": "alice"}}}),
+            httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "MediaListCollection": {
+                            "lists": [
+                                {
+                                    "entries": [
+                                        {"media": {"id": 7, "title": {"english": "Steins;Gate", "romaji": "Steins;Gate", "native": None}}},
+                                        {"media": {"id": 7, "title": {"english": None, "romaji": "Shutainzu Geeto", "native": None}}},
+                                    ]
+                                }
+                            ]
+                        }
+                    }
+                },
+            ),
+        ]
+    )
+
+    result = await fetch_user_anime_series(token="secret")
+
+    assert len(result) == 1
+    assert result[0].titles == ["Steins;Gate", "Shutainzu Geeto"]
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_fetch_series_characters_returns_all_character_names():
+    respx.post(_ANILIST_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": {
+                    "Media": {
+                        "characters": {
+                            "pageInfo": {"currentPage": 1, "hasNextPage": False},
+                            "edges": [
+                                {"role": "MAIN", "node": {"id": 1, "name": {"userPreferred": "Saber", "full": "Artoria Pendragon", "native": None}}},
+                                {"role": "SUPPORTING", "node": {"id": 2, "name": {"userPreferred": "Rin Tohsaka", "full": "Rin Tohsaka", "native": None}}},
+                            ],
+                        }
+                    }
+                }
+            },
+        )
+    )
+
+    result = await fetch_series_characters(media_id=100, token="secret")
+
+    assert [item.character_id for item in result] == [1, 2]
+    assert result[0].names == ["Saber", "Artoria Pendragon"]
 
 
 @pytest.mark.asyncio

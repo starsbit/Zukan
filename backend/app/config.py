@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
     trash_purge_interval_seconds: int = 60 * 60 * 24
+    anilist_sync_interval_seconds: int = 60 * 60 * 24
+    anilist_sync_per_series_limit: int = 3
+    anilist_sync_search_limit: int = 12
 
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15

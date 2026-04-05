@@ -21,7 +21,7 @@ from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_metadata import extract_media_metadata
-from backend.app.utils.storage import delete_media_files, save_upload
+from backend.app.utils.storage import SavedUpload, delete_media_files, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 from backend.app.ml.ocr import ocr_backend
@@ -350,6 +350,51 @@ class MediaUploadWorkflow:
                 status="accepted",
             )
         )
+
+    async def create_media_from_saved_upload(
+        self,
+        *,
+        user: User,
+        original_name: str,
+        saved: SavedUpload,
+        captured_at: datetime,
+        visibility: MediaVisibility,
+        tags: list[str] | None = None,
+    ) -> Media:
+        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
+        poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
+        normalized_tags = normalize_manual_tags(tags) if tags else []
+
+        media = Media(
+            uploader_id=user.id,
+            filename=saved.path.name,
+            original_filename=original_name,
+            filepath=str(saved.path),
+            file_size=saved.file_size,
+            sha256=saved.sha256,
+            mime_type=saved.mime_type,
+            media_type=saved.media_type,
+            width=file_metadata.width,
+            height=file_metadata.height,
+            duration_seconds=file_metadata.duration_seconds,
+            frame_count=file_metadata.frame_count,
+            tagging_status="done" if normalized_tags else "pending",
+            tagging_error=None,
+            thumbnail_path=str(thumb) if thumb else None,
+            thumbnail_status="done" if thumb else "failed",
+            poster_path=str(poster) if poster else None,
+            poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
+            captured_at=captured_at,
+            visibility=visibility,
+        )
+        self._db.add(media)
+        await self._db.flush()
+
+        if normalized_tags:
+            await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
+            media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
+
+        return media
 
     def _finalize_upload_batch(self, upload_batch: ImportBatch, ctx: UploadBatchContext) -> None:
         upload_batch.queued_items = ctx.pending_items

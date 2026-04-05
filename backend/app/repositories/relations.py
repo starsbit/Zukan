@@ -109,3 +109,23 @@ class MediaExternalRefRepository:
         return (
             await self.db.execute(select(MediaExternalRef).where(MediaExternalRef.media_id == media_id))
         ).scalars().all()
+
+    async def get_for_user_by_provider_and_external_id(
+        self,
+        *,
+        user_id: uuid.UUID,
+        provider: str,
+        external_id: str,
+    ) -> MediaExternalRef | None:
+        stmt = (
+            select(MediaExternalRef)
+            .join(Media, Media.id == MediaExternalRef.media_id)
+            .where(
+                Media.uploader_id == user_id,
+                Media.deleted_at.is_(None),
+                MediaExternalRef.provider == provider,
+                MediaExternalRef.external_id == external_id,
+            )
+            .limit(1)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()

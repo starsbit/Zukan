@@ -19,6 +19,8 @@ def test_derive_character_name_uses_highest_confidence_category_4():
 
 def test_tag_names_mark_nsfw_by_hint_or_rating():
     assert tag_names_mark_nsfw(["rating:explicit"]) is True
+    assert tag_names_mark_nsfw(["questionable"]) is True
+    assert tag_names_mark_nsfw(["panties"]) is True
     assert tag_names_mark_nsfw(["Nude"]) is True
     assert tag_names_mark_nsfw(["safe"]) is False
 

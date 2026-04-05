@@ -4,6 +4,7 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.app.models.integrations import IntegrationService, UserIntegration
 
@@ -46,6 +47,18 @@ class UserIntegrationRepository:
         await self._db.commit()
         await self._db.refresh(record)
         return record
+
+    async def list_by_service(
+        self,
+        service: IntegrationService,
+    ) -> list[UserIntegration]:
+        return (
+            await self._db.execute(
+                select(UserIntegration)
+                .options(selectinload(UserIntegration.user))
+                .where(UserIntegration.service == service)
+            )
+        ).scalars().all()
 
     async def delete(
         self,

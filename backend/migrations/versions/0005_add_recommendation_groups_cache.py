@@ -1,6 +1,6 @@
 """Add recommendation groups cache to import_batches
 
-Revision ID: 0005_add_recommendation_groups_cache
+Revision ID: 0005_recommendation_cache
 Revises: 0004_add_user_integrations
 Create Date: 2026-04-05 00:00:00
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0005_add_recommendation_groups_cache"
+revision = "0005_recommendation_cache"
 down_revision = "0004_add_user_integrations"
 branch_labels = None
 depends_on = None

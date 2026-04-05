@@ -20,6 +20,30 @@ class NotificationService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
+    async def publish_user_notification(
+        self,
+        *,
+        user_id: uuid.UUID,
+        title: str,
+        body: str,
+        notification_type: NotificationType = NotificationType.app_update,
+        link_url: str | None = None,
+        data: dict | None = None,
+    ) -> Notification:
+        notification = Notification(
+            user_id=user_id,
+            type=notification_type,
+            title=title,
+            body=body,
+            is_read=False,
+            link_url=link_url,
+            data=data,
+        )
+        self._db.add(notification)
+        await self._db.commit()
+        await self._db.refresh(notification)
+        return notification
+
     async def publish_announcement(self, announcement: AppAnnouncement) -> int:
         user_ids = (
             await self._db.execute(select(User.id))

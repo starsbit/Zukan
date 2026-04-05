@@ -170,6 +170,8 @@ class AuthService:
             )
         if body.show_nsfw is not None:
             user.show_nsfw = body.show_nsfw
+        if body.anilist_import_visibility is not None:
+            user.anilist_import_visibility = body.anilist_import_visibility.value
         if body.tag_confidence_threshold is not None:
             user.tag_confidence_threshold = body.tag_confidence_threshold
         if body.password is not None:

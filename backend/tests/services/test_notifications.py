@@ -133,3 +133,20 @@ async def test_publish_announcement_creates_app_update_notifications_for_all_use
     assert notifications[0].title == "Maintenance"
     assert notifications[0].data["announcement_id"] == str(announcement.id)
     fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_publish_user_notification_creates_single_notification(fake_db, user):
+    service = NotificationService(fake_db)
+
+    notification = await service.publish_user_notification(
+        user_id=user.id,
+        title="Scraped Saber",
+        body="Imported 2 images.",
+        data={"kind": "anilist_scrape_character"},
+    )
+
+    assert notification.title == "Scraped Saber"
+    added = [item for item in fake_db.added if isinstance(item, Notification)]
+    assert len(added) == 1
+    assert added[0].data["kind"] == "anilist_scrape_character"

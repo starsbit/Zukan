@@ -218,9 +218,16 @@ async def test_update_current_user_checks_version_and_updates(fake_db, user):
     with patch("backend.app.services.auth.hash_password", return_value="hashed"):
         updated = await service.update_current_user(
             user,
-            UserUpdate(show_nsfw=True, tag_confidence_threshold=0.6, password="newpassword", version=user.version),
+            UserUpdate(
+                show_nsfw=True,
+                anilist_import_visibility="public",
+                tag_confidence_threshold=0.6,
+                password="newpassword",
+                version=user.version,
+            ),
         )
 
     assert updated.show_nsfw is True
+    assert updated.anilist_import_visibility == "public"
     assert updated.tag_confidence_threshold == 0.6
     assert updated.hashed_password == "hashed"
