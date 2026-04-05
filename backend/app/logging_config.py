@@ -6,7 +6,6 @@ import sys
 
 
 DEFAULT_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
-ACCESS_LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(client_addr)s - \"%(request_line)s\" %(status_code)s"
 
 
 def configure_logging(level_name: str = "INFO") -> None:
@@ -24,8 +23,10 @@ def configure_logging(level_name: str = "INFO") -> None:
                     "datefmt": "%Y-%m-%dT%H:%M:%S%z",
                 },
                 "access": {
-                    "format": ACCESS_LOG_FORMAT,
+                    "()": "uvicorn.logging.AccessFormatter",
+                    "fmt": '%(asctime)s %(levelname)s [%(name)s] %(client_addr)s - "%(request_line)s" %(status_code)s',
                     "datefmt": "%Y-%m-%dT%H:%M:%S%z",
+                    "use_colors": False,
                 },
             },
             "handlers": {

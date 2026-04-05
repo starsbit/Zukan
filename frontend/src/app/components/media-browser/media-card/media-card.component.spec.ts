@@ -284,6 +284,29 @@ describe('MediaCardComponent', () => {
     expect(fixture.nativeElement.querySelector('[aria-label="Processing"]')).not.toBeNull();
   });
 
+  it('shows a centered placeholder spinner while media is still processing without a preview', async () => {
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      getPosterUrl: vi.fn(() => of('blob:poster')),
+      getFileUrl: vi.fn(() => of('blob:file')),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [MediaCardComponent],
+      providers: [{ provide: MediaService, useValue: mediaService }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaCardComponent);
+    fixture.componentRef.setInput('media', makeMedia({
+      thumbnail_status: ProcessingStatus.PENDING,
+      poster_status: ProcessingStatus.NOT_APPLICABLE,
+    }));
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.media-card__placeholder-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('img')).toBeNull();
+  });
+
   it('shows the selection control on hover when selectable', async () => {
     const mediaService = {
       getThumbnailUrl: vi.fn(() => of('blob:thumb')),

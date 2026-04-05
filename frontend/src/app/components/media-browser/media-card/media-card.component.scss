@@ -91,6 +91,7 @@
 }
 
 .media-card__placeholder {
+  position: relative;
   display: grid;
   place-items: end start;
   padding: 14px;
@@ -103,6 +104,18 @@
 
 .media-card__placeholder--loading {
   animation: media-card-pulse 1.4s ease-in-out infinite;
+}
+
+.media-card__placeholder-spinner {
+  position: absolute;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: 1.2rem;
+  height: 1.2rem;
+  border: 2px solid color-mix(in srgb, var(--mat-sys-on-surface-variant) 24%, transparent);
+  border-top-color: color-mix(in srgb, var(--mat-sys-on-surface) 72%, transparent);
+  border-radius: 50%;
+  animation: media-card-spin 0.9s linear infinite;
 }
 
 .media-card__badge-stack {

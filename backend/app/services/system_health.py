@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import resource
 import time
@@ -13,6 +14,8 @@ try:
     import psutil
 except ImportError:  # pragma: no cover - exercised through fallback path when dependency is absent
     psutil = None
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -41,6 +44,11 @@ class SystemHealthMonitor:
         if self._task is None:
             self.capture_sample()
             self._task = asyncio.create_task(self._sampler())
+            logger.info(
+                "System health monitor started max_samples=%s sample_interval_seconds=%s",
+                self._max_samples,
+                self._sample_interval_seconds,
+            )
 
     async def stop(self) -> None:
         if self._task is None:
@@ -51,6 +59,7 @@ class SystemHealthMonitor:
         except asyncio.CancelledError:
             pass
         self._task = None
+        logger.info("System health monitor stopped")
 
     def capture_sample(self) -> HealthSnapshot:
         sample = HealthSnapshot(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -16,6 +17,8 @@ from backend.app.services.media.interactions import MediaInteractionService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
 from backend.app.utils.tagging import tag_names_mark_nsfw
+
+logger = logging.getLogger(__name__)
 
 
 class MediaMetadataService:
@@ -36,6 +39,12 @@ class MediaMetadataService:
             media = await self._query.get_owned_or_admin_media(media_id, user, trashed=None)
         else:
             media = await self._query.get_active_media(media_id)
+        logger.info(
+            "Updating media metadata user_id=%s media_id=%s fields=%s",
+            user.id,
+            media_id,
+            sorted(payload.model_fields_set),
+        )
 
         if "version" in payload.model_fields_set and payload.version is not None and payload.version != media.version:
             raise AppError(
@@ -88,6 +97,7 @@ class MediaMetadataService:
 
         await self._db.commit()
         media = await self._query.get_media_with_relations(media_id, deleted=None)
+        logger.info("Updated media metadata user_id=%s media_id=%s", user.id, media_id)
         return await self._query.build_media_detail(media, user.id)
 
     async def bulk_update_visibility(self, media_ids: list[uuid.UUID], user: User, visibility) -> BulkResult:
@@ -108,6 +118,7 @@ class MediaMetadataService:
             processed += 1
 
         await self._db.commit()
+        logger.info("Bulk updated visibility user_id=%s visibility=%s processed=%s skipped=%s", user.id, visibility, processed, skipped)
         return BulkResult(processed=processed, skipped=skipped)
 
     async def bulk_update_metadata_review_dismissed(
@@ -133,6 +144,13 @@ class MediaMetadataService:
             processed += 1
 
         await self._db.commit()
+        logger.info(
+            "Bulk updated metadata review dismissed user_id=%s value=%s processed=%s skipped=%s",
+            user.id,
+            metadata_review_dismissed,
+            processed,
+            skipped,
+        )
         return BulkResult(processed=processed, skipped=skipped)
 
     async def bulk_update_entities(self, payload: MediaEntityBatchUpdate, user: User) -> BulkResult:
@@ -170,6 +188,14 @@ class MediaMetadataService:
             processed += 1
 
         await self._db.commit()
+        logger.info(
+            "Bulk updated entities user_id=%s processed=%s skipped=%s character_names=%s series_names=%s",
+            user.id,
+            processed,
+            skipped,
+            len(normalized_characters),
+            len(normalized_series),
+        )
         return BulkResult(processed=processed, skipped=skipped)
 
     def _add_manual_entities(self, media_id: uuid.UUID, entity_type: MediaEntityType, names: list[str]) -> None:

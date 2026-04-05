@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -29,6 +30,8 @@ from backend.app.utils.tagging import (
     tag_names_mark_nsfw,
 )
 from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_media_frames
+
+logger = logging.getLogger(__name__)
 
 
 class TagService:
@@ -137,6 +140,14 @@ class TagService:
             deleted_tag = remaining is None
 
         await self._db.commit()
+        logger.info(
+            "Removed tag from media user_id=%s tag_name=%s matched_media=%s updated_media=%s deleted_tag=%s",
+            user.id,
+            tag_name,
+            len(media_rows),
+            updated,
+            deleted_tag,
+        )
         return TagManagementResult(matched_media=len(media_rows), updated_media=updated, deleted_tag=deleted_tag)
 
     async def trash_media_by_tag(self, user, *, tag_name: str) -> TagManagementResult:
@@ -156,16 +167,25 @@ class TagService:
             else:
                 already_trashed += 1
         await self._db.commit()
+        logger.info(
+            "Trashed media by tag user_id=%s tag_name=%s trashed=%s already_trashed=%s",
+            user.id,
+            tag_name,
+            trashed,
+            already_trashed,
+        )
         return TagManagementResult(matched_media=len(matches), trashed_media=trashed, already_trashed=already_trashed)
 
     async def tag_media(self, media_id: uuid.UUID) -> None:
         assert self._tagger is not None, "TagService requires a tagger backend to run tag_media"
         media = await MediaRepository(self._db).get_by_id(media_id)
         if media is None:
+            logger.warning("Tagging skipped because media was not found media_id=%s", media_id)
             return
         media.tagging_status = "processing"
         media.tagging_error = None
         await self._db.commit()
+        logger.info("Tagging started media_id=%s media_type=%s", media.id, media.media_type.value)
 
         frames = sample_media_frames(media.filepath, media.media_type)
         try:
@@ -185,6 +205,13 @@ class TagService:
                 return await self._tagger.predict(image_path)
             except Exception as exc:
                 last_error = exc
+                logger.warning(
+                    "Tag prediction attempt failed image_path=%s attempt=%s max_attempts=%s error=%s",
+                    image_path,
+                    attempt,
+                    attempts,
+                    exc,
+                )
                 if attempt >= attempts:
                     break
                 await asyncio.sleep(settings.tagging_retry_backoff_seconds * attempt)
@@ -237,6 +264,13 @@ class TagService:
             ))
 
         await self._db.commit()
+        logger.info(
+            "Tagging finished media_id=%s filtered_tags=%s entities=%s is_nsfw=%s",
+            media.id,
+            len(filtered_predictions),
+            len(seen_entities),
+            media.is_nsfw,
+        )
 
 
 def _accessible_media_stmt(user):

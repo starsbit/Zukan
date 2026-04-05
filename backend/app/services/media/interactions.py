@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +12,8 @@ from backend.app.models.media_interactions import UserFavorite
 from backend.app.schemas import BulkResult
 from backend.app.services.media.query import MediaQueryService
 
+logger = logging.getLogger(__name__)
+
 
 class MediaInteractionService:
     def __init__(self, db: AsyncSession, query: MediaQueryService) -> None:
@@ -20,20 +23,25 @@ class MediaInteractionService:
     async def favorite_media(self, media_id: uuid.UUID, user: User) -> None:
         await self._set_favorite_state(media_id, user, True)
         await self._db.commit()
+        logger.info("Favorited media user_id=%s media_id=%s", user.id, media_id)
 
     async def unfavorite_media(self, media_id: uuid.UUID, user: User) -> None:
         favorite = await self._query.get_favorite(media_id, user.id)
         if favorite is None:
+            logger.warning("Unfavorite rejected because media was not in favorites user_id=%s media_id=%s", user.id, media_id)
             raise AppError(status_code=404, code=media_not_found, detail="Not in favorites")
         await self._db.delete(favorite)
         await self._db.commit()
+        logger.info("Unfavorited media user_id=%s media_id=%s", user.id, media_id)
 
     async def bulk_favorite_media(self, media_ids: list[uuid.UUID], user: User) -> BulkResult:
         processed, skipped = await self._batch_update_favorite_state(media_ids, True, user)
+        logger.info("Bulk favorited media user_id=%s processed=%s skipped=%s", user.id, processed, skipped)
         return BulkResult(processed=processed, skipped=skipped)
 
     async def bulk_unfavorite_media(self, media_ids: list[uuid.UUID], user: User) -> BulkResult:
         processed, skipped = await self._batch_update_favorite_state(media_ids, False, user)
+        logger.info("Bulk unfavorited media user_id=%s processed=%s skipped=%s", user.id, processed, skipped)
         return BulkResult(processed=processed, skipped=skipped)
 
     async def _set_favorite_state(self, media_id: uuid.UUID, user: User, favorited: bool | None) -> bool:

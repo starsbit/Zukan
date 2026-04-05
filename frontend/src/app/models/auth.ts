@@ -3,7 +3,6 @@ export interface UserSelfRead {
   username: string;
   email: string;
   show_nsfw: boolean;
-  anilist_import_visibility: 'private' | 'public';
   tag_confidence_threshold: number;
   version: number;
   created_at: string;
@@ -15,7 +14,6 @@ export interface UserRead {
   email: string;
   is_admin: boolean;
   show_nsfw: boolean;
-  anilist_import_visibility: 'private' | 'public';
   tag_confidence_threshold: number;
   version: number;
   created_at: string;
@@ -35,7 +33,6 @@ export interface UserLogin {
 
 export interface UserUpdate {
   show_nsfw?: boolean | null;
-  anilist_import_visibility?: 'private' | 'public' | null;
   tag_confidence_threshold?: number | null;
   password?: string | null;
   version?: number | null;
@@ -59,10 +56,4 @@ export interface ApiKeyStatusResponse {
 
 export interface ApiKeyCreateResponse extends ApiKeyStatusResponse {
   api_key: string;
-}
-
-export interface AniListIntegrationRead {
-  service: string;
-  created_at: string;
-  updated_at: string;
 }

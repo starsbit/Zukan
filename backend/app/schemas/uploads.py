@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import File, Form, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, HttpUrl
 
 from backend.app.models.media import MediaVisibility
 
@@ -68,3 +68,10 @@ class MediaUploadRequest(BaseModel):
             captured_at_values=captured_at_values,
             visibility=visibility,
         )
+
+
+class UrlIngestRequest(BaseModel):
+    url: HttpUrl
+    tags: list[str] | None = None
+    album_id: uuid.UUID | None = None
+    visibility: MediaVisibility = MediaVisibility.private

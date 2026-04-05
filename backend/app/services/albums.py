@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from sqlalchemy import func, or_, select
@@ -44,6 +45,8 @@ from backend.app.schemas import (
 from backend.app.utils.media_projections import enrich_media
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 
+logger = logging.getLogger(__name__)
+
 
 class AlbumService:
     def __init__(self, db: AsyncSession) -> None:
@@ -84,6 +87,7 @@ class AlbumService:
         self._db.add(album)
         await self._db.commit()
         await self._db.refresh(album)
+        logger.info("Created album album_id=%s owner_id=%s name=%s", album.id, user.id, album.name)
         return await self.album_read(album, user)
 
     async def list_albums(
@@ -166,6 +170,7 @@ class AlbumService:
             album.cover_media_id = body.cover_media_id
         await self._db.commit()
         await self._db.refresh(album)
+        logger.info("Updated album album_id=%s user_id=%s fields=%s", album.id, user.id, sorted(body.model_fields_set))
         return await self.album_read(album, user)
 
     async def delete_album(self, album_id: uuid.UUID, user) -> None:
@@ -174,6 +179,7 @@ class AlbumService:
             raise AppError(status_code=403, code=forbidden, detail="Forbidden")
         await self._db.delete(album)
         await self._db.commit()
+        logger.info("Deleted album album_id=%s user_id=%s", album_id, user.id)
 
     async def list_album_media(
         self,
@@ -257,6 +263,7 @@ class AlbumService:
             added += 1
         await self._db.commit()
         await self.ensure_cover_media(album)
+        logger.info("Added media to album album_id=%s user_id=%s added=%s requested=%s", album_id, user.id, added, len(media_ids))
         return added
 
     async def remove_media_from_album(self, album_id: uuid.UUID, media_id: uuid.UUID, user) -> None:
@@ -268,6 +275,7 @@ class AlbumService:
         if album.cover_media_id == media_id:
             album.cover_media_id = None
         await self._db.commit()
+        logger.info("Removed media from album album_id=%s media_id=%s user_id=%s", album_id, media_id, user.id)
 
     async def transfer_album_ownership(self, album_id: uuid.UUID, body: AlbumOwnershipTransferRequest, user) -> AlbumRead:
         albums_repo = AlbumRepository(self._db)
@@ -319,6 +327,13 @@ class AlbumService:
 
         await self._db.commit()
         await self._db.refresh(album)
+        logger.info(
+            "Transferred album ownership album_id=%s previous_owner_id=%s new_owner_id=%s keep_editor_access=%s",
+            album_id,
+            previous_owner_id,
+            body.new_owner_user_id,
+            body.keep_editor_access,
+        )
         return await self.album_read(album, user)
 
     async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> tuple[dict, bool]:
@@ -337,6 +352,7 @@ class AlbumService:
             share.shared_by_user_id = user.id
             await self._db.commit()
             await self._db.refresh(share)
+            logger.info("Updated album share album_id=%s target_user_id=%s role=%s", album_id, target_user.id, share.role.value)
             return self._share_response(
                 user_id=target_user.id,
                 role=share.role.value,
@@ -370,6 +386,13 @@ class AlbumService:
         )
         await self._db.commit()
         await self._db.refresh(invite)
+        logger.info(
+            "Created or refreshed album invite album_id=%s target_user_id=%s role=%s created=%s",
+            album_id,
+            target_user.id,
+            invite.role.value,
+            created,
+        )
         return self._share_response(
             user_id=target_user.id,
             role=invite.role.value,
@@ -387,6 +410,7 @@ class AlbumService:
         if share is not None:
             await self._db.delete(share)
             await self._db.commit()
+            logger.info("Revoked accepted album share album_id=%s target_user_id=%s", album_id, shared_user_id)
             return
 
         invite = await albums_repo.get_invite(album_id, shared_user_id)
@@ -399,6 +423,7 @@ class AlbumService:
             await self._db.delete(notification)
         await self._db.delete(invite)
         await self._db.commit()
+        logger.info("Revoked pending album invite album_id=%s target_user_id=%s", album_id, shared_user_id)
 
     async def get_album_download_media(self, album_id: uuid.UUID, user) -> tuple[Album, list[Media]]:
         albums_repo = AlbumRepository(self._db)
@@ -426,6 +451,7 @@ class AlbumService:
         await self._db.commit()
         if processed:
             await self.ensure_cover_media(album)
+        logger.info("Bulk added media to album album_id=%s user_id=%s processed=%s skipped=%s", album_id, user.id, processed, len(media_ids) - processed)
         return BulkResult(processed=processed, skipped=len(media_ids) - processed)
 
     async def bulk_remove_from_album(self, album_id: uuid.UUID, media_ids: list[uuid.UUID], user) -> BulkResult:
@@ -441,6 +467,7 @@ class AlbumService:
         await self._db.commit()
         if cover_removed:
             await self.ensure_cover_media(album)
+        logger.info("Bulk removed media from album album_id=%s user_id=%s processed=%s skipped=%s", album_id, user.id, len(album_media_items), len(media_ids) - len(album_media_items))
         return BulkResult(processed=len(album_media_items), skipped=len(media_ids) - len(album_media_items))
 
     async def ensure_cover_media(self, album: Album) -> None:
@@ -450,6 +477,7 @@ class AlbumService:
         if first_id:
             album.cover_media_id = first_id
             await self._db.commit()
+            logger.info("Assigned album cover album_id=%s media_id=%s", album.id, first_id)
 
     async def _build_album_reads(self, albums: list[Album], user) -> list[AlbumRead]:
         if not albums:

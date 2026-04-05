@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timezone
@@ -21,10 +22,12 @@ from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_metadata import extract_media_metadata
-from backend.app.utils.storage import SavedUpload, delete_media_files, save_upload
+from backend.app.utils.storage import SavedUpload, delete_media_files, save_bytes, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 from backend.app.ml.ocr import ocr_backend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -59,9 +62,11 @@ class MediaPostProcessor:
             return
         queue = get_tag_queue()
         if queue:
+            logger.info("Queued media for background post-processing count=%s", len(media_ids))
             for media_id in media_ids:
                 await queue.put(media_id)
             return
+        logger.info("Running inline OCR post-processing count=%s", len(media_ids))
         for media_id in media_ids:
             await self._processing.run_ocr_for_media(media_id, ocr_backend)
 
@@ -93,6 +98,14 @@ class MediaUploadWorkflow:
     ) -> BatchUploadResponse:
         self._validate_batch_size(files)
         upload_batch = await self._create_upload_batch(user, len(files))
+        logger.info(
+            "Upload batch started batch_id=%s user_id=%s file_count=%s album_id=%s visibility=%s",
+            upload_batch.id,
+            user.id,
+            len(files),
+            album_id,
+            visibility.value,
+        )
         ctx = UploadBatchContext()
 
         for index, upload in enumerate(files):
@@ -113,10 +126,19 @@ class MediaUploadWorkflow:
         await self._db.commit()
         await self._attach_album_if_needed(album_id, ctx.queued_media_ids, user)
         await self._post_processor.dispatch(ctx.processing_media_ids)
+        logger.info(
+            "Upload batch finished batch_id=%s accepted=%s duplicates=%s errors=%s queued=%s",
+            upload_batch.id,
+            ctx.accepted,
+            ctx.duplicates,
+            ctx.errors,
+            len(ctx.processing_media_ids),
+        )
         return self._build_response(upload_batch, ctx)
 
     def _validate_batch_size(self, files: list[UploadFile]) -> None:
         if len(files) > settings.max_batch_size:
+            logger.warning("Upload batch rejected because it exceeds the file limit file_count=%s limit=%s", len(files), settings.max_batch_size)
             raise AppError(status_code=400, code=upload_limit_exceeded, detail=f"Max {settings.max_batch_size} files per request")
 
     async def _create_upload_batch(self, user: User, total_items: int) -> ImportBatch:
@@ -149,6 +171,7 @@ class MediaUploadWorkflow:
 
         saved = await save_upload(upload)
         if saved is None:
+            logger.warning("Upload file rejected original_name=%s", original_name)
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
 
@@ -163,6 +186,7 @@ class MediaUploadWorkflow:
 
         existing = await self._query.get_media_by_sha256(saved.sha256)
         if existing is not None:
+            logger.info("Upload file matched existing media original_name=%s existing_media_id=%s", original_name, existing.id)
             await self._handle_existing_media(
                 batch_item=batch_item,
                 existing=existing,
@@ -209,6 +233,7 @@ class MediaUploadWorkflow:
 
         ctx.errors += 1
         ctx.failed_items += 1
+        logger.warning("Upload file failed original_name=%s reason=%s", original_name, batch_item.error)
         ctx.results.append(
             UploadResult(
                 id=None,
@@ -242,6 +267,7 @@ class MediaUploadWorkflow:
 
             ctx.duplicates += 1
             ctx.done_items += 1
+            logger.info("Upload duplicate skipped media_id=%s original_name=%s", existing.id, original_name)
             ctx.results.append(
                 UploadResult(
                     id=None,
@@ -271,6 +297,7 @@ class MediaUploadWorkflow:
         ctx.pending_items += 1
         ctx.queued_media_ids.append(existing.id)
         ctx.processing_media_ids.append(existing.id)
+        logger.info("Upload restored deleted media media_id=%s original_name=%s", existing.id, original_name)
         ctx.results.append(
             UploadResult(
                 id=existing.id,
@@ -320,6 +347,14 @@ class MediaUploadWorkflow:
         )
         self._db.add(media)
         await self._db.flush()
+        logger.info(
+            "Created new media from upload media_id=%s user_id=%s original_name=%s media_type=%s visibility=%s",
+            media.id,
+            user.id,
+            original_name,
+            getattr(media.media_type, "value", media.media_type),
+            getattr(media.visibility, "value", media.visibility),
+        )
 
         batch_item.media_id = media.id
         if normalized_tags:
@@ -342,6 +377,7 @@ class MediaUploadWorkflow:
         ctx.accepted += 1
         ctx.queued_media_ids.append(media.id)
         ctx.processing_media_ids.append(media.id)
+        logger.info("Upload accepted media_id=%s original_name=%s manual_tags=%s", media.id, original_name, len(normalized_tags))
         ctx.results.append(
             UploadResult(
                 id=media.id,
@@ -350,6 +386,76 @@ class MediaUploadWorkflow:
                 status="accepted",
             )
         )
+
+    async def run_from_url(
+        self,
+        *,
+        user: User,
+        url: str,
+        album_id: uuid.UUID | None,
+        tags: list[str] | None,
+        visibility: MediaVisibility,
+    ) -> BatchUploadResponse:
+        from backend.app.services.media.url_fetch import fetch_url_as_bytes
+
+        content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=settings.max_upload_size_mb * 1024 * 1024)
+        saved = await save_bytes(content, mime_type)
+        if saved is None:
+            from backend.app.errors.upload import unsupported_media_type
+            raise AppError(400, unsupported_media_type, "Unsupported media type or file too large")
+
+        path_segment = url.rstrip("/").split("/")[-1].split("?")[0] or "download"
+        original_name = path_segment[:255]
+
+        upload_batch = await self._create_upload_batch(user, total_items=1)
+        logger.info(
+            "URL ingest batch started batch_id=%s user_id=%s url=%s",
+            upload_batch.id,
+            user.id,
+            url,
+        )
+        ctx = UploadBatchContext()
+
+        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
+        captured_at = datetime.now(UTC)
+
+        existing = await self._query.get_media_by_sha256(saved.sha256)
+        batch_item = self._new_batch_item(upload_batch.id, original_name)
+
+        if existing is not None:
+            await self._handle_existing_media(
+                batch_item=batch_item,
+                existing=existing,
+                original_name=original_name,
+                captured_at=captured_at,
+                saved_path=str(saved.path),
+                ctx=ctx,
+            )
+        else:
+            await self._handle_new_media(
+                batch_item=batch_item,
+                user=user,
+                original_name=original_name,
+                saved=saved,
+                file_metadata=file_metadata,
+                tags=tags,
+                captured_at=captured_at,
+                visibility=visibility,
+                ctx=ctx,
+            )
+
+        self._finalize_upload_batch(upload_batch, ctx)
+        await self._db.commit()
+        await self._attach_album_if_needed(album_id, ctx.queued_media_ids, user)
+        await self._post_processor.dispatch(ctx.processing_media_ids)
+        logger.info(
+            "URL ingest batch finished batch_id=%s accepted=%s duplicates=%s errors=%s",
+            upload_batch.id,
+            ctx.accepted,
+            ctx.duplicates,
+            ctx.errors,
+        )
+        return self._build_response(upload_batch, ctx)
 
     async def create_media_from_saved_upload(
         self,
@@ -425,6 +531,7 @@ class MediaUploadWorkflow:
         from backend.app.services.albums import AlbumService
 
         await AlbumService(self._db).add_media_to_album(album_id, queued_media_ids, user)
+        logger.info("Attached uploaded media to album album_id=%s user_id=%s media_count=%s", album_id, user.id, len(queued_media_ids))
 
     def _build_response(self, upload_batch: ImportBatch, ctx: UploadBatchContext) -> BatchUploadResponse:
         return BatchUploadResponse(
@@ -491,6 +598,29 @@ class MediaUploadService:
             tags=tags,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            visibility=visibility,
+        )
+
+    async def ingest_url(
+        self,
+        user: User,
+        url: str,
+        *,
+        album_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        visibility: MediaVisibility = MediaVisibility.private,
+    ) -> BatchUploadResponse:
+        workflow = MediaUploadWorkflow(
+            db=self._db,
+            query=self._query,
+            tags_repo=self._tags,
+            post_processor=self._post_processor,
+        )
+        return await workflow.run_from_url(
+            user=user,
+            url=url,
+            album_id=album_id,
+            tags=tags,
             visibility=visibility,
         )
 

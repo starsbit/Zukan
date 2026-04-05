@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -14,6 +15,8 @@ from backend.app.repositories.albums import AlbumRepository
 from backend.app.repositories.notifications import NotificationRepository
 from backend.app.schemas import NotificationListResponse
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationService:
@@ -42,6 +45,13 @@ class NotificationService:
         self._db.add(notification)
         await self._db.commit()
         await self._db.refresh(notification)
+        logger.info(
+            "Published notification user_id=%s type=%s title=%s kind=%s",
+            user_id,
+            notification.type.value,
+            title,
+            (data or {}).get("kind"),
+        )
         return notification
 
     async def publish_announcement(self, announcement: AppAnnouncement) -> int:

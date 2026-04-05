@@ -109,7 +109,8 @@ describe('UploadReviewDialogComponent', () => {
       series_names: ['little_busters'],
     });
     expect(refreshBatchReview).toHaveBeenCalledWith('b1');
-    expect(refreshBatchRecommendations).toHaveBeenCalledWith('b1');
+    expect(refreshBatchRecommendations).toHaveBeenNthCalledWith(1, 'b1', false);
+    expect(refreshBatchRecommendations).toHaveBeenNthCalledWith(2, 'b1', true);
   });
 
   it('defaults to grouped recommendations and lets suggestions prefill naming chips', async () => {
@@ -647,7 +648,10 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     expect(listReviewItems).toHaveBeenNthCalledWith(1, 'b1');
-    expect(listReviewItems).toHaveBeenNthCalledWith(2, 'b1', { include_recommendations: true });
+    expect(listReviewItems).toHaveBeenNthCalledWith(2, 'b1', {
+      include_recommendations: true,
+      force_refresh: false,
+    });
     expect(fixture.componentInstance.items()).toHaveLength(1);
     expect(fixture.componentInstance.recommendationsRefreshing()).toBe(true);
     expect(fixture.nativeElement.textContent).toContain('Refreshing recommendations');

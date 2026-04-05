@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -11,12 +12,15 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.schemas import EntityCreate, ExternalRefCreate, TagManagementResult
 
+logger = logging.getLogger(__name__)
+
 
 class RelationService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
 
     async def replace_entities(self, media: Media, entity_creates: list[EntityCreate]) -> None:
+        logger.info("Replacing entities media_id=%s entity_count=%s", media.id, len(entity_creates))
         for entity in await MediaEntityRepository(self._db).get_by_media(media.id):
             await self._db.delete(entity)
         await self._db.flush()
@@ -34,6 +38,7 @@ class RelationService:
     async def replace_external_refs(self, media: Media, ref_creates: list[ExternalRefCreate]) -> None:
         from backend.app.models.relations import MediaExternalRef
         from backend.app.repositories.relations import MediaExternalRefRepository
+        logger.info("Replacing external refs media_id=%s ref_count=%s", media.id, len(ref_creates))
         for ref in await MediaExternalRefRepository(self._db).get_by_media(media.id):
             await self._db.delete(ref)
         await self._db.flush()
@@ -58,6 +63,12 @@ class RelationService:
         for entity in entities:
             await self._db.delete(entity)
         await self._db.commit()
+        logger.info(
+            "Cleared character entities user_id=%s character_name=%s matched_media=%s",
+            user.id,
+            character_name,
+            len(media_rows),
+        )
         return TagManagementResult(matched_media=len(media_rows), updated_media=len(media_rows))
 
     async def trash_media_by_character_name(self, user, *, character_name: str) -> TagManagementResult:
@@ -78,6 +89,13 @@ class RelationService:
             else:
                 already_trashed += 1
         await self._db.commit()
+        logger.info(
+            "Trashed media by character name user_id=%s character_name=%s trashed=%s already_trashed=%s",
+            user.id,
+            character_name,
+            trashed,
+            already_trashed,
+        )
         return TagManagementResult(matched_media=len(matches), trashed_media=trashed, already_trashed=already_trashed)
 
 

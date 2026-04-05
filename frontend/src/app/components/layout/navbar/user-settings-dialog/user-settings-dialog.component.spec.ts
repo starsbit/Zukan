@@ -26,20 +26,12 @@ describe('UserSettingsDialogComponent', () => {
     created_at: '2026-04-02T09:15:00Z',
     last_used_at: '2026-04-02T10:30:00Z',
   };
-  const aniListStatus = {
-    service: 'anilist',
-    created_at: '2026-04-05T10:00:00Z',
-    updated_at: '2026-04-05T10:00:00Z',
-  };
 
   function baseUsersClient(overrides: Record<string, unknown> = {}) {
     return {
       updateMe: vi.fn(),
       getApiKeyStatus: vi.fn().mockReturnValue(of(apiKeyStatus)),
       createApiKey: vi.fn(),
-      getAniListIntegration: vi.fn().mockReturnValue(throwError(() => ({ status: 404 }))),
-      upsertAniListIntegration: vi.fn(),
-      deleteAniListIntegration: vi.fn(),
       ...overrides,
     };
   }
@@ -216,98 +208,5 @@ describe('UserSettingsDialogComponent', () => {
     expect(createApiKey).toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('zk_created_key');
     expect(fixture.nativeElement.textContent).toContain('This key is only shown once');
-  });
-
-  it('shows AniList as connected when integration exists', async () => {
-    await TestBed.configureTestingModule({
-      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
-      providers: [
-        provideRouter([]),
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: baseUsersClient({ getAniListIntegration: vi.fn().mockReturnValue(of(aniListStatus)) }) },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.textContent).toContain('Connected');
-  });
-
-  it('saves AniList token and shows connected status', async () => {
-    const upsertAniListIntegration = vi.fn().mockReturnValue(of(aniListStatus));
-
-    await TestBed.configureTestingModule({
-      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
-      providers: [
-        provideRouter([]),
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: baseUsersClient({ upsertAniListIntegration }) },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
-    fixture.detectChanges();
-
-    fixture.componentInstance.aniListTokenInput.setValue('my-anilist-token');
-    fixture.componentInstance.saveAniListToken();
-    fixture.detectChanges();
-
-    expect(upsertAniListIntegration).toHaveBeenCalledWith('my-anilist-token');
-    expect(fixture.nativeElement.textContent).toContain('Connected');
-    expect(fixture.componentInstance.aniListTokenInput.value).toBe('');
-  });
-
-  it('removes AniList token and clears connected status', async () => {
-    const deleteAniListIntegration = vi.fn().mockReturnValue(of(void 0));
-
-    await TestBed.configureTestingModule({
-      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
-      providers: [
-        provideRouter([]),
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: baseUsersClient({
-          getAniListIntegration: vi.fn().mockReturnValue(of(aniListStatus)),
-          deleteAniListIntegration,
-        }) },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.textContent).toContain('Connected');
-
-    fixture.componentInstance.removeAniListToken();
-    fixture.detectChanges();
-
-    expect(deleteAniListIntegration).toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).not.toContain('Connected');
-  });
-
-  it('shows AniList error when save fails', async () => {
-    const upsertAniListIntegration = vi.fn().mockReturnValue(throwError(() => ({ error: { detail: 'Invalid token' } })));
-
-    await TestBed.configureTestingModule({
-      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
-      providers: [
-        provideRouter([]),
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: baseUsersClient({ upsertAniListIntegration }) },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
-    fixture.detectChanges();
-
-    fixture.componentInstance.aniListTokenInput.setValue('bad-token');
-    fixture.componentInstance.saveAniListToken();
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.textContent).toContain('Invalid token');
   });
 });

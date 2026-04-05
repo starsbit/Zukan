@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from backend.app.database import get_db
 from backend.app.errors.error import AppError
 from backend.app.main import app_error_handler, http_exception_handler, request_validation_error_handler, v1_router
-from backend.app.repositories.integrations import UserIntegrationRepository
 from backend.app.services.auth import AuthService
 
 
@@ -159,76 +158,3 @@ def test_me_rejects_invalid_api_key(monkeypatch):
 
     assert response.status_code == 401
     assert response.json()["code"] == "invalid_token"
-
-
-def _make_integration_record(token: str = "anilist-secret") -> SimpleNamespace:
-    return SimpleNamespace(
-        service="anilist",
-        token=token,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-
-
-def test_get_anilist_integration_not_configured(api_client, monkeypatch):
-    monkeypatch.setattr(UserIntegrationRepository, "get_by_user_and_service", AsyncMock(return_value=None))
-
-    response = api_client.get("/api/v1/me/integrations/anilist")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "integration_not_found"
-
-
-def test_get_anilist_integration_returns_read_schema(api_client, monkeypatch):
-    record = _make_integration_record()
-    monkeypatch.setattr(UserIntegrationRepository, "get_by_user_and_service", AsyncMock(return_value=record))
-
-    response = api_client.get("/api/v1/me/integrations/anilist")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["service"] == "anilist"
-    assert "token" not in payload
-    assert "created_at" in payload
-    assert "updated_at" in payload
-
-
-def test_put_anilist_integration_creates_record(api_client, monkeypatch):
-    record = _make_integration_record("my-new-token")
-    monkeypatch.setattr(UserIntegrationRepository, "upsert", AsyncMock(return_value=record))
-
-    response = api_client.put("/api/v1/me/integrations/anilist", json={"token": "my-new-token"})
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["service"] == "anilist"
-    assert "token" not in payload
-
-
-def test_put_anilist_integration_rejects_empty_token(api_client):
-    response = api_client.put("/api/v1/me/integrations/anilist", json={"token": ""})
-
-    assert response.status_code == 422
-
-
-def test_delete_anilist_integration_returns_204(api_client, monkeypatch):
-    monkeypatch.setattr(UserIntegrationRepository, "delete", AsyncMock(return_value=True))
-
-    response = api_client.delete("/api/v1/me/integrations/anilist")
-
-    assert response.status_code == 204
-
-
-def test_delete_anilist_integration_not_configured(api_client, monkeypatch):
-    monkeypatch.setattr(UserIntegrationRepository, "delete", AsyncMock(return_value=False))
-
-    response = api_client.delete("/api/v1/me/integrations/anilist")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "integration_not_found"
-
-
-def test_integration_endpoints_require_auth(unauthenticated_client):
-    assert unauthenticated_client.get("/api/v1/me/integrations/anilist").status_code == 401
-    assert unauthenticated_client.put("/api/v1/me/integrations/anilist", json={"token": "x"}).status_code == 401
-    assert unauthenticated_client.delete("/api/v1/me/integrations/anilist").status_code == 401

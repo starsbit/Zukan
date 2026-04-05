@@ -20,7 +20,6 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     show_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    anilist_import_visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="private", server_default="private")
     tag_confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -41,11 +40,6 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         uselist=False,
-    )
-    integrations: Mapped[list["UserIntegration"]] = relationship(
-        "UserIntegration",
-        back_populates="user",
-        cascade="all, delete-orphan",
     )
 
 
@@ -85,4 +79,3 @@ class APIKey(Base):
     user: Mapped["User"] = relationship("User", back_populates="api_key")
 
 
-from backend.app.models.integrations import UserIntegration  # noqa: E402,F401

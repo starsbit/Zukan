@@ -81,22 +81,6 @@
                     Dismiss
                   </button>
                 </div>
-              } @else if (isAniListReminder(notification)) {
-                <div class="notification-actions">
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    (click)="openAniListSettings(notification, $event)">
-                    Open settings
-                  </button>
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    (click)="dismissAniListReminder(notification, $event)">
-                    Dismiss
-                  </button>
-                </div>
               } @else if (canMarkRead(notification)) {
                 <div class="notification-actions">
                   <button

@@ -179,6 +179,7 @@ describe('MediaBrowserComponent', () => {
 
     const skeletonCards = fixture.nativeElement.querySelectorAll('.media-browser__skeleton-card');
     expect(skeletonCards.length).toBe(4);
+    expect(fixture.nativeElement.querySelectorAll('.media-browser__skeleton-spinner').length).toBe(4);
   });
 
   it('does not show empty state when timeline has buckets but dayGroups is empty', async () => {

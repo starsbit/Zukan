@@ -3,9 +3,22 @@ from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_CONFIG_FILE = Path(__file__).resolve()
+_BACKEND_DIR = _CONFIG_FILE.parents[1]
+_REPO_ROOT = _CONFIG_FILE.parents[2]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=(
+            str(_REPO_ROOT / ".env"),
+            str(_BACKEND_DIR / ".env"),
+            ".env",
+        ),
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     database_url: str = "postgresql+asyncpg://zukan:zukan@localhost:5432/zukan"
 
@@ -37,9 +50,6 @@ class Settings(BaseSettings):
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
     trash_purge_interval_seconds: int = 60 * 60 * 24
-    anilist_sync_interval_seconds: int = 60 * 60 * 24
-    anilist_sync_per_series_limit: int = 3
-    anilist_sync_search_limit: int = 12
 
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15

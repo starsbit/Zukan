@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -12,6 +13,7 @@ from backend.app.schemas import BulkResult, MediaIdsRequest
 from backend.app.services.media.query import MediaQueryService
 
 TRASH_RETENTION_DAYS = 30
+logger = logging.getLogger(__name__)
 
 
 class MediaLifecycleService:
@@ -22,6 +24,7 @@ class MediaLifecycleService:
     async def purge_expired_trash(self, now: datetime | None = None) -> int:
         cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=TRASH_RETENTION_DAYS)
         expired = await self._query.get_expired_trash(cutoff)
+        logger.info("Purging expired trash candidates count=%s cutoff=%s", len(expired), cutoff.isoformat())
         for media in expired:
             await self.purge_media_record(media)
         if expired:
@@ -33,26 +36,32 @@ class MediaLifecycleService:
 
         await MediaRepository(self._db).delete(media)
         delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
+        logger.info("Purged media record media_id=%s", media.id)
 
     async def soft_delete_media(self, media_id: uuid.UUID, user: User) -> None:
         media = await self._query.get_owned_or_admin_media(media_id, user, trashed=False)
         media.deleted_at = datetime.now(timezone.utc)
         await self._db.commit()
+        logger.info("Soft deleted media user_id=%s media_id=%s", user.id, media_id)
 
     async def restore_media(self, media_id: uuid.UUID, user: User) -> None:
         media = await self._query.get_owned_or_admin_media(media_id, user, trashed=True)
         media.deleted_at = None
         await self._db.commit()
+        logger.info("Restored media user_id=%s media_id=%s", user.id, media_id)
 
     async def purge_media(self, media_id: uuid.UUID, user: User) -> None:
         media = await self._query.get_owned_or_admin_media(media_id, user, trashed=None)
         await self.purge_media_record(media)
         await self._db.commit()
+        logger.info("Permanently deleted media user_id=%s media_id=%s", user.id, media_id)
 
     async def empty_trash(self, user: User) -> None:
-        for media in await self._query.list_trashed_media_for_user(user):
+        trashed_media = await self._query.list_trashed_media_for_user(user)
+        for media in trashed_media:
             await self.purge_media_record(media)
         await self._db.commit()
+        logger.info("Emptied trash user_id=%s purged=%s", user.id, len(trashed_media))
 
     async def batch_delete_media(self, payload: MediaIdsRequest, user: User) -> BulkResult:
         processed, skipped = await self._batch_update_deleted_state(payload.media_ids, True, user)
@@ -78,6 +87,7 @@ class MediaLifecycleService:
             else:
                 skipped += 1
         await self._db.commit()
+        logger.info("Bulk purged media user_id=%s processed=%s skipped=%s", user.id, processed, skipped)
         return BulkResult(processed=processed, skipped=skipped)
 
     async def batch_purge_media(self, payload: MediaIdsRequest, user: User) -> BulkResult:
@@ -92,6 +102,7 @@ class MediaLifecycleService:
             else:
                 skipped += 1
         await self._db.commit()
+        logger.info("Batch purged media user_id=%s processed=%s skipped=%s", user.id, processed, skipped)
         return BulkResult(processed=processed, skipped=skipped)
 
     async def _batch_update_deleted_state(self, media_ids: list[uuid.UUID], deleted: bool, user: User) -> tuple[int, int]:
@@ -113,4 +124,11 @@ class MediaLifecycleService:
             else:
                 skipped += 1
         await self._db.commit()
+        logger.info(
+            "Bulk deleted-state update user_id=%s deleted=%s processed=%s skipped=%s",
+            user.id,
+            deleted,
+            processed,
+            skipped,
+        )
         return processed, skipped

@@ -86,8 +86,7 @@ from .tags import (
     TagRead,
     TagWithConfidence,
 )
-from .integrations import AniListIntegrationRead, AniListIntegrationUpsert
-from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredResponse, UploadConfigResponse, UploadResult
+from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredResponse, UploadConfigResponse, UploadResult, UrlIngestRequest
 
 __all__ = [
     "AdminHealthResponse",
@@ -102,8 +101,6 @@ __all__ = [
     "AdminUserUpdate",
     "APIKeyCreateResponse",
     "APIKeyStatusResponse",
-    "AniListIntegrationRead",
-    "AniListIntegrationUpsert",
     "AlbumAccessRole",
     "AlbumCreate",
     "AlbumListResponse",
@@ -176,6 +173,7 @@ __all__ = [
     "SeriesSuggestion",
     "UploadConfigResponse",
     "UploadResult",
+    "UrlIngestRequest",
     "UserListResponse",
     "UserLogin",
     "UserSelfReadLite",

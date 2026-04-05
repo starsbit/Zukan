@@ -14,7 +14,6 @@ class BatchType(str, Enum):
     retag = "retag"
     rethumbnail = "rethumbnail"
     rescan = "rescan"
-    anilist_sync = "anilist_sync"
 
 
 class BatchStatus(str, Enum):

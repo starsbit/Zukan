@@ -113,7 +113,9 @@
                           (favoriteToggled)="onFavoriteToggled($event)">
                         </zukan-media-card>
                       } @else {
-                        <div class="media-browser__skeleton-card" aria-hidden="true"></div>
+                        <div class="media-browser__skeleton-card" aria-hidden="true">
+                          <span class="media-browser__skeleton-spinner"></span>
+                        </div>
                       }
                     </div>
                   }

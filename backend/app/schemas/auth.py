@@ -3,8 +3,6 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
-from backend.app.models.media import MediaVisibility
-
 
 class UserRegister(BaseModel):
     username: str = Field(min_length=3, max_length=64)
@@ -33,7 +31,6 @@ class UserSelfReadLite(BaseModel):
     username: str
     email: str
     show_nsfw: bool
-    anilist_import_visibility: MediaVisibility = Field(default=MediaVisibility.private)
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     version: int
     created_at: datetime
@@ -60,7 +57,6 @@ class UserRead(BaseModel):
     email: str
     is_admin: bool
     show_nsfw: bool
-    anilist_import_visibility: MediaVisibility = Field(default=MediaVisibility.private)
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     version: int
     created_at: datetime
@@ -84,7 +80,6 @@ class UserRead(BaseModel):
 
 class UserUpdate(BaseModel):
     show_nsfw: bool | None = None
-    anilist_import_visibility: MediaVisibility | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Coroutine
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from itertools import combinations
 import math
@@ -40,13 +39,6 @@ TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
 
 SuggestionSource = Coroutine[Any, Any, list[ImportBatchRecommendationSuggestionRead]]
-
-
-@dataclass
-class AniListResolution:
-    candidate: ImportBatchItem
-    character_name: str
-    series_titles: list[str]
 
 
 async def _resolved(value: list[ImportBatchRecommendationSuggestionRead]) -> list[ImportBatchRecommendationSuggestionRead]:
@@ -238,12 +230,7 @@ class ProcessingService:
             return []
 
         groups: list[ImportBatchRecommendationGroupRead] = []
-
-        anilist_token = await self._get_anilist_token(user_id)
-        anilist_groups, grouped_ids = await self._build_anilist_series_groups(
-            review_candidates, review_item_by_media_id, user_id, anilist_token, len(groups)
-        )
-        groups.extend(anilist_groups)
+        grouped_ids: set[uuid.UUID] = set()
 
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
@@ -259,137 +246,6 @@ class ProcessingService:
 
         groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
         return groups
-
-    async def _build_anilist_series_groups(
-        self,
-        candidates: list[ImportBatchItem],
-        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
-        user_id: uuid.UUID,
-        anilist_token: str | None,
-        group_index_start: int,
-    ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
-        from backend.app.services.anilist import search_character_series
-
-        eligible = [
-            c for c in candidates
-            if review_item_by_media_id[c.media.id].missing_series
-            and not review_item_by_media_id[c.media.id].missing_character
-        ]
-        if len(eligible) < 2:
-            return [], set()
-
-        resolutions: list[AniListResolution] = []
-        char_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
-        series_titles_by_character: dict[str, list[str]] = {}
-        for candidate in eligible:
-            char_name = next(
-                (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
-                None,
-            )
-            if char_name is None:
-                continue
-            char_key = char_name.casefold()
-            series_titles = series_titles_by_character.get(char_key)
-            if series_titles is None:
-                series_titles = await search_character_series(char_name, token=anilist_token)
-                series_titles_by_character[char_key] = series_titles
-            resolutions.append(AniListResolution(candidate=candidate, character_name=char_name, series_titles=series_titles))
-            char_buckets[char_key].append(candidate)
-
-        groups: list[ImportBatchRecommendationGroupRead] = []
-        grouped_ids: set[uuid.UUID] = set()
-        exact_char_media_ids = {
-            candidate.media.id
-            for bucket in char_buckets.values()
-            if len(bucket) >= 2
-            for candidate in bucket
-        }
-
-        series_buckets: dict[str, dict[str, Any]] = {}
-        for resolution in resolutions:
-            for rank, title in enumerate(resolution.series_titles):
-                key = title.casefold()
-                bucket = series_buckets.setdefault(key, {
-                    "series_title": title,
-                    "resolutions": [],
-                    "series_rank_sum": 0,
-                })
-                bucket["resolutions"].append(resolution)
-                bucket["series_rank_sum"] += rank
-
-        ranked_buckets: list[tuple[float, dict[str, Any]]] = []
-        for bucket in series_buckets.values():
-            bucket_resolutions: list[AniListResolution] = bucket["resolutions"]
-            media_ids = {resolution.candidate.media.id for resolution in bucket_resolutions}
-            if len(media_ids) < 2:
-                continue
-
-            distinct_characters = {resolution.character_name.casefold() for resolution in bucket_resolutions}
-            average_rank = bucket["series_rank_sum"] / len(bucket_resolutions)
-            repeated_character_matches = sum(
-                1 for resolution in bucket_resolutions if resolution.candidate.media.id in exact_char_media_ids
-            )
-            score = (
-                len(media_ids) * 1.0
-                + len(distinct_characters) * 0.45
-                + repeated_character_matches * 0.2
-                + max(0.0, 1.0 - average_rank * 0.25)
-            )
-            ranked_buckets.append((score, bucket))
-
-        ranked_buckets.sort(
-            key=lambda item: (
-                -item[0],
-                -len({resolution.candidate.media.id for resolution in item[1]["resolutions"]}),
-                item[1]["series_title"].casefold(),
-            )
-        )
-
-        for score, bucket in ranked_buckets:
-            bucket_resolutions = [
-                resolution for resolution in bucket["resolutions"]
-                if resolution.candidate.media.id not in grouped_ids
-            ]
-            media_ids = {resolution.candidate.media.id for resolution in bucket_resolutions}
-            if len(media_ids) < 2:
-                continue
-
-            unique_candidates = list({
-                resolution.candidate.media.id: resolution.candidate
-                for resolution in bucket_resolutions
-            }.values())
-            confidences = [1.0, 0.9, 0.8]
-            extra_series_suggestions = [
-                ImportBatchRecommendationSuggestionRead(name=bucket["series_title"], confidence=confidences[0])
-            ]
-            related_titles = [
-                title
-                for title in self._merge_suggestions(
-                    [],
-                    [
-                        ImportBatchRecommendationSuggestionRead(name=title, confidence=confidences[min(rank, len(confidences) - 1)])
-                        for resolution in bucket_resolutions
-                        for rank, title in enumerate(resolution.series_titles)
-                    ],
-                )
-                if title.name.casefold() != bucket["series_title"].casefold()
-            ]
-            extra_series_suggestions.extend(related_titles[: MAX_GROUP_SUGGESTIONS - 1])
-            confidence = min(0.999, round(0.55 + min(score, 4.0) * 0.1, 3))
-
-            group = await self._build_recommendation_group(
-                unique_candidates,
-                review_item_by_media_id,
-                {},
-                group_index_start + len(groups),
-                user_id,
-                extra_series_suggestions=extra_series_suggestions,
-                confidence_override=confidence,
-            )
-            groups.append(group)
-            grouped_ids.update(media_ids)
-
-        return groups, grouped_ids
 
     async def _build_entity_name_groups(
         self,
@@ -574,12 +430,6 @@ class ProcessingService:
                 continue
             results = self._merge_suggestions(results, await source)
         return results
-
-    async def _get_anilist_token(self, user_id: uuid.UUID) -> str | None:
-        from backend.app.repositories.integrations import UserIntegrationRepository
-        from backend.app.models.integrations import IntegrationService
-        record = await UserIntegrationRepository(self._db).get_by_user_and_service(user_id, IntegrationService.anilist)
-        return record.token if record else None
 
     async def _infer_entity_suggestions_from_library(
         self,

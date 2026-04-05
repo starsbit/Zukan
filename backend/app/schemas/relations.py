@@ -27,7 +27,7 @@ class EntityCreate(BaseModel):
 
 class ExternalRefRead(BaseModel):
     id: uuid.UUID
-    provider: str = Field(description="External provider identifier (e.g. 'pixiv', 'danbooru', 'anilist').")
+    provider: str = Field(description="External provider identifier (e.g. 'pixiv', 'danbooru').")
     external_id: str | None = Field(default=None, description="Provider-specific entity ID.")
     url: str | None = Field(default=None, description="Direct URL to the external resource.")
 

@@ -102,6 +102,26 @@ ERROR_RESPONSE_EXAMPLES = {
         "details": {"retry_after_seconds": 27},
         "fields": None,
     },
+    502: {
+        "code": "bad_gateway",
+        "message": "Bad gateway",
+        "detail": "Bad gateway",
+        "status": 502,
+        "request_id": "d4f8e113-2d0d-4f86-a183-c2bc90f341fa",
+        "trace_id": "d4f8e113-2d0d-4f86-a183-c2bc90f341fa",
+        "details": None,
+        "fields": None,
+    },
+    503: {
+        "code": "service_unavailable",
+        "message": "Service unavailable",
+        "detail": "Service unavailable",
+        "status": 503,
+        "request_id": "d4f8e113-2d0d-4f86-a183-c2bc90f341fa",
+        "trace_id": "d4f8e113-2d0d-4f86-a183-c2bc90f341fa",
+        "details": None,
+        "fields": None,
+    },
 }
 
 
@@ -125,6 +145,8 @@ ERROR_RESPONSES = {
     409: _response_with_example(409, "Conflict"),
     422: _response_with_example(422, "Validation error"),
     429: _response_with_example(429, "Rate limit exceeded"),
+    502: _response_with_example(502, "Bad gateway"),
+    503: _response_with_example(503, "Service unavailable"),
 }
 
 

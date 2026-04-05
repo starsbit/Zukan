@@ -143,10 +143,10 @@ async def test_publish_user_notification_creates_single_notification(fake_db, us
         user_id=user.id,
         title="Scraped Saber",
         body="Imported 2 images.",
-        data={"kind": "anilist_scrape_character"},
+        data={"kind": "import_complete"},
     )
 
     assert notification.title == "Scraped Saber"
     added = [item for item in fake_db.added if isinstance(item, Notification)]
     assert len(added) == 1
-    assert added[0].data["kind"] == "anilist_scrape_character"
+    assert added[0].data["kind"] == "import_complete"

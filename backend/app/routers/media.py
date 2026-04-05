@@ -31,6 +31,7 @@ from backend.app.schemas import (
     MediaTimeline,
     MediaUploadRequest,
     MediaUpdate,
+    UrlIngestRequest,
     NsfwFilter,
     SeriesSuggestion,
     TagFilterMode,
@@ -186,6 +187,42 @@ async def upload(
         payload=jsonable_encoder(payload),
     )
     return payload
+
+
+@router.post(
+    "/ingest-url",
+    response_model=BatchUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Ingest Media from URL",
+    description=(
+        "Download an image or video from a remote URL server-side and feed it through the "
+        "standard upload pipeline (dedup, thumbnail, tagging). "
+        "Accepts direct media URLs (JPEG, PNG, WebP, GIF, MP4, WebM, MOV)."
+    ),
+    responses={**error_responses(400, 422, 429, 502)},
+    dependencies=[
+        Depends(
+            rate_limit(
+                max_requests=settings.upload_rate_limit_requests,
+                window_seconds=settings.upload_rate_limit_window_seconds,
+                scope="media_upload",
+            )
+        )
+    ],
+)
+async def ingest_url(
+    body: UrlIngestRequest,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _, _, _, _, upload_service, _ = _media_services(db)
+    return await upload_service.ingest_url(
+        user,
+        str(body.url),
+        album_id=body.album_id,
+        tags=body.tags,
+        visibility=body.visibility,
+    )
 
 
 @router.get(
