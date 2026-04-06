@@ -12,6 +12,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { finalize } from 'rxjs';
 import { ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
+import { BadgeVisibilityService } from '../../../../services/badge-visibility.service';
 import { UserStore } from '../../../../services/user.store';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 
@@ -40,6 +41,7 @@ export class UserSettingsDialogComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
   private readonly usersClient = inject(UsersClientService);
+  readonly badgeVisibility = inject(BadgeVisibilityService);
 
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -52,6 +54,8 @@ export class UserSettingsDialogComponent implements OnInit {
   readonly form = this.fb.nonNullable.group({
     showNsfw: [this.currentUser?.show_nsfw ?? false],
     showSensitive: [this.currentUser?.show_sensitive ?? false],
+    hideNsfwBadge: [this.badgeVisibility.hideNsfw()],
+    hideSensitiveBadge: [this.badgeVisibility.hideSensitive()],
     tagConfidenceThreshold: [
       this.currentUser?.tag_confidence_threshold ?? 0.5,
       [Validators.required, Validators.min(0), Validators.max(1)],
@@ -70,12 +74,15 @@ export class UserSettingsDialogComponent implements OnInit {
       return;
     }
 
-    const { showNsfw, showSensitive, tagConfidenceThreshold, password, confirmPassword } = this.form.getRawValue();
+    const { showNsfw, showSensitive, hideNsfwBadge, hideSensitiveBadge, tagConfidenceThreshold, password, confirmPassword } = this.form.getRawValue();
 
     if (password && password !== confirmPassword) {
       this.error.set('Passwords do not match.');
       return;
     }
+
+    this.badgeVisibility.setHideNsfw(hideNsfwBadge);
+    this.badgeVisibility.setHideSensitive(hideSensitiveBadge);
 
     this.error.set(null);
     this.loading.set(true);

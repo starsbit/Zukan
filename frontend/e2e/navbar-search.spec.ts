@@ -675,6 +675,10 @@ test.describe.serial('Navbar search', () => {
 
     await page.goto('/album/album-1');
     await expect(page).toHaveURL('/album/album-1');
+    await waitForMatchingSearchRequest(
+      searchRequests,
+      (request) => request.searchParams.get('album_id') === 'album-1',
+    );
     await expect(page.locator('zukan-media-browser .media-card')).toHaveCount(3);
     await expect(page.locator('.media-timeline')).toBeVisible();
   });

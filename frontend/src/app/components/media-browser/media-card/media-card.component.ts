@@ -4,6 +4,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import { BadgeVisibilityService } from '../../../services/badge-visibility.service';
 import { MediaService } from '../../../services/media.service';
 
 @Component({
@@ -28,6 +29,7 @@ export class MediaCardComponent {
   private readonly host = viewChild.required<ElementRef<HTMLElement>>('card');
   private readonly videoPreview = viewChild<ElementRef<HTMLVideoElement>>('videoPreview');
   private readonly mediaService = inject(MediaService);
+  private readonly badgeVisibility = inject(BadgeVisibilityService);
 
   readonly previewUrl = signal<string | null>(null);
   readonly animatedPreviewUrl = signal<string | null>(null);
@@ -56,8 +58,8 @@ export class MediaCardComponent {
   });
 
   readonly isPublic = computed(() => this.media().visibility === MediaVisibility.PUBLIC);
-  readonly isNsfw = computed(() => this.media().is_nsfw);
-  readonly isSensitive = computed(() => this.media().is_sensitive);
+  readonly isNsfw = computed(() => this.media().is_nsfw && !this.badgeVisibility.hideNsfw());
+  readonly isSensitive = computed(() => this.media().is_sensitive && !this.badgeVisibility.hideSensitive());
   readonly isProcessing = computed(() => {
     const media = this.media();
     const taggingInProgress = media.tagging_status === TaggingStatus.PENDING
