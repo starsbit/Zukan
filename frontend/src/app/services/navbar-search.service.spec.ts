@@ -1,4 +1,4 @@
-import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode } from '../models/media';
+import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
 import { NavbarSearchService } from './navbar-search.service';
 
 describe('NavbarSearchService', () => {
@@ -56,6 +56,7 @@ describe('NavbarSearchService', () => {
         excludeTags: [],
         mode: null,
         nsfw: null,
+        sensitive: null,
         status: null,
         favorited: null,
         visibility: null,
@@ -81,6 +82,7 @@ describe('NavbarSearchService', () => {
       excludeTags: ['spoiler'],
       mode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
+      sensitive: SensitiveFilter.ONLY,
       favorited: true,
       visibility: MediaVisibility.PUBLIC,
       mediaTypes: [MediaType.IMAGE],
@@ -98,6 +100,7 @@ describe('NavbarSearchService', () => {
       exclude_tag: ['spoiler'],
       mode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
+      sensitive: SensitiveFilter.ONLY,
       favorited: true,
       visibility: MediaVisibility.PUBLIC,
       media_type: [MediaType.IMAGE],
@@ -198,6 +201,7 @@ describe('NavbarSearchService', () => {
         excludeTags: [],
         mode: null,
         nsfw: null,
+        sensitive: null,
         status: null,
         favorited: null,
         visibility: null,

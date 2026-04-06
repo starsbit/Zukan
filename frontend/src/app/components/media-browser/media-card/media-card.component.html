@@ -39,6 +39,9 @@
       @if (isNsfw()) {
         <span class="media-card__badge media-card__badge--nsfw">NSFW</span>
       }
+      @if (isSensitive()) {
+        <span class="media-card__badge media-card__badge--sensitive">Sensitive</span>
+      }
     </div>
 
     @if (showPublicOverlay()) {

@@ -6,7 +6,7 @@ import pytest
 
 from backend.app.errors.error import AppError
 from backend.app.models.media import Media
-from backend.app.schemas import NsfwFilter
+from backend.app.schemas import NsfwFilter, SensitiveFilter
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.pagination import decode_cursor
 
@@ -65,12 +65,34 @@ def test_build_order_expressions_returns_two_terms(service):
     assert len(desc) == 2
 
 
-def test_apply_state_and_nsfw_filters_rejects_only_nsfw_when_disabled(service, user):
+def test_apply_state_and_visibility_filters_rejects_only_nsfw_when_disabled(service, user):
     user.show_nsfw = False
     user.is_admin = False
 
     with pytest.raises(AppError) as exc:
-        service._apply_state_and_nsfw_filters(service._build_base_list_stmt(), user, state="active", nsfw=NsfwFilter.ONLY)
+        service._apply_state_and_visibility_filters(
+            service._build_base_list_stmt(),
+            user,
+            state="active",
+            nsfw=NsfwFilter.ONLY,
+            sensitive=SensitiveFilter.DEFAULT,
+        )
+
+    assert exc.value.status_code == 403
+
+
+def test_apply_state_and_visibility_filters_rejects_only_sensitive_when_disabled(service, user):
+    user.show_sensitive = False
+    user.is_admin = False
+
+    with pytest.raises(AppError) as exc:
+        service._apply_state_and_visibility_filters(
+            service._build_base_list_stmt(),
+            user,
+            state="active",
+            nsfw=NsfwFilter.DEFAULT,
+            sensitive=SensitiveFilter.ONLY,
+        )
 
     assert exc.value.status_code == 403
 

@@ -68,6 +68,7 @@ async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_
     assert media.deleted_at is not None
     assert media.ocr_text_override == "  corrected text  "
     assert media.is_nsfw is True
+    assert media.is_sensitive is False
     assert media.visibility == MediaVisibility.public
     assert old_entity in fake_db.deleted
     assert old_ref in fake_db.deleted

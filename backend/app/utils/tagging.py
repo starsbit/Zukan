@@ -11,15 +11,6 @@ NSFW_HINT_TAGS = {
     "questionable",
     "nude",
     "nudity",
-    "breasts",
-    "large_breasts",
-    "small_breasts",
-    "ass",
-    "underboob",
-    "sideboob",
-    "cameltoe",
-    "panties",
-    "lingerie",
     "sexually_suggestive",
     "nipples",
     "areolae",
@@ -29,6 +20,9 @@ NSFW_HINT_TAGS = {
     "sex",
     "censored",
     "uncensored",
+}
+SENSITIVE_HINT_TAGS = {
+    "sensitive",
 }
 
 
@@ -43,6 +37,7 @@ class TagPrediction:
 class TaggingResult:
     predictions: list[TagPrediction]
     is_nsfw: bool
+    is_sensitive: bool = False
 
 
 class TaggerBackend(Protocol):
@@ -92,6 +87,11 @@ def tag_names_mark_nsfw(tag_names: list[str]) -> bool:
     return bool(normalized & NSFW_RATING_TAGS or normalized & NSFW_HINT_TAGS)
 
 
+def tag_names_mark_sensitive(tag_names: list[str]) -> bool:
+    normalized = {t.strip().lower() for t in tag_names if t.strip()}
+    return bool(normalized & SENSITIVE_HINT_TAGS)
+
+
 def aggregate_tagging_results(results: list[TaggingResult]) -> TaggingResult:
     tag_map: dict[str, TagPrediction] = {}
     for result in results:
@@ -103,4 +103,5 @@ def aggregate_tagging_results(results: list[TaggingResult]) -> TaggingResult:
     return TaggingResult(
         predictions=predictions,
         is_nsfw=any(r.is_nsfw for r in results) or tag_names_mark_nsfw([p.name for p in predictions]),
+        is_sensitive=any(r.is_sensitive for r in results) or tag_names_mark_sensitive([p.name for p in predictions]),
     )

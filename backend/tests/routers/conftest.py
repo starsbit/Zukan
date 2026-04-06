@@ -52,6 +52,7 @@ def _build_user(*, is_admin: bool = False) -> SimpleNamespace:
         email="api-user@example.com",
         is_admin=is_admin,
         show_nsfw=False,
+        show_sensitive=False,
         tag_confidence_threshold=0.35,
         version=1,
         created_at=datetime.now(timezone.utc),

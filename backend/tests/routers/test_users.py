@@ -23,6 +23,7 @@ def test_me_contract(api_client):
     assert payload["username"] == "api-user"
     assert payload["email"] == "api-user@example.com"
     assert payload["is_admin"] is False
+    assert payload["show_sensitive"] is False
 
 
 def test_me_unauthenticated_contract(unauthenticated_client):
@@ -41,6 +42,7 @@ def test_update_me_contract(api_client, monkeypatch):
             "email": user.email,
             "is_admin": user.is_admin,
             "show_nsfw": True,
+            "show_sensitive": False,
             "tag_confidence_threshold": 0.75,
             "version": 2,
             "created_at": datetime.now(timezone.utc).isoformat(),
@@ -53,6 +55,7 @@ def test_update_me_contract(api_client, monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert payload["show_nsfw"] is True
+    assert payload["show_sensitive"] is False
     assert payload["version"] == 2
 
 
@@ -117,6 +120,7 @@ def test_me_accepts_api_key_bearer_auth(monkeypatch):
             email="api-user@example.com",
             is_admin=False,
             show_nsfw=False,
+            show_sensitive=False,
             tag_confidence_threshold=0.35,
             version=1,
             created_at=datetime.now(timezone.utc),

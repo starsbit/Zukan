@@ -46,6 +46,15 @@
       </mat-form-field>
 
       <mat-form-field>
+        <mat-label>Sensitive</mat-label>
+        <mat-select formControlName="sensitive">
+          @for (option of sensitiveOptions; track option.label) {
+            <mat-option [value]="option.value">{{ option.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field>
         <mat-label>Favorites</mat-label>
         <mat-select formControlName="favorited">
           @for (option of favoriteOptions; track option.value) {

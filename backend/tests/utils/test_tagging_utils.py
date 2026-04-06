@@ -7,6 +7,7 @@ from backend.app.utils.tagging import (
     derive_character_name,
     derive_series_predictions,
     extract_series_name_from_character_tag,
+    tag_names_mark_sensitive,
     tag_names_mark_nsfw,
 )
 
@@ -20,9 +21,15 @@ def test_derive_character_name_uses_highest_confidence_category_4():
 def test_tag_names_mark_nsfw_by_hint_or_rating():
     assert tag_names_mark_nsfw(["rating:explicit"]) is True
     assert tag_names_mark_nsfw(["questionable"]) is True
-    assert tag_names_mark_nsfw(["panties"]) is True
     assert tag_names_mark_nsfw(["Nude"]) is True
     assert tag_names_mark_nsfw(["safe"]) is False
+
+
+def test_tag_names_mark_sensitive_by_curated_hint():
+    assert tag_names_mark_sensitive(["sensitive"]) is True
+    assert tag_names_mark_sensitive(["panties"]) is True
+    assert tag_names_mark_sensitive(["Lingerie"]) is True
+    assert tag_names_mark_sensitive(["safe"]) is False
 
 
 def test_extract_series_name_from_character_tag():
@@ -48,3 +55,12 @@ def test_aggregate_tagging_results_keeps_max_confidence_and_nsfw():
     assert [p.name for p in merged.predictions] == ["a", "b"]
     assert merged.predictions[0].confidence == 0.9
     assert merged.is_nsfw is False
+
+
+def test_aggregate_tagging_results_keeps_sensitive_state():
+    merged = aggregate_tagging_results([
+        TaggingResult(predictions=[TagPrediction("safe", 0, 0.7)], is_nsfw=False),
+        TaggingResult(predictions=[TagPrediction("panties", 0, 0.9)], is_nsfw=False),
+    ])
+
+    assert merged.is_sensitive is True

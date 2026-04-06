@@ -27,6 +27,7 @@ export async function seedAuthenticatedSession(
     email: user.email ?? TEST_ADMIN.email,
     is_admin: user.is_admin ?? true,
     show_nsfw: false,
+    show_sensitive: false,
     tag_confidence_threshold: 0.35,
     version: 1,
     created_at: '2026-03-28T12:00:00Z',

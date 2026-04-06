@@ -9,7 +9,7 @@ from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaType, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
-from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.utils.search import normalize_character_name_search
 
 
@@ -113,6 +113,16 @@ def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
         return stmt
     if nsfw == NsfwFilter.ONLY:
         return stmt.where(Media.is_nsfw == True)
+    return stmt
+
+
+def apply_sensitive_list_filter(stmt, user: User, sensitive: SensitiveFilter):
+    if sensitive == SensitiveFilter.DEFAULT:
+        if not user.show_sensitive:
+            stmt = stmt.where(Media.is_sensitive == False)
+        return stmt
+    if sensitive == SensitiveFilter.ONLY:
+        return stmt.where(Media.is_sensitive == True)
     return stmt
 
 def _build_fuzzy_ocr_like_pattern(term: str) -> str | None:

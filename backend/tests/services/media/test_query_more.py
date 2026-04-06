@@ -11,7 +11,7 @@ from sqlalchemy import select
 from backend.app.errors.error import AppError
 from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.processing import ItemStatus
-from backend.app.schemas import MediaListState, NsfwFilter, TagFilterMode
+from backend.app.schemas import MediaListState, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.services.media.query import MediaQueryService
 
 
@@ -232,7 +232,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
 
     service._build_base_list_stmt = lambda: "stmt0"
     service._apply_album_filter = AsyncMock(return_value="stmt1")
-    service._apply_state_and_nsfw_filters = lambda stmt, *_: f"{stmt}:state"
+    service._apply_state_and_visibility_filters = lambda stmt, *_: f"{stmt}:state"
     service._apply_status_filter = lambda stmt, *_: f"{stmt}:status"
     service._apply_favorited_filter = lambda stmt, *_: f"{stmt}:fav"
     service._apply_visibility_scope = lambda stmt, *_: f"{stmt}:visibility"
@@ -262,6 +262,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             exclude_tags=None,
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.DEFAULT,
+            sensitive=SensitiveFilter.DEFAULT,
             status_filter=None,
             metadata=SimpleNamespace(),
             favorited=None,
@@ -280,7 +281,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
 async def test_get_timeline_applies_status_filter(service, user):
     seen = {}
     service._apply_album_filter_for_count = AsyncMock(side_effect=lambda stmt, *_: stmt)
-    service._apply_state_and_nsfw_filters_for_count = lambda stmt, *_: stmt
+    service._apply_state_and_visibility_filters_for_count = lambda stmt, *_: stmt
     def apply_status(stmt, status):
         seen["status_filter"] = status
         return stmt
@@ -302,7 +303,7 @@ async def test_get_timeline_applies_status_filter(service, user):
 
 @pytest.mark.asyncio
 async def test_favoritable_media_checks_public_visibility(service, user, media):
-    stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False)
+    stranger = SimpleNamespace(id=uuid.uuid4(), is_admin=False, show_nsfw=False, show_sensitive=False)
     media.visibility = MediaVisibility.public
     service._media_repo.get_by_id = AsyncMock(return_value=media)
     service._media_repo.is_accessible = AsyncMock(side_effect=[True, False])

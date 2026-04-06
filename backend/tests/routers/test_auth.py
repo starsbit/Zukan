@@ -16,6 +16,7 @@ def test_register_contract(api_client, monkeypatch):
             "username": "rin",
             "email": "rin@starsbit.space",
             "show_nsfw": False,
+            "show_sensitive": False,
             "tag_confidence_threshold": 0.35,
             "version": 1,
             "created_at": now,

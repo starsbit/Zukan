@@ -104,6 +104,8 @@ class AdminService:
             target.is_admin = body.is_admin
         if "show_nsfw" in body.model_fields_set:
             target.show_nsfw = body.show_nsfw
+        if "show_sensitive" in body.model_fields_set:
+            target.show_sensitive = body.show_sensitive
         if "tag_confidence_threshold" in body.model_fields_set:
             target.tag_confidence_threshold = body.tag_confidence_threshold
         if body.password is not None:

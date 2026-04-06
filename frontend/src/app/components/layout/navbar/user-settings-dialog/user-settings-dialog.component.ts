@@ -51,6 +51,7 @@ export class UserSettingsDialogComponent implements OnInit {
 
   readonly form = this.fb.nonNullable.group({
     showNsfw: [this.currentUser?.show_nsfw ?? false],
+    showSensitive: [this.currentUser?.show_sensitive ?? false],
     tagConfidenceThreshold: [
       this.currentUser?.tag_confidence_threshold ?? 0.5,
       [Validators.required, Validators.min(0), Validators.max(1)],
@@ -69,7 +70,7 @@ export class UserSettingsDialogComponent implements OnInit {
       return;
     }
 
-    const { showNsfw, tagConfidenceThreshold, password, confirmPassword } = this.form.getRawValue();
+    const { showNsfw, showSensitive, tagConfidenceThreshold, password, confirmPassword } = this.form.getRawValue();
 
     if (password && password !== confirmPassword) {
       this.error.set('Passwords do not match.');
@@ -81,6 +82,7 @@ export class UserSettingsDialogComponent implements OnInit {
 
     const body: UserUpdate = {
       show_nsfw: showNsfw,
+      show_sensitive: showSensitive,
       tag_confidence_threshold: Number(tagConfidenceThreshold),
       version: this.currentUser.version,
     };

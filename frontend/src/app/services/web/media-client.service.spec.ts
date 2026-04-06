@@ -4,7 +4,7 @@ import { HttpEventType, HttpResponse, provideHttpClient } from '@angular/common/
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MediaClientService } from './media-client.service';
 import { API_BASE_URL } from './api.config';
-import { MediaListState, MediaVisibility, TagFilterMode, NsfwFilter } from '../../models/media';
+import { MediaListState, MediaVisibility, TagFilterMode, NsfwFilter, SensitiveFilter } from '../../models/media';
 
 const mockPage = { total: 1, next_cursor: null, has_more: false, page_size: 20, items: [] };
 const mockMedia = {
@@ -12,7 +12,7 @@ const mockMedia = {
   filename: 'test.webp', original_filename: 'test.webp', media_type: 'image' as const,
   metadata: { captured_at: '2026-01-01T00:00:00Z', file_size: 1000, width: 800, height: 600, duration_seconds: null, frame_count: null, mime_type: 'image/webp' },
   version: 1, created_at: '2026-01-01T00:00:00Z', deleted_at: null, tags: [],
-  ocr_text_override: null, is_nsfw: false, tagging_status: 'done' as const,
+  ocr_text_override: null, is_nsfw: false, is_sensitive: false, tagging_status: 'done' as const,
   tagging_error: null, thumbnail_status: 'done' as const, poster_status: 'pending' as const,
   ocr_text: null, is_favorited: false,
   tag_details: [], external_refs: [], entities: [],
@@ -71,11 +71,12 @@ describe('MediaClientService', () => {
     req.flush(mockPage);
   });
 
-  it('search passes nsfw and favorited filters', () => {
-    service.search({ nsfw: NsfwFilter.INCLUDE, favorited: true }).subscribe();
+  it('search passes nsfw, sensitive, and favorited filters', () => {
+    service.search({ nsfw: NsfwFilter.INCLUDE, sensitive: SensitiveFilter.ONLY, favorited: true }).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
     expect(req.request.params.get('nsfw')).toBe('include');
+    expect(req.request.params.get('sensitive')).toBe('only');
     expect(req.request.params.get('favorited')).toBe('true');
     req.flush(mockPage);
   });
@@ -138,6 +139,7 @@ describe('MediaClientService', () => {
       exclude_tag: ['spoiler'],
       mode: TagFilterMode.OR,
       nsfw: NsfwFilter.ONLY,
+      sensitive: SensitiveFilter.INCLUDE,
       status: 'reviewed',
       favorited: false,
       visibility: MediaVisibility.PRIVATE,
@@ -152,6 +154,7 @@ describe('MediaClientService', () => {
     expect(req.request.params.getAll('exclude_tag')).toEqual(['spoiler']);
     expect(req.request.params.get('mode')).toBe('or');
     expect(req.request.params.get('nsfw')).toBe('only');
+    expect(req.request.params.get('sensitive')).toBe('include');
     expect(req.request.params.get('status')).toBe('reviewed');
     expect(req.request.params.get('favorited')).toBe('false');
     expect(req.request.params.get('visibility')).toBe('private');

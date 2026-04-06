@@ -57,6 +57,7 @@ export class MediaCardComponent {
 
   readonly isPublic = computed(() => this.media().visibility === MediaVisibility.PUBLIC);
   readonly isNsfw = computed(() => this.media().is_nsfw);
+  readonly isSensitive = computed(() => this.media().is_sensitive);
   readonly isProcessing = computed(() => {
     const media = this.media();
     const taggingInProgress = media.tagging_status === TaggingStatus.PENDING

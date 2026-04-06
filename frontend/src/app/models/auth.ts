@@ -3,6 +3,7 @@ export interface UserSelfRead {
   username: string;
   email: string;
   show_nsfw: boolean;
+  show_sensitive?: boolean;
   tag_confidence_threshold: number;
   version: number;
   created_at: string;
@@ -14,6 +15,7 @@ export interface UserRead {
   email: string;
   is_admin: boolean;
   show_nsfw: boolean;
+  show_sensitive?: boolean;
   tag_confidence_threshold: number;
   version: number;
   created_at: string;
@@ -33,6 +35,7 @@ export interface UserLogin {
 
 export interface UserUpdate {
   show_nsfw?: boolean | null;
+  show_sensitive?: boolean | null;
   tag_confidence_threshold?: number | null;
   password?: string | null;
   version?: number | null;

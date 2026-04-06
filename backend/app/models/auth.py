@@ -20,6 +20,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     show_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    show_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tag_confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -77,5 +78,4 @@ class APIKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="api_key")
-
 

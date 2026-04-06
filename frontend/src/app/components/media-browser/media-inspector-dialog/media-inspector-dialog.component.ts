@@ -146,6 +146,7 @@ export class MediaInspectorDialogComponent {
       { label: 'Added at', value: formatDateTime(media.created_at) },
       { label: 'Visibility', value: formatVisibility(media.visibility) },
       { label: 'NSFW', value: media.is_nsfw ? 'Yes' : 'No' },
+      { label: 'Sensitive', value: media.is_sensitive ? 'Yes' : 'No' },
       { label: 'Tagging status', value: formatProcessingStatus(media.tagging_status) },
       { label: 'Thumbnail status', value: formatProcessingStatus(media.thumbnail_status) },
       { label: 'Poster status', value: formatProcessingStatus(media.poster_status) },

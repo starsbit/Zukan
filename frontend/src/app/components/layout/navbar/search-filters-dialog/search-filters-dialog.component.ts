@@ -11,7 +11,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
-import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
+import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
 import { AdvancedSearchFilters } from '../../../../services/navbar-search.service';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
 
@@ -64,6 +64,12 @@ export class SearchFiltersDialogComponent {
     { value: NsfwFilter.INCLUDE, label: 'Include NSFW' },
     { value: NsfwFilter.ONLY, label: 'Only NSFW' },
   ];
+  readonly sensitiveOptions = [
+    { value: null, label: 'Default' },
+    { value: SensitiveFilter.DEFAULT, label: 'Respect user setting' },
+    { value: SensitiveFilter.INCLUDE, label: 'Include sensitive' },
+    { value: SensitiveFilter.ONLY, label: 'Only sensitive' },
+  ];
   readonly visibilityOptions = [
     { value: null, label: 'Any visibility' },
     { value: MediaVisibility.PRIVATE, label: 'Private' },
@@ -99,6 +105,7 @@ export class SearchFiltersDialogComponent {
   readonly form = this.fb.group({
     mode: [this.data.filters.mode],
     nsfw: [this.data.filters.nsfw],
+    sensitive: [this.data.filters.sensitive],
     status: [this.data.filters.status ?? null],
     favorited: [this.favoriteValueFromBoolean(this.data.filters.favorited)],
     visibility: [this.data.filters.visibility],
@@ -166,6 +173,7 @@ export class SearchFiltersDialogComponent {
       excludeTags: this.excludeTagChips(),
       mode: value.mode ?? null,
       nsfw: value.nsfw ?? null,
+      sensitive: value.sensitive ?? null,
       status: value.status ?? null,
       favorited: this.favoriteBooleanFromValue(value.favorited ?? 'any'),
       visibility: value.visibility ?? null,
@@ -188,6 +196,7 @@ export class SearchFiltersDialogComponent {
       excludeTags: [],
       mode: null,
       nsfw: null,
+      sensitive: null,
       status: null,
       favorited: null,
       visibility: null,

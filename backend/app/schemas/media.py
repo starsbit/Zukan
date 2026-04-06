@@ -85,6 +85,7 @@ class MediaRead(BaseModel):
         description="Whether this media has been explicitly dismissed from missing metadata review flows.",
     )
     is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
+    is_sensitive: bool = Field(default=False, description="Whether the media is classified as sensitive by the active tagging backend.")
     tagging_status: TaggingStatus = Field(description="Current AI tagging lifecycle state. One of: pending, processing, done, failed.")
     tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
     thumbnail_status: ProcessingStatus = Field(description="Current thumbnail generation lifecycle state. One of: pending, processing, done, failed, not_applicable.")
@@ -135,6 +136,7 @@ class MediaDetail(MediaRead):
                 "tags": ["Saber", "white hair", "cat", "burger"],
                 "ocr_text_override": None,
                 "is_nsfw": False,
+                "is_sensitive": False,
                 "tagging_status": "done",
                 "tagging_error": None,
                 "thumbnail_status": "done",

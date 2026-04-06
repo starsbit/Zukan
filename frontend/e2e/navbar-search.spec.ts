@@ -35,6 +35,7 @@ function sampleMedia(
     tags: [],
     ocr_text_override: null,
     is_nsfw: false,
+    is_sensitive: false,
     tagging_status: 'done',
     tagging_error: null,
     thumbnail_status: 'done',
@@ -242,6 +243,11 @@ function matchesMediaAgainstFilters(media: MockMedia, request: URL): boolean {
 
   const nsfw = request.searchParams.get('nsfw');
   if (nsfw === 'only' && !media.is_nsfw) {
+    return false;
+  }
+
+  const sensitive = request.searchParams.get('sensitive');
+  if (sensitive === 'only' && !media.is_sensitive) {
     return false;
   }
 
@@ -710,7 +716,7 @@ test.describe.serial('Navbar search', () => {
     await expect(page.locator('.media-card')).toHaveCount(1);
   });
 
-  test('applies status, NSFW, and exclude-tag filters from the dialog', async ({ page }) => {
+  test('applies status, NSFW, sensitive, and exclude-tag filters from the dialog', async ({ page }) => {
     const searchRequests: URL[] = [];
     const timelineRequests: URL[] = [];
     await registerAdvancedFilterRoutes(page, searchRequests, timelineRequests);
@@ -726,6 +732,7 @@ test.describe.serial('Navbar search', () => {
     await openFiltersDialog(page);
     await page.getByLabel('Exclude Tags').fill('spoiler');
     await selectDialogOption(page, 'NSFW', 'Only NSFW');
+    await selectDialogOption(page, 'Sensitive', 'Only sensitive');
     await selectDialogOption(page, 'Status', 'Failed');
     const requestCountBeforeApply = searchRequests.length;
     await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();

@@ -183,6 +183,11 @@
   color: white;
 }
 
+.media-card__badge--sensitive {
+  background: color-mix(in srgb, #8c6a00 82%, transparent);
+  color: white;
+}
+
 .media-card__favorite-button {
   display: inline-flex;
   align-items: center;

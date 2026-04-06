@@ -5,6 +5,7 @@ export interface AdminUserUpdate {
   username?: string | null;
   is_admin?: boolean | null;
   show_nsfw?: boolean | null;
+  show_sensitive?: boolean | null;
   tag_confidence_threshold?: number | null;
   password?: string | null;
 }

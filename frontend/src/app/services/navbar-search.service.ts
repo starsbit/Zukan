@@ -1,5 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
-import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode } from '../models/media';
+import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
 import { MediaSearchParams } from './web/media-client.service';
 
 export type SearchChipType = 'tag' | 'character' | 'series' | 'ocr';
@@ -21,6 +21,7 @@ export interface AdvancedSearchFilters {
   excludeTags: string[];
   mode: TagFilterMode | null;
   nsfw: NsfwFilter | null;
+  sensitive: SensitiveFilter | null;
   status: string | null;
   favorited: boolean | null;
   visibility: MediaVisibility | null;
@@ -41,6 +42,7 @@ export class NavbarSearchService {
     excludeTags: [],
     mode: null,
     nsfw: null,
+    sensitive: null,
     status: null,
     favorited: null,
     visibility: null,
@@ -74,6 +76,7 @@ export class NavbarSearchService {
       filters.excludeTags.length > 0,
       filters.mode != null,
       filters.nsfw != null,
+      filters.sensitive != null,
       filters.status != null,
       filters.favorited != null,
       filters.visibility != null,
@@ -98,6 +101,7 @@ export class NavbarSearchService {
       exclude_tag: applied.advanced.excludeTags.length > 0 ? applied.advanced.excludeTags : undefined,
       mode: applied.advanced.mode ?? undefined,
       nsfw: applied.advanced.nsfw ?? undefined,
+      sensitive: applied.advanced.sensitive ?? undefined,
       status: applied.advanced.status ?? undefined,
       favorited: applied.advanced.favorited ?? undefined,
       visibility: applied.advanced.visibility ?? undefined,
@@ -242,6 +246,7 @@ export class NavbarSearchService {
       excludeTags: filters.excludeTags.map((tag) => tag.trim()).filter(Boolean),
       mode: filters.mode,
       nsfw: filters.nsfw,
+      sensitive: filters.sensitive,
       status: filters.status?.trim() || null,
       favorited: filters.favorited,
       visibility: filters.visibility,

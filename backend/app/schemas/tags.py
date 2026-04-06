@@ -45,6 +45,12 @@ class NsfwFilter(str, Enum):
     INCLUDE = "include"
 
 
+class SensitiveFilter(str, Enum):
+    DEFAULT = "default"
+    ONLY = "only"
+    INCLUDE = "include"
+
+
 class TagListResponse(BaseModel):
     total: int = Field(description="Total number of tags matching the current filters.")
     next_cursor: str | None = Field(

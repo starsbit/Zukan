@@ -43,6 +43,12 @@ export enum NsfwFilter {
   INCLUDE = 'include',
 }
 
+export enum SensitiveFilter {
+  DEFAULT = 'default',
+  ONLY = 'only',
+  INCLUDE = 'include',
+}
+
 export interface MediaMetadata {
   file_size: number | null;
   width: number | null;
@@ -79,6 +85,7 @@ export interface MediaRead {
   ocr_text_override: string | null;
   metadata_review_dismissed?: boolean;
   is_nsfw: boolean;
+  is_sensitive?: boolean;
   tagging_status: TaggingStatus;
   tagging_error: string | null;
   thumbnail_status: ProcessingStatus;
@@ -127,6 +134,7 @@ export interface MediaListParams {
   tags?: string[];
   tag_mode?: TagFilterMode;
   nsfw_filter?: NsfwFilter;
+  sensitive_filter?: SensitiveFilter;
   include_total?: boolean;
   search?: string;
   captured_year?: number;

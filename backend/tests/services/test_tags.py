@@ -63,6 +63,7 @@ async def test_remove_tag_from_media_updates_links_and_nsfw(fake_db, user, media
     assert result.updated_media == 1
     assert result.deleted_tag is True
     assert media.is_nsfw is False
+    assert media.is_sensitive is False
 
 
 @pytest.mark.asyncio
@@ -120,6 +121,7 @@ async def test_store_tagging_result_sets_status_and_persists_all_character_and_s
 
     assert media.tagging_status == "done"
     assert media.tagging_error is None
+    assert media.is_sensitive is False
     added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
     assert {(item.entity_type, item.name) for item in added_entities} == {
         (MediaEntityType.character, "Saber"),
@@ -157,6 +159,30 @@ async def test_store_tagging_result_derives_series_from_character_suffix_when_no
         (MediaEntityType.character, "hoshino_(blue_archive)", 0.89),
         (MediaEntityType.series, "blue_archive", 0.91),
     }
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, user, media):
+    media.uploader_id = user.id
+    result = TaggingResult(
+        predictions=[
+            TagPrediction("panties", 0, 0.97),
+            TagPrediction("safe", 0, 0.7),
+        ],
+        is_nsfw=False,
+    )
+
+    with patch("backend.app.services.tags.TagRepository") as tag_repo_cls, patch(
+        "backend.app.services.tags.MediaEntityRepository"
+    ) as entity_repo_cls:
+        tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
+        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[], []])
+        fake_db.get = AsyncMock(return_value=user)
+
+        await TagService(fake_db)._store_tagging_result(media, result)
+
+    assert media.is_nsfw is False
+    assert media.is_sensitive is True
 
 
 @pytest.mark.asyncio

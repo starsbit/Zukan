@@ -9,6 +9,7 @@ class AdminUserUpdate(BaseModel):
     username: str | None = Field(default=None, min_length=3, max_length=64)
     is_admin: bool | None = None
     show_nsfw: bool | None = None
+    show_sensitive: bool | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
 

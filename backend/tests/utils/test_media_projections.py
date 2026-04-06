@@ -26,6 +26,7 @@ def _make_media() -> Media:
         duration_seconds=None,
         frame_count=1,
         is_nsfw=False,
+        is_sensitive=False,
         tagging_status=TaggingStatus.DONE,
         tagging_error=None,
         thumbnail_status=ProcessingStatus.DONE,

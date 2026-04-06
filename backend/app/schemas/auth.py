@@ -31,6 +31,7 @@ class UserSelfReadLite(BaseModel):
     username: str
     email: str
     show_nsfw: bool
+    show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     version: int
     created_at: datetime
@@ -43,6 +44,7 @@ class UserSelfReadLite(BaseModel):
                 "username": "saber",
                 "email": "saber@starsbit.space",
                 "show_nsfw": False,
+                "show_sensitive": False,
                 "tag_confidence_threshold": 0.85,
                 "version": 1,
                 "created_at": "2026-03-24T12:34:56Z",
@@ -57,6 +59,7 @@ class UserRead(BaseModel):
     email: str
     is_admin: bool
     show_nsfw: bool
+    show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     version: int
     created_at: datetime
@@ -70,6 +73,7 @@ class UserRead(BaseModel):
                 "email": "saber@starsbit.space",
                 "is_admin": False,
                 "show_nsfw": False,
+                "show_sensitive": False,
                 "tag_confidence_threshold": 0.85,
                 "version": 3,
                 "created_at": "2026-03-24T12:34:56Z",
@@ -80,6 +84,7 @@ class UserRead(BaseModel):
 
 class UserUpdate(BaseModel):
     show_nsfw: bool | None = None
+    show_sensitive: bool | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
@@ -88,6 +93,7 @@ class UserUpdate(BaseModel):
         "json_schema_extra": {
             "example": {
                 "show_nsfw": True,
+                "show_sensitive": True,
                 "tag_confidence_threshold": 0.7,
                 "version": 3,
             }

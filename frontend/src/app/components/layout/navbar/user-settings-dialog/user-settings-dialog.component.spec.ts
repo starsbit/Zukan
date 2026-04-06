@@ -17,6 +17,7 @@ describe('UserSettingsDialogComponent', () => {
     email: 'saber@starsbit.space',
     is_admin: true,
     show_nsfw: false,
+    show_sensitive: false,
     tag_confidence_threshold: 0.5,
     version: 3,
     created_at: '2026-03-28T00:00:00Z',
@@ -51,6 +52,7 @@ describe('UserSettingsDialogComponent', () => {
 
     expect(fixture.componentInstance.form.getRawValue()).toMatchObject({
       showNsfw: false,
+      showSensitive: false,
       tagConfidenceThreshold: 0.5,
       password: '',
       confirmPassword: '',
@@ -59,7 +61,7 @@ describe('UserSettingsDialogComponent', () => {
 
   it('saves settings to the backend and updates the user store', async () => {
     const set = vi.fn();
-    const updatedUser = { ...user, show_nsfw: true, tag_confidence_threshold: 0.75, version: 4 };
+    const updatedUser = { ...user, show_nsfw: true, show_sensitive: true, tag_confidence_threshold: 0.75, version: 4 };
     const updateMe = vi.fn().mockReturnValue(of(updatedUser));
 
     await TestBed.configureTestingModule({
@@ -77,6 +79,7 @@ describe('UserSettingsDialogComponent', () => {
 
     fixture.componentInstance.form.patchValue({
       showNsfw: true,
+      showSensitive: true,
       tagConfidenceThreshold: 0.75,
       password: 'Secret123!',
       confirmPassword: 'Secret123!',
@@ -85,6 +88,7 @@ describe('UserSettingsDialogComponent', () => {
 
     expect(updateMe).toHaveBeenCalledWith({
       show_nsfw: true,
+      show_sensitive: true,
       tag_confidence_threshold: 0.75,
       version: 3,
       password: 'Secret123!',

@@ -27,6 +27,7 @@ from backend.app.utils.tagging import (
     TaggingResult,
     aggregate_tagging_results,
     derive_series_predictions,
+    tag_names_mark_sensitive,
     tag_names_mark_nsfw,
 )
 from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_media_frames
@@ -130,7 +131,9 @@ class TagService:
             if len(next_payloads) == len(media.media_tags):
                 continue
             await tags_repo.set_media_tag_links(media, next_payloads)
-            media.is_nsfw = tag_names_mark_nsfw([name for name, _, _ in next_payloads])
+            remaining_names = [name for name, _, _ in next_payloads]
+            media.is_nsfw = tag_names_mark_nsfw(remaining_names)
+            media.is_sensitive = tag_names_mark_sensitive(remaining_names)
             updated += 1
 
         await self._db.flush()
@@ -231,7 +234,9 @@ class TagService:
 
         tag_payloads = [(p.name, p.category, p.confidence) for p in filtered_predictions]
         await TagRepository(self._db).set_media_tag_links(media, tag_payloads)
-        media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw([p.name for p in filtered_predictions])
+        filtered_tag_names = [p.name for p in filtered_predictions]
+        media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(filtered_tag_names)
+        media.is_sensitive = tagging_result.is_sensitive or tag_names_mark_sensitive(filtered_tag_names)
         media.tagging_status = "done"
         media.tagging_error = None
 
@@ -265,11 +270,12 @@ class TagService:
 
         await self._db.commit()
         logger.info(
-            "Tagging finished media_id=%s filtered_tags=%s entities=%s is_nsfw=%s",
+            "Tagging finished media_id=%s filtered_tags=%s entities=%s is_nsfw=%s is_sensitive=%s",
             media.id,
             len(filtered_predictions),
             len(seen_entities),
             media.is_nsfw,
+            media.is_sensitive,
         )
 
 

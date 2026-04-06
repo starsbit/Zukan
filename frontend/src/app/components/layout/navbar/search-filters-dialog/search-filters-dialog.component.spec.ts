@@ -3,7 +3,7 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { MediaType, MediaVisibility, NsfwFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
+import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
 import { SearchFiltersDialogComponent } from './search-filters-dialog.component';
 import { API_BASE_URL } from '../../../../services/web/api.config';
 
@@ -12,6 +12,7 @@ describe('SearchFiltersDialogComponent', () => {
     excludeTags: ['spoiler'],
     mode: TagFilterMode.AND,
     nsfw: NsfwFilter.INCLUDE,
+    sensitive: SensitiveFilter.ONLY,
     status: TaggingStatus.DONE,
     favorited: true,
     visibility: MediaVisibility.PUBLIC,
@@ -49,6 +50,7 @@ describe('SearchFiltersDialogComponent', () => {
     expect(fixture.componentInstance.form.getRawValue()).toMatchObject({
       mode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
+      sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
       favorited: 'only',
       visibility: MediaVisibility.PUBLIC,
@@ -76,6 +78,7 @@ describe('SearchFiltersDialogComponent', () => {
       excludeTags: ['spoiler', 'duplicate'],
       mode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
+      sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
       favorited: false,
       visibility: MediaVisibility.PUBLIC,
@@ -120,6 +123,7 @@ describe('SearchFiltersDialogComponent', () => {
       excludeTags: [],
       mode: null,
       nsfw: null,
+      sensitive: null,
       status: null,
       favorited: null,
       visibility: null,

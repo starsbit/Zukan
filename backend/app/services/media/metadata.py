@@ -16,7 +16,7 @@ from backend.app.schemas import BulkResult, MediaDetail, MediaEntityBatchUpdate,
 from backend.app.services.media.interactions import MediaInteractionService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
-from backend.app.utils.tagging import tag_names_mark_nsfw
+from backend.app.utils.tagging import tag_names_mark_sensitive, tag_names_mark_nsfw
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +61,7 @@ class MediaMetadataService:
             normalized_tags = normalize_manual_tags(payload.tags)
             await TagRepository(self._db).set_media_tag_links(media, build_tag_payloads(normalized_tags))
             media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
+            media.is_sensitive = tag_names_mark_sensitive(normalized_tags)
 
         if "entities" in payload.model_fields_set and payload.entities is not None:
             for entity in await self._query.get_media_entities(media.id):

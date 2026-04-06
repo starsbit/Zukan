@@ -12,6 +12,7 @@ import {
   MediaVisibility,
   TagFilterMode,
   NsfwFilter,
+  SensitiveFilter,
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
@@ -38,6 +39,7 @@ export interface MediaSearchParams {
   exclude_tag?: string[];
   mode?: TagFilterMode;
   nsfw?: NsfwFilter;
+  sensitive?: SensitiveFilter;
   status?: string;
   favorited?: boolean;
   visibility?: MediaVisibility;
@@ -93,6 +95,7 @@ export class MediaClientService {
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
+    if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
     if (p.visibility != null) params = params.set('visibility', p.visibility);
@@ -167,6 +170,7 @@ export class MediaClientService {
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
+    if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
     if (p.visibility != null) params = params.set('visibility', p.visibility);

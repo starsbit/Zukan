@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.app.errors.albums import album_not_found
 from backend.app.errors.error import AppError
-from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden
+from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden, sensitive_disabled
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaVisibility
@@ -30,6 +30,7 @@ from backend.app.schemas import (
     MediaMetadataFilter,
     MediaTimeline,
     NsfwFilter,
+    SensitiveFilter,
     TagFilterMode,
     TagWithConfidence,
     TimelineBucket,
@@ -231,6 +232,7 @@ class MediaQueryService:
         exclude_tags: list[str] | None,
         mode: TagFilterMode,
         nsfw: NsfwFilter,
+        sensitive: SensitiveFilter,
         status_filter: str | None,
         metadata: MediaMetadataFilter,
         favorited: bool | None,
@@ -247,7 +249,7 @@ class MediaQueryService:
         stmt = self._build_base_list_stmt()
 
         stmt = await self._apply_album_filter(stmt, user, album_id)
-        stmt = self._apply_state_and_nsfw_filters(stmt, user, state, nsfw)
+        stmt = self._apply_state_and_visibility_filters(stmt, user, state, nsfw, sensitive)
         stmt = self._apply_status_filter(stmt, status_filter)
         stmt = self._apply_favorited_filter(stmt, user, favorited)
         stmt = self._apply_visibility_scope(stmt, user, state, visibility, album_id is not None, favorited)
@@ -291,6 +293,7 @@ class MediaQueryService:
         exclude_tags: list[str] | None = None,
         mode: TagFilterMode = TagFilterMode.AND,
         nsfw: NsfwFilter = NsfwFilter.DEFAULT,
+        sensitive: SensitiveFilter = SensitiveFilter.DEFAULT,
         status_filter: str | None = None,
         favorited: bool | None = None,
         visibility: MediaVisibility | None = None,
@@ -308,7 +311,7 @@ class MediaQueryService:
         )
 
         stmt = await self._apply_album_filter_for_count(stmt, user, album_id)
-        stmt = self._apply_state_and_nsfw_filters_for_count(stmt, user, state, nsfw)
+        stmt = self._apply_state_and_visibility_filters_for_count(stmt, user, state, nsfw, sensitive)
         stmt = self._apply_status_filter(stmt, status_filter)
         stmt = self._apply_favorited_filter_for_count(stmt, user, favorited)
         stmt = self._apply_visibility_scope(stmt, user, state, visibility, album_id is not None, favorited)
@@ -334,14 +337,22 @@ class MediaQueryService:
             AlbumMedia.album_id == album_id,
         )
 
-    def _apply_state_and_nsfw_filters_for_count(self, stmt, user: User, state: MediaListState, nsfw: NsfwFilter):
+    def _apply_state_and_visibility_filters_for_count(
+        self,
+        stmt,
+        user: User,
+        state: MediaListState,
+        nsfw: NsfwFilter,
+        sensitive: SensitiveFilter,
+    ):
         if state == MediaListState.TRASHED:
             stmt = stmt.where(Media.deleted_at.is_not(None))
             if not user.is_admin:
                 stmt = stmt.where(Media.uploader_id == user.id)
             return stmt
         stmt = stmt.where(Media.deleted_at.is_(None))
-        return media_filters.apply_nsfw_list_filter(stmt, user, nsfw)
+        stmt = media_filters.apply_nsfw_list_filter(stmt, user, nsfw)
+        return media_filters.apply_sensitive_list_filter(stmt, user, sensitive)
 
     def _apply_favorited_filter_for_count(self, stmt, user: User, favorited: bool | None):
         if favorited is True:
@@ -440,12 +451,13 @@ class MediaQueryService:
             AlbumMedia.album_id == album_id,
         )
 
-    def _apply_state_and_nsfw_filters(
+    def _apply_state_and_visibility_filters(
         self,
         stmt: Select[tuple[Media]],
         user: User,
         state: MediaListState,
         nsfw: NsfwFilter,
+        sensitive: SensitiveFilter,
     ) -> Select[tuple[Media]]:
         if state == MediaListState.TRASHED:
             stmt = stmt.where(Media.deleted_at.is_not(None))
@@ -460,8 +472,15 @@ class MediaQueryService:
                 code=nsfw_disabled,
                 detail="Enable NSFW in your profile first",
             )
+        if sensitive == SensitiveFilter.ONLY and not user.show_sensitive and not user.is_admin:
+            raise AppError(
+                status_code=403,
+                code=sensitive_disabled,
+                detail="Enable sensitive content in your profile first",
+            )
 
-        return media_filters.apply_nsfw_list_filter(stmt, user, nsfw)
+        stmt = media_filters.apply_nsfw_list_filter(stmt, user, nsfw)
+        return media_filters.apply_sensitive_list_filter(stmt, user, sensitive)
 
     def _apply_visibility_scope(
         self,
