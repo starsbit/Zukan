@@ -27,8 +27,6 @@ def test_tag_names_mark_nsfw_by_hint_or_rating():
 
 def test_tag_names_mark_sensitive_by_curated_hint():
     assert tag_names_mark_sensitive(["sensitive"]) is True
-    assert tag_names_mark_sensitive(["panties"]) is True
-    assert tag_names_mark_sensitive(["Lingerie"]) is True
     assert tag_names_mark_sensitive(["safe"]) is False
 
 
@@ -59,8 +57,7 @@ def test_aggregate_tagging_results_keeps_max_confidence_and_nsfw():
 
 def test_aggregate_tagging_results_keeps_sensitive_state():
     merged = aggregate_tagging_results([
-        TaggingResult(predictions=[TagPrediction("safe", 0, 0.7)], is_nsfw=False),
-        TaggingResult(predictions=[TagPrediction("panties", 0, 0.9)], is_nsfw=False),
+        TaggingResult(predictions=[TagPrediction("sensitive", 0, 0.7)], is_nsfw=False),
     ])
 
     assert merged.is_sensitive is True

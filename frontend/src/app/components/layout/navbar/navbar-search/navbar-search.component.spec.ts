@@ -155,6 +155,7 @@ describe('NavbarSearchComponent', () => {
         excludeTags: [],
         mode: null,
         nsfw: null,
+        sensitive: null,
         status: null,
         favorited: null,
         visibility: null,

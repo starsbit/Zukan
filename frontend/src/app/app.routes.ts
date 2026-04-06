@@ -7,7 +7,7 @@ import { AlbumComponent } from './pages/album/album.component';
 import { AlbumDetailComponent } from './pages/album-detail/album-detail.component';
 import { FavoritesComponent } from './pages/favorites/favorites.component';
 import { GalleryComponent } from './pages/gallery/gallery.component';
-import { HomeComponent } from './pages/home/home.component';
+import { BrowseComponent } from './pages/browse/browse.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
 import { TrashComponent } from './pages/trash/trash.component';
 
@@ -19,12 +19,12 @@ export const routes: Routes = [
   },
   {
     path: '',
-    component: HomeComponent,
+    component: GalleryComponent,
     canActivate: [authGuard],
   },
   {
-    path: 'gallery',
-    component: GalleryComponent,
+    path: 'browse',
+    component: BrowseComponent,
     canActivate: [authGuard],
   },
   {

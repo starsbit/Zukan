@@ -272,8 +272,8 @@ test.describe.serial('Gallery bulk actions', () => {
     await waitForTaggedMedia(page, token, tag, 2);
     await waitForTaggingDone(page, token, tag, 2);
 
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await applyVisibilityFilter(page, 'Private');
     await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBeGreaterThanOrEqual(2);
 
@@ -402,8 +402,8 @@ test.describe.serial('Gallery bulk actions', () => {
       });
     });
 
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBe(2);
 
     await selectAllVisibleMedia(page);

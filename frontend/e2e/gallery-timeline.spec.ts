@@ -148,7 +148,7 @@ test.describe.serial('Gallery timeline', () => {
     });
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
+    await page.goto('/');
 
     // All three skeleton sections should be visible before any search page arrives
     await expect(page.locator('.media-browser__day--skeleton')).toHaveCount(3);
@@ -162,8 +162,8 @@ test.describe.serial('Gallery timeline', () => {
   test('auto-fetches all pages without user scrolling', async ({ page }) => {
     await registerGalleryRoutes(page);
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
 
     // Both pages should be fetched automatically (no scroll needed)
     await expect.poll(
@@ -179,8 +179,8 @@ test.describe.serial('Gallery timeline', () => {
     await registerGalleryRoutes(page);
     await ensureAdminAuthenticated(page);
     await expect(page).toHaveURL('/');
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
 
     const content = page.locator('.media-browser__content');
     const timeline = page.locator('.media-timeline');
@@ -227,7 +227,7 @@ test.describe.serial('Gallery timeline', () => {
     });
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
+    await page.goto('/');
 
     await expect(page.locator('.media-browser__empty')).toBeVisible();
     await expect(page.locator('.media-browser__day--skeleton')).toHaveCount(0);

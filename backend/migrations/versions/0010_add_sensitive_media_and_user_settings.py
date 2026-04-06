@@ -19,12 +19,12 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("media", sa.Column("is_sensitive", sa.Boolean(), nullable=False, server_default=sa.text("false")))
-    op.create_index(op.f("ix_media_is_sensitive"), "media", ["is_sensitive"], unique=False)
-    op.alter_column("media", "is_sensitive", server_default=None)
+    op.execute("ALTER TABLE media ADD COLUMN IF NOT EXISTS is_sensitive BOOLEAN NOT NULL DEFAULT false")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_media_is_sensitive ON media (is_sensitive)")
+    op.execute("ALTER TABLE media ALTER COLUMN is_sensitive DROP DEFAULT")
 
-    op.add_column("users", sa.Column("show_sensitive", sa.Boolean(), nullable=False, server_default=sa.text("false")))
-    op.alter_column("users", "show_sensitive", server_default=None)
+    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS show_sensitive BOOLEAN NOT NULL DEFAULT false")
+    op.execute("ALTER TABLE users ALTER COLUMN show_sensitive DROP DEFAULT")
 
 
 def downgrade() -> None:

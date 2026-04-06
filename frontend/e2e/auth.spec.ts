@@ -16,7 +16,7 @@ async function expectToolbarTitle(
   page: import('@playwright/test').Page,
 ) {
   await expect(page.getByRole('button', { name: 'Profile' })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Gallery' })).toBeVisible();
 }
 
 async function skipIfSetupCompleted(page: import('@playwright/test').Page, reason: string) {

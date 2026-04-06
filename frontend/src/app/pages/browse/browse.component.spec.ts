@@ -6,12 +6,12 @@ import { GalleryStore } from '../../services/gallery.store';
 import { NavbarSearchService } from '../../services/navbar-search.service';
 import { AuthStore } from '../../services/web/auth.store';
 import { ThemeService } from '../../services/theme.service';
-import { HomeComponent } from './home.component';
+import { BrowseComponent } from './browse.component';
 import { of } from 'rxjs';
 import { MediaListState, MediaVisibility } from '../../models/media';
 import { describe, expect, it, vi } from 'vitest';
 
-describe('HomeComponent', () => {
+describe('BrowseComponent', () => {
   it('uses the shared layout and reacts to applied search params', async () => {
     const galleryStore = {
       setParams: vi.fn(),
@@ -32,11 +32,13 @@ describe('HomeComponent', () => {
       applied: () => ({
         tags: ['Saber'],
         characterName: null,
+        seriesName: null,
         ocrText: null,
         advanced: {
           excludeTags: [],
           mode: null,
           nsfw: null,
+          sensitive: null,
           status: null,
           favorited: null,
           visibility: null,
@@ -55,6 +57,7 @@ describe('HomeComponent', () => {
         excludeTags: [],
         mode: null,
         nsfw: null,
+        sensitive: null,
         status: null,
         favorited: null,
         visibility: null,
@@ -82,7 +85,7 @@ describe('HomeComponent', () => {
     };
 
     await TestBed.configureTestingModule({
-      imports: [HomeComponent],
+      imports: [BrowseComponent],
       providers: [
         provideRouter([]),
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
@@ -100,7 +103,7 @@ describe('HomeComponent', () => {
       ],
     }).compileComponents();
 
-    const fixture = TestBed.createComponent(HomeComponent);
+    const fixture = TestBed.createComponent(BrowseComponent);
     fixture.detectChanges();
 
     const element = fixture.nativeElement as HTMLElement;

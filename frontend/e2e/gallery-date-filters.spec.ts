@@ -137,8 +137,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
 
     // Wait for initial load — all 5 items visible
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
@@ -166,8 +166,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     await openFiltersDialog(page);
@@ -189,8 +189,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     await openFiltersDialog(page);
@@ -212,8 +212,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     await openFiltersDialog(page);
@@ -235,8 +235,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     await openFiltersDialog(page);
@@ -260,8 +260,8 @@ test.describe.serial('Gallery date filters', () => {
     await registerDateFilterRoutes(page, searchRequests);
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     // Filter to a time range with no media — before the earliest item

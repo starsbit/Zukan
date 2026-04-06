@@ -223,8 +223,8 @@ test.describe.serial('Media viewer', () => {
   }) => {
     const { patchBodies } = await registerViewerRoutes(page);
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
 
     const firstCard = page.locator('.media-card').first();
     await expect(firstCard).toBeVisible();

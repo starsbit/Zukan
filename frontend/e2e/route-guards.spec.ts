@@ -28,9 +28,9 @@ test.describe.serial('Route guards', () => {
   });
 
   test('guest is redirected to login when visiting a protected route', async ({ page }) => {
-    await page.goto('/gallery');
+    await page.goto('/browse');
 
-    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fgallery$/);
+    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fbrowse$/);
     await expect(page.locator('zukan-login-page')).toBeVisible();
   });
 
@@ -38,8 +38,8 @@ test.describe.serial('Route guards', () => {
     await ensureAdminAuthenticated(page);
     const sidebar = page.locator('zukan-sidebar');
 
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await expect(sidebar).toBeVisible();
     await expect(page.getByRole('link', { name: 'Gallery' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Album' })).toBeVisible();

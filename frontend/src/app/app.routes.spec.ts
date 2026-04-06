@@ -4,14 +4,14 @@ import { guestGuard } from './guards/guest.guard';
 import { routes } from './app.routes';
 
 describe('routes', () => {
-  it('protects home with authGuard', () => {
+  it('protects gallery (root) with authGuard', () => {
     const homeRoute = routes.find((route) => route.path === '');
 
     expect(homeRoute?.canActivate).toEqual([authGuard]);
   });
 
   it('protects the authenticated pages', () => {
-    const protectedPaths = ['gallery', 'album', 'album/:albumId', 'trash'];
+    const protectedPaths = ['browse', 'album', 'album/:albumId', 'trash'];
 
     for (const path of protectedPaths) {
       const route = routes.find((candidate) => candidate.path === path);

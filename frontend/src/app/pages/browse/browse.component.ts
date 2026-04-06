@@ -9,13 +9,13 @@ import { MediaListState, MediaVisibility } from '../../models/media';
 import { buildTodayStoriesParams } from '../../utils/today-stories.utils';
 
 @Component({
-  selector: 'zukan-home',
+  selector: 'zukan-browse',
   imports: [LayoutComponent, MediaBrowserComponent],
-  templateUrl: './home.component.html',
-  styleUrl: './home.component.scss',
+  templateUrl: './browse.component.html',
+  styleUrl: './browse.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HomeComponent {
+export class BrowseComponent {
   private readonly destroyRef = inject(DestroyRef);
   readonly galleryStore = inject(GalleryStore);
   private readonly searchService = inject(NavbarSearchService);

@@ -375,6 +375,7 @@ async function registerAdvancedFilterRoutes(
       visibility: 'public',
       filename: 'c-public.jpg',
       is_nsfw: true,
+      is_sensitive: true,
       tagging_status: 'failed',
       ocr_text: 'danger zone',
       tags: ['alert'],
@@ -585,7 +586,7 @@ test.describe.serial('Navbar search', () => {
     await expect(chipRow(page, 'OCR: "burning field text"')).toBeVisible();
 
     await page.getByRole('link', { name: 'Gallery' }).click();
-    await expect(page).toHaveURL('/gallery');
+    await expect(page).toHaveURL('/');
     await expect(chipRow(page, 'OCR: "burning field text"')).toBeVisible();
 
     request = await waitForMatchingSearchRequest(
@@ -653,8 +654,8 @@ test.describe.serial('Navbar search', () => {
     await page.setViewportSize({ width: 390, height: 844 });
 
     await ensureAdminAuthenticated(page);
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
       (request) => request.searchParams.get('state') === 'active',
@@ -684,7 +685,7 @@ test.describe.serial('Navbar search', () => {
 
     await ensureAdminAuthenticated(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
-    await expect(page).toHaveURL('/gallery');
+    await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
       (request) => request.searchParams.get('state') === 'active',
@@ -723,7 +724,7 @@ test.describe.serial('Navbar search', () => {
 
     await ensureAdminAuthenticated(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
-    await expect(page).toHaveURL('/gallery');
+    await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
       (request) => request.searchParams.get('state') === 'active',
@@ -748,7 +749,7 @@ test.describe.serial('Navbar search', () => {
 
     await ensureAdminAuthenticated(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
-    await expect(page).toHaveURL('/gallery');
+    await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
       (request) => request.searchParams.get('state') === 'active',

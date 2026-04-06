@@ -493,7 +493,7 @@ test.describe('Upload review dialog', () => {
     await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
-    await page.goto('/gallery');
+    await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
@@ -517,7 +517,7 @@ test.describe('Upload review dialog', () => {
       },
     });
 
-    await page.goto('/gallery');
+    await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
@@ -545,7 +545,7 @@ test.describe('Upload review dialog', () => {
     await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
-    await page.goto('/gallery');
+    await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
@@ -581,7 +581,7 @@ test.describe('Upload review dialog', () => {
       },
     });
 
-    await page.goto('/gallery');
+    await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
@@ -602,7 +602,7 @@ test.describe('Upload review dialog', () => {
     await ensureAdminAuthenticated(page);
     await registerReviewFlowRoutes(page);
 
-    await page.goto('/gallery');
+    await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 

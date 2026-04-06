@@ -25,8 +25,8 @@ export class SidebarComponent {
     {
       label: 'Browse',
       items: [
-        { icon: 'home', label: 'Home', path: '/' },
-        { icon: 'photo_library', label: 'Gallery', path: '/gallery' },
+        { icon: 'photo_library', label: 'Gallery', path: '/' },
+        { icon: 'travel_explore', label: 'Browse', path: '/browse' },
         { icon: 'favorite', label: 'Favorites', path: '/favorites' },
       ],
     },

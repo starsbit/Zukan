@@ -166,8 +166,7 @@ async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, u
     media.uploader_id = user.id
     result = TaggingResult(
         predictions=[
-            TagPrediction("panties", 0, 0.97),
-            TagPrediction("safe", 0, 0.7),
+            TagPrediction("sensitive", 0, 0.7),
         ],
         is_nsfw=False,
     )

@@ -245,8 +245,8 @@ test.describe.serial('Upload status island', () => {
     await expect(page).toHaveURL('/');
     await registerUploadStatusRoutes(page);
 
-    await page.goto('/gallery');
-    await expect(page).toHaveURL('/gallery');
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
 
     await uploadSyntheticImage(page);
     const uploadResponse = page.waitForResponse((response) =>
