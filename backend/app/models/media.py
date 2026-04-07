@@ -2,7 +2,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, func, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -39,6 +39,15 @@ class MediaVisibility(str, enum.Enum):
 
 class Media(Base):
     __tablename__ = "media"
+    __table_args__ = (
+        Index(
+            "uq_media_uploader_sha256",
+            "uploader_id",
+            "sha256",
+            unique=True,
+            postgresql_where=text("uploader_id IS NOT NULL AND sha256 IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     uploader_id: Mapped[uuid.UUID] = mapped_column(
@@ -57,7 +66,7 @@ class Media(Base):
     original_filename: Mapped[str] = mapped_column(String(512), nullable=True)
     filepath: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=True)
-    sha256: Mapped[str] = mapped_column(String(64), nullable=True, unique=True, index=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=True, index=True)
     mime_type: Mapped[str] = mapped_column(String(64), nullable=True)
     media_type: Mapped[MediaType] = mapped_column(Enum(MediaType, name="media_type"), nullable=False, index=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)

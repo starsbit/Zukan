@@ -77,7 +77,7 @@ async def test_repo_passthrough_methods(service):
     service._media_repo.get_active_ids = AsyncMock(return_value={media_id})
 
     assert await service.get_media_by_id(media_id) == "m"
-    assert await service.get_media_by_sha256("abc") == "s"
+    assert await service.get_media_by_sha256("abc", media_id) == "s"
     assert await service.get_media_by_ids([media_id]) == ["x"]
     assert await service.get_media_with_relations(media_id, deleted=None) == "r"
     assert await service.get_expired_trash(datetime.now(timezone.utc)) == ["e"]
@@ -206,6 +206,25 @@ def test_apply_visibility_scope_for_public_feed_hides_processing_media(service, 
     assert "media.poster_status" in sql
 
 
+def test_apply_visibility_scope_for_public_feed_allows_owner_to_see_own_pending_media(service, user):
+    stmt = select(Media)
+
+    scoped = service._apply_visibility_scope(
+        stmt,
+        user,
+        MediaListState.ACTIVE,
+        MediaVisibility.public,
+        False,
+        False,
+    )
+
+    sql = str(scoped)
+    assert "media.visibility" in sql
+    assert "media.uploader_id" in sql
+    assert "media.owner_id" in sql
+    assert "media.tagging_status" in sql
+
+
 def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filter(service, user):
     stmt = select(Media)
 
@@ -220,7 +239,7 @@ def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filte
 
     sql = str(scoped)
     assert "media.visibility" in sql
-    assert " OR " not in sql
+    assert "album_shares" not in sql
 
 
 @pytest.mark.asyncio

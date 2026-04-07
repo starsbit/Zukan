@@ -12,6 +12,7 @@ from backend.app.errors.error import AppError
 from backend.app.errors.auth import duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token
 from backend.app.errors.upload import version_conflict
 from backend.app.models.auth import APIKey, RefreshToken, User
+from backend.app.models.notifications import Notification, NotificationType
 from backend.app.repositories.auth import APIKeyRepository, RefreshTokenRepository, UserRepository
 from backend.app.schemas import APIKeyCreateResponse, APIKeyStatusResponse, TokenResponse, UserRegister, UserUpdate
 from backend.app.utils.passwords import hash_password, hash_token, verify_password
@@ -54,6 +55,19 @@ class AuthService:
             tag_confidence_threshold=settings.tagger_threshold_general,
         )
         self._db.add(user)
+        await self._db.flush()
+        self._db.add(Notification(
+            user_id=user.id,
+            type=NotificationType.welcome,
+            title="Welcome to Zukan!",
+            body=(
+                "Upload images or videos via the upload button in the top bar. "
+                "Browse your library in the Gallery, or explore public content in the Explore section. "
+                "Organise media into Albums and tag items for easy searching. "
+                "NSFW and sensitive content is shown by default. You can adjust this and other preferences "
+                "in Settings (click your avatar in the top-right corner)."
+            ),
+        ))
         await self._db.commit()
         await self._db.refresh(user)
         logger.info("Registered new user user_id=%s username=%s", user.id, user.username)

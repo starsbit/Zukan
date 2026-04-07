@@ -226,6 +226,8 @@ export class NavbarNotificationsComponent implements OnInit {
         return 'group_add';
       case NotificationType.METADATA_REVIEW:
         return 'edit_note';
+      case NotificationType.WELCOME:
+        return 'waving_hand';
     }
   }
 

@@ -74,6 +74,7 @@ async def test_process_single_upload_routes_failed_and_existing_paths(fake_db, s
             ctx=UploadBatchContext(),
         )
     assert existing.await_count == 1
+    assert stub_query.get_media_by_sha256.await_args.args == ("x", user.id)
 
 
 @pytest.mark.asyncio

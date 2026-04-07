@@ -6,6 +6,7 @@ export enum NotificationType {
   APP_UPDATE = 'app_update',
   SHARE_INVITE = 'share_invite',
   METADATA_REVIEW = 'metadata_review',
+  WELCOME = 'welcome',
 }
 
 export enum AnnouncementSeverity {

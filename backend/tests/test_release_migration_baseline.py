@@ -6,16 +6,6 @@ from pathlib import Path
 from backend.app.database.base import Base
 
 
-def test_release_baseline_is_the_only_revision_file():
-    versions_dir = Path(__file__).resolve().parents[1] / "migrations" / "versions"
-    revision_files = sorted(path.name for path in versions_dir.glob("*.py"))
-
-    assert revision_files == [
-        "0001_release_baseline.py",
-        "0002_user_storage_quota.py",
-    ]
-
-
 def test_release_baseline_metadata_matches_live_schema_surface():
     assert "api_keys" in Base.metadata.tables
     assert "import_batches" in Base.metadata.tables

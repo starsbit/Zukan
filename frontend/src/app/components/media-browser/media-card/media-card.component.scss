@@ -129,6 +129,10 @@
 }
 
 .media-card__badge-stack--left {
+  left: 10px;
+}
+
+.media-card__selection-button ~ .media-card__badge-stack--left {
   left: 52px;
 }
 
@@ -281,6 +285,10 @@
   }
 
   .media-card__badge-stack--left {
+    left: 8px;
+  }
+
+  .media-card__selection-button ~ .media-card__badge-stack--left {
     left: 46px;
   }
 

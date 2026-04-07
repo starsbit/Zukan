@@ -93,8 +93,8 @@ class MediaQueryService:
     async def get_media_by_id(self, media_id: uuid.UUID) -> Media | None:
         return await self._media_repo.get_by_id(media_id)
 
-    async def get_media_by_sha256(self, sha256: str) -> Media | None:
-        return await self._media_repo.get_by_sha256(sha256)
+    async def get_media_by_sha256(self, sha256: str, uploader_id: uuid.UUID) -> Media | None:
+        return await self._media_repo.get_by_sha256(sha256, uploader_id=uploader_id)
 
     async def get_media_by_ids(self, media_ids: list[uuid.UUID]) -> list[Media]:
         return await self._media_repo.get_by_ids(media_ids)
@@ -491,7 +491,7 @@ class MediaQueryService:
         album_scoped: bool,
         favorited: bool | None = None,
     ) -> Select[tuple[Media]]:
-        if user.is_admin or state == MediaListState.TRASHED:
+        if state == MediaListState.TRASHED:
             return stmt
         if album_scoped:
             return stmt.where(
@@ -504,7 +504,11 @@ class MediaQueryService:
         if visibility == MediaVisibility.public:
             return stmt.where(
                 Media.visibility == MediaVisibility.public,
-                self._media_repo.external_visibility_ready_clause(),
+                or_(
+                    Media.uploader_id == user.id,
+                    Media.owner_id == user.id,
+                    self._media_repo.external_visibility_ready_clause(),
+                ),
             )
         if favorited is True:
             return stmt.where(self._media_repo.accessible_to_user_clause(user))

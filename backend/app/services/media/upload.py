@@ -196,7 +196,7 @@ class MediaUploadWorkflow:
             file_mtime = saved.path.stat().st_mtime
             captured_at = datetime.fromtimestamp(file_mtime, tz=UTC)
 
-        existing = await self._query.get_media_by_sha256(saved.sha256)
+        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
         if existing is not None:
             logger.info("Upload file matched existing media original_name=%s existing_media_id=%s", original_name, existing.id)
             await self._handle_existing_media(
@@ -535,7 +535,7 @@ class MediaUploadWorkflow:
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
         captured_at = datetime.now(UTC)
 
-        existing = await self._query.get_media_by_sha256(saved.sha256)
+        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
         batch_item = self._new_batch_item(upload_batch.id, original_name)
 
         if existing is not None:

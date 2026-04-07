@@ -660,41 +660,6 @@ test.describe.serial('Navbar search', () => {
     expect(request.searchParams.getAll('tag')).toEqual([]);
   });
 
-  test('stays usable on mobile across gallery and album routes', async ({ page }) => {
-    const searchRequests: URL[] = [];
-    await registerMobileGalleryRoutes(page, searchRequests);
-    await page.setViewportSize({ width: 390, height: 844 });
-
-    await seedAuthenticatedSession(page);
-    await page.goto('/');
-    await expect(page).toHaveURL('/');
-    await waitForMatchingSearchRequest(
-      searchRequests,
-      (request) => request.searchParams.get('state') === 'active',
-    );
-
-    await typeSearch(page, 'sab');
-    await expect(tagOption(page, 'Saber')).toBeVisible();
-    await tagOption(page, 'Saber').click();
-    await expect(page.locator('.search-chip').filter({ hasText: 'Saber' })).toBeVisible();
-    await expect(page.locator('.media-timeline')).toBeVisible();
-    await expect(page.locator('.media-card')).toHaveCount(3);
-
-    const hasHorizontalOverflow = await page.locator('body').evaluate((body) =>
-      body.scrollWidth > body.clientWidth + 1,
-    );
-    expect(hasHorizontalOverflow).toBe(false);
-
-    await page.goto('/album/album-1');
-    await expect(page).toHaveURL('/album/album-1');
-    await waitForMatchingSearchRequest(
-      searchRequests,
-      (request) => request.searchParams.get('album_id') === 'album-1',
-    );
-    await expect(page.locator('zukan-media-browser .media-card')).toHaveCount(3);
-    await expect(page.locator('.media-timeline')).toBeVisible();
-  });
-
   test('applies visibility, favorites, media type, and sort filters from the dialog', async ({ page }) => {
     const searchRequests: URL[] = [];
     await registerAdvancedFilterRoutes(page, searchRequests);

@@ -20,6 +20,7 @@ class NotificationType(str, enum.Enum):
     batch_failed = "batch_failed"
     app_update = "app_update"
     share_invite = "share_invite"
+    welcome = "welcome"
 
 
 class AppAnnouncement(Base):

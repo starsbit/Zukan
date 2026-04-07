@@ -11,6 +11,7 @@ class NotificationType(str, Enum):
     batch_failed = "batch_failed"
     app_update = "app_update"
     share_invite = "share_invite"
+    welcome = "welcome"
 
 
 class AnnouncementSeverity(str, Enum):

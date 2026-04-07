@@ -20,7 +20,8 @@ async def test_media_repository_core_queries(db_session, make_user, make_media):
     repo = MediaRepository(db_session)
 
     assert (await repo.get_by_id(m1.id)).id == m1.id
-    assert (await repo.get_by_sha256("1" * 64)).id == m1.id
+    assert (await repo.get_by_sha256("1" * 64, uploader_id=u1.id)).id == m1.id
+    assert await repo.get_by_sha256("1" * 64, uploader_id=u2.id) is None
     assert len(await repo.get_by_ids([m1.id, m2.id])) == 2
 
     active_ids = await repo.get_active_ids([m1.id, m2.id, m3.id])

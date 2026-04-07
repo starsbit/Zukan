@@ -36,8 +36,15 @@ class MediaRepository:
             stmt = stmt.where(Media.deleted_at.is_(None))
         return (await self.db.execute(stmt)).scalar_one_or_none()
 
-    async def get_by_sha256(self, sha256: str) -> Media | None:
-        return (await self.db.execute(select(Media).where(Media.sha256 == sha256))).scalar_one_or_none()
+    async def get_by_sha256(self, sha256: str, *, uploader_id: uuid.UUID) -> Media | None:
+        return (
+            await self.db.execute(
+                select(Media).where(
+                    Media.sha256 == sha256,
+                    Media.uploader_id == uploader_id,
+                )
+            )
+        ).scalar_one_or_none()
 
     async def get_by_ids(self, media_ids: list[uuid.UUID]) -> list[Media]:
         return (await self.db.execute(select(Media).where(Media.id.in_(media_ids)))).scalars().all()
