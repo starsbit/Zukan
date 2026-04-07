@@ -177,6 +177,8 @@
 .review-group-card__preview-more {
   aspect-ratio: 1 / 1;
   min-width: 0;
+  width: 100%;
+  padding: 0;
   border-radius: 0.8rem;
   border: 1px dashed color-mix(in srgb, var(--mat-sys-outline) 52%, transparent);
   background:
@@ -192,6 +194,8 @@
   gap: 0.15rem;
   color: var(--mat-sys-on-surface-variant);
   text-align: center;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .review-group-card__preview-more strong {
@@ -203,6 +207,17 @@
 .review-group-card__preview-more span {
   font-size: 0.78rem;
   letter-spacing: 0.02em;
+}
+
+.review-group-card__preview-more:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--mat-sys-primary) 50%, var(--mat-sys-outline));
+  box-shadow: 0 10px 18px color-mix(in srgb, var(--mat-sys-shadow) 10%, transparent);
+}
+
+.review-group-card__preview-more:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--mat-sys-primary) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .review-group-card__preview {

@@ -806,6 +806,8 @@ class MediaUploadService:
         if batch is None:
             return
 
+        previous_status = batch.status
+
         statuses = await self._query.get_import_batch_statuses(batch_id)
         batch.total_items = len(statuses)
         batch.queued_items = sum(1 for status in statuses if status == ItemStatus.pending)
@@ -825,6 +827,26 @@ class MediaUploadService:
         else:
             batch.status = BatchStatus.done
         batch.finished_at = datetime.now(timezone.utc)
+
+        if batch.type == BatchType.upload and previous_status == BatchStatus.running:
+            await self._auto_compute_recommendation_groups_for_batch(batch)
+
+    async def _auto_compute_recommendation_groups_for_batch(self, batch: ImportBatch) -> None:
+        from backend.app.services.processing import ProcessingService
+
+        try:
+            await ProcessingService(self._db).list_batch_review_items(
+                batch_id=batch.id,
+                user_id=batch.user_id,
+                include_recommendations=True,
+                force_refresh=True,
+            )
+            logger.info("Auto-computed recommendation groups for completed upload batch batch_id=%s", batch.id)
+        except Exception:
+            logger.exception(
+                "Failed to auto-compute recommendation groups for completed upload batch batch_id=%s",
+                batch.id,
+            )
 
 
 def _normalize_utc(value: datetime) -> datetime:

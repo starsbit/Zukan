@@ -5,6 +5,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
+import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 import { NavbarProfileComponent } from '../navbar-profile/navbar-profile.component';
@@ -36,6 +37,14 @@ describe('UserSettingsDialogComponent', () => {
       ...overrides,
     };
   }
+
+  function baseGalleryStore(overrides: Record<string, unknown> = {}) {
+    return {
+      refresh: vi.fn().mockReturnValue(of({})),
+      ...overrides,
+    };
+  }
+
   it('initializes the form from the current user', async () => {
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
@@ -44,6 +53,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 
@@ -61,6 +71,7 @@ describe('UserSettingsDialogComponent', () => {
 
   it('saves settings to the backend and updates the user store', async () => {
     const set = vi.fn();
+    const refresh = vi.fn().mockReturnValue(of({}));
     const updatedUser = { ...user, show_nsfw: true, show_sensitive: true, tag_confidence_threshold: 0.75, version: 4 };
     const updateMe = vi.fn().mockReturnValue(of(updatedUser));
 
@@ -71,6 +82,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: GalleryStore, useValue: baseGalleryStore({ refresh }) },
       ],
     }).compileComponents();
 
@@ -94,6 +106,7 @@ describe('UserSettingsDialogComponent', () => {
       password: 'Secret123!',
     });
     expect(set).toHaveBeenCalledWith(updatedUser);
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it('shows an error when password confirmation does not match', async () => {
@@ -106,6 +119,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 
@@ -131,6 +145,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: UserStore, useValue: { currentUser: () => user, isAdmin: () => true } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }) },
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 
@@ -159,6 +174,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 
@@ -179,6 +195,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 
@@ -200,6 +217,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
 

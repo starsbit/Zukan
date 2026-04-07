@@ -176,11 +176,22 @@
                     <button mat-button type="button" [disabled]="discarding()" (click)="discardGroup(group)">
                       Discard group
                     </button>
+
+                    @if (group.item_count > 4) {
+                      <button
+                        mat-button
+                        type="button"
+                        [attr.aria-expanded]="isGroupExpanded(group)"
+                        (click)="toggleGroupExpanded(group)"
+                      >
+                        {{ isGroupExpanded(group) ? 'Collapse items' : 'Expand items' }}
+                      </button>
+                    }
                   </div>
                 </div>
 
                 <div class="review-group-card__previews">
-                  @for (item of previewItemsForGroup(group); track item.media.id) {
+                  @for (item of displayedPreviewItemsForGroup(group); track item.media.id) {
                     <div class="review-group-card__preview-shell">
                       <button
                         class="review-group-card__preview"
@@ -201,18 +212,23 @@
                     </div>
                   }
 
-                  @if (hiddenPreviewCount(group) > 0) {
-                    <div class="review-group-card__preview-more" aria-label="{{ hiddenPreviewCount(group) }} more items">
+                  @if (!isGroupExpanded(group) && hiddenPreviewCount(group) > 0) {
+                    <button
+                      class="review-group-card__preview-more"
+                      type="button"
+                      aria-label="Show {{ hiddenPreviewCount(group) }} more items"
+                      (click)="toggleGroupExpanded(group)"
+                    >
                       <strong>+{{ hiddenPreviewCount(group) }}</strong>
                       <span>more</span>
-                    </div>
+                    </button>
                   }
                 </div>
 
                 @if (group.shared_signals.length > 0) {
                   <mat-chip-set aria-label="Shared signals">
                     @for (signal of group.shared_signals; track signal.kind + ':' + signal.label) {
-                      <mat-chip>{{ signal.kind }}: {{ signal.label }}</mat-chip>
+                      <mat-chip>{{ displaySharedSignal(signal) }}</mat-chip>
                     }
                   </mat-chip-set>
                 }
@@ -223,7 +239,7 @@
                     <mat-chip-set aria-label="Character suggestions">
                       @for (suggestion of group.suggested_characters; track suggestion.name) {
                         <mat-chip-row (click)="useCharacterSuggestion(suggestion.name)">
-                          {{ suggestion.name }}
+                          {{ displayMetadataName(suggestion.name) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>
@@ -236,7 +252,7 @@
                     <mat-chip-set aria-label="Series suggestions">
                       @for (suggestion of group.suggested_series; track suggestion.name) {
                         <mat-chip-row (click)="useSeriesSuggestion(suggestion.name)">
-                          {{ suggestion.name }}
+                          {{ displayMetadataName(suggestion.name) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>

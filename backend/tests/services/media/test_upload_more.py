@@ -258,16 +258,19 @@ async def test_refresh_import_batch_status_running_and_done_states(fake_db, stub
     service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
     batch_id = uuid.uuid4()
 
-    running_batch = ImportBatch(user_id=uuid.uuid4(), type=BatchType.upload, status=BatchStatus.running)
-    stub_query.get_import_batch.return_value = running_batch
-    stub_query.get_import_batch_statuses.return_value = [ItemStatus.pending, ItemStatus.processing]
-    await service._refresh_import_batch_status(batch_id)
-    assert running_batch.status == BatchStatus.running
-    assert running_batch.finished_at is None
+    with patch.object(service, "_auto_compute_recommendation_groups_for_batch", AsyncMock()) as auto_compute:
+        running_batch = ImportBatch(user_id=uuid.uuid4(), type=BatchType.upload, status=BatchStatus.running)
+        stub_query.get_import_batch.return_value = running_batch
+        stub_query.get_import_batch_statuses.return_value = [ItemStatus.pending, ItemStatus.processing]
+        await service._refresh_import_batch_status(batch_id)
+        assert running_batch.status == BatchStatus.running
+        assert running_batch.finished_at is None
+        auto_compute.assert_not_awaited()
 
-    done_batch = ImportBatch(user_id=uuid.uuid4(), type=BatchType.upload, status=BatchStatus.running)
-    stub_query.get_import_batch.return_value = done_batch
-    stub_query.get_import_batch_statuses.return_value = [ItemStatus.done, ItemStatus.skipped]
-    await service._refresh_import_batch_status(batch_id)
-    assert done_batch.status == BatchStatus.done
-    assert done_batch.finished_at is not None
+        done_batch = ImportBatch(user_id=uuid.uuid4(), type=BatchType.upload, status=BatchStatus.running)
+        stub_query.get_import_batch.return_value = done_batch
+        stub_query.get_import_batch_statuses.return_value = [ItemStatus.done, ItemStatus.skipped]
+        await service._refresh_import_batch_status(batch_id)
+        assert done_batch.status == BatchStatus.done
+        assert done_batch.finished_at is not None
+        auto_compute.assert_awaited_once_with(done_batch)

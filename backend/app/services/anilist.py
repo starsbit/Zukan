@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 from collections import Counter
+from email.utils import parsedate_to_datetime
 import logging
+from datetime import datetime, timezone
 
 import httpx
 
@@ -95,6 +98,30 @@ def _is_supported_media(media: dict | None) -> bool:
     return media_type in _ALLOWED_MEDIA_TYPES and media_format not in _DISALLOWED_FORMATS
 
 
+def _retry_delay_seconds(retry_after: str | None, attempt: int) -> float:
+    default_delay = settings.anilist_rate_limit_default_wait_seconds * max(1, attempt)
+    delay = default_delay
+
+    if retry_after:
+        parsed_delay: float | None = None
+        stripped = retry_after.strip()
+        try:
+            parsed_delay = float(stripped)
+        except ValueError:
+            try:
+                dt = parsedate_to_datetime(stripped)
+                if dt is not None:
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    parsed_delay = (dt - datetime.now(timezone.utc)).total_seconds()
+            except (TypeError, ValueError):
+                parsed_delay = None
+        if parsed_delay is not None:
+            delay = max(parsed_delay, settings.anilist_rate_limit_default_wait_seconds)
+
+    return min(delay, settings.anilist_rate_limit_max_wait_seconds)
+
+
 class AniListService:
     async def find_series_titles_for_character(self, character_name: str) -> list[str]:
         if not settings.anilist_enabled:
@@ -109,21 +136,42 @@ class AniListService:
             "variables": {"search": character_name},
         }
         timeout = httpx.Timeout(settings.anilist_timeout_seconds)
+        max_attempts = max(1, settings.anilist_rate_limit_retry_attempts + 1)
 
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
-                response = await client.post(
-                    settings.anilist_base_url,
-                    json=payload,
-                    headers=_DEFAULT_HEADERS,
-                )
-                if response.status_code == 429:
-                    retry_after = response.headers.get("Retry-After", "unknown")
-                    logger.warning(
-                        "AniList rate limit hit character=%s retry_after=%s",
-                        character_name,
-                        retry_after,
+                response: httpx.Response | None = None
+                for attempt in range(1, max_attempts + 1):
+                    response = await client.post(
+                        settings.anilist_base_url,
+                        json=payload,
+                        headers=_DEFAULT_HEADERS,
                     )
+                    if response.status_code != 429:
+                        break
+
+                    retry_after = response.headers.get("Retry-After")
+                    if attempt >= max_attempts:
+                        logger.warning(
+                            "AniList rate limit exhausted character=%s attempts=%d retry_after=%s",
+                            character_name,
+                            max_attempts,
+                            retry_after or "unknown",
+                        )
+                        return []
+
+                    delay_seconds = _retry_delay_seconds(retry_after, attempt)
+                    logger.warning(
+                        "AniList rate limit hit character=%s attempt=%d/%d retry_after=%s waiting_seconds=%.2f",
+                        character_name,
+                        attempt,
+                        max_attempts,
+                        retry_after or "unknown",
+                        delay_seconds,
+                    )
+                    await asyncio.sleep(delay_seconds)
+
+                if response is None:
                     return []
                 response.raise_for_status()
         except httpx.HTTPError as exc:

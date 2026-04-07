@@ -95,6 +95,7 @@
   display: grid;
   place-items: end start;
   padding: 14px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 86%, transparent);
   color: color-mix(in srgb, var(--mat-sys-on-surface) 68%, transparent);
   font-size: 0.72rem;
   font-weight: 700;
@@ -103,7 +104,14 @@
 }
 
 .media-card__placeholder--loading {
-  animation: media-card-pulse 1.4s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--mat-sys-surface-container-high) 80%, transparent) 25%,
+    color-mix(in srgb, var(--mat-sys-surface-container-highest) 90%, transparent) 50%,
+    color-mix(in srgb, var(--mat-sys-surface-container-high) 80%, transparent) 75%
+  );
+  background-size: 200% 100%;
+  animation: media-card-skeleton-shimmer 1.6s ease-in-out infinite;
 }
 
 .media-card__placeholder-spinner {
@@ -251,13 +259,13 @@
   animation: media-card-spin 0.9s linear infinite;
 }
 
-@keyframes media-card-pulse {
-  0%, 100% {
-    filter: saturate(0.95);
+@keyframes media-card-skeleton-shimmer {
+  0% {
+    background-position: 200% center;
   }
 
-  50% {
-    filter: saturate(1.05) brightness(1.03);
+  100% {
+    background-position: -200% center;
   }
 }
 

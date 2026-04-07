@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     anilist_enabled: bool = True
     anilist_timeout_seconds: float = 5.0
     anilist_base_url: str = "https://graphql.anilist.co"
+    anilist_rate_limit_retry_attempts: int = 6
+    anilist_rate_limit_default_wait_seconds: float = 2.0
+    anilist_rate_limit_max_wait_seconds: float = 30.0
 
     thumbnail_size: int = 512
 

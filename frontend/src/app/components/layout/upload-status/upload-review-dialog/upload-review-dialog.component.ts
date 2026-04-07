@@ -22,7 +22,11 @@ import { UploadTrackerService } from '../../../../services/upload-tracker.servic
 import { BatchesClientService } from '../../../../services/web/batches-client.service';
 import { UploadStatusPreviewComponent } from '../upload-status-preview/upload-status-preview.component';
 import { MediaInspectorDialogComponent } from '../../../media-browser/media-inspector-dialog/media-inspector-dialog.component';
-import { normalizeMetadataNameForSubmission } from '../../../../utils/media-display.utils';
+import {
+  formatMetadataName,
+  humanizeBackendLabel,
+  normalizeMetadataNameForSubmission,
+} from '../../../../utils/media-display.utils';
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
@@ -78,6 +82,7 @@ export class UploadReviewDialogComponent {
   readonly remoteRecommendationGroups = signal<ImportBatchRecommendationGroupRead[]>([]);
   readonly removedGroupMediaIds = signal<Record<string, string[]>>({});
   readonly discardedMediaIds = signal<string[]>([]);
+  readonly expandedGroupIds = signal<string[]>([]);
   readonly remoteRefreshing = signal(false);
   readonly remoteRecommendationsRefreshing = signal(false);
   readonly remoteBaselineTotal = signal(0);
@@ -102,30 +107,33 @@ export class UploadReviewDialogComponent {
     }
     return this.tracker.reviewBatches().some((b) => b.recommendationsRefreshing);
   });
-  readonly recommendationGroups = computed(() =>
-    this.rawRecommendationGroups()
+  readonly recommendationGroups = computed(() => {
+    const itemByMediaId = new Map(this.items().map((item) => [item.media.id, item]));
+    const activeReviewIds = new Set(itemByMediaId.keys());
+
+    return this.rawRecommendationGroups()
       .map((group) => {
         const removedIds = new Set([
           ...(this.removedGroupMediaIds()[group.id] ?? []),
           ...this.discardedMediaIds(),
         ]);
-        const mediaIds = group.media_ids.filter((id) => !removedIds.has(id));
+        const mediaIds = group.media_ids.filter((id) => !removedIds.has(id) && activeReviewIds.has(id));
         return {
           ...group,
           media_ids: mediaIds,
           item_count: mediaIds.length,
           missing_character_count: mediaIds.filter((mediaId) => {
-            const item = this.items().find((entry) => entry.media.id === mediaId);
+            const item = itemByMediaId.get(mediaId);
             return !!item?.missing_character;
           }).length,
           missing_series_count: mediaIds.filter((mediaId) => {
-            const item = this.items().find((entry) => entry.media.id === mediaId);
+            const item = itemByMediaId.get(mediaId);
             return !!item?.missing_series;
           }).length,
         };
       })
-      .filter((group) => group.media_ids.length >= 2),
-  );
+      .filter((group) => group.media_ids.length >= 2);
+  });
   readonly baselineTotal = computed(() => {
     if (this.data.batchId) {
       return this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal();
@@ -187,6 +195,14 @@ export class UploadReviewDialogComponent {
       const nextSelection = this.selectedIds().filter((id) => currentIds.has(id));
       if (nextSelection.length !== this.selectedIds().length) {
         this.selectedIds.set(nextSelection);
+      }
+    });
+
+    effect(() => {
+      const groupIds = new Set(this.recommendationGroups().map((group) => group.id));
+      const nextExpanded = this.expandedGroupIds().filter((groupId) => groupIds.has(groupId));
+      if (nextExpanded.length !== this.expandedGroupIds().length) {
+        this.expandedGroupIds.set(nextExpanded);
       }
     });
 
@@ -256,6 +272,7 @@ export class UploadReviewDialogComponent {
   }
 
   discardGroup(group: ImportBatchRecommendationGroupRead): void {
+    this.expandedGroupIds.update((ids) => ids.filter((id) => id !== group.id));
     this.discardReviewItems(group.media_ids, 'Group discarded from missing-name review.');
   }
 
@@ -304,9 +321,10 @@ export class UploadReviewDialogComponent {
       return;
     }
 
+    const appliedMediaIds = this.selectedIds();
     this.saving.set(true);
     this.mediaService.batchUpdateEntities({
-      media_ids: this.selectedIds(),
+      media_ids: appliedMediaIds,
       character_names: this.characterNames().length > 0
         ? this.characterNames()
             .map((name) => normalizeMetadataNameForSubmission(name))
@@ -319,14 +337,13 @@ export class UploadReviewDialogComponent {
         : undefined,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
+        this.removeMediaFromRecommendationGroups(appliedMediaIds);
         this.selectedIds.set([]);
         this.characterNames.set([]);
         this.seriesNames.set([]);
-        this.removedGroupMediaIds.set({});
         this.discardedMediaIds.set([]);
         this.saving.set(false);
         this.refreshReview();
-        this.refreshRecommendations(true);
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
       },
       error: () => {
@@ -361,6 +378,18 @@ export class UploadReviewDialogComponent {
     return 'Missing series';
   }
 
+  displaySharedSignal(signal: { kind: string; label: string }): string {
+    const kind = humanizeBackendLabel(signal.kind).toLowerCase();
+    if (signal.kind === 'tag' || signal.kind === 'entity') {
+      return `${kind}: ${formatMetadataName(signal.label)}`;
+    }
+    return `${kind}: ${signal.label}`;
+  }
+
+  displayMetadataName(value: string): string {
+    return formatMetadataName(value);
+  }
+
   characterLabel(item: ImportBatchReviewItemRead): string {
     return this.entityLabel(item, 'character');
   }
@@ -378,8 +407,27 @@ export class UploadReviewDialogComponent {
     return this.items().filter((item) => ids.has(item.media.id)).slice(0, GROUP_PREVIEW_LIMIT);
   }
 
+  displayedPreviewItemsForGroup(group: ImportBatchRecommendationGroupRead): ImportBatchReviewItemRead[] {
+    const ids = new Set(group.media_ids);
+    const items = this.items().filter((item) => ids.has(item.media.id));
+    return this.isGroupExpanded(group) ? items : items.slice(0, GROUP_PREVIEW_LIMIT);
+  }
+
+  isGroupExpanded(group: ImportBatchRecommendationGroupRead): boolean {
+    return this.expandedGroupIds().includes(group.id);
+  }
+
+  toggleGroupExpanded(group: ImportBatchRecommendationGroupRead): void {
+    if (group.item_count <= GROUP_PREVIEW_LIMIT) {
+      return;
+    }
+    this.expandedGroupIds.update((ids) =>
+      ids.includes(group.id) ? ids.filter((id) => id !== group.id) : [...ids, group.id],
+    );
+  }
+
   hiddenPreviewCount(group: ImportBatchRecommendationGroupRead): number {
-    return Math.max(group.item_count - this.previewItemsForGroup(group).length, 0);
+    return Math.max(group.item_count - this.displayedPreviewItemsForGroup(group).length, 0);
   }
 
   private refreshReview(): void {
@@ -399,7 +447,6 @@ export class UploadReviewDialogComponent {
     this.batchesClient.listReviewItems(batchId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.remoteItems.set(response.items);
-        this.remoteRecommendationGroups.set(response.recommendation_groups);
         this.removedGroupMediaIds.set({});
         this.discardedMediaIds.set([]);
         this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
@@ -474,6 +521,25 @@ export class UploadReviewDialogComponent {
       default:
         return true;
     }
+  }
+
+  private removeMediaFromRecommendationGroups(mediaIds: string[]): void {
+    if (mediaIds.length === 0) {
+      return;
+    }
+
+    const removedIds = new Set(mediaIds);
+    this.removedGroupMediaIds.update((current) => {
+      const next = { ...current };
+      for (const group of this.recommendationGroups()) {
+        const intersectingIds = group.media_ids.filter((id) => removedIds.has(id));
+        if (intersectingIds.length === 0) {
+          continue;
+        }
+        next[group.id] = Array.from(new Set([...(next[group.id] ?? []), ...intersectingIds]));
+      }
+      return next;
+    });
   }
 
   private discardReviewItems(mediaIds: string[], successMessage: string): void {

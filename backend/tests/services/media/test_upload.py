@@ -177,7 +177,8 @@ async def test_upload_service_marks_item_done_and_refreshes_batch(fake_db, stub_
     stub_query.get_import_batch_statuses.return_value = statuses
 
     service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
-    await service.mark_upload_batch_item_done(uuid.uuid4())
+    with patch.object(service, "_auto_compute_recommendation_groups_for_batch", AsyncMock()) as auto_compute:
+        await service.mark_upload_batch_item_done(uuid.uuid4())
 
     assert item.status == ItemStatus.done
     assert item.step == ProcessingStep.tag
@@ -185,6 +186,7 @@ async def test_upload_service_marks_item_done_and_refreshes_batch(fake_db, stub_
     assert batch.done_items == 1
     assert batch.failed_items == 1
     assert batch.status == BatchStatus.partial_failed
+    auto_compute.assert_awaited_once_with(batch)
     fake_db.commit.assert_awaited_once()
 
 

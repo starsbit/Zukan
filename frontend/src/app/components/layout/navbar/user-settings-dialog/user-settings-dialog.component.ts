@@ -10,9 +10,10 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { finalize } from 'rxjs';
+import { catchError, EMPTY, finalize } from 'rxjs';
 import { ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
 import { BadgeVisibilityService } from '../../../../services/badge-visibility.service';
+import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 
@@ -41,6 +42,7 @@ export class UserSettingsDialogComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
   private readonly usersClient = inject(UsersClientService);
+  private readonly galleryStore = inject(GalleryStore);
   readonly badgeVisibility = inject(BadgeVisibilityService);
 
   readonly loading = signal(false);
@@ -104,6 +106,9 @@ export class UserSettingsDialogComponent implements OnInit {
     ).subscribe({
       next: (user) => {
         this.userStore.set(user);
+        this.galleryStore.refresh().pipe(
+          catchError(() => EMPTY),
+        ).subscribe();
         this.dialogRef.close(user);
       },
       error: (err: { error?: { detail?: string } }) => {
