@@ -28,6 +28,21 @@
         <mat-button-toggle value="items">All items</mat-button-toggle>
       </mat-button-toggle-group>
     }
+
+    <button
+      mat-icon-button
+      type="button"
+      [disabled]="recommendationsRefreshing()"
+      (click)="refreshRecommendations(true)"
+      aria-label="Refresh grouping recommendations"
+      title="Refresh grouping"
+    >
+      @if (recommendationsRefreshing()) {
+        <mat-spinner diameter="20"></mat-spinner>
+      } @else {
+        <mat-icon>refresh</mat-icon>
+      }
+    </button>
   </section>
 
   <section class="review-actions">
@@ -183,6 +198,13 @@
                       >
                         <mat-icon>close</mat-icon>
                       </button>
+                    </div>
+                  }
+
+                  @if (hiddenPreviewCount(group) > 0) {
+                    <div class="review-group-card__preview-more" aria-label="{{ hiddenPreviewCount(group) }} more items">
+                      <strong>+{{ hiddenPreviewCount(group) }}</strong>
+                      <span>more</span>
                     </div>
                   }
                 </div>

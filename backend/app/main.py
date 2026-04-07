@@ -330,16 +330,25 @@ def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", str(uuid.uuid4()))
 
 
+def _json_error_response(*, status_code: int, payload: dict, headers: dict[str, str] | None = None) -> JSONResponse:
+    response_headers = dict(headers or {})
+    request_id = payload.get("request_id")
+    if isinstance(request_id, str) and request_id:
+        response_headers.setdefault("x-request-id", request_id)
+    return JSONResponse(status_code=status_code, content=payload, headers=response_headers or None)
+
+
 @api.exception_handler(AppError)
 async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+    request_id = _request_id(request)
     detail = exc.detail if isinstance(exc.detail, dict) else {}
     message = detail.get("message") or detail.get("detail") or "Request failed"
     payload = build_error_response(
         status_code=exc.status_code,
         code=detail.get("code", "app_error"),
         message=message,
-        request_id=_request_id(request),
-        trace_id=_request_id(request),
+        request_id=request_id,
+        trace_id=request_id,
         details=detail.get("details"),
         fields=detail.get("fields"),
     )
@@ -348,13 +357,14 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         exc.status_code,
         payload.get("code"),
         request.url.path,
-        _request_id(request),
+        request_id,
     )
-    return JSONResponse(status_code=exc.status_code, content=payload)
+    return _json_error_response(status_code=exc.status_code, payload=payload)
 
 
 @api.exception_handler(RequestValidationError)
 async def request_validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    request_id = _request_id(request)
     fields = []
     for err in exc.errors():
         loc = [str(v) for v in err.get("loc", []) if v not in {"body", "query", "path", "header", "cookie"}]
@@ -370,8 +380,8 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
         status_code=422,
         code="validation_error",
         message="Request validation failed",
-        request_id=_request_id(request),
-        trace_id=_request_id(request),
+        request_id=request_id,
+        trace_id=request_id,
         details={"error_count": len(fields)},
         fields=fields,
     )
@@ -379,21 +389,22 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
         "ValidationError status=422 path=%s error_count=%s request_id=%s",
         request.url.path,
         len(fields),
-        _request_id(request),
+        request_id,
     )
-    return JSONResponse(status_code=422, content=payload)
+    return _json_error_response(status_code=422, payload=payload)
 
 
 @api.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    request_id = _request_id(request)
     if isinstance(exc.detail, dict) and "code" in exc.detail:
         message = exc.detail.get("message") or exc.detail.get("detail") or "Request failed"
         payload = build_error_response(
             status_code=exc.status_code,
             code=exc.detail.get("code", "http_error"),
             message=message,
-            request_id=_request_id(request),
-            trace_id=_request_id(request),
+            request_id=request_id,
+            trace_id=request_id,
             details=exc.detail.get("details"),
             fields=exc.detail.get("fields"),
         )
@@ -402,8 +413,8 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             status_code=exc.status_code,
             code="http_error",
             message=str(exc.detail),
-            request_id=_request_id(request),
-            trace_id=_request_id(request),
+            request_id=request_id,
+            trace_id=request_id,
         )
     log_fn = logger.error if exc.status_code >= 500 else logger.warning
     log_fn(
@@ -411,27 +422,28 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         exc.status_code,
         payload.get("code"),
         request.url.path,
-        _request_id(request),
+        request_id,
     )
-    return JSONResponse(status_code=exc.status_code, content=payload, headers=exc.headers)
+    return _json_error_response(status_code=exc.status_code, payload=payload, headers=exc.headers)
 
 
 @api.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    request_id = _request_id(request)
     logger.exception(
         "Unhandled exception path=%s method=%s request_id=%s",
         request.url.path,
         request.method,
-        _request_id(request),
+        request_id,
     )
     payload = build_error_response(
         status_code=500,
         code="internal_server_error",
         message="Internal server error",
-        request_id=_request_id(request),
-        trace_id=_request_id(request),
+        request_id=request_id,
+        trace_id=request_id,
     )
-    return JSONResponse(status_code=500, content=payload)
+    return _json_error_response(status_code=500, payload=payload)
 
 
 v1_router = APIRouter(prefix="/api/v1")

@@ -30,7 +30,10 @@ def test_me_unauthenticated_contract(unauthenticated_client):
     response = unauthenticated_client.get("/api/v1/me")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "not_authenticated"
+    payload = response.json()
+    assert payload["code"] == "not_authenticated"
+    assert response.headers["x-request-id"] == payload["request_id"]
+    assert payload["trace_id"] == payload["request_id"]
 
 
 def test_update_me_contract(api_client, monkeypatch):
@@ -161,4 +164,6 @@ def test_me_rejects_invalid_api_key(monkeypatch):
         response = client.get("/api/v1/me", headers={"Authorization": "Bearer zk_invalid_key"})
 
     assert response.status_code == 401
-    assert response.json()["code"] == "invalid_token"
+    payload = response.json()
+    assert payload["code"] == "invalid_token"
+    assert response.headers["x-request-id"] == payload["request_id"]

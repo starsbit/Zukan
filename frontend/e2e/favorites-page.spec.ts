@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { resetBrowserState, seedAuthenticatedSession } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -71,19 +71,14 @@ async function setupFavoritesMocks(
 
 test.describe.serial('Favorites page', () => {
   test.beforeEach(async ({ page }) => {
-    await page.context().clearCookies();
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+    await resetBrowserState(page);
   });
 
   test('shows a user-owned favorited item instead of the empty state', async ({ page }) => {
     const searchRequests: URL[] = [];
     await setupFavoritesMocks(page, searchRequests, { items: [mediaItem('own-favorite-1')], total: 1 });
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
@@ -111,7 +106,7 @@ test.describe.serial('Favorites page', () => {
     };
     await setupFavoritesMocks(page, searchRequests, { items: [publicFavorite, sharedAlbumFavorite], total: 2 });
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
@@ -143,7 +138,7 @@ test.describe.serial('Favorites page', () => {
       });
     });
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);

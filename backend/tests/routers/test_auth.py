@@ -91,3 +91,17 @@ def test_logout_contract(api_client, monkeypatch):
 
     assert response.status_code == 204
     assert response.content == b""
+
+
+def test_register_validation_error_uses_error_envelope_and_request_id(api_client):
+    response = api_client.post(
+        "/api/v1/auth/register",
+        json={"username": "", "email": "not-an-email", "password": "short"},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["code"] == "validation_error"
+    assert payload["request_id"] == response.headers["x-request-id"]
+    assert payload["trace_id"] == response.headers["x-request-id"]
+    assert payload["fields"]

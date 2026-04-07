@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { resetBrowserState, seedAuthenticatedSession } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -105,17 +105,12 @@ async function clickFavoriteButton(page: Page): Promise<void> {
 
 test.describe.serial('Home page favorites', () => {
   test.beforeEach(async ({ page }) => {
-    await page.context().clearCookies();
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+    await resetBrowserState(page);
   });
 
   test('favorite button appears on card hover and emits a PATCH to the backend', async ({ page }) => {
     const { patchRequests } = await setupHomeMocks(page);
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -136,7 +131,7 @@ test.describe.serial('Home page favorites', () => {
 
   test('favorite icon changes to filled heart after clicking', async ({ page }) => {
     await setupHomeMocks(page);
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -155,7 +150,7 @@ test.describe.serial('Home page favorites', () => {
 
   test('clicking a filled heart unfavorites the item', async ({ page }) => {
     const { patchRequests } = await setupHomeMocks(page, { initiallyFavorited: true });
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -173,7 +168,7 @@ test.describe.serial('Home page favorites', () => {
 
   test('clicking the favorite button does not open the media viewer', async ({ page }) => {
     await setupHomeMocks(page);
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();

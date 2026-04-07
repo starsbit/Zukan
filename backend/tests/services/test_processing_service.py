@@ -740,3 +740,239 @@ async def test_character_name_groups_not_duplicated_in_similarity_groups(fake_db
     assert len(result.recommendation_groups) == 1
     all_media_ids = [mid for group in result.recommendation_groups for mid in group.media_ids]
     assert len(all_media_ids) == len(set(all_media_ids)), "no item should appear in multiple groups"
+
+
+@pytest.mark.asyncio
+async def test_character_name_groups_use_anilist_series_suggestions(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    def make_item(name: str, char_name: str) -> ImportBatchItem:
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            created_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.media_tags = []
+        media.entities = [
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name=char_name, role="primary", source="tagger", confidence=0.9),
+        ]
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=name, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        return item
+
+    item_one = make_item("one.webp", "Saber")
+    item_two = make_item("two.webp", "Saber")
+
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_fetch_anilist_series_candidates", AsyncMock(return_value=["Fate/stay night", "Fate/Zero"])), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[item_one, item_two])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert len(result.recommendation_groups) == 1
+    assert result.recommendation_groups[0].suggested_series[0].name == "Fate/stay night"
+
+
+@pytest.mark.asyncio
+async def test_character_name_groups_expand_with_anilist_matching_items(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    copyright_tag = Tag(id=2, name="Fate/stay night", category=3, media_count=3)
+
+    def make_item(name: str, entities: list[MediaEntity]) -> ImportBatchItem:
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            created_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            phash="sharedhash",
+            ocr_text="Fate route",
+            metadata_review_dismissed=False,
+        )
+        media.media_tags = [
+            MediaTag(media_id=media.id, tag_id=2, confidence=0.95, tag=copyright_tag),
+        ]
+        media.entities = entities
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=name, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        return item
+
+    item_one = make_item("one.webp", [])
+    item_one.media.entities = [
+        MediaEntity(id=uuid.uuid4(), media_id=item_one.media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="tagger", confidence=0.95),
+    ]
+    item_two = make_item("two.webp", [])
+    item_two.media.entities = [
+        MediaEntity(id=uuid.uuid4(), media_id=item_two.media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="tagger", confidence=0.94),
+    ]
+    item_three = make_item("three.webp", [])
+
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[]), None])
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_fetch_anilist_series_candidates", AsyncMock(return_value=["Fate/stay night"])), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[item_one, item_two, item_three])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert len(result.recommendation_groups) == 1
+    assert set(result.recommendation_groups[0].media_ids) == {item_one.media.id, item_two.media.id, item_three.media.id}
+
+
+@pytest.mark.asyncio
+async def test_character_name_groups_do_not_merge_different_characters_with_same_anilist_series(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    def make_item(name: str, char_name: str) -> ImportBatchItem:
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            created_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.media_tags = []
+        media.entities = [
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name=char_name, role="primary", source="tagger", confidence=0.9),
+        ]
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=name, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        return item
+
+    items = [
+        make_item("saber-1.webp", "Saber"),
+        make_item("saber-2.webp", "Saber"),
+        make_item("rin-1.webp", "Rin"),
+        make_item("rin-2.webp", "Rin"),
+    ]
+
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[])] * 6 + [None])
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_fetch_anilist_series_candidates", AsyncMock(return_value=["Fate/stay night"])), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=items)
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert len(result.recommendation_groups) == 2
+    assert all(group.item_count == 2 for group in result.recommendation_groups)
+
+
+@pytest.mark.asyncio
+async def test_list_batch_review_items_uses_cached_recommendation_groups(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    media = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        metadata_review_dismissed=False,
+    )
+    media.entities = []
+    review_item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename="one.webp", status=ItemStatus.done)
+    review_item.id = uuid.uuid4()
+    review_item.media = media
+    batch = ImportBatch(
+        id=batch_id,
+        user_id=user.id,
+        type=BatchType.upload,
+        status=BatchStatus.done,
+        total_items=1,
+        queued_items=0,
+        processing_items=0,
+        done_items=1,
+        failed_items=0,
+    )
+    batch.recommendation_groups = [{
+        "id": "batch-group-1",
+        "media_ids": [str(media.id)],
+        "item_count": 1,
+        "missing_character_count": 1,
+        "missing_series_count": 1,
+        "suggested_characters": [],
+        "suggested_series": [{"name": "Fate/stay night", "confidence": 1.0}],
+        "shared_signals": [],
+        "confidence": 0.9,
+    }]
+
+    with patch.object(service, "get_batch_for_user", AsyncMock(return_value=batch)), \
+         patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=[])) as build_groups, \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[review_item])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    build_groups.assert_not_awaited()
+    assert result.recommendation_groups[0].suggested_series[0].name == "Fate/stay night"

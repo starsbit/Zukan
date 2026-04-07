@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { seedAuthenticatedSession } from './helpers/auth';
 
 type MockMedia = ReturnType<typeof sampleMedia> & {
   searchable_status?: string;
@@ -130,6 +130,10 @@ async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<
 
     await route.fulfill({ json: items });
   });
+
+  await page.route('**/api/v1/media/series-suggestions**', async (route) => {
+    await route.fulfill({ json: [] });
+  });
 }
 
 async function registerMobileGalleryRoutes(page: Page, searchRequests: URL[]): Promise<void> {
@@ -222,6 +226,10 @@ async function registerMobileGalleryRoutes(page: Page, searchRequests: URL[]): P
       ? [{ name: 'Rin Tohsaka', media_count: 5 }]
       : [];
     await route.fulfill({ json: items });
+  });
+
+  await page.route('**/api/v1/media/series-suggestions**', async (route) => {
+    await route.fulfill({ json: [] });
   });
 }
 
@@ -484,6 +492,10 @@ async function registerAdvancedFilterRoutes(
   await page.route('**/api/v1/media/character-suggestions**', async (route) => {
     await route.fulfill({ json: [] });
   });
+
+  await page.route('**/api/v1/media/series-suggestions**', async (route) => {
+    await route.fulfill({ json: [] });
+  });
 }
 
 async function waitForMatchingSearchRequest(
@@ -538,7 +550,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await registerSearchRoutes(page, searchRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -566,7 +578,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await registerSearchRoutes(page, searchRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -629,7 +641,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await registerSearchRoutes(page, searchRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await expect(page).toHaveURL('/');
     await page.goto('/album/album-1');
     await expect(page).toHaveURL('/album/album-1');
@@ -653,7 +665,7 @@ test.describe.serial('Navbar search', () => {
     await registerMobileGalleryRoutes(page, searchRequests);
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
@@ -687,7 +699,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await registerAdvancedFilterRoutes(page, searchRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
@@ -726,7 +738,7 @@ test.describe.serial('Navbar search', () => {
     const timelineRequests: URL[] = [];
     await registerAdvancedFilterRoutes(page, searchRequests, timelineRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
@@ -751,7 +763,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await registerAdvancedFilterRoutes(page, searchRequests);
 
-    await ensureAdminAuthenticated(page);
+    await seedAuthenticatedSession(page);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(

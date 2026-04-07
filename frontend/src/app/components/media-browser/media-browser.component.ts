@@ -16,10 +16,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog } from '@angular/material/dialog';
+import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { ActivatedRoute, Router } from '@angular/router';
 import { fromEvent } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead, MediaVisibility } from '../../models/media';
@@ -120,6 +121,9 @@ export class MediaBrowserComponent {
   private readonly galleryStore = inject(GalleryStore);
   private readonly uploadTracker = inject(UploadTrackerService);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private inspectorRef: MatDialogRef<MediaInspectorDialogComponent> | null = null;
 
   @ViewChildren('monthSection', { read: ElementRef })
   private readonly monthSections?: QueryList<ElementRef<HTMLElement>>;
@@ -155,6 +159,7 @@ export class MediaBrowserComponent {
 
   private resizeObserver?: ResizeObserver;
   private resizeDebounceTimer?: ReturnType<typeof setTimeout>;
+  private metricsFrameId: number | null = null;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
 
@@ -175,20 +180,35 @@ export class MediaBrowserComponent {
 
       this.reconcileSelection();
       this.tryResolvePendingJump();
-      this.scheduleActiveSectionSync();
+      this.scheduleLayoutSync();
     });
+
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const inspectId = params.get('inspect');
+        if (inspectId) {
+          this.openInspectorForId(inspectId);
+        } else {
+          this.inspectorRef?.close();
+          this.inspectorRef = null;
+        }
+      });
   }
 
   ngAfterViewInit(): void {
     this.observeContentWidth();
     this.watchContentScroll();
     this.watchMonthSections();
-    this.scheduleActiveSectionSync();
+    this.scheduleLayoutSync();
   }
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     clearTimeout(this.resizeDebounceTimer);
+    if (this.metricsFrameId != null) {
+      cancelAnimationFrame(this.metricsFrameId);
+    }
     if (this.frameId != null) {
       cancelAnimationFrame(this.frameId);
     }
@@ -211,9 +231,21 @@ export class MediaBrowserComponent {
   }
 
   onMediaActivated(media: MediaRead): void {
+    this.mediaSelected.emit(media);
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { inspect: media.id },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  private openInspectorForId(id: string): void {
+    if (this.inspectorRef) {
+      return;
+    }
     const items = this.dayGroups().flatMap((group) => group.items);
-    this.dialog.open(MediaInspectorDialogComponent, {
-      data: { items, activeMediaId: media.id },
+    this.inspectorRef = this.dialog.open(MediaInspectorDialogComponent, {
+      data: { items, activeMediaId: id },
       width: '100vw',
       maxWidth: '100vw',
       height: '100vh',
@@ -221,7 +253,14 @@ export class MediaBrowserComponent {
       autoFocus: false,
       panelClass: 'media-inspector-dialog-panel',
     });
-    this.mediaSelected.emit(media);
+    this.inspectorRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.inspectorRef = null;
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { inspect: null },
+        queryParamsHandling: 'merge',
+      });
+    });
   }
 
   onFavoriteToggled(media: MediaRead): void {
@@ -496,7 +535,7 @@ export class MediaBrowserComponent {
       clearTimeout(this.resizeDebounceTimer);
       this.resizeDebounceTimer = setTimeout(() => {
         this.contentWidth.set(Math.max(Math.floor(width), 320));
-        this.syncMonthMetrics();
+        this.scheduleLayoutSync();
       }, 60);
     });
     this.resizeObserver.observe(content);
@@ -508,11 +547,10 @@ export class MediaBrowserComponent {
     }
 
     this.monthSections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.syncMonthMetrics();
       this.tryResolvePendingJump();
-      this.scheduleActiveSectionSync();
+      this.scheduleLayoutSync();
     });
-    this.syncMonthMetrics();
+    this.scheduleLayoutSync();
   }
 
   private watchContentScroll(): void {
@@ -557,6 +595,18 @@ export class MediaBrowserComponent {
 
     this.frameId = requestAnimationFrame(() => {
       this.frameId = null;
+      this.syncActiveSection();
+    });
+  }
+
+  private scheduleLayoutSync(): void {
+    if (this.metricsFrameId != null) {
+      return;
+    }
+
+    this.metricsFrameId = requestAnimationFrame(() => {
+      this.metricsFrameId = null;
+      this.syncMonthMetrics();
       this.syncActiveSection();
     });
   }
@@ -720,6 +770,7 @@ export class MediaBrowserComponent {
     } else {
       content.scrollTop = Math.max(nextTop, 0);
     }
+    this.scheduleActiveSectionSync();
     return true;
   }
 
@@ -987,6 +1038,7 @@ export class MediaBrowserComponent {
 
     const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
     content.scrollTop = progress * maxScrollTop;
+    this.scheduleActiveSectionSync();
   }
 
   private measureContentWidth(content: HTMLElement): number {

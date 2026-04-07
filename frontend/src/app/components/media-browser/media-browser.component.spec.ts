@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
-import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { ActivatedRoute, Router, provideRouter } from '@angular/router';
+import { BehaviorSubject, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlbumStore } from '../../services/album.store';
 import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
@@ -71,38 +71,56 @@ const confirmDialogMock = {
 };
 
 const dialogMock = {
-  open: vi.fn(() => ({ afterClosed: () => of(undefined as unknown) })),
+  open: vi.fn(() => ({ afterClosed: () => of(undefined as unknown), close: vi.fn() })),
 };
 
 const uploadTrackerMock = {
   registerRetagging: vi.fn(),
 };
 
+const sharedProviders = [
+  {
+    provide: MediaService,
+    useValue: {
+      getThumbnailUrl: () => of('blob:thumb'),
+      getPosterUrl: () => of('blob:poster'),
+      getFileUrl: () => of('blob:file'),
+    },
+  },
+  {
+    provide: MediaClientService,
+    useValue: {
+      search: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
+      batchUpdate: vi.fn(() => of({ processed: 1, skipped: 0 })),
+    },
+  },
+  { provide: AlbumStore, useValue: albumStoreMock },
+  { provide: MatDialog, useValue: dialogMock },
+  { provide: GalleryStore, useValue: galleryStoreMock },
+  { provide: ConfirmDialogService, useValue: confirmDialogMock },
+  { provide: UploadTrackerService, useValue: uploadTrackerMock },
+];
+
 async function configureBrowserTestingModule() {
+  await TestBed.configureTestingModule({
+    imports: [MediaBrowserComponent],
+    providers: [provideRouter([]), ...sharedProviders],
+  }).compileComponents();
+}
+
+function makeParamMap(inspectId: string | null) {
+  return { get: (key: string) => (key === 'inspect' ? inspectId : null) };
+}
+
+async function configureBrowserTestingModuleWithRoute(
+  queryParamMap: BehaviorSubject<ReturnType<typeof makeParamMap>>,
+) {
   await TestBed.configureTestingModule({
     imports: [MediaBrowserComponent],
     providers: [
       provideRouter([]),
-      {
-        provide: MediaService,
-        useValue: {
-          getThumbnailUrl: () => of('blob:thumb'),
-          getPosterUrl: () => of('blob:poster'),
-          getFileUrl: () => of('blob:file'),
-        },
-      },
-      {
-        provide: MediaClientService,
-        useValue: {
-          search: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
-          batchUpdate: vi.fn(() => of({ processed: 1, skipped: 0 })),
-        },
-      },
-      { provide: AlbumStore, useValue: albumStoreMock },
-      { provide: MatDialog, useValue: dialogMock },
-      { provide: GalleryStore, useValue: galleryStoreMock },
-      { provide: ConfirmDialogService, useValue: confirmDialogMock },
-      { provide: UploadTrackerService, useValue: uploadTrackerMock },
+      { provide: ActivatedRoute, useValue: { queryParamMap } },
+      ...sharedProviders,
     ],
   }).compileComponents();
 }
@@ -441,32 +459,23 @@ describe('MediaBrowserComponent', () => {
     expect(galleryStoreMock.toggleFavorite).toHaveBeenCalledWith(media);
   });
 
-  it('opens the inspector dialog when a media card is activated', async () => {
+  it('navigates to ?inspect=<id> when a media card is activated', async () => {
     await configureBrowserTestingModule();
 
     const fixture = TestBed.createComponent(MediaBrowserComponent);
+    const router = TestBed.inject(Router);
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
     const media = makeMedia('m1', 100, 100);
-    const secondMedia = makeMedia('m2', 120, 120);
     fixture.componentRef.setInput('dayGroups', [
-      {
-        date: '2026-03-28',
-        label: 'March 28, 2026',
-        items: [media, secondMedia],
-      },
+      { date: '2026-03-28', label: 'March 28, 2026', items: [media] },
     ] satisfies DayGroup[]);
     fixture.detectChanges();
 
     fixture.componentInstance.onMediaActivated(media);
 
-    expect(dialogMock.open).toHaveBeenCalledWith(
-      MediaInspectorDialogComponent,
-      expect.objectContaining({
-        data: { items: [media, secondMedia], activeMediaId: media.id },
-        width: '100vw',
-        maxWidth: '100vw',
-        height: '100vh',
-        panelClass: 'media-inspector-dialog-panel',
-      }),
+    expect(navigateSpy).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({ queryParams: { inspect: 'm1' } }),
     );
   });
 
@@ -541,6 +550,7 @@ describe('MediaBrowserComponent', () => {
   it('adds the selected media to an existing album from the action bar', async () => {
     dialogMock.open.mockReturnValueOnce({
       afterClosed: () => of({ albumId: 'album-1', albumName: 'Favorites' }),
+      close: vi.fn(),
     });
     albumStoreMock.addMedia.mockReturnValueOnce(of({ processed: 1, skipped: 0 }));
 
@@ -656,5 +666,131 @@ describe('MediaBrowserComponent', () => {
 
     expect(fixture.componentInstance.selectionCount()).toBe(1);
     expect(fixture.componentInstance.isMediaSelected('m2')).toBe(true);
+  });
+
+  describe('inspect query param routing', () => {
+    it('opens the inspector dialog when the inspect query param is set', async () => {
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const media = makeMedia('m1', 100, 100);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [media] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+      dialogMock.open.mockClear();
+
+      querySubject.next(makeParamMap('m1'));
+
+      expect(dialogMock.open).toHaveBeenCalledWith(
+        MediaInspectorDialogComponent,
+        expect.objectContaining({
+          data: expect.objectContaining({ activeMediaId: 'm1' }),
+          width: '100vw',
+          height: '100vh',
+          panelClass: 'media-inspector-dialog-panel',
+        }),
+      );
+    });
+
+    it('passes all loaded items to the dialog', async () => {
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const m1 = makeMedia('m1', 100, 100);
+      const m2 = makeMedia('m2', 200, 200);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [m1, m2] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+      dialogMock.open.mockClear();
+
+      querySubject.next(makeParamMap('m2'));
+
+      expect(dialogMock.open).toHaveBeenCalledWith(
+        MediaInspectorDialogComponent,
+        expect.objectContaining({ data: { items: [m1, m2], activeMediaId: 'm2' } }),
+      );
+    });
+
+    it('closes the open dialog when the inspect param is removed', async () => {
+      const closeMock = vi.fn();
+      const afterClosedSubject = new Subject<void>();
+      dialogMock.open.mockReturnValueOnce({
+        afterClosed: () => afterClosedSubject,
+        close: closeMock,
+      });
+
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const router = TestBed.inject(Router);
+      vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      querySubject.next(makeParamMap('m1'));
+      querySubject.next(makeParamMap(null));
+
+      expect(closeMock).toHaveBeenCalled();
+    });
+
+    it('clears the inspect query param when the dialog is closed', async () => {
+      const afterClosedSubject = new Subject<void>();
+      dialogMock.open.mockReturnValueOnce({
+        afterClosed: () => afterClosedSubject,
+        close: vi.fn(),
+      });
+
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      querySubject.next(makeParamMap('m1'));
+      afterClosedSubject.next();
+      afterClosedSubject.complete();
+
+      expect(navigateSpy).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({ queryParams: { inspect: null } }),
+      );
+    });
+
+    it('does not open a second dialog if one is already open', async () => {
+      const afterClosedSubject = new Subject<void>();
+      dialogMock.open.mockReturnValueOnce({
+        afterClosed: () => afterClosedSubject,
+        close: vi.fn(),
+      });
+
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const router = TestBed.inject(Router);
+      vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+      dialogMock.open.mockClear();
+
+      querySubject.next(makeParamMap('m1'));
+      querySubject.next(makeParamMap('m1'));
+
+      expect(dialogMock.open).toHaveBeenCalledTimes(1);
+    });
   });
 });

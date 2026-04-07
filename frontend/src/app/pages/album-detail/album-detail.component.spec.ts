@@ -98,6 +98,7 @@ describe('AlbumDetailComponent', () => {
           useValue: {
             snapshot: { paramMap: convertToParamMap({ albumId: 'album-1' }) },
             paramMap: of(convertToParamMap({ albumId: 'album-1' })),
+            queryParamMap: of(convertToParamMap({})),
           },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
@@ -188,6 +189,7 @@ describe('AlbumDetailComponent', () => {
           useValue: {
             snapshot: { paramMap: convertToParamMap({ albumId: 'album-1' }) },
             paramMap: of(convertToParamMap({ albumId: 'album-1' })),
+            queryParamMap: of(convertToParamMap({})),
           },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
@@ -277,6 +279,7 @@ describe('AlbumDetailComponent', () => {
           useValue: {
             snapshot: { paramMap: convertToParamMap({ albumId: 'album-1' }) },
             paramMap: of(convertToParamMap({ albumId: 'album-1' })),
+            queryParamMap: of(convertToParamMap({})),
           },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
@@ -377,6 +380,7 @@ describe('AlbumDetailComponent', () => {
           useValue: {
             snapshot: { paramMap: convertToParamMap({ albumId: 'album-1' }) },
             paramMap: of(convertToParamMap({ albumId: 'album-1' })),
+            queryParamMap: of(convertToParamMap({})),
           },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
@@ -450,6 +454,7 @@ describe('AlbumDetailComponent', () => {
           useValue: {
             snapshot: { paramMap: convertToParamMap({ albumId: 'album-inaccessible' }) },
             paramMap: of(convertToParamMap({ albumId: 'album-inaccessible' })),
+            queryParamMap: of(convertToParamMap({})),
           },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },

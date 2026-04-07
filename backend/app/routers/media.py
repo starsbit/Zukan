@@ -21,6 +21,7 @@ from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
     CharacterSuggestion,
+    MediaAnnotatedUploadRequest,
     MediaEntityBatchUpdate,
     MediaIdsRequest,
     MediaBatchUpdate,
@@ -191,6 +192,101 @@ async def upload(
 
 
 @router.post(
+    "/annotated",
+    response_model=BatchUploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Upload Media With Predefined Tags And Entities",
+    description=(
+        "Upload media for third-party clients with predefined manual annotations. "
+        "Accepted tags, character names, and series names are stored as authoritative manual metadata, "
+        "and automatic AI tagging is skipped for the uploaded files.\n\n"
+        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
+    ),
+    responses={
+        202: {
+            "description": "Upload accepted with manual annotations applied and AI tagging skipped.",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "batch_id": "9bf70018-9d3f-4f14-b5a9-d0c77f532f7a",
+                        "batch_url": "/api/v1/me/import-batches/9bf70018-9d3f-4f14-b5a9-d0c77f532f7a",
+                        "batch_items_url": "/api/v1/me/import-batches/9bf70018-9d3f-4f14-b5a9-d0c77f532f7a/items",
+                        "poll_after_seconds": 2,
+                        "webhooks_supported": False,
+                        "accepted": 1,
+                        "duplicates": 0,
+                        "errors": 0,
+                        "results": [
+                            {
+                                "id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
+                                "batch_item_id": "4a7d8d3a-2f57-4ab0-81be-852eb95b6a23",
+                                "original_filename": "sakura.webp",
+                                "status": "accepted",
+                                "message": None
+                            }
+                        ],
+                    }
+                }
+            },
+        },
+        **error_responses(400, 403, 404, 409, 422, 429),
+    },
+    dependencies=[
+        Depends(
+            rate_limit(
+                max_requests=settings.upload_rate_limit_requests,
+                window_seconds=settings.upload_rate_limit_window_seconds,
+                scope="media_upload",
+            )
+        )
+    ],
+)
+async def upload_with_annotations(
+    body: Annotated[MediaAnnotatedUploadRequest, Depends(MediaAnnotatedUploadRequest.as_form)],
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = idempotency_scope(user_id=user.id, method="POST", path="/media/annotated")
+    upload_signature = {
+        "files": [{"filename": f.filename, "content_type": f.content_type} for f in body.files],
+        "album_id": str(body.album_id) if body.album_id else None,
+        "tags": body.tags or [],
+        "character_names": body.character_names or [],
+        "series_names": body.series_names or [],
+        "captured_at": body.captured_at.isoformat() if body.captured_at else None,
+        "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "visibility": body.visibility.value,
+    }
+    body_hash = idempotency_body_hash(upload_signature)
+    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    if replay is not None:
+        _, payload = replay
+        return payload
+
+    _, _, _, _, upload_service, _ = _media_services(db)
+    payload = await upload_service.upload_files_with_annotations(
+        user,
+        body.files,
+        album_id=body.album_id,
+        tags=body.tags,
+        character_names=body.character_names,
+        series_names=body.series_names,
+        captured_at_override=body.captured_at,
+        captured_at_values=body.captured_at_values,
+        visibility=body.visibility,
+    )
+    await idempotency_store.remember(
+        scope=scope,
+        idempotency_key=idempotency_key,
+        body_hash=body_hash,
+        status_code=status.HTTP_202_ACCEPTED,
+        payload=jsonable_encoder(payload),
+    )
+    return payload
+
+
+@router.post(
     "/ingest-url",
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
@@ -244,7 +340,7 @@ async def list_media(
     sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of items to return."),
+    page_size: int = Query(default=20, ge=1, le=10000, description="Maximum number of items to return."),
     include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -305,7 +401,7 @@ async def search_media(
     sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
-    page_size: int = Query(default=20, ge=1, le=200, description="Maximum number of items to return."),
+    page_size: int = Query(default=20, ge=1, le=10000, description="Maximum number of items to return."),
     ocr_text: str | None = Query(default=None, description="Case-insensitive OCR text search with fuzzy matching to tolerate noisy characters inside words."),
     include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
     user: User = Depends(current_user),
@@ -431,8 +527,8 @@ async def list_series_suggestions(
 )
 async def batch_update_media(
     body: MediaBatchUpdate,
+    response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
-    response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -502,8 +598,8 @@ async def batch_update_media_entities(
 )
 async def batch_delete_media_command(
     body: MediaIdsRequest,
+    response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
-    response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -540,8 +636,8 @@ async def batch_delete_media_command(
 )
 async def batch_purge_media(
     body: MediaIdsRequest,
+    response: Response,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
-    response: Response = None,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):

@@ -688,4 +688,167 @@ describe('UploadReviewDialogComponent', () => {
     expect(fixture.componentInstance.recommendationGroups()).toHaveLength(1);
     expect(fixture.componentInstance.recommendationsRefreshing()).toBe(false);
   });
+
+  it('refresh button triggers force-refresh and shows a spinner while refreshing', async () => {
+    const refreshBatchRecommendations = vi.fn();
+    const recommendations$ = new Subject<ImportBatchReviewListResponse>();
+    const listReviewItems = vi.fn()
+      .mockReturnValueOnce(of({ total: 0, items: [], recommendation_groups: [] }))
+      .mockReturnValueOnce(of({ total: 0, items: [], recommendation_groups: [] }))
+      .mockReturnValueOnce(recommendations$);
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: () => null,
+            refreshBatchReview: vi.fn(),
+            refreshBatchRecommendations,
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    // Initial load completes — not refreshing
+    expect(fixture.componentInstance.recommendationsRefreshing()).toBe(false);
+
+    const refreshButton: HTMLButtonElement = fixture.nativeElement.querySelector('button[aria-label="Refresh grouping recommendations"]');
+    expect(refreshButton).toBeTruthy();
+    expect(refreshButton.disabled).toBe(false);
+
+    refreshButton.click();
+    fixture.detectChanges();
+
+    // Should be in-progress now
+    expect(fixture.componentInstance.recommendationsRefreshing()).toBe(true);
+    expect(refreshButton.disabled).toBe(true);
+    expect(fixture.nativeElement.querySelector('mat-spinner')).toBeTruthy();
+    expect(listReviewItems).toHaveBeenLastCalledWith('b1', { include_recommendations: true, force_refresh: true });
+
+    recommendations$.next({ total: 0, items: [], recommendation_groups: [] });
+    recommendations$.complete();
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.recommendationsRefreshing()).toBe(false);
+    expect(refreshButton.disabled).toBe(false);
+    expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
+  });
+
+  it('caps visible group previews and shows an overflow indicator for larger groups', async () => {
+    const reviewItems = Array.from({ length: 6 }, (_, index) => ({
+      batch_item_id: `i${index + 1}`,
+      source_filename: `missing-${index + 1}.jpg`,
+      missing_character: true,
+      missing_series: true,
+      entities: [],
+      media: {
+        id: `m${index + 1}`,
+        uploader_id: 'u1',
+        uploader_username: 'uploader',
+        owner_id: 'u1',
+        owner_username: 'owner',
+        visibility: MediaVisibility.PRIVATE,
+        filename: `missing-${index + 1}.jpg`,
+        original_filename: `missing-${index + 1}.jpg`,
+        media_type: MediaType.IMAGE,
+        metadata: {
+          file_size: 1,
+          width: 10,
+          height: 10,
+          duration_seconds: null,
+          frame_count: null,
+          mime_type: 'image/jpeg',
+          captured_at: '2026-03-29T10:00:00Z',
+        },
+        version: 1,
+        created_at: '2026-03-29T10:00:00Z',
+        deleted_at: null,
+        tags: [],
+        ocr_text_override: null,
+        is_nsfw: false,
+        tagging_status: TaggingStatus.DONE,
+        tagging_error: null,
+        thumbnail_status: ProcessingStatus.DONE,
+        poster_status: ProcessingStatus.NOT_APPLICABLE,
+        ocr_text: null,
+        is_favorited: false,
+        favorite_count: 0,
+      },
+    }));
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: () => ({
+              id: 'b1',
+              recommendationGroups: [{
+                id: 'group-1',
+                media_ids: reviewItems.map((item) => item.media.id),
+                item_count: 6,
+                missing_character_count: 6,
+                missing_series_count: 6,
+                suggested_characters: [{ name: 'Saber', confidence: 1 }],
+                suggested_series: [{ name: 'Fate/stay night', confidence: 1 }],
+                shared_signals: [],
+                confidence: 0.9,
+              }],
+              reviewItems,
+              reviewBaselineTotal: 6,
+              reviewRefreshing: false,
+              recommendationsRefreshing: false,
+            }),
+            refreshBatchReview: vi.fn(),
+            refreshBatchRecommendations: vi.fn(),
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    expect(component.previewItemsForGroup(component.recommendationGroups()[0])).toHaveLength(4);
+    expect(component.hiddenPreviewCount(component.recommendationGroups()[0])).toBe(2);
+    expect(fixture.nativeElement.textContent).toContain('+2');
+    expect(fixture.nativeElement.textContent).toContain('6 related items');
+  });
 });

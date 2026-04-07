@@ -17,6 +17,15 @@ export const TEST_ADMIN = {
 
 let rateLimitsDisabledForRun = false;
 
+export async function resetBrowserState(page: Page): Promise<void> {
+  await page.context().clearCookies();
+  await page.goto('/');
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+}
+
 export async function seedAuthenticatedSession(
   page: Page,
   user: { id?: string; username?: string; email?: string; is_admin?: boolean } = {},
@@ -39,15 +48,15 @@ export async function seedAuthenticatedSession(
     localStorage.setItem('zukan_rt', 'test-refresh-token');
   });
 
-  await page.route('**/api/v1/config/setup-required', async (route) => {
+  await page.route('**/api/v1/config/setup-required**', async (route) => {
     await route.fulfill({ json: { setup_required: false } });
   });
 
-  await page.route('**/api/v1/me', async (route) => {
+  await page.route(/\/api\/v1\/me(?:\?.*)?$/, async (route) => {
     await route.fulfill({ json: profile });
   });
 
-  await page.route('**/api/v1/me/notifications**', async (route) => {
+  await page.route(/\/api\/v1\/me\/notifications(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
         items: [],
@@ -59,7 +68,19 @@ export async function seedAuthenticatedSession(
     });
   });
 
-  await page.route('**/api/v1/config/upload', async (route) => {
+  await page.route(/\/api\/v1\/me\/import-batches(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      json: {
+        items: [],
+        total: 0,
+        next_cursor: null,
+        has_more: false,
+        page_size: 20,
+      },
+    });
+  });
+
+  await page.route('**/api/v1/config/upload**', async (route) => {
     await route.fulfill({
       json: {
         max_batch_size: 300,
@@ -78,11 +99,6 @@ export async function seedAuthenticatedSession(
     });
   });
 
-  await page.goto('/login');
-  await page.evaluate(() => {
-    localStorage.setItem('zukan_at', 'test-access-token');
-    localStorage.setItem('zukan_rt', 'test-refresh-token');
-  });
   await page.goto('/');
 }
 
@@ -121,6 +137,8 @@ export async function fillPasswordFields(
 }
 
 export async function ensureAdminAuthenticated(page: Page): Promise<void> {
+  // Prefer seedAuthenticatedSession for mocked UI-isolation specs.
+  // This helper intentionally exercises the real setup/login backend flow.
   const setupRequired = await isSetupRequired();
 
   await page.goto('/login');

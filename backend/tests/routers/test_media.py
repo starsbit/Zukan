@@ -10,6 +10,7 @@ from backend.app.services.media.metadata import MediaMetadataService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.utils.idempotency import IdempotencyStore
 
 
 def _media_read_payload(media_id: str) -> dict:
@@ -89,6 +90,70 @@ def test_upload_media_contract(api_client, monkeypatch):
     assert response.status_code == 202
     assert response.json()["accepted"] == 1
     assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
+
+
+def test_upload_media_with_annotations_contract(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_upload(self, user, files, album_id, tags, character_names, series_names, captured_at_override, captured_at_values=None, visibility="private"):
+        captured["tags"] = tags
+        captured["character_names"] = character_names
+        captured["series_names"] = series_names
+        captured["captured_at_values"] = captured_at_values
+        batch_id = str(uuid.uuid4())
+        item_id = str(uuid.uuid4())
+        media_id = str(uuid.uuid4())
+        return {
+            "batch_id": batch_id,
+            "batch_url": f"/api/v1/me/import-batches/{batch_id}",
+            "batch_items_url": f"/api/v1/me/import-batches/{batch_id}/items",
+            "poll_after_seconds": 2,
+            "webhooks_supported": False,
+            "accepted": 1,
+            "duplicates": 0,
+            "errors": 0,
+            "results": [
+                {
+                    "id": media_id,
+                    "batch_item_id": item_id,
+                    "original_filename": "a.webp",
+                    "status": "accepted",
+                    "message": None,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(MediaUploadService, "upload_files_with_annotations", _fake_upload)
+
+    response = api_client.post(
+        "/api/v1/media/annotated",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("tags", (None, "safe")),
+            ("character_names", (None, "Saber")),
+            ("series_names", (None, "Fate/stay night")),
+            ("captured_at_values", (None, "2024-02-03T04:05:06Z")),
+        ],
+    )
+
+    assert response.status_code == 202
+    assert response.json()["accepted"] == 1
+    assert captured["tags"] == ["safe"]
+    assert captured["character_names"] == ["Saber"]
+    assert captured["series_names"] == ["Fate/stay night"]
+    assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
+
+
+def test_upload_media_with_annotations_requires_at_least_one_annotation(api_client):
+    response = api_client.post(
+        "/api/v1/media/annotated",
+        files=[("files", ("a.webp", b"abc", "image/webp"))],
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["code"] == "validation_error"
+    assert payload["request_id"] == response.headers["x-request-id"]
 
 
 def test_list_media_contract(api_client, monkeypatch):
@@ -244,6 +309,46 @@ def test_batch_purge_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["processed"] == 3
+
+
+def test_batch_update_replays_idempotent_response_without_reinvoking_service(api_client, monkeypatch):
+    calls = {"count": 0}
+
+    async def _fake_bulk_delete(self, media_ids, user):
+        calls["count"] += 1
+        return {"processed": len(media_ids), "skipped": 0}
+
+    monkeypatch.setattr("backend.app.routers.media.idempotency_store", IdempotencyStore())
+    monkeypatch.setattr(MediaLifecycleService, "bulk_delete_media", _fake_bulk_delete)
+
+    payload = {"media_ids": [str(uuid.uuid4())], "deleted": True}
+    headers = {"Idempotency-Key": "media-batch-update-replay"}
+
+    first = api_client.patch("/api/v1/media", json=payload, headers=headers)
+    second = api_client.patch("/api/v1/media", json=payload, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json() == {"processed": 1, "skipped": 0}
+    assert calls["count"] == 1
+
+
+def test_batch_update_rejects_idempotency_key_reuse_with_different_payload(api_client, monkeypatch):
+    async def _fake_bulk_delete(self, media_ids, user):
+        return {"processed": len(media_ids), "skipped": 0}
+
+    monkeypatch.setattr("backend.app.routers.media.idempotency_store", IdempotencyStore())
+    monkeypatch.setattr(MediaLifecycleService, "bulk_delete_media", _fake_bulk_delete)
+
+    headers = {"Idempotency-Key": "media-batch-update-conflict"}
+    first = api_client.patch("/api/v1/media", json={"media_ids": [str(uuid.uuid4())], "deleted": True}, headers=headers)
+    second = api_client.patch("/api/v1/media", json={"media_ids": [str(uuid.uuid4())], "deleted": False}, headers=headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    payload = second.json()
+    assert payload["code"] == "idempotency_key_conflict"
+    assert payload["request_id"] == second.headers["x-request-id"]
 
 
 def test_empty_trash_contract(api_client, monkeypatch):

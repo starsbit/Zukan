@@ -116,6 +116,36 @@ function buildReviewFixtureState(): ReviewFixtureState {
   };
 }
 
+function buildLargeGroupFixtureState(): ReviewFixtureState {
+  return {
+    items: [
+      ...Array.from({ length: 6 }, (_, index) => ({
+        id: `m-large-group-${index + 1}`,
+        filename: `large-group-${index + 1}.png`,
+        state: 'both' as const,
+      })),
+      {
+        id: 'm-large-ungrouped',
+        filename: 'large-ungrouped.png',
+        state: 'both' as const,
+      },
+    ],
+    groups: [
+      {
+        id: 'group-large',
+        mediaIds: Array.from({ length: 6 }, (_, index) => `m-large-group-${index + 1}`),
+        confidence: 0.91,
+        characterSuggestions: ['Saber'],
+        seriesSuggestions: ['Fate Stay Night', 'Fate Zero'],
+        sharedSignals: [
+          { kind: 'tag', label: 'blue dress' },
+          { kind: 'visual', label: 'Visual match' },
+        ],
+      },
+    ],
+  };
+}
+
 function toReviewResponse(state: ReviewFixtureState) {
   return {
     total: state.items.length,
@@ -612,6 +642,70 @@ test.describe('Upload review dialog', () => {
     await expect(page.locator('.review-group-card')).toHaveCount(0);
     await expect(page.getByText('4 still need character or series names.')).toBeVisible();
     await expect(page.getByText('group-two.png')).toBeVisible();
+  });
+
+  test('large recommendation groups show a capped preview grid with overflow count', async ({ page }) => {
+    await ensureAdminAuthenticated(page);
+    await registerReviewFlowRoutes(page, { state: buildLargeGroupFixtureState() });
+
+    await page.goto('/');
+    await triggerTrackedUpload(page);
+    await openReviewDialogFromIsland(page);
+
+    const groupCard = page.locator('.review-group-card').first();
+    await expect(groupCard.getByText('6 related items')).toBeVisible();
+    await expect(groupCard.locator('.review-group-card__preview-shell')).toHaveCount(4);
+    await expect(groupCard.locator('.review-group-card__preview-more')).toContainText('+2');
+
+    await expect(page.locator('.review-card')).toHaveCount(1);
+    await expect(page.getByText('7 still need character or series names.')).toBeVisible();
+  });
+
+  test('applying a large recommendation group submits all grouped media ids and leaves ungrouped items behind', async ({ page }) => {
+    let submittedPayload: {
+      media_ids: string[];
+      character_names?: string[];
+      series_names?: string[];
+    } | null = null;
+
+    await ensureAdminAuthenticated(page);
+    await registerReviewFlowRoutes(page, {
+      state: buildLargeGroupFixtureState(),
+      onEntitiesPatch: (payload) => {
+        submittedPayload = payload;
+      },
+    });
+
+    await page.goto('/');
+    await triggerTrackedUpload(page);
+    await openReviewDialogFromIsland(page);
+
+    const groupCard = page.locator('.review-group-card').first();
+    await groupCard.getByRole('button', { name: /click to select/i }).click();
+    await groupCard.getByRole('gridcell', { name: 'Saber' }).click();
+    await groupCard.getByRole('gridcell', { name: 'Fate Stay Night' }).click();
+
+    await expect(page.getByText('6 selected')).toBeVisible();
+    await page.getByRole('button', { name: 'Apply to selected' }).click();
+
+    await expect.poll(() => submittedPayload).not.toBeNull();
+    expect(submittedPayload).toEqual({
+      media_ids: [
+        'm-large-group-1',
+        'm-large-group-2',
+        'm-large-group-3',
+        'm-large-group-4',
+        'm-large-group-5',
+        'm-large-group-6',
+      ],
+      character_names: ['saber'],
+      series_names: ['fate_stay_night'],
+    });
+
+    await expect(page.locator('.review-group-card')).toHaveCount(0);
+    await expect(page.locator('.review-card')).toHaveCount(1);
+    await expect(page.getByText('large-ungrouped.png')).toBeVisible();
+    await expect(page.getByText('1 still need character or series names.')).toBeVisible();
   });
 
   test('backend-backed smoke: unresolved review work is discoverable and the dialog opens', async ({ page }) => {

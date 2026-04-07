@@ -96,7 +96,7 @@ describe('NavbarNotificationsComponent', () => {
     const fixture = TestBed.createComponent(NavbarNotificationsComponent);
     fixture.detectChanges();
 
-    expect(list).toHaveBeenCalledWith({ page_size: 8 });
+    expect(list).toHaveBeenCalledWith({ page_size: 8, is_read: false });
     expect(fixture.componentInstance.unreadCount()).toBe(3);
 
     const element = fixture.nativeElement as HTMLElement;

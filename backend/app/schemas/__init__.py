@@ -87,7 +87,15 @@ from .tags import (
     TagRead,
     TagWithConfidence,
 )
-from .uploads import BatchUploadResponse, MediaUploadRequest, SetupRequiredResponse, UploadConfigResponse, UploadResult, UrlIngestRequest
+from .uploads import (
+    BatchUploadResponse,
+    MediaAnnotatedUploadRequest,
+    MediaUploadRequest,
+    SetupRequiredResponse,
+    UploadConfigResponse,
+    UploadResult,
+    UrlIngestRequest,
+)
 
 __all__ = [
     "AdminHealthResponse",
@@ -145,6 +153,7 @@ __all__ = [
     "ImportBatchReviewListResponse",
     "MediaIdsRequest",
     "MediaBatchUpdate",
+    "MediaAnnotatedUploadRequest",
     "MediaEntityBatchUpdate",
     "MediaCursorPage",
     "MediaDetail",

@@ -139,6 +139,51 @@ async def test_handle_new_media_with_manual_tags_marks_done(fake_db, stub_query,
 
 
 @pytest.mark.asyncio
+async def test_handle_new_media_with_manual_entities_marks_done_and_creates_manual_entities(fake_db, stub_query, user):
+    tags_repo = SimpleNamespace(set_media_tag_links=AsyncMock())
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=tags_repo,
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    batch_item = ImportBatchItem(batch_id=uuid.uuid4(), source_filename="f")
+    saved = SimpleNamespace(
+        path=Path("/tmp/new.webp"),
+        file_size=10,
+        sha256="c" * 64,
+        mime_type="image/webp",
+        media_type="image",
+    )
+    file_metadata = SimpleNamespace(width=100, height=100, duration_seconds=None, frame_count=None)
+    ctx = UploadBatchContext()
+
+    with patch("backend.app.services.media.upload.generate_poster_and_thumbnail", return_value=(None, None)):
+        await workflow._handle_new_media(
+            batch_item=batch_item,
+            user=user,
+            original_name="f",
+            saved=saved,
+            file_metadata=file_metadata,
+            tags=None,
+            character_names=["Saber", "Saber", "  Rin  "],
+            series_names=["Fate/stay night"],
+            captured_at=datetime.now(timezone.utc),
+            visibility=MediaVisibility.private,
+            ctx=ctx,
+        )
+
+    assert batch_item.status == ItemStatus.done
+    assert ctx.done_items == 1
+    assert ctx.accepted == 1
+    assert tags_repo.set_media_tag_links.await_count == 0
+    entity_names = {(getattr(item, "entity_type", None), getattr(item, "name", None)) for item in fake_db.added}
+    assert ("character", "Saber") in entity_names
+    assert ("character", "Rin") in entity_names
+    assert ("series", "Fate/stay night") in entity_names
+
+
+@pytest.mark.asyncio
 async def test_upload_service_marks_item_done_and_refreshes_batch(fake_db, stub_query):
     item = ImportBatchItem(batch_id=uuid.uuid4(), source_filename="f", status=ItemStatus.pending)
     batch = ImportBatch(user_id=uuid.uuid4(), type="upload", status=BatchStatus.running)
@@ -170,3 +215,25 @@ async def test_upload_service_build_upload_response_proxies_upload_files(fake_db
 
     assert response is expected
     upload_files.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_upload_service_upload_files_with_annotations_passes_annotation_fields(fake_db, stub_query):
+    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
+    expected = SimpleNamespace(batch_id=uuid.uuid4())
+
+    with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
+        response = await service.upload_files_with_annotations(
+            SimpleNamespace(id=uuid.uuid4()),
+            [],
+            tags=["safe"],
+            character_names=["Saber"],
+            series_names=["Fate/stay night"],
+        )
+
+    assert response is expected
+    run.assert_awaited_once()
+    kwargs = run.await_args.kwargs
+    assert kwargs["tags"] == ["safe"]
+    assert kwargs["character_names"] == ["Saber"]
+    assert kwargs["series_names"] == ["Fate/stay night"]

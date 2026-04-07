@@ -97,6 +97,24 @@ class ImportBatchItemRepository:
             )
         ).scalars().all()
 
+    async def list_all_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
+        stmt = (
+            select(ImportBatchItem)
+            .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+            .options(
+                selectinload(ImportBatchItem.media).selectinload(Media.uploader),
+                selectinload(ImportBatchItem.media).selectinload(Media.owner),
+                selectinload(ImportBatchItem.media).selectinload(Media.entities),
+                selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
+            .where(
+                ImportBatch.user_id == user_id,
+                ImportBatchItem.media_id.is_not(None),
+            )
+            .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
+        )
+        return (await self.db.execute(stmt)).scalars().all()
+
     async def list_review_candidates_for_batch(self, batch_id: uuid.UUID) -> list[ImportBatchItem]:
         stmt = (
             select(ImportBatchItem)

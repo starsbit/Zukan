@@ -1,18 +1,21 @@
 # Migration plan
 
-- Alembic is now the source of truth for schema changes.
-- New changes to tables, indexes, enums, functions, and triggers should be added as Alembic revisions in migrations/versions.
-- App startup runs `alembic upgrade head` through backend.app.database.init_db.
+- `0001_release_baseline.py` is the first-release schema baseline.
+- `0010_legacy_pre_release_head.py` is a no-op compatibility shim so old pre-squash databases that still record `0010_sensitive_flags` can upgrade cleanly to the release baseline.
+- The baseline is the source of truth for a brand-new production database and intentionally replaces the pre-release migration chain.
+- App startup still runs `alembic upgrade head` through `backend.app.database.init_db`.
 
-Typical workflow
+Typical workflow after the first release
 
-1. Generate a revision:
-   alembic -c alembic.ini revision -m "describe change"
-2. Edit the new file in migrations/versions and add upgrade/downgrade SQL.
+1. Generate a new revision:
+   `alembic -c alembic.ini revision -m "describe change"`
+2. Edit the new file in `migrations/versions` and add upgrade/downgrade SQL.
 3. Apply migrations:
-   alembic -c alembic.ini upgrade head
+   `alembic -c alembic.ini upgrade head`
 
 Notes
 
-- Async runtime DB URL is reused from backend.app.config.settings.database_url.
-- For production, running Alembic in deployment remains recommended; startup migration is currently enabled for convenience.
+- Async runtime DB URL is reused from `backend.app.config.settings.database_url`.
+- The release baseline already includes the current live schema, enums, triggers, and tag-count maintenance functions.
+- Removed pre-release AniList and integration experiments are intentionally not part of the release baseline.
+- For production, running Alembic in deployment remains recommended; startup migration is still enabled for convenience.

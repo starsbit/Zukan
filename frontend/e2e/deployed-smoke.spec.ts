@@ -14,17 +14,6 @@ const PNG_1X1 = Buffer.from(
   'base64',
 );
 
-async function completeSetup(page: import('@playwright/test').Page): Promise<void> {
-  await page.goto('/login');
-  await expect(page.locator('zukan-setup-wizard')).toBeVisible();
-  await page.locator('zukan-setup-wizard input[formcontrolname="username"]').fill(TEST_ADMIN.username);
-  await page.locator('zukan-setup-wizard input[formcontrolname="email"]').fill(TEST_ADMIN.email);
-  await fillPasswordFields(page, 'zukan-setup-wizard', TEST_ADMIN.password, TEST_ADMIN.password);
-  await page.getByRole('button', { name: 'Next' }).click();
-  await page.getByRole('button', { name: 'Complete Setup' }).click();
-  await expect(page).toHaveURL('/');
-}
-
 async function signOut(page: import('@playwright/test').Page): Promise<void> {
   await page.getByRole('button', { name: 'Profile' }).click();
   await page.getByRole('button', { name: 'Sign Out' }).click();

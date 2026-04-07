@@ -1,16 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { isSetupRequired, TEST_ADMIN, fillLoginForm, setRememberMe, submitLoginForm } from './helpers/auth';
-
-/** Fill password + confirm-password inside a specific component host. */
-async function fillPasswordFields(
-  page: import('@playwright/test').Page,
-  host: string,
-  password: string,
-  confirm: string,
-) {
-  await page.locator(`${host} input[formcontrolname="password"]`).fill(password);
-  await page.locator(`${host} input[formcontrolname="confirmPassword"]`).fill(confirm);
-}
+import { fillLoginForm, fillPasswordFields, isSetupRequired, setRememberMe, submitLoginForm, TEST_ADMIN } from './helpers/auth';
 
 async function expectToolbarTitle(
   page: import('@playwright/test').Page,

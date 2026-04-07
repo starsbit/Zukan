@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     ocr_tesseract_config: str = "--psm 6"
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
+    anilist_enabled: bool = True
+    anilist_timeout_seconds: float = 5.0
+    anilist_base_url: str = "https://graphql.anilist.co"
 
     max_upload_size_mb: int = 50
     max_batch_size: int = 300

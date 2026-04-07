@@ -65,4 +65,15 @@ export class BatchesClientService {
       { params },
     );
   }
+
+  listAllReviewItems(p: BatchReviewListParams = {}): Observable<ImportBatchReviewListResponse> {
+    let params = new HttpParams();
+    if (p.include_recommendations != null) {
+      params = params.set('include_recommendations', String(p.include_recommendations));
+    }
+    return this.http.get<ImportBatchReviewListResponse>(
+      `${this.base}/api/v1/me/import-batches/review-items`,
+      { params },
+    );
+  }
 }

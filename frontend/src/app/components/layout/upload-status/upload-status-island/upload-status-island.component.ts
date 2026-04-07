@@ -127,13 +127,12 @@ export class UploadStatusIslandComponent {
   }
 
   openReviewDialog(): void {
-    const batchId = this.summary().latestReviewBatchId;
-    if (!batchId) {
+    if (this.summary().reviewItems === 0 && this.summary().reviewBatchCount === 0) {
       return;
     }
 
     this.dialog.open(UploadReviewDialogComponent, {
-      data: { batchId },
+      data: { batchId: null },
       maxWidth: '96vw',
       width: '1100px',
       panelClass: 'upload-status-dialog-panel',

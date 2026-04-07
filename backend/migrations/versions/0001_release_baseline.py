@@ -1,9 +1,8 @@
-"""Current schema baseline
+"""First release schema baseline.
 
-Revision ID: 0001_initial_schema
+Revision ID: 0001_release_baseline
 Revises:
-Create Date: 2026-03-24 00:00:00
-
+Create Date: 2026-04-06 00:00:00
 """
 
 from __future__ import annotations
@@ -12,7 +11,7 @@ from alembic import op
 
 from backend.app.database.base import Base
 
-# ensure model metadata is loaded before create_all
+# Ensure model metadata is loaded before create_all.
 from backend.app.models import albums as _albums  # noqa: F401
 from backend.app.models import auth as _auth  # noqa: F401
 from backend.app.models import media as _media  # noqa: F401
@@ -23,9 +22,8 @@ from backend.app.models import relations as _relations  # noqa: F401
 from backend.app.models import tags as _tags  # noqa: F401
 
 
-# revision identifiers, used by Alembic
-revision = "0001_initial_schema"
-down_revision = None
+revision = "0001_release_baseline"
+down_revision = "0010_sensitive_flags"
 branch_labels = None
 depends_on = None
 
@@ -34,17 +32,13 @@ def upgrade() -> None:
     bind = op.get_bind()
     Base.metadata.create_all(bind=bind, checkfirst=True)
 
-    op.execute("CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media (deleted_at)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_media_captured_at ON media (captured_at)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_media_entities_media_id ON media_entities (media_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_media_entities_type_name ON media_entities (entity_type, name)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_media_external_refs_media_id ON media_external_refs (media_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_import_batches_user_id ON import_batches (user_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_import_batch_items_batch_id ON import_batch_items (batch_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_import_batch_items_media_id ON import_batch_items (media_id)")
-    op.execute("CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications (user_id)")
+    op.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_media_entities_type_name
+        ON media_entities (entity_type, name)
+        """
+    )
 
-    # version bump trigger function and triggers
     op.execute(
         """
         CREATE OR REPLACE FUNCTION fn_bump_version() RETURNS TRIGGER AS $$
@@ -65,7 +59,6 @@ def upgrade() -> None:
             """
         )
 
-    # tag count maintenance functions and triggers
     op.execute(
         """
         CREATE OR REPLACE FUNCTION fn_media_tag_after_delete() RETURNS TRIGGER AS $$

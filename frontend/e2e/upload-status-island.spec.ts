@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { resetBrowserState, seedAuthenticatedSession } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -215,6 +215,16 @@ async function registerUploadStatusRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route('**/api/v1/me/import-batches/b-upload/review-items**', async (route) => {
+    await route.fulfill({
+      json: {
+        total: 0,
+        items: [],
+        recommendation_groups: [],
+      },
+    });
+  });
+
   await page.route('**/api/v1/media/m-uploaded', async (route) => {
     await route.fulfill({
       json: mediaItem('m-uploaded', '2025-10-31T12:00:00Z', 'done'),
@@ -232,18 +242,13 @@ async function registerUploadStatusRoutes(page: Page): Promise<void> {
 
 test.describe.serial('Upload status island', () => {
   test.beforeEach(async ({ page }) => {
-    await page.context().clearCookies();
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
+    await resetBrowserState(page);
   });
 
   test('shows optimistic uploads immediately, keeps them in timeline order, and resolves them after processing', async ({ page }) => {
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
     await registerUploadStatusRoutes(page);
+    await seedAuthenticatedSession(page);
+    await expect(page).toHaveURL('/');
 
     await page.goto('/');
     await expect(page).toHaveURL('/');

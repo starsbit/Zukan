@@ -69,7 +69,7 @@ export class NavbarNotificationsComponent implements OnInit {
   loadNotifications(): void {
     this.loading.set(true);
     forkJoin({
-      notifications: this.notificationsClient.list({ page_size: 8 }).pipe(catchError(() => of(null))),
+      notifications: this.notificationsClient.list({ page_size: 8, is_read: false }).pipe(catchError(() => of(null))),
       reminder: this.reviewReminderService.loadReminder().pipe(catchError(() => of(null))),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -143,8 +143,8 @@ export class NavbarNotificationsComponent implements OnInit {
         this.snackBar.open(error.error?.detail ?? 'Unable to mark the notification as read.', 'Close', { duration: 5000 });
         return EMPTY;
       }),
-    ).subscribe((updated) => {
-      this.notifications.update((items) => items.map((item) => item.id === updated.id ? updated : item));
+    ).subscribe(() => {
+      this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
     });
   }
 

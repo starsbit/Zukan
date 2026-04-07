@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timezone
 from typing import Any
 
 from fastapi import UploadFile
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import settings
@@ -15,6 +16,7 @@ from backend.app.errors.upload import upload_limit_exceeded
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, MediaVisibility
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, UploadResult
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
@@ -23,7 +25,7 @@ from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_metadata import extract_media_metadata
 from backend.app.utils.storage import SavedUpload, delete_media_files, save_bytes, save_upload
-from backend.app.utils.tagging import tag_names_mark_nsfw
+from backend.app.utils.tagging import tag_names_mark_nsfw, tag_names_mark_sensitive
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 from backend.app.ml.ocr import ocr_backend
 
@@ -92,7 +94,9 @@ class MediaUploadWorkflow:
         files: list[UploadFile],
         album_id: uuid.UUID | None,
         tags: list[str] | None,
-        captured_at_override: datetime | None,
+        captured_at_override: datetime | None = None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         captured_at_values: list[datetime] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
@@ -117,6 +121,8 @@ class MediaUploadWorkflow:
                 upload=upload,
                 user=user,
                 tags=tags,
+                character_names=character_names,
+                series_names=series_names,
                 captured_at_override=per_file_override,
                 visibility=visibility,
                 ctx=ctx,
@@ -163,6 +169,8 @@ class MediaUploadWorkflow:
         user: User,
         tags: list[str] | None,
         captured_at_override: datetime | None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
@@ -193,6 +201,9 @@ class MediaUploadWorkflow:
                 original_name=original_name,
                 captured_at=captured_at,
                 saved_path=str(saved.path),
+                tags=tags,
+                character_names=character_names,
+                series_names=series_names,
                 ctx=ctx,
             )
             return
@@ -204,6 +215,8 @@ class MediaUploadWorkflow:
             saved=saved,
             file_metadata=file_metadata,
             tags=tags,
+            character_names=character_names,
+            series_names=series_names,
             captured_at=captured_at_override or captured_at,
             visibility=visibility,
             ctx=ctx,
@@ -252,6 +265,9 @@ class MediaUploadWorkflow:
         original_name: str,
         captured_at: datetime,
         saved_path: str,
+        tags: list[str] | None = None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
         delete_media_files(saved_path)
@@ -281,20 +297,34 @@ class MediaUploadWorkflow:
 
         existing.deleted_at = None
         existing.original_filename = original_name
-        existing.tagging_status = "pending"
+        normalized_tags = normalize_manual_tags(tags) if tags else []
+        normalized_characters = _normalize_entity_names(character_names)
+        normalized_series = _normalize_entity_names(series_names)
+        has_manual_annotations = bool(normalized_tags or normalized_characters or normalized_series)
+        existing.tagging_status = "done" if has_manual_annotations else "pending"
         existing.tagging_error = None
         existing.captured_at = existing.captured_at or captured_at
+        if has_manual_annotations:
+            await self._apply_manual_annotations(
+                media=existing,
+                normalized_tags=normalized_tags,
+                normalized_characters=normalized_characters,
+                normalized_series=normalized_series,
+            )
 
         batch_item.media_id = existing.id
-        batch_item.status = ItemStatus.pending
+        batch_item.status = ItemStatus.done if has_manual_annotations else ItemStatus.pending
         batch_item.step = ProcessingStep.tag
-        batch_item.progress_percent = 0
+        batch_item.progress_percent = 100 if has_manual_annotations else 0
 
         self._db.add(batch_item)
         await self._db.flush()
 
         ctx.accepted += 1
-        ctx.pending_items += 1
+        if has_manual_annotations:
+            ctx.done_items += 1
+        else:
+            ctx.pending_items += 1
         ctx.queued_media_ids.append(existing.id)
         ctx.processing_media_ids.append(existing.id)
         logger.info("Upload restored deleted media media_id=%s original_name=%s", existing.id, original_name)
@@ -317,11 +347,16 @@ class MediaUploadWorkflow:
         file_metadata: Any,
         tags: list[str] | None,
         captured_at: datetime,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
         normalized_tags = normalize_manual_tags(tags) if tags else []
+        normalized_characters = _normalize_entity_names(character_names)
+        normalized_series = _normalize_entity_names(series_names)
+        has_manual_annotations = bool(normalized_tags or normalized_characters or normalized_series)
 
         media = Media(
             uploader_id=user.id,
@@ -336,7 +371,7 @@ class MediaUploadWorkflow:
             height=file_metadata.height,
             duration_seconds=file_metadata.duration_seconds,
             frame_count=file_metadata.frame_count,
-            tagging_status="pending",
+            tagging_status="done" if has_manual_annotations else "pending",
             tagging_error=None,
             thumbnail_path=str(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
@@ -347,6 +382,14 @@ class MediaUploadWorkflow:
         )
         self._db.add(media)
         await self._db.flush()
+
+        if has_manual_annotations:
+            await self._apply_manual_annotations(
+                media=media,
+                normalized_tags=normalized_tags,
+                normalized_characters=normalized_characters,
+                normalized_series=normalized_series,
+            )
         logger.info(
             "Created new media from upload media_id=%s user_id=%s original_name=%s media_type=%s visibility=%s",
             media.id,
@@ -357,10 +400,7 @@ class MediaUploadWorkflow:
         )
 
         batch_item.media_id = media.id
-        if normalized_tags:
-            await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
-            media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
-            media.tagging_status = "done"
+        if has_manual_annotations:
             batch_item.status = ItemStatus.done
             batch_item.step = ProcessingStep.tag
             batch_item.progress_percent = 100
@@ -377,7 +417,14 @@ class MediaUploadWorkflow:
         ctx.accepted += 1
         ctx.queued_media_ids.append(media.id)
         ctx.processing_media_ids.append(media.id)
-        logger.info("Upload accepted media_id=%s original_name=%s manual_tags=%s", media.id, original_name, len(normalized_tags))
+        logger.info(
+            "Upload accepted media_id=%s original_name=%s manual_tags=%s manual_characters=%s manual_series=%s",
+            media.id,
+            original_name,
+            len(normalized_tags),
+            len(normalized_characters),
+            len(normalized_series),
+        )
         ctx.results.append(
             UploadResult(
                 id=media.id,
@@ -386,6 +433,61 @@ class MediaUploadWorkflow:
                 status="accepted",
             )
         )
+
+    async def _apply_manual_annotations(
+        self,
+        *,
+        media: Media,
+        normalized_tags: list[str],
+        normalized_characters: list[str],
+        normalized_series: list[str],
+    ) -> None:
+        if normalized_tags:
+            await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
+        media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
+        media.is_sensitive = tag_names_mark_sensitive(normalized_tags)
+
+        state = inspect(media)
+        if state.pending or not hasattr(self._db, "sync_session"):
+            existing_entities: list[MediaEntity] = []
+        else:
+            result = await self._db.execute(
+                select(MediaEntity).where(MediaEntity.media_id == media.id)
+            )
+            scalars = getattr(result, "scalars", None)
+            if callable(scalars):
+                scalar_result = scalars()
+                all_rows = getattr(scalar_result, "all", None)
+                existing_entities = all_rows() if callable(all_rows) else []
+            else:
+                existing_entities = []
+        for entity in existing_entities:
+            await self._db.delete(entity)
+        await self._db.flush()
+
+        entities: list[MediaEntity] = []
+        for character_name in normalized_characters:
+            entity = MediaEntity(
+                media_id=media.id,
+                entity_type=MediaEntityType.character,
+                name=character_name,
+                role="primary",
+                source="manual",
+                confidence=1.0,
+            )
+            entities.append(entity)
+            self._db.add(entity)
+        for series_name in normalized_series:
+            entity = MediaEntity(
+                media_id=media.id,
+                entity_type=MediaEntityType.series,
+                name=series_name,
+                role="primary",
+                source="manual",
+                confidence=1.0,
+            )
+            entities.append(entity)
+            self._db.add(entity)
 
     async def run_from_url(
         self,
@@ -429,6 +531,9 @@ class MediaUploadWorkflow:
                 original_name=original_name,
                 captured_at=captured_at,
                 saved_path=str(saved.path),
+                tags=tags,
+                character_names=None,
+                series_names=None,
                 ctx=ctx,
             )
         else:
@@ -439,6 +544,8 @@ class MediaUploadWorkflow:
                 saved=saved,
                 file_metadata=file_metadata,
                 tags=tags,
+                character_names=None,
+                series_names=None,
                 captured_at=captured_at,
                 visibility=visibility,
                 ctx=ctx,
@@ -499,6 +606,7 @@ class MediaUploadWorkflow:
         if normalized_tags:
             await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
             media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
+            media.is_sensitive = tag_names_mark_sensitive(normalized_tags)
 
         return media
 
@@ -575,6 +683,8 @@ class MediaUploadService:
             files=files,
             album_id=album_id,
             tags=tags,
+            character_names=None,
+            series_names=None,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             visibility=visibility,
@@ -596,6 +706,37 @@ class MediaUploadService:
             files,
             album_id=album_id,
             tags=tags,
+            captured_at_override=captured_at_override,
+            captured_at_values=captured_at_values,
+            visibility=visibility,
+        )
+
+    async def upload_files_with_annotations(
+        self,
+        user: User,
+        files: list[UploadFile],
+        *,
+        album_id: uuid.UUID | None = None,
+        tags: list[str] | None = None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
+        captured_at_override: datetime | None = None,
+        captured_at_values: list[datetime] | None = None,
+        visibility: MediaVisibility = MediaVisibility.private,
+    ) -> BatchUploadResponse:
+        workflow = MediaUploadWorkflow(
+            db=self._db,
+            query=self._query,
+            tags_repo=self._tags,
+            post_processor=self._post_processor,
+        )
+        return await workflow.run(
+            user=user,
+            files=files,
+            album_id=album_id,
+            tags=tags,
+            character_names=character_names,
+            series_names=series_names,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             visibility=visibility,
@@ -676,3 +817,20 @@ def _normalize_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _normalize_entity_names(values: list[str] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(cleaned)
+    return normalized

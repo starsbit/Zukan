@@ -26,9 +26,10 @@ import { normalizeMetadataNameForSubmission } from '../../../../utils/media-disp
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
+const GROUP_PREVIEW_LIMIT = 4;
 
 export interface UploadReviewDialogData {
-  batchId: string;
+  batchId: string | null;
 }
 
 @Component({
@@ -81,13 +82,28 @@ export class UploadReviewDialogComponent {
   readonly remoteRecommendationsRefreshing = signal(false);
   readonly remoteBaselineTotal = signal(0);
 
-  readonly reviewState = computed(() => this.tracker.getBatchReview(this.data.batchId));
-  readonly items = computed(() => this.reviewState()?.reviewItems ?? this.remoteItems());
-  readonly recommendationsRefreshing = computed(
-    () => this.reviewState()?.recommendationsRefreshing ?? this.remoteRecommendationsRefreshing(),
-  );
+  readonly reviewState = computed(() => this.data.batchId ? this.tracker.getBatchReview(this.data.batchId) : null);
+  private readonly rawItems = computed(() => {
+    if (this.data.batchId) {
+      return this.reviewState()?.reviewItems ?? this.remoteItems();
+    }
+    return this.tracker.reviewBatches().flatMap((b) => b.reviewItems);
+  });
+  private readonly rawRecommendationGroups = computed(() => {
+    if (this.data.batchId) {
+      return this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups();
+    }
+    return this.tracker.reviewBatches().flatMap((b) => b.recommendationGroups);
+  });
+  readonly items = computed(() => this.rawItems());
+  readonly recommendationsRefreshing = computed(() => {
+    if (this.data.batchId) {
+      return this.reviewState()?.recommendationsRefreshing ?? this.remoteRecommendationsRefreshing();
+    }
+    return this.tracker.reviewBatches().some((b) => b.recommendationsRefreshing);
+  });
   readonly recommendationGroups = computed(() =>
-    (this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups())
+    this.rawRecommendationGroups()
       .map((group) => {
         const removedIds = new Set([
           ...(this.removedGroupMediaIds()[group.id] ?? []),
@@ -110,7 +126,12 @@ export class UploadReviewDialogComponent {
       })
       .filter((group) => group.media_ids.length >= 2),
   );
-  readonly baselineTotal = computed(() => this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal());
+  readonly baselineTotal = computed(() => {
+    if (this.data.batchId) {
+      return this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal();
+    }
+    return this.tracker.reviewBatches().reduce((sum, b) => sum + b.reviewBaselineTotal, 0);
+  });
   readonly reviewedCount = computed(() => Math.max(this.baselineTotal() - this.items().length, 0));
   readonly visibleItems = computed(() => {
     const discardedIds = new Set(this.discardedMediaIds());
@@ -354,19 +375,28 @@ export class UploadReviewDialogComponent {
 
   previewItemsForGroup(group: ImportBatchRecommendationGroupRead): ImportBatchReviewItemRead[] {
     const ids = new Set(group.media_ids);
-    return this.items().filter((item) => ids.has(item.media.id));
+    return this.items().filter((item) => ids.has(item.media.id)).slice(0, GROUP_PREVIEW_LIMIT);
+  }
+
+  hiddenPreviewCount(group: ImportBatchRecommendationGroupRead): number {
+    return Math.max(group.item_count - this.previewItemsForGroup(group).length, 0);
   }
 
   private refreshReview(): void {
+    const batchId = this.data.batchId;
+    if (!batchId) {
+      for (const batch of this.tracker.reviewBatches()) {
+        this.tracker.refreshBatchReview(batch.id);
+      }
+      return;
+    }
     if (this.reviewState()) {
-      this.tracker.refreshBatchReview(this.data.batchId);
+      this.tracker.refreshBatchReview(batchId);
       return;
     }
 
     this.remoteRefreshing.set(true);
-    this.batchesClient.listReviewItems(this.data.batchId).pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
+    this.batchesClient.listReviewItems(batchId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         this.remoteItems.set(response.items);
         this.remoteRecommendationGroups.set(response.recommendation_groups);
@@ -381,26 +411,32 @@ export class UploadReviewDialogComponent {
     });
   }
 
-  private refreshRecommendations(forceRefresh = false): void {
+  refreshRecommendations(forceRefresh = false): void {
+    const batchId = this.data.batchId;
+    if (!batchId) {
+      for (const batch of this.tracker.reviewBatches()) {
+        this.tracker.refreshBatchRecommendations(batch.id, forceRefresh);
+      }
+      return;
+    }
     if (this.reviewState()) {
-      this.tracker.refreshBatchRecommendations(this.data.batchId, forceRefresh);
+      this.tracker.refreshBatchRecommendations(batchId, forceRefresh);
       return;
     }
 
     this.remoteRecommendationsRefreshing.set(true);
-    this.batchesClient.listReviewItems(this.data.batchId, { include_recommendations: true, force_refresh: forceRefresh }).pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
-      next: (response) => {
-        this.remoteItems.set(response.items);
-        this.remoteRecommendationGroups.set(response.recommendation_groups);
-        this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
-        this.remoteRecommendationsRefreshing.set(false);
-      },
-      error: () => {
-        this.remoteRecommendationsRefreshing.set(false);
-      },
-    });
+    this.batchesClient.listReviewItems(batchId, { include_recommendations: true, force_refresh: forceRefresh })
+      .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: (response) => {
+          this.remoteItems.set(response.items);
+          this.remoteRecommendationGroups.set(response.recommendation_groups);
+          this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+          this.remoteRecommendationsRefreshing.set(false);
+        },
+        error: () => {
+          this.remoteRecommendationsRefreshing.set(false);
+        },
+      });
   }
 
   private commitName(target: { update(fn: (items: string[]) => string[]): void }, rawValue: string): void {

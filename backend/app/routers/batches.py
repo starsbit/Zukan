@@ -19,6 +19,18 @@ from backend.app.services.processing import ProcessingService
 router = APIRouter(prefix="/me/import-batches", tags=["batches"], responses=AUTHENTICATED_ERROR_RESPONSES)
 
 
+@router.get("/review-items", response_model=ImportBatchReviewListResponse)
+async def list_all_review_items(
+    include_recommendations: bool = Query(default=False),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ProcessingService(db).list_all_review_items(
+        user.id,
+        include_recommendations=include_recommendations,
+    )
+
+
 @router.get("", response_model=ImportBatchListResponse)
 async def list_batches(
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
