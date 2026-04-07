@@ -14,6 +14,7 @@ import { MediaTimeline, TimelineBucket } from '../models/timeline';
 
 @Injectable({ providedIn: 'root' })
 export class GalleryStore {
+  static readonly PAGE_SIZE = 1000;
   private readonly client = inject(MediaClientService);
 
   private readonly _params = signal<MediaSearchParams>({});
@@ -84,7 +85,7 @@ export class GalleryStore {
 
   load(): Observable<MediaCursorPage> {
     this._loading.set(true);
-    return this.client.search({ page_size: 1000, ...this._params() }).pipe(
+    return this.client.search({ page_size: GalleryStore.PAGE_SIZE, ...this._params() }).pipe(
       tap((page) => {
         this._items.set(page.items);
         this._cursor.set(page.next_cursor);
@@ -102,7 +103,7 @@ export class GalleryStore {
   loadMore(): Observable<MediaCursorPage> {
     if (!this._hasMore() || this._loading()) return EMPTY;
     this._loading.set(true);
-    const params = { page_size: 1000, ...this._params(), after: this._cursor() ?? undefined };
+    const params = { page_size: GalleryStore.PAGE_SIZE, ...this._params(), after: this._cursor() ?? undefined };
     return this.client.search(params).pipe(
       tap((page) => {
         this._items.update((prev) => [...prev, ...page.items]);
@@ -450,7 +451,7 @@ export class GalleryStore {
     const baseParams: MediaSearchParams = {
       ...this._params(),
       after: undefined,
-      page_size: 1000,
+      page_size: GalleryStore.PAGE_SIZE,
       include_total: false,
     };
 
