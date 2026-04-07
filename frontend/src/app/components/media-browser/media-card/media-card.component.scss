@@ -104,6 +104,7 @@
 }
 
 .media-card__placeholder--loading {
+  place-items: center;
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--mat-sys-surface-container-high) 80%, transparent) 25%,
@@ -115,9 +116,6 @@
 }
 
 .media-card__placeholder-spinner {
-  position: absolute;
-  inset: 50% auto auto 50%;
-  transform: translate(-50%, -50%);
   width: 1.2rem;
   height: 1.2rem;
   border: 2px solid color-mix(in srgb, var(--mat-sys-on-surface-variant) 24%, transparent);

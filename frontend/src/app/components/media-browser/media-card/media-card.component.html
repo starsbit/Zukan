@@ -76,7 +76,9 @@
         @if (loading() || isProcessing()) {
           <span class="media-card__placeholder-spinner" aria-hidden="true"></span>
         }
-        <span>{{ media().metadata.captured_at.slice(0, 10) }}</span>
+        @if (!loading()) {
+          <span>{{ media().metadata.captured_at.slice(0, 10) }}</span>
+        }
       </div>
     }
 
