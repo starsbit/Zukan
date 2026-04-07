@@ -23,7 +23,7 @@ from backend.app.models import tags as _tags  # noqa: F401
 
 
 revision = "0001_release_baseline"
-down_revision = "0010_sensitive_flags"
+down_revision = None
 branch_labels = None
 depends_on = None
 

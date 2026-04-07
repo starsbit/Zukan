@@ -1,7 +1,6 @@
 # Migration plan
 
 - `0001_release_baseline.py` is the first-release schema baseline.
-- `0010_legacy_pre_release_head.py` is a no-op compatibility shim so old pre-squash databases that still record `0010_sensitive_flags` can upgrade cleanly to the release baseline.
 - The baseline is the source of truth for a brand-new production database and intentionally replaces the pre-release migration chain.
 - App startup still runs `alembic upgrade head` through `backend.app.database.init_db`.
 

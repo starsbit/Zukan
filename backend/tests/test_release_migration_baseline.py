@@ -12,7 +12,6 @@ def test_release_baseline_is_the_only_revision_file():
 
     assert revision_files == [
         "0001_release_baseline.py",
-        "0010_legacy_pre_release_head.py",
     ]
 
 
@@ -38,13 +37,9 @@ def test_release_baseline_excludes_reverted_pre_release_schema():
     assert "anilist_scrape_targets" not in Base.metadata.tables
 
     baseline_module = import_module("backend.migrations.versions.0001_release_baseline")
-    legacy_module = import_module("backend.migrations.versions.0010_legacy_pre_release_head")
     baseline_source = Path(baseline_module.__file__).read_text(encoding="utf-8")
 
     assert baseline_module.revision == "0001_release_baseline"
-    assert baseline_module.down_revision == "0010_sensitive_flags"
-    assert legacy_module.revision == "0010_sensitive_flags"
-    assert legacy_module.down_revision is None
     assert "create_all" in baseline_source
     assert "idx_media_entities_type_name" in baseline_source
     assert "fn_bump_version" in baseline_source
