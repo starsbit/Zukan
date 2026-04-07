@@ -340,7 +340,7 @@ async def list_media(
     sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
-    page_size: int = Query(default=20, ge=1, le=10000, description="Maximum number of items to return."),
+    page_size: int = Query(default=20, ge=1, le=1000, description="Maximum number of items to return."),
     include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
