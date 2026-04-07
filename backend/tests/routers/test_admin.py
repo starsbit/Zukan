@@ -87,7 +87,8 @@ def test_admin_users_list_contract(api_client, monkeypatch):
                     "version": 1,
                     "created_at": now,
                     "media_count": 12,
-                    "storage_used_bytes": 2048,
+                    "storage_used_mb": 2,
+                    "storage_quota_mb": 10240,
                 }
             ],
         }
@@ -117,7 +118,8 @@ def test_admin_user_detail_contract(api_client, monkeypatch):
             "version": 1,
             "created_at": now,
             "media_count": 12,
-            "storage_used_bytes": 2048,
+            "storage_used_mb": 2,
+            "storage_quota_mb": 10240,
         }
 
     monkeypatch.setattr(AdminService, "get_user_detail", _fake_detail)
@@ -143,6 +145,8 @@ def test_admin_update_user_contract(api_client, monkeypatch):
             "tag_confidence_threshold": 0.9,
             "version": 2,
             "created_at": now,
+            "storage_quota_mb": 10240,
+            "storage_used_mb": 0,
         }
 
     monkeypatch.setattr(AdminService, "update_user", _fake_update)

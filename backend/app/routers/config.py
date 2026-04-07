@@ -10,12 +10,10 @@ from backend.app.schemas import SetupRequiredResponse, UploadConfigResponse
 router = APIRouter(prefix="/config", tags=["config"])
 
 
-@router.get("/upload", response_model=UploadConfigResponse, summary="Get Upload Configuration")
+@router.get("/upload", response_model=UploadConfigResponse, summary="Get upload client config")
 async def get_upload_config() -> UploadConfigResponse:
-    return UploadConfigResponse(
-        max_batch_size=settings.max_batch_size,
-        max_upload_size_mb=settings.max_upload_size_mb,
-    )
+    max_batch_size = min(settings.upload_max_batch_size, settings.upload_multipart_max_files)
+    return UploadConfigResponse(max_batch_size=max_batch_size)
 
 
 @router.get("/setup-required", response_model=SetupRequiredResponse, summary="Check if initial setup is required")

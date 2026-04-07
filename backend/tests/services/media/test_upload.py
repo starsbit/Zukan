@@ -10,7 +10,6 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import UploadFile
 
-from backend.app.config import settings
 from backend.app.models.media import MediaVisibility
 from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.services.media.upload import (
@@ -53,22 +52,6 @@ async def test_post_processor_falls_back_to_ocr_when_no_queue():
 
     processing.run_ocr_for_media.assert_awaited_once()
 
-
-@pytest.mark.asyncio
-async def test_validate_batch_size_rejects_large_requests(fake_db, stub_query):
-    workflow = MediaUploadWorkflow(
-        db=fake_db,
-        query=stub_query,
-        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
-        post_processor=SimpleNamespace(dispatch=AsyncMock()),
-    )
-    old = settings.max_batch_size
-    settings.max_batch_size = 1
-    try:
-        with pytest.raises(Exception):
-            workflow._validate_batch_size([UploadFile(filename="a", file=io.BytesIO(b"1")), UploadFile(filename="b", file=io.BytesIO(b"2"))])
-    finally:
-        settings.max_batch_size = old
 
 
 @pytest.mark.asyncio

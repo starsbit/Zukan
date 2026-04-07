@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, OnInit, signal, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,16 +7,13 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { concatMap, filter, finalize, from, map, tap, toArray } from 'rxjs';
+import { EMPTY, catchError, concatMap, filter, finalize, from, map, of, switchMap, tap, toArray } from 'rxjs';
 import { BatchUploadResponse } from '../../../../models/uploads';
 import { MediaVisibility } from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { ConfigClientService } from '../../../../services/web/config-client.service';
 import { UploadConfirmDialogComponent, UploadConfirmDialogData, UploadConfirmDialogResult } from './upload-confirm-dialog/upload-confirm-dialog.component';
-
-const DEFAULT_MAX_BATCH_SIZE = 300;
-const DEFAULT_MAX_UPLOAD_SIZE_MB = 50;
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -39,6 +36,8 @@ const ALLOWED_EXTENSIONS = new Set([
   '.mov',
 ]);
 
+const DEFAULT_MAX_BATCH_SIZE = 1000;
+
 @Component({
   selector: 'zukan-navbar-upload',
   imports: [MatButtonModule, MatCardModule, MatIconModule, MatMenuModule, MatSnackBarModule],
@@ -46,11 +45,11 @@ const ALLOWED_EXTENSIONS = new Set([
   styleUrl: './navbar-upload.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class NavbarUploadComponent implements OnInit {
-  private readonly configClient = inject(ConfigClientService);
+export class NavbarUploadComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
   private readonly mediaService = inject(MediaService);
+  private readonly configClient = inject(ConfigClientService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly uploadTracker = inject(UploadTrackerService);
 
@@ -59,23 +58,9 @@ export class NavbarUploadComponent implements OnInit {
 
   readonly loading = signal(false);
   readonly dragActive = signal(false);
-  readonly maxBatchSize = signal(DEFAULT_MAX_BATCH_SIZE);
-  readonly maxUploadSizeMb = signal(DEFAULT_MAX_UPLOAD_SIZE_MB);
 
   readonly accept = Array.from(new Set([...ALLOWED_MIME_TYPES, ...ALLOWED_EXTENSIONS])).join(',');
   private dragDepth = 0;
-
-  ngOnInit(): void {
-    this.configClient
-      .getUploadConfig()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (config) => {
-          this.maxBatchSize.set(config.max_batch_size);
-          this.maxUploadSizeMb.set(config.max_upload_size_mb);
-        },
-      });
-  }
 
   openFilePicker(): void {
     this.fileInput().nativeElement.click();
@@ -168,11 +153,8 @@ export class NavbarUploadComponent implements OnInit {
       return;
     }
 
-    const maxBytes = this.maxUploadSizeMb() * 1024 * 1024;
-    const supportedFiles = files.filter((file) => this.isLegalFile(file));
+    const uploadableFiles = files.filter((file) => this.isLegalFile(file));
     const unsupportedFiles = files.filter((file) => !this.isLegalFile(file));
-    const uploadableFiles = supportedFiles.filter((file) => file.size <= maxBytes);
-    const oversizedFiles = supportedFiles.filter((file) => file.size > maxBytes);
 
     if (unsupportedFiles.length > 0) {
       this.uploadTracker.registerRejectedFiles(
@@ -181,16 +163,9 @@ export class NavbarUploadComponent implements OnInit {
       );
     }
 
-    if (oversizedFiles.length > 0) {
-      this.uploadTracker.registerRejectedFiles(
-        oversizedFiles,
-        `File is larger than ${this.maxUploadSizeMb()} MB.`,
-      );
-    }
-
     if (uploadableFiles.length === 0) {
       this.snackBar.open(
-        this.selectionRejectionMessage(unsupportedFiles.length, oversizedFiles.length),
+        `${unsupportedFiles.length} unsupported file${unsupportedFiles.length === 1 ? '' : 's'} flagged as failed`,
         'Close',
       );
       return;
@@ -208,9 +183,9 @@ export class NavbarUploadComponent implements OnInit {
           return;
         }
         this.startUpload(uploadableFiles, result.isPublic);
-        if (unsupportedFiles.length > 0 || oversizedFiles.length > 0) {
+        if (unsupportedFiles.length > 0) {
           this.snackBar.open(
-            this.selectionRejectionMessage(unsupportedFiles.length, oversizedFiles.length),
+            `${unsupportedFiles.length} unsupported file${unsupportedFiles.length === 1 ? '' : 's'} flagged as failed`,
             'Close',
             { duration: 5000 },
           );
@@ -220,72 +195,96 @@ export class NavbarUploadComponent implements OnInit {
 
   private startUpload(files: File[], isPublic: boolean): void {
     const visibility = isPublic ? MediaVisibility.PUBLIC : MediaVisibility.PRIVATE;
-    const batches = this.chunkFiles(files, this.maxBatchSize());
-    const trackedRequests = batches.map((batch) => ({
-      files: batch,
-      requestId: this.uploadTracker.registerPendingBatch(batch, visibility),
-    }));
-    let activeTrackedRequest = trackedRequests[0]
-      ? { ...trackedRequests[0], index: 0 }
-      : null;
     this.loading.set(true);
-    from(trackedRequests.entries()).pipe(
-      concatMap(([index, { files: batch, requestId }]) => {
-        activeTrackedRequest = { files: batch, requestId, index };
-        this.uploadTracker.markBatchUploading(requestId);
-        return this.mediaService.uploadWithProgress(batch, {
-          visibility,
-          captured_at_values: this.getCapturedAtValues(batch),
-        }).pipe(
-          tap((event) => {
-            if (event.type === HttpEventType.UploadProgress) {
-              this.uploadTracker.updateUploadProgress(requestId, event.loaded, event.total ?? 0);
-            }
+    this.configClient.getUploadConfig().pipe(
+      map((config) => this.normalizeBatchSize(config.max_batch_size)),
+      catchError(() => of(DEFAULT_MAX_BATCH_SIZE)),
+      map((maxBatchSize) => this.chunkFiles(files, maxBatchSize)),
+      switchMap((batches) => {
+        const trackedRequests = batches.map((batch) => ({
+          files: batch,
+          requestId: this.uploadTracker.registerPendingBatch(batch, visibility),
+        }));
+        let activeTrackedRequest = trackedRequests[0]
+          ? { ...trackedRequests[0], index: 0 }
+          : null;
+
+        return from(trackedRequests.entries()).pipe(
+          concatMap(([index, { files: batch, requestId }]) => {
+            activeTrackedRequest = { files: batch, requestId, index };
+            this.uploadTracker.markBatchUploading(requestId);
+            return this.mediaService.uploadWithProgress(batch, {
+              visibility,
+              captured_at_values: this.getCapturedAtValues(batch),
+            }).pipe(
+              tap((event) => {
+                if (event.type === HttpEventType.UploadProgress) {
+                  this.uploadTracker.updateUploadProgress(requestId, event.loaded, event.total ?? 0);
+                }
+              }),
+              filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
+              map((event) => ({ response: event.body!, batch, requestId })),
+            );
           }),
-          filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
-          map((event) => ({ response: event.body!, batch, requestId })),
+          toArray(),
+          tap((responses) => {
+            responses.forEach(({ response, batch, requestId }) => {
+              this.uploadTracker.registerBatchStarted(
+                requestId,
+                response,
+                batch,
+                visibility,
+              );
+            });
+            const accepted = responses.reduce((total, { response }) => total + response.accepted, 0);
+            this.snackBar.open(
+              `Upload started for ${accepted} file${accepted === 1 ? '' : 's'}.`,
+              'Close',
+              {
+                duration: 5000,
+              }
+            );
+          }),
+          catchError((err: { error?: { detail?: string } }) => {
+            const message = err.error?.detail ?? 'Unable to start upload.';
+            if (activeTrackedRequest) {
+              this.uploadTracker.registerBatchRequestFailed(
+                activeTrackedRequest.requestId,
+                activeTrackedRequest.files,
+                message,
+              );
+              for (const pending of trackedRequests.slice(activeTrackedRequest.index + 1)) {
+                this.uploadTracker.registerBatchRequestFailed(
+                  pending.requestId,
+                  [],
+                  'Upload did not start because an earlier batch failed.',
+                );
+              }
+            }
+            this.snackBar.open(message, 'Close');
+            return EMPTY;
+          }),
         );
       }),
-      toArray(),
       finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: (responses) => {
-        responses.forEach(({ response, batch, requestId }) => {
-          this.uploadTracker.registerBatchStarted(
-            requestId,
-            response,
-            batch,
-            visibility,
-          );
-        });
-        const accepted = responses.reduce((total, { response }) => total + response.accepted, 0);
-        this.snackBar.open(
-          `Upload started for ${accepted} file${accepted === 1 ? '' : 's'}.`,
-          'Close',
-          {
-            duration: 5000,
-          }
-        );
-      },
-      error: (err: { error?: { detail?: string } }) => {
-        const message = err.error?.detail ?? 'Unable to start upload.';
-        if (activeTrackedRequest) {
-          this.uploadTracker.registerBatchRequestFailed(
-            activeTrackedRequest.requestId,
-            activeTrackedRequest.files,
-            message,
-          );
-          for (const pending of trackedRequests.slice(activeTrackedRequest.index + 1)) {
-            this.uploadTracker.registerBatchRequestFailed(
-              pending.requestId,
-              pending.files,
-              'Upload did not start because an earlier batch failed.',
-            );
-          }
-        }
-        this.snackBar.open(message, 'Close');
-      },
-    });
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe();
+  }
+
+  private normalizeBatchSize(rawBatchSize: number): number {
+    if (!Number.isFinite(rawBatchSize) || rawBatchSize <= 0) {
+      return DEFAULT_MAX_BATCH_SIZE;
+    }
+
+    return Math.min(Math.floor(rawBatchSize), DEFAULT_MAX_BATCH_SIZE);
+  }
+
+  private chunkFiles(files: File[], maxBatchSize: number): File[][] {
+    const batches: File[][] = [];
+    for (let index = 0; index < files.length; index += maxBatchSize) {
+      batches.push(files.slice(index, index + maxBatchSize));
+    }
+    return batches;
   }
 
   private hasFiles(dataTransfer: DataTransfer | null): boolean {
@@ -294,24 +293,6 @@ export class NavbarUploadComponent implements OnInit {
     }
 
     return Array.from(dataTransfer.types).includes('Files');
-  }
-
-  private selectionRejectionMessage(unsupportedCount: number, oversizedCount: number): string {
-    const parts: string[] = [];
-
-    if (unsupportedCount > 0) {
-      parts.push(
-        `${unsupportedCount} unsupported file${unsupportedCount === 1 ? '' : 's'} flagged as failed`,
-      );
-    }
-
-    if (oversizedCount > 0) {
-      parts.push(
-        `${oversizedCount} oversized file${oversizedCount === 1 ? '' : 's'} flagged as failed`,
-      );
-    }
-
-    return parts.join('. ');
   }
 
   private async extractDroppedFiles(dataTransfer: DataTransfer | null): Promise<File[]> {
@@ -403,16 +384,6 @@ export class NavbarUploadComponent implements OnInit {
     }
 
     return ALLOWED_EXTENSIONS.has(file.name.slice(dotIndex).toLowerCase());
-  }
-
-  private chunkFiles(files: File[], batchSize: number): File[][] {
-    const chunks: File[][] = [];
-
-    for (let index = 0; index < files.length; index += batchSize) {
-      chunks.push(files.slice(index, index + batchSize));
-    }
-
-    return chunks;
   }
 
   private getCapturedAtValues(files: File[]): string[] | undefined {

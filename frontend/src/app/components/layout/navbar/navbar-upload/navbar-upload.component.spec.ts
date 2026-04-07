@@ -12,8 +12,6 @@ import { ConfigClientService } from '../../../../services/web/config-client.serv
 import { NavbarUploadComponent } from './navbar-upload.component';
 
 describe('NavbarUploadComponent', () => {
-  const uploadConfig = { max_batch_size: 3, max_upload_size_mb: 1 };
-
   function toFileList(files: File[]): FileList {
     return {
       ...files,
@@ -64,6 +62,7 @@ describe('NavbarUploadComponent', () => {
   async function createComponent(overrides?: {
     upload?: ReturnType<typeof vi.fn>;
     dialogResult?: { isPublic: boolean } | undefined;
+    uploadConfig?: { max_batch_size: number };
     tracker?: {
       registerPendingBatch: ReturnType<typeof vi.fn>;
       markBatchUploading: ReturnType<typeof vi.fn>;
@@ -79,6 +78,7 @@ describe('NavbarUploadComponent', () => {
       ? overrides!.dialogResult
       : { isPublic: false };
     const dialog = makeDialogMock(dialogResult);
+    const uploadConfig = overrides?.uploadConfig ?? { max_batch_size: 1000 };
     const tracker = overrides?.tracker ?? {
       registerPendingBatch: vi.fn().mockReturnValue('request-1'),
       markBatchUploading: vi.fn(),
@@ -90,8 +90,8 @@ describe('NavbarUploadComponent', () => {
     await TestBed.configureTestingModule({
       imports: [NavbarUploadComponent, NoopAnimationsModule],
       providers: [
-        { provide: ConfigClientService, useValue: { getUploadConfig: () => of(uploadConfig) } },
         { provide: MediaService, useValue: { uploadWithProgress: upload } },
+        { provide: ConfigClientService, useValue: { getUploadConfig: vi.fn().mockReturnValue(of(uploadConfig)) } },
         { provide: UploadTrackerService, useValue: tracker },
         { provide: MatDialog, useValue: dialog },
       ],
@@ -132,6 +132,26 @@ describe('NavbarUploadComponent', () => {
     });
   });
 
+  it('splits uploads into configured max batch size chunks', async () => {
+    const tracker = {
+      registerPendingBatch: vi.fn().mockReturnValueOnce('request-1').mockReturnValueOnce('request-2'),
+      markBatchUploading: vi.fn(),
+      registerBatchStarted: vi.fn(),
+      registerBatchRequestFailed: vi.fn(),
+      registerRejectedFiles: vi.fn(),
+    };
+    const { component, upload } = await createComponent({ tracker, uploadConfig: { max_batch_size: 2 } });
+    const first = new File(['a'], 'first.webp', { type: 'image/webp' });
+    const second = new File(['b'], 'second.webp', { type: 'image/webp' });
+    const third = new File(['c'], 'third.webp', { type: 'image/webp' });
+
+    component.onFileSelection(toFileList([first, second, third]));
+
+    expect(upload).toHaveBeenCalledTimes(2);
+    expect(upload).toHaveBeenNthCalledWith(1, [first, second], expect.objectContaining({ visibility: MediaVisibility.PRIVATE }));
+    expect(upload).toHaveBeenNthCalledWith(2, [third], expect.objectContaining({ visibility: MediaVisibility.PRIVATE }));
+  });
+
   it('flags unsupported-only selections as failed and does not upload them', async () => {
     const tracker = {
       registerPendingBatch: vi.fn().mockReturnValue('request-1'),
@@ -149,83 +169,6 @@ describe('NavbarUploadComponent', () => {
     expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
       [illegal],
       'Only supported image and video files can be uploaded.',
-    );
-  });
-
-  it('splits oversized selections into sequential backend-sized batches', async () => {
-    const { component, upload } = await createComponent();
-    const files = [
-      new File(['1'], 'one.jpg', { type: 'image/jpeg' }),
-      new File(['2'], 'two.jpg', { type: 'image/jpeg' }),
-      new File(['3'], 'three.jpg', { type: 'image/jpeg' }),
-      new File(['4'], 'four.jpg', { type: 'image/jpeg' }),
-    ];
-    files.forEach((file, index) => {
-      Object.defineProperty(file, 'lastModified', { value: Date.UTC(2024, 0, index + 1, 0, 0, 0) });
-    });
-
-    component.onFileSelection(toFileList(files));
-
-    expect(upload).toHaveBeenCalledTimes(2);
-    expect(upload).toHaveBeenNthCalledWith(1, files.slice(0, 3), {
-      visibility: MediaVisibility.PRIVATE,
-      captured_at_values: [
-        '2024-01-01T00:00:00.000Z',
-        '2024-01-02T00:00:00.000Z',
-        '2024-01-03T00:00:00.000Z',
-      ],
-    });
-    expect(upload).toHaveBeenNthCalledWith(2, files.slice(3, 4), {
-      visibility: MediaVisibility.PRIVATE,
-      captured_at_values: ['2024-01-04T00:00:00.000Z'],
-    });
-  });
-
-  it('flags oversized-only selections as failed and does not upload them', async () => {
-    const tracker = {
-      registerPendingBatch: vi.fn().mockReturnValue('request-1'),
-      markBatchUploading: vi.fn(),
-      registerBatchStarted: vi.fn(),
-      registerBatchRequestFailed: vi.fn(),
-      registerRejectedFiles: vi.fn(),
-    };
-    const { component, upload } = await createComponent({ tracker });
-    const bigFile = new File([new Uint8Array(1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
-
-    component.onFileSelection(toFileList([bigFile]));
-
-    expect(upload).not.toHaveBeenCalled();
-    expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
-      [bigFile],
-      'File is larger than 1 MB.',
-    );
-  });
-
-  it('uploads the valid remainder when selections include oversized files', async () => {
-    const tracker = {
-      registerPendingBatch: vi.fn().mockReturnValue('request-1'),
-      markBatchUploading: vi.fn(),
-      registerBatchStarted: vi.fn(),
-      registerBatchRequestFailed: vi.fn(),
-      registerRejectedFiles: vi.fn(),
-    };
-    const { component, upload, dialog } = await createComponent({ tracker });
-    const valid = new File(['a'], 'okay.jpg', { type: 'image/jpeg' });
-    const big = new File([new Uint8Array(1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
-
-    component.onFileSelection(toFileList([valid, big]));
-
-    expect(dialog.open).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ data: { fileCount: 1 } }),
-    );
-    expect(upload).toHaveBeenCalledWith(
-      [valid],
-      expect.objectContaining({ visibility: MediaVisibility.PRIVATE }),
-    );
-    expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
-      [big],
-      'File is larger than 1 MB.',
     );
   });
 

@@ -102,15 +102,6 @@ async function registerUploadStatusRoutes(page: Page): Promise<void> {
   let batchStatusCalls = 0;
   let batchItemsCalls = 0;
 
-  await page.route('**/api/v1/config/upload', async (route) => {
-    await route.fulfill({
-      json: {
-        max_batch_size: 10,
-        max_upload_size_mb: 50,
-      },
-    });
-  });
-
   await page.route('**/api/v1/media/search**', async (route: Route) => {
     await route.fulfill({
       json: {

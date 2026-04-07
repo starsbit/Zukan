@@ -40,8 +40,6 @@ class Settings(BaseSettings):
     anilist_timeout_seconds: float = 5.0
     anilist_base_url: str = "https://graphql.anilist.co"
 
-    max_upload_size_mb: int = 50
-    max_batch_size: int = 300
     thumbnail_size: int = 512
 
     auth_register_rate_limit_requests: int = 10
@@ -52,6 +50,8 @@ class Settings(BaseSettings):
     auth_refresh_rate_limit_window_seconds: int = 60
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
+    upload_max_batch_size: int = 1000
+    upload_multipart_max_files: int = 1000
     trash_purge_interval_seconds: int = 60 * 60 * 24
 
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"

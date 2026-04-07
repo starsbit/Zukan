@@ -1,7 +1,9 @@
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
+import { UserRead } from '../../../models/auth';
+import { UserStore } from '../../../services/user.store';
 
 type NavigationItem = {
   icon: string;
@@ -19,8 +21,24 @@ type NavigationSection = {
   imports: [MatIconModule, MatListModule, RouterLink, RouterLinkActive],
   templateUrl: './sidebar.component.html',
   styleUrl: './sidebar.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SidebarComponent {
+  private readonly userStore = inject(UserStore);
+  readonly currentUser = this.userStore.currentUser;
+  storagePercent(user: UserRead): number {
+    if (!user.storage_quota_mb) return 0;
+    return Math.min(user.storage_used_mb / user.storage_quota_mb * 100, 100);
+  }
+
+  formatMb(mb: number): string {
+    if (mb >= 1024) {
+      const gb = mb / 1024;
+      return `${gb >= 100 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
+    }
+    return `${mb} MB`;
+  }
+
   readonly navigationSections: NavigationSection[] = [
     {
       label: 'Browse',

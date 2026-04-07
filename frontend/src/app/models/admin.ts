@@ -8,11 +8,11 @@ export interface AdminUserUpdate {
   show_sensitive?: boolean | null;
   tag_confidence_threshold?: number | null;
   password?: string | null;
+  storage_quota_mb?: number | null;
 }
 
 export interface AdminUserSummary extends UserRead {
   media_count: number;
-  storage_used_bytes: number;
 }
 
 export interface AdminUserDetail extends AdminUserSummary {}

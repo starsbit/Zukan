@@ -12,6 +12,7 @@ function makeUser(is_admin: boolean) {
     id: 'u1', username: 'alice', email: 'alice@example.com',
     is_admin, show_nsfw: false, tag_confidence_threshold: 0.5,
     version: 1, created_at: '2026-01-01T00:00:00Z',
+    storage_quota_mb: 10240, storage_used_mb: 0,
   };
 }
 

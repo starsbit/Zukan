@@ -18,13 +18,12 @@ export interface BatchUploadResponse {
   results: UploadResult[];
 }
 
-export interface UploadConfigResponse {
-  max_batch_size: number;
-  max_upload_size_mb: number;
-}
-
 export interface SetupRequiredResponse {
   setup_required: boolean;
+}
+
+export interface UploadConfigResponse {
+  max_batch_size: number;
 }
 
 export interface TaggingJobQueuedResponse {

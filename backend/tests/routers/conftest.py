@@ -22,6 +22,26 @@ from backend.app.main import (
 from backend.app.routers.deps import admin_user, current_user
 
 
+class _FakeScalarResult:
+    def __init__(self, value=0):
+        self._value = value
+
+    def scalar_one(self):
+        return self._value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+    def scalar(self):
+        return self._value
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+
 class FakeRouterDB:
     def __init__(self) -> None:
         self.added = []
@@ -32,6 +52,9 @@ class FakeRouterDB:
 
     def add(self, obj) -> None:
         self.added.append(obj)
+
+    async def execute(self, _stmt, *args, **kwargs):
+        return _FakeScalarResult(0)
 
     async def _delete(self, obj) -> None:
         self.deleted.append(obj)
@@ -56,6 +79,7 @@ def _build_user(*, is_admin: bool = False) -> SimpleNamespace:
         tag_confidence_threshold=0.35,
         version=1,
         created_at=datetime.now(timezone.utc),
+        storage_quota_mb=10240,
     )
 
 

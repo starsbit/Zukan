@@ -73,7 +73,7 @@ class AdminService:
                 {
                     **UserRead.model_validate(row["user"]).model_dump(),
                     "media_count": row["media_count"],
-                    "storage_used_bytes": row["storage_used_bytes"],
+                    "storage_used_mb": int(row["storage_used_bytes"]) // (1024 * 1024),
                 }
             )
             for row in rows
@@ -88,7 +88,7 @@ class AdminService:
         media = MediaRepository(self._db)
         media_count = await media.count_by_uploader(user_id)
         storage_bytes = await media.sum_file_size(uploader_id=user_id)
-        return AdminUserDetail.model_validate({**UserRead.model_validate(target).model_dump(), "media_count": media_count, "storage_used_bytes": storage_bytes})
+        return AdminUserDetail.model_validate({**UserRead.model_validate(target).model_dump(), "media_count": media_count, "storage_used_mb": int(storage_bytes) // (1024 * 1024)})
 
     async def update_user(self, actor: User, user_id: uuid.UUID, body: AdminUserUpdate):
         users = UserRepository(self._db)
@@ -108,11 +108,14 @@ class AdminService:
             target.show_sensitive = body.show_sensitive
         if "tag_confidence_threshold" in body.model_fields_set:
             target.tag_confidence_threshold = body.tag_confidence_threshold
+        if body.storage_quota_mb is not None:
+            target.storage_quota_mb = body.storage_quota_mb
         if body.password is not None:
             target.hashed_password = hash_password(body.password)
         await self._db.commit()
         await self._db.refresh(target)
-        return target
+        storage_bytes = await MediaRepository(self._db).sum_file_size(uploader_id=target.id)
+        return UserRead.model_validate(target).model_copy(update={"storage_used_mb": int(storage_bytes) // (1024 * 1024)})
 
     async def delete_user(self, actor: User, user_id: uuid.UUID, delete_media: bool = False) -> None:
         target = await UserRepository(self._db).get_by_id(user_id)

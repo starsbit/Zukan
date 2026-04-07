@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from types import SimpleNamespace
 import uuid
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
@@ -49,6 +49,8 @@ def test_update_me_contract(api_client, monkeypatch):
             "tag_confidence_threshold": 0.75,
             "version": 2,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "storage_quota_mb": 10240,
+            "storage_used_mb": 0,
         }
 
     monkeypatch.setattr(AuthService, "update_current_user", _fake_update)
@@ -106,8 +108,14 @@ def test_me_accepts_api_key_bearer_auth(monkeypatch):
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)
     app.add_exception_handler(HTTPException, http_exception_handler)
 
+    scalar_result = MagicMock()
+    scalar_result.scalar_one.return_value = 0
+
+    async def _fake_execute(*args, **kwargs):
+        return scalar_result
+
     async def _db_override():
-        yield SimpleNamespace()
+        yield SimpleNamespace(execute=_fake_execute)
 
     app.dependency_overrides[get_db] = _db_override
 
@@ -126,6 +134,7 @@ def test_me_accepts_api_key_bearer_auth(monkeypatch):
             show_sensitive=False,
             tag_confidence_threshold=0.35,
             version=1,
+            storage_quota_mb=10240,
             created_at=datetime.now(timezone.utc),
         )
 

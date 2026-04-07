@@ -80,15 +80,6 @@ export async function seedAuthenticatedSession(
     });
   });
 
-  await page.route('**/api/v1/config/upload**', async (route) => {
-    await route.fulfill({
-      json: {
-        max_batch_size: 300,
-        max_upload_size_mb: 50,
-      },
-    });
-  });
-
   await page.route('**/api/v1/auth/refresh', async (route) => {
     await route.fulfill({
       json: {

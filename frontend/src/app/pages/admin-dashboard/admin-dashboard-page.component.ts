@@ -29,7 +29,7 @@ import { AdminService } from '../../services/admin.service';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { UserStore } from '../../services/user.store';
 
-type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storage_used_bytes';
+type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storage_used_mb';
 
 @Component({
   selector: 'zukan-admin-dashboard-page',
@@ -77,7 +77,7 @@ export class AdminDashboardPageComponent {
   readonly users = signal<AdminUserSummary[]>([]);
   readonly announcements = signal<any[]>([]);
   readonly userFilter = signal('');
-  readonly userSort = signal<UserSortKey>('storage_used_bytes');
+  readonly userSort = signal<UserSortKey>('storage_used_mb');
   readonly currentUser = this.userStore.currentUser;
 
   readonly announcementForm = this.fb.nonNullable.group({
@@ -100,10 +100,10 @@ export class AdminDashboardPageComponent {
       if (sortKey === 'created_at') {
         return Date.parse(b.created_at) - Date.parse(a.created_at);
       }
-      if (sortKey === 'media_count' || sortKey === 'storage_used_bytes') {
+      if (sortKey === 'media_count' || sortKey === 'storage_used_mb') {
         return b[sortKey] - a[sortKey];
       }
-      return a[sortKey].localeCompare(b[sortKey]);
+      return (a[sortKey] as string).localeCompare(b[sortKey] as string);
     });
     return sorted;
   });
@@ -309,6 +309,14 @@ export class AdminDashboardPageComponent {
 
   isSelf(user: AdminUserSummary): boolean {
     return user.id === this.currentUser()?.id;
+  }
+
+  formatMb(mb: number): string {
+    if (mb >= 1024) {
+      const gb = mb / 1024;
+      return `${gb >= 100 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
+    }
+    return `${mb} MB`;
   }
 
   formatBytes(value: number): string {

@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
-import { ConfigClientService } from '../../../../services/web/config-client.service';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
 import { ThemeService } from '../../../../services/theme.service';
@@ -19,10 +18,6 @@ describe('NavbarActionsComponent', () => {
           useValue: { logout: () => of(void 0) },
         },
         { provide: AuthStore, useValue: { isAuthenticated: () => false } },
-        {
-          provide: ConfigClientService,
-          useValue: { getUploadConfig: () => of({ max_batch_size: 300, max_upload_size_mb: 50 }) },
-        },
         { provide: MediaService, useValue: { upload: () => of({ accepted: 1 }) } },
         { provide: NotificationsClientService, useValue: { list: () => undefined } },
         { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },

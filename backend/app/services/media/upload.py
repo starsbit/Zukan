@@ -10,9 +10,7 @@ from fastapi import UploadFile
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.config import settings
 from backend.app.errors.error import AppError
-from backend.app.errors.upload import upload_limit_exceeded
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, MediaVisibility
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
@@ -43,6 +41,7 @@ class UploadBatchContext:
     queued_media_ids: list[uuid.UUID] = field(default_factory=list)
     processing_media_ids: list[uuid.UUID] = field(default_factory=list)
     results: list[UploadResult] = field(default_factory=list)
+    remaining_bytes: int | None = None
 
 
 def calculate_batch_status(*, total: int, pending: int, processing: int, failed: int) -> BatchStatus:
@@ -100,7 +99,6 @@ class MediaUploadWorkflow:
         captured_at_values: list[datetime] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
-        self._validate_batch_size(files)
         upload_batch = await self._create_upload_batch(user, len(files))
         logger.info(
             "Upload batch started batch_id=%s user_id=%s file_count=%s album_id=%s visibility=%s",
@@ -111,6 +109,10 @@ class MediaUploadWorkflow:
             visibility.value,
         )
         ctx = UploadBatchContext()
+        if not user.is_admin:
+            from backend.app.repositories.media import MediaRepository
+            current_storage = await MediaRepository(self._db).sum_file_size(uploader_id=user.id)
+            ctx.remaining_bytes = user.storage_quota_mb * 1024 * 1024 - current_storage
 
         for index, upload in enumerate(files):
             per_file_override = captured_at_override
@@ -141,11 +143,6 @@ class MediaUploadWorkflow:
             len(ctx.processing_media_ids),
         )
         return self._build_response(upload_batch, ctx)
-
-    def _validate_batch_size(self, files: list[UploadFile]) -> None:
-        if len(files) > settings.max_batch_size:
-            logger.warning("Upload batch rejected because it exceeds the file limit file_count=%s limit=%s", len(files), settings.max_batch_size)
-            raise AppError(status_code=400, code=upload_limit_exceeded, detail=f"Max {settings.max_batch_size} files per request")
 
     async def _create_upload_batch(self, user: User, total_items: int) -> ImportBatch:
         now = datetime.now(timezone.utc)
@@ -183,6 +180,13 @@ class MediaUploadWorkflow:
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
 
+        if ctx.remaining_bytes is not None and saved.file_size > ctx.remaining_bytes:
+            logger.warning("Upload file rejected quota exceeded original_name=%s file_size=%s remaining=%s", original_name, saved.file_size, ctx.remaining_bytes)
+            from backend.app.utils.storage import delete_media_files
+            delete_media_files(str(saved.path))
+            await self._handle_failed_upload(batch_item, original_name, ctx, error="Storage quota exceeded")
+            return
+
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
         if captured_at_override is not None:
             captured_at = _normalize_utc(captured_at_override)
@@ -208,6 +212,8 @@ class MediaUploadWorkflow:
             )
             return
 
+        if ctx.remaining_bytes is not None:
+            ctx.remaining_bytes -= saved.file_size
         await self._handle_new_media(
             batch_item=batch_item,
             user=user,
@@ -236,9 +242,10 @@ class MediaUploadWorkflow:
         batch_item: ImportBatchItem,
         original_name: str,
         ctx: UploadBatchContext,
+        error: str = "Unsupported type or file too large",
     ) -> None:
         batch_item.status = ItemStatus.failed
-        batch_item.error = "Unsupported type or file too large"
+        batch_item.error = error
         batch_item.progress_percent = 100
 
         self._db.add(batch_item)
@@ -499,8 +506,15 @@ class MediaUploadWorkflow:
         visibility: MediaVisibility,
     ) -> BatchUploadResponse:
         from backend.app.services.media.url_fetch import fetch_url_as_bytes
+        from backend.app.repositories.media import MediaRepository
 
-        content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=settings.max_upload_size_mb * 1024 * 1024)
+        if user.is_admin:
+            max_size = 10 * 1024 ** 3
+        else:
+            current_storage = await MediaRepository(self._db).sum_file_size(uploader_id=user.id)
+            max_size = user.storage_quota_mb * 1024 * 1024 - current_storage
+
+        content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=max(max_size, 0))
         saved = await save_bytes(content, mime_type)
         if saved is None:
             from backend.app.errors.upload import unsupported_media_type

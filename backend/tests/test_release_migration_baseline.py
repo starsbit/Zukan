@@ -12,6 +12,7 @@ def test_release_baseline_is_the_only_revision_file():
 
     assert revision_files == [
         "0001_release_baseline.py",
+        "0002_user_storage_quota.py",
     ]
 
 

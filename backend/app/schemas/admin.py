@@ -12,11 +12,11 @@ class AdminUserUpdate(BaseModel):
     show_sensitive: bool | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     password: str | None = Field(default=None, min_length=8)
+    storage_quota_mb: int | None = Field(default=None, ge=0)
 
 
 class AdminUserSummary(UserRead):
     media_count: int
-    storage_used_bytes: int
 
 
 class AdminUserDetail(AdminUserSummary):

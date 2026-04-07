@@ -38,6 +38,7 @@ export class AdminUserEditDialogComponent {
   readonly form = this.fb.nonNullable.group({
     username: [this.data.user.username, [Validators.required, Validators.minLength(3), Validators.maxLength(64)]],
     isAdmin: [{ value: this.data.user.is_admin, disabled: this.isSelf }],
+    storageQuotaMb: [this.data.user.storage_quota_mb, [Validators.min(0)]],
     password: ['', [Validators.minLength(8)]],
     confirmPassword: [''],
   });
@@ -51,6 +52,7 @@ export class AdminUserEditDialogComponent {
     return (
       (raw.username ?? '').trim() !== this.data.user.username
       || raw.isAdmin !== this.data.user.is_admin
+      || (raw.storageQuotaMb ?? this.data.user.storage_quota_mb) !== this.data.user.storage_quota_mb
       || (raw.password ?? '').trim().length > 0
     );
   });
@@ -61,7 +63,7 @@ export class AdminUserEditDialogComponent {
       return;
     }
 
-    const { username, isAdmin, password, confirmPassword } = this.form.getRawValue();
+    const { username, isAdmin, storageQuotaMb, password, confirmPassword } = this.form.getRawValue();
     if (password && password !== confirmPassword) {
       this.error.set('Passwords do not match.');
       return;
@@ -75,11 +77,14 @@ export class AdminUserEditDialogComponent {
     if (!this.isSelf && isAdmin !== this.data.user.is_admin) {
       body.is_admin = isAdmin;
     }
+    if (storageQuotaMb !== this.data.user.storage_quota_mb) {
+      body.storage_quota_mb = storageQuotaMb;
+    }
     if (password.trim()) {
       body.password = password.trim();
     }
-    if (body.username == null && body.password == null && body.is_admin == null) {
-      this.error.set('Change the username, admin access, or set a new password before saving.');
+    if (body.username == null && body.password == null && body.is_admin == null && body.storage_quota_mb == null) {
+      this.error.set('Change the username, admin access, storage quota, or set a new password before saving.');
       return;
     }
 

@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
+from backend.app.repositories.media import MediaRepository
 from backend.app.schemas import (
     APIKeyCreateResponse,
     APIKeyStatusResponse,
@@ -23,8 +24,9 @@ router = APIRouter(prefix="/me", tags=["users"], responses=AUTHENTICATED_ERROR_R
     summary="Get Current User",
     description="Return the authenticated user's profile and preferences.",
 )
-async def me(user: User = Depends(current_user)):
-    return user
+async def me(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+    storage_bytes = await MediaRepository(db).sum_file_size(uploader_id=user.id)
+    return UserRead.model_validate(user).model_copy(update={"storage_used_mb": int(storage_bytes) // (1024 * 1024)})
 
 
 @router.patch(

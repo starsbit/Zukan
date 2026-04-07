@@ -13,13 +13,35 @@ from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
 
 
+class _ScalarResult:
+    def __init__(self, value: Any = 0) -> None:
+        self._value = value
+
+    def scalar_one(self) -> Any:
+        return self._value
+
+    def scalar_one_or_none(self) -> Any:
+        return self._value
+
+    def scalar(self) -> Any:
+        return self._value
+
+    def scalars(self) -> "_ScalarResult":
+        return self
+
+    def all(self) -> list:
+        return []
+
+
 class FakeAsyncSession:
     def __init__(self) -> None:
         self.added: list[Any] = []
         self.deleted: list[Any] = []
         self.commit = AsyncMock()
-        self.execute = AsyncMock()
         self.get = AsyncMock()
+
+    async def execute(self, *args: Any, **kwargs: Any) -> _ScalarResult:
+        return _ScalarResult(0)
 
     def add(self, obj: Any) -> None:
         self.added.append(obj)
@@ -47,6 +69,7 @@ def user() -> User:
         hashed_password="x",
         is_admin=False,
         show_nsfw=False,
+        storage_quota_mb=10240,
     )
 
 
@@ -59,6 +82,7 @@ def admin_user() -> User:
         hashed_password="x",
         is_admin=True,
         show_nsfw=False,
+        storage_quota_mb=10240,
     )
 
 

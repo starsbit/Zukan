@@ -2,17 +2,10 @@ from __future__ import annotations
 
 import pytest
 
+from backend.app.config import settings
+from backend.app.routers.config import get_upload_config
 from backend.app.routers.config import get_setup_required
 
-
-def test_get_upload_config_contract(api_client):
-    response = api_client.get("/api/v1/config/upload")
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert set(payload.keys()) == {"max_batch_size", "max_upload_size_mb"}
-    assert payload["max_batch_size"] > 0
-    assert payload["max_upload_size_mb"] > 0
 
 
 class _FakeResult:
@@ -50,3 +43,12 @@ async def test_get_setup_required_is_true_when_no_admin_exists():
     response = await get_setup_required(_FakeDB([False, False]))
 
     assert response.setup_required is True
+
+
+@pytest.mark.anyio
+async def test_get_upload_config_returns_max_batch_size(monkeypatch):
+    monkeypatch.setattr(settings, "upload_max_batch_size", 1000)
+
+    response = await get_upload_config()
+
+    assert response.max_batch_size == 1000

@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, StreamingResponse
@@ -151,11 +151,12 @@ def media_metadata_filter_query(
     ],
 )
 async def upload(
-    body: Annotated[MediaUploadRequest, Depends(MediaUploadRequest.as_form)],
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    body = await MediaUploadRequest.from_request(request, max_files=settings.upload_multipart_max_files)
     scope = idempotency_scope(user_id=user.id, method="POST", path="/media")
     upload_signature = {
         "files": [{"filename": f.filename, "content_type": f.content_type} for f in body.files],
@@ -242,11 +243,12 @@ async def upload(
     ],
 )
 async def upload_with_annotations(
-    body: Annotated[MediaAnnotatedUploadRequest, Depends(MediaAnnotatedUploadRequest.as_form)],
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    body = await MediaAnnotatedUploadRequest.from_request(request, max_files=settings.upload_multipart_max_files)
     scope = idempotency_scope(user_id=user.id, method="POST", path="/media/annotated")
     upload_signature = {
         "files": [{"filename": f.filename, "content_type": f.content_type} for f in body.files],

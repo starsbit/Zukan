@@ -21,4 +21,15 @@
       </mat-nav-list>
     </div>
   }
+
+  <div class="spacer"></div>
+
+  @if (currentUser(); as user) {
+    <div class="storage-footer">
+      <div class="storage-bar-track">
+        <div class="storage-bar-fill" [style.width.%]="storagePercent(user)"></div>
+      </div>
+      <span class="storage-label">{{ formatMb(user.storage_used_mb) }} / {{ formatMb(user.storage_quota_mb) }}</span>
+    </div>
+  }
 </section>

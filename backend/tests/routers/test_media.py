@@ -5,6 +5,9 @@ import io
 from types import SimpleNamespace
 import uuid
 
+from starlette.requests import Request as StarletteRequest
+
+from backend.app.config import settings
 from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.metadata import MediaMetadataService
 from backend.app.services.media.processing import MediaProcessingService
@@ -90,6 +93,43 @@ def test_upload_media_contract(api_client, monkeypatch):
     assert response.status_code == 202
     assert response.json()["accepted"] == 1
     assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
+
+
+def test_upload_media_uses_configured_multipart_max_files(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None, visibility="private"):
+        return {
+            "batch_id": str(uuid.uuid4()),
+            "batch_url": "/api/v1/me/import-batches/test",
+            "batch_items_url": "/api/v1/me/import-batches/test/items",
+            "poll_after_seconds": 2,
+            "webhooks_supported": False,
+            "accepted": 1,
+            "duplicates": 0,
+            "errors": 0,
+            "results": [],
+        }
+
+    original_form = StarletteRequest.form
+
+    def _capture_form_limit(self, *, max_files=1000, max_fields=1000, max_part_size=1024 * 1024):
+        captured["max_files"] = max_files
+        return original_form(self, max_files=max_files, max_fields=max_fields, max_part_size=max_part_size)
+
+    monkeypatch.setattr(MediaUploadService, "upload_files", _fake_upload)
+    monkeypatch.setattr(StarletteRequest, "form", _capture_form_limit)
+    monkeypatch.setattr(settings, "upload_multipart_max_files", 5001)
+
+    response = api_client.post(
+        "/api/v1/media",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+        ],
+    )
+
+    assert response.status_code == 202
+    assert captured["max_files"] == 5001
 
 
 def test_upload_media_with_annotations_contract(api_client, monkeypatch):

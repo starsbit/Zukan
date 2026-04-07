@@ -158,37 +158,6 @@ test.describe.serial('Navbar upload', () => {
     });
   });
 
-  test('splits large file selections into multiple backend upload batches', async ({ page }) => {
-    await page.route('**/api/v1/config/upload', async (route) => {
-      await route.fulfill({
-        json: {
-          max_batch_size: 2,
-          max_upload_size_mb: 50,
-        },
-      });
-    });
-
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
-
-    const token = await getAccessToken(page);
-    const beforeTotal = await getMediaTotal(page, token);
-    const uploadResponses: Array<{ accepted: number }> = [];
-    const uploadPayloads = await createUniquePngPayloads(page, 3);
-
-    page.on('response', async (response) => {
-      if (response.url().endsWith('/api/v1/media') && response.request().method() === 'POST') {
-        uploadResponses.push(await response.json() as { accepted: number });
-      }
-    });
-
-    await page.locator('input[data-upload-kind="files"]').setInputFiles(uploadPayloads);
-    await confirmUploadDialog(page);
-
-    await expect.poll(() => uploadResponses.length).toBe(2);
-    await expect.poll(async () => getMediaTotal(page, token), { timeout: 15000 }).toBeGreaterThanOrEqual(beforeTotal);
-  });
-
   test('uploads legal files from a folder and nested subfolders', async ({ page }) => {
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'zukan-upload-folder-'));
     const nestedDir = path.join(tempRoot, 'nested');

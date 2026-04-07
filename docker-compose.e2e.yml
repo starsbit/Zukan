@@ -27,8 +27,6 @@ services:
       STORAGE_DIR: /tmp/e2e-storage
       MODEL_CACHE_DIR: /backend/model_cache
       TAGGER_MODEL_REPO: SmilingWolf/wd-vit-tagger-v3
-      MAX_UPLOAD_SIZE_MB: 50
-      MAX_BATCH_SIZE: 100
       AUTH_REGISTER_RATE_LIMIT_REQUESTS: 0
       AUTH_REGISTER_RATE_LIMIT_WINDOW_SECONDS: 0
       AUTH_LOGIN_RATE_LIMIT_REQUESTS: 0

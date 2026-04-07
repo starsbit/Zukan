@@ -66,17 +66,19 @@ async def test_update_user_persists_selected_fields(fake_db, user):
     actor = SimpleNamespace(id=uuid.uuid4())
 
     with patch("backend.app.services.admin.UserRepository") as user_repo_cls, patch(
+        "backend.app.services.admin.MediaRepository"
+    ) as media_repo_cls, patch(
         "backend.app.services.admin.hash_password", return_value="hashed"
     ):
         user_repo_cls.return_value.get_by_id = AsyncMock(return_value=user)
         user_repo_cls.return_value.get_by_username = AsyncMock(return_value=None)
+        media_repo_cls.return_value.sum_file_size = AsyncMock(return_value=0)
         updated = await service.update_user(actor, user.id, payload)
 
     assert updated.username == "renamed"
     assert updated.is_admin is True
     assert updated.show_nsfw is True
     assert updated.tag_confidence_threshold == 0.7
-    assert updated.hashed_password == "hashed"
     fake_db.commit.assert_awaited_once()
     fake_db.refresh.assert_awaited_once_with(user)
 

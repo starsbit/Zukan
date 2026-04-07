@@ -35,8 +35,8 @@ describe('AdminDashboardPageComponent', () => {
               failed_tagging: 0,
               trashed_media: 1,
               storage_by_user: [
-                { user_id: 'u1', username: 'admin', media_count: 3, storage_used_bytes: 1024 },
-                { user_id: 'u2', username: 'alice', media_count: 2, storage_used_bytes: 1024 },
+                { user_id: 'u1', username: 'admin', media_count: 3, storage_used_mb: 1024 },
+                { user_id: 'u2', username: 'alice', media_count: 2, storage_used_mb: 1024 },
               ],
             }),
             getHealth: () => of({
@@ -64,7 +64,8 @@ describe('AdminDashboardPageComponent', () => {
                   version: 1,
                   created_at: '2026-04-01T00:00:00Z',
                   media_count: 3,
-                  storage_used_bytes: 1024,
+                  storage_used_mb: 1,
+                  storage_quota_mb: 10240,
                 },
                 {
                   id: 'u2',
@@ -76,7 +77,8 @@ describe('AdminDashboardPageComponent', () => {
                   version: 1,
                   created_at: '2026-04-02T00:00:00Z',
                   media_count: 2,
-                  storage_used_bytes: 1024,
+                  storage_used_mb: 1,
+                  storage_quota_mb: 10240,
                 },
               ],
             }),

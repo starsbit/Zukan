@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi.exceptions import RequestValidationError
-from fastapi import File, Form, UploadFile
+from fastapi import File, Form, Request, UploadFile
 from pydantic import BaseModel, HttpUrl, ValidationError, model_validator
 
 from backend.app.models.media import MediaVisibility
@@ -31,7 +31,6 @@ class BatchUploadResponse(BaseModel):
 
 class UploadConfigResponse(BaseModel):
     max_batch_size: int
-    max_upload_size_mb: int
 
 
 class SetupRequiredResponse(BaseModel):
@@ -69,6 +68,27 @@ class MediaUploadRequest(BaseModel):
             captured_at_values=captured_at_values,
             visibility=visibility,
         )
+
+    @classmethod
+    async def from_request(
+        cls,
+        request: Request,
+        *,
+        max_files: int,
+    ) -> "MediaUploadRequest":
+        form = await request.form(max_files=max_files, max_fields=max_files * 2 + 20)
+        files = form.getlist("files")
+        try:
+            return cls(
+                files=files or None,
+                album_id=form.get("album_id"),
+                tags=form.getlist("tags") or None,
+                captured_at=form.get("captured_at"),
+                captured_at_values=form.getlist("captured_at_values") or None,
+                visibility=form.get("visibility") or MediaVisibility.private,
+            )
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors()) from exc
 
 
 class MediaAnnotatedUploadRequest(BaseModel):
@@ -114,6 +134,29 @@ class MediaAnnotatedUploadRequest(BaseModel):
                 captured_at=captured_at,
                 captured_at_values=captured_at_values,
                 visibility=visibility,
+            )
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors()) from exc
+
+    @classmethod
+    async def from_request(
+        cls,
+        request: Request,
+        *,
+        max_files: int,
+    ) -> "MediaAnnotatedUploadRequest":
+        form = await request.form(max_files=max_files, max_fields=max_files * 2 + 20)
+        files = form.getlist("files")
+        try:
+            return cls(
+                files=files or None,
+                album_id=form.get("album_id"),
+                tags=form.getlist("tags") or None,
+                character_names=form.getlist("character_names") or None,
+                series_names=form.getlist("series_names") or None,
+                captured_at=form.get("captured_at"),
+                captured_at_values=form.getlist("captured_at_values") or None,
+                visibility=form.get("visibility") or MediaVisibility.private,
             )
         except ValidationError as exc:
             raise RequestValidationError(exc.errors()) from exc

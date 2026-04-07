@@ -19,6 +19,8 @@ export interface UserRead {
   tag_confidence_threshold: number;
   version: number;
   created_at: string;
+  storage_quota_mb: number;
+  storage_used_mb: number;
 }
 
 export interface UserRegister {

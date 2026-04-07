@@ -66,9 +66,6 @@ async def save_bytes(content: bytes, content_type: str) -> SavedUpload | None:
         return None
 
     ext, media_type = file_info
-    if len(content) > settings.max_upload_size_mb * 1024 * 1024:
-        return None
-
     sha256 = hashlib.sha256(content).hexdigest()
     file_id = uuid.uuid4()
     path = shard_path(file_id, ext)

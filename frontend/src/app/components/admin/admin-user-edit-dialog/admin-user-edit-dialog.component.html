@@ -23,6 +23,14 @@
   </mat-form-field>
 
   <mat-form-field appearance="outline">
+    <mat-label>Storage quota (MB)</mat-label>
+    <input matInput type="number" formControlName="storageQuotaMb" min="0" />
+    @if (form.controls.storageQuotaMb.hasError('min')) {
+      <mat-error>Quota must be 0 or greater.</mat-error>
+    }
+  </mat-form-field>
+
+  <mat-form-field appearance="outline">
     <mat-label>New Password</mat-label>
     <input matInput type="password" formControlName="password" />
     @if (form.controls.password.hasError('minlength')) {
