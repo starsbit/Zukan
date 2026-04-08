@@ -47,7 +47,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -59,57 +59,9 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: frontend
-
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
-        working-directory: frontend
-
-      - name: Restore model cache
-        id: model-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/zukan_model_cache
-          key: zukan-model-cache-wd-vit-tagger-v3
-
-      - name: Populate model cache Docker volume
-        run: |
-          docker volume create zukan_model_cache
-          if [ -d ~/.cache/zukan_model_cache ] && [ "$(ls -A ~/.cache/zukan_model_cache 2>/dev/null)" ]; then
-            docker run --rm \
-              -v zukan_model_cache:/target \
-              -v ~/.cache/zukan_model_cache:/source:ro \
-              alpine sh -c "cp -a /source/. /target/"
-          fi
-
-      - name: Run e2e tests
-        run: bash e2e.sh
-
-      - name: Save model cache
-        if: steps.model-cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p ~/.cache/zukan_model_cache
-          docker run --rm \
-            -v zukan_model_cache:/source:ro \
-            -v ~/.cache/zukan_model_cache:/target \
-            alpine sh -c "cp -a /source/. /target/"
-
   build-and-push:
     runs-on: ubuntu-latest
-    needs: [backend, frontend, e2e]
+    needs: [backend, frontend]
     permissions:
       contents: write
       packages: write

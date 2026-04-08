@@ -103,7 +103,7 @@ Everything else is configured through the **Admin → App Config** panel after l
 
 - Docker and Docker Compose
 - Python 3.12+ with a virtual environment
-- Node.js 22+ and npm
+- Node.js 24+ and npm (project is developed on Node 25)
 
 ### Running locally
 
@@ -194,7 +194,7 @@ Two GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `test.yml` | Every push and PR to `main` | Runs backend tests (with Postgres) and verifies the frontend builds |
-| `release.yml` | Push of a `v*.*.*` tag | Runs all tests (backend + frontend + e2e), then builds and pushes images to GHCR and creates a GitHub Release |
+| `release.yml` | Push of a `v*.*.*` tag | Runs backend tests and frontend build, then builds and pushes images to GHCR and creates a GitHub Release |
 
 Images are published to:
 - `ghcr.io/starsbit/zukan-api:<version>`
