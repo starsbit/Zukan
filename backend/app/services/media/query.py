@@ -14,6 +14,7 @@ from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaVisibility
+from backend.app.models.tags import Tag
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.repositories import media_filters
@@ -272,6 +273,7 @@ class MediaQueryService:
         media_ids = [row.id for row in rows]
         favorite_ids = await self._favorite_repo.get_favorited_ids(user.id, media_ids)
         favorite_counts = await self._favorite_repo.get_favorite_counts(media_ids)
+        tag_names_map = await self._fetch_tag_names(media_ids)
         next_cursor = self._build_next_cursor(rows, has_more, sort_by)
 
         return MediaCursorPage(
@@ -279,7 +281,7 @@ class MediaQueryService:
             next_cursor=next_cursor,
             has_more=has_more,
             page_size=page_size,
-            items=enrich_media(rows, favorite_ids, favorite_counts),
+            items=enrich_media(rows, favorite_ids, favorite_counts, tag_names_map),
         )
 
     async def get_timeline(
@@ -434,8 +436,19 @@ class MediaQueryService:
         return select(Media).options(
             selectinload(Media.uploader),
             selectinload(Media.owner),
-            selectinload(Media.media_tags).selectinload(MediaTag.tag),
         )
+
+    async def _fetch_tag_names(self, media_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[str]]:
+        if not media_ids:
+            return {}
+        stmt = (
+            select(MediaTag.media_id, func.array_agg(Tag.name).label("tag_names"))
+            .join(Tag, Tag.id == MediaTag.tag_id)
+            .where(MediaTag.media_id.in_(media_ids))
+            .group_by(MediaTag.media_id)
+        )
+        rows = (await self._db.execute(stmt)).all()
+        return {row.media_id: sorted(row.tag_names) for row in rows}
 
     async def _apply_album_filter(
         self,

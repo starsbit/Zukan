@@ -18,7 +18,7 @@ def build_media_metadata(media: Media) -> MediaMetadata:
     )
 
 
-def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0) -> MediaRead:
+def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0, tag_names: list[str] | None = None) -> MediaRead:
     owner_id = media.owner_id or media.uploader_id
     owner = media.owner or media.uploader
     return MediaRead(
@@ -33,7 +33,7 @@ def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0) 
         media_type=media.media_type,
         metadata=build_media_metadata(media),
         version=media.version,
-        tags=sorted(mt.tag.name for mt in media.media_tags),
+        tags=tag_names if tag_names is not None else sorted(mt.tag.name for mt in media.media_tags),
         ocr_text=media.ocr_text,
         ocr_text_override=media.ocr_text_override,
         metadata_review_dismissed=bool(media.metadata_review_dismissed),
@@ -50,6 +50,9 @@ def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0) 
     )
 
 
-def enrich_media(rows: list[Media], favorited: set[uuid.UUID], counts: dict[uuid.UUID, int] | None = None) -> list[MediaRead]:
+def enrich_media(rows: list[Media], favorited: set[uuid.UUID], counts: dict[uuid.UUID, int] | None = None, tag_names_map: dict[uuid.UUID, list[str]] | None = None) -> list[MediaRead]:
     counts = counts or {}
-    return [build_media_read(row, row.id in favorited, counts.get(row.id, 0)) for row in rows]
+    return [
+        build_media_read(row, row.id in favorited, counts.get(row.id, 0), tag_names_map.get(row.id, []) if tag_names_map is not None else None)
+        for row in rows
+    ]
