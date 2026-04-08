@@ -70,6 +70,8 @@ class Settings(BaseSettings):
         "http://127.0.0.1:4200",
     ]
 
+    app_version: str = "dev"
+
 
 settings = Settings()
 
@@ -82,6 +84,20 @@ RUNTIME_CONFIG_FIELDS = {
     "auth_refresh_rate_limit_window_seconds",
     "upload_rate_limit_requests",
     "upload_rate_limit_window_seconds",
+    "anilist_enabled",
+    "anilist_client_id",
+    "anilist_client_secret",
+    "anilist_oauth_redirect_uri",
+    "access_token_expire_minutes",
+    "refresh_token_expire_days",
+    "remember_me_refresh_token_expire_days",
+    "tagger_threshold_general",
+    "tagger_threshold_character",
+    "ocr_enabled",
+    "ocr_languages",
+    "ocr_max_chars",
+    "thumbnail_size",
+    "trash_purge_interval_seconds",
 }
 
 

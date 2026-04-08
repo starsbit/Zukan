@@ -87,3 +87,10 @@ class AppAnnouncementRepository:
 
     async def count(self) -> int:
         return (await self.db.execute(select(func.count()).select_from(AppAnnouncement))).scalar_one()
+
+    async def find_by_version(self, version: str) -> AppAnnouncement | None:
+        return (
+            await self.db.execute(
+                select(AppAnnouncement).where(AppAnnouncement.version == version).limit(1)
+            )
+        ).scalar_one_or_none()

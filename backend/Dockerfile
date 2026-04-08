@@ -4,6 +4,9 @@ WORKDIR /backend
 
 ENV PYTHONUNBUFFERED=1
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	ffmpeg \
 	tesseract-ocr \

@@ -73,6 +73,20 @@ class AdminAppConfigRead(BaseModel):
     auth_register_rate_limit_window_seconds: int = Field(ge=0)
     upload_rate_limit_requests: int = Field(ge=0)
     upload_rate_limit_window_seconds: int = Field(ge=0)
+    anilist_enabled: bool
+    anilist_client_id: str
+    anilist_client_secret: str
+    anilist_oauth_redirect_uri: str
+    access_token_expire_minutes: int = Field(ge=1)
+    refresh_token_expire_days: int = Field(ge=1)
+    remember_me_refresh_token_expire_days: int = Field(ge=1)
+    tagger_threshold_general: float = Field(ge=0.0, le=1.0)
+    tagger_threshold_character: float = Field(ge=0.0, le=1.0)
+    ocr_enabled: bool
+    ocr_languages: str
+    ocr_max_chars: int = Field(ge=0)
+    thumbnail_size: int = Field(ge=64)
+    trash_purge_interval_seconds: int = Field(ge=60)
 
 
 class AdminAppConfigUpdate(BaseModel):
@@ -84,3 +98,17 @@ class AdminAppConfigUpdate(BaseModel):
     auth_register_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
     upload_rate_limit_requests: int | None = Field(default=None, ge=0)
     upload_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
+    anilist_enabled: bool | None = None
+    anilist_client_id: str | None = None
+    anilist_client_secret: str | None = None
+    anilist_oauth_redirect_uri: str | None = None
+    access_token_expire_minutes: int | None = Field(default=None, ge=1)
+    refresh_token_expire_days: int | None = Field(default=None, ge=1)
+    remember_me_refresh_token_expire_days: int | None = Field(default=None, ge=1)
+    tagger_threshold_general: float | None = Field(default=None, ge=0.0, le=1.0)
+    tagger_threshold_character: float | None = Field(default=None, ge=0.0, le=1.0)
+    ocr_enabled: bool | None = None
+    ocr_languages: str | None = None
+    ocr_max_chars: int | None = Field(default=None, ge=0)
+    thumbnail_size: int | None = Field(default=None, ge=64)
+    trash_purge_interval_seconds: int | None = Field(default=None, ge=60)

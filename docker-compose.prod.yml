@@ -1,0 +1,47 @@
+# Production docker-compose for self-hosted Zukan.
+# Replace the image tags below with the version you want to run.
+# See: https://github.com/starsbit/zukan/releases
+
+services:
+  frontend:
+    image: ghcr.io/starsbit/zukan-frontend:latest
+    ports:
+      - "80:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    image: ghcr.io/starsbit/zukan-api:latest
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
+      SECRET_KEY: ${SECRET_KEY}
+      LOG_LEVEL: INFO
+    volumes:
+      - storage_data:/backend/storage
+      - model_cache:/backend/model_cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: zukan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: zukan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zukan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  storage_data:
+  model_cache:

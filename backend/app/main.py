@@ -33,6 +33,7 @@ from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
+from backend.app.services.update_check import check_for_updates
 from backend.app.ml.tagger import tagger
 from backend.app.ml.ocr import ocr_backend
 
@@ -42,7 +43,7 @@ logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 
-API_VERSION = "0.1.0"
+API_VERSION = settings.app_version
 OPENAPI_TAGS = [
     {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
     {"name": "users", "description": "Current-user profile read/update operations."},
@@ -245,6 +246,7 @@ async def lifespan(_api: FastAPI):
         recovered_count = await _recover_pending_media_jobs(tag_queue)
         worker = asyncio.create_task(tagging_worker())
         purge_worker = asyncio.create_task(trash_purge_worker())
+        asyncio.create_task(check_for_updates())
         logger.info("Background tagging worker started")
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
