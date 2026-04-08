@@ -14,6 +14,12 @@ const mockBatch = {
 };
 const mockItemPage = { total: 0, next_cursor: null, has_more: false, page_size: 50, items: [] };
 const mockReviewPage = { total: 1, items: [], recommendation_groups: [] };
+const mockReviewSummary = {
+  unresolved_count: 2,
+  review_batch_ids: ['b1'],
+  latest_batch_id: 'b1',
+  latest_batch_created_at: '2026-01-01T00:00:00Z',
+};
 
 describe('BatchesClientService', () => {
   let service: BatchesClientService;
@@ -88,5 +94,13 @@ describe('BatchesClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/b1/review-items');
     expect(req.request.params.get('include_recommendations')).toBe('true');
     req.flush(mockReviewPage);
+  });
+
+  it('listReviewSummary sends GET /api/v1/me/import-batches/review-summary', () => {
+    service.listReviewSummary().subscribe(res => expect(res).toEqual(mockReviewSummary));
+
+    const req = http.expectOne('/api/v1/me/import-batches/review-summary');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockReviewSummary);
   });
 });

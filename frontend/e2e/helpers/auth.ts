@@ -80,6 +80,17 @@ export async function seedAuthenticatedSession(
     });
   });
 
+  await page.route(/\/api\/v1\/me\/import-batches\/review-summary(?:\?.*)?$/, async (route) => {
+    await route.fulfill({
+      json: {
+        unresolved_count: 0,
+        review_batch_ids: [],
+        latest_batch_id: null,
+        latest_batch_created_at: null,
+      },
+    });
+  });
+
   await page.route('**/api/v1/auth/refresh', async (route) => {
     await route.fulfill({
       json: {

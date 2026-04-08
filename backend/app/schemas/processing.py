@@ -132,3 +132,19 @@ class ImportBatchReviewListResponse(BaseModel):
         default_factory=list,
         description="Recommendation groups for unresolved review items in this batch.",
     )
+
+
+class ImportBatchReviewSummaryResponse(BaseModel):
+    unresolved_count: int = Field(description="Total number of unresolved metadata review items across upload batches.")
+    review_batch_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Upload batch ids that still contain unresolved metadata review items.",
+    )
+    latest_batch_id: uuid.UUID | None = Field(
+        default=None,
+        description="Most recently created batch that still has unresolved metadata review items.",
+    )
+    latest_batch_created_at: datetime | None = Field(
+        default=None,
+        description="Creation timestamp of latest_batch_id.",
+    )

@@ -12,6 +12,7 @@ from backend.app.schemas import (
     ImportBatchListResponse,
     ImportBatchRead,
     ImportBatchReviewListResponse,
+    ImportBatchReviewSummaryResponse,
     error_responses,
 )
 from backend.app.services.processing import ProcessingService
@@ -29,6 +30,14 @@ async def list_all_review_items(
         user.id,
         include_recommendations=include_recommendations,
     )
+
+
+@router.get("/review-summary", response_model=ImportBatchReviewSummaryResponse)
+async def get_review_summary(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ProcessingService(db).get_review_summary(user.id)
 
 
 @router.get("", response_model=ImportBatchListResponse)

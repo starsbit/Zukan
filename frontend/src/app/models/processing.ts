@@ -105,3 +105,10 @@ export interface ImportBatchReviewListResponse {
   items: ImportBatchReviewItemRead[];
   recommendation_groups: ImportBatchRecommendationGroupRead[];
 }
+
+export interface ImportBatchReviewSummaryResponse {
+  unresolved_count: number;
+  review_batch_ids: string[];
+  latest_batch_id: string | null;
+  latest_batch_created_at: string | null;
+}

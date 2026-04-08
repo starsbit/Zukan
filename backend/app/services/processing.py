@@ -32,6 +32,7 @@ from backend.app.schemas import (
     ImportBatchRecommendationSuggestionRead,
     ImportBatchReviewItemRead,
     ImportBatchReviewListResponse,
+    ImportBatchReviewSummaryResponse,
 )
 from backend.app.utils.media_projections import build_media_read
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
@@ -209,6 +210,23 @@ class ProcessingService:
             total=len(items),
             items=items,
             recommendation_groups=recommendation_groups,
+        )
+
+    async def get_review_summary(self, user_id: uuid.UUID) -> ImportBatchReviewSummaryResponse:
+        rows = await ImportBatchItemRepository(self._db).list_review_summary_for_user(user_id)
+        unresolved_count = sum(unresolved for _, _, unresolved in rows)
+        review_batch_ids = [batch_id for batch_id, _, _ in rows]
+
+        latest_batch_id: uuid.UUID | None = None
+        latest_batch_created_at: datetime | None = None
+        if rows:
+            latest_batch_id, latest_batch_created_at, _ = rows[0]
+
+        return ImportBatchReviewSummaryResponse(
+            unresolved_count=unresolved_count,
+            review_batch_ids=review_batch_ids,
+            latest_batch_id=latest_batch_id,
+            latest_batch_created_at=latest_batch_created_at,
         )
 
     async def list_batch_review_items(

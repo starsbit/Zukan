@@ -1,11 +1,13 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from backend.app.models.media import Media, MediaTag
-from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem
+from backend.app.models.media import Media, MediaTag, TaggingStatus
+from backend.app.models.relations import MediaEntity, MediaEntityType
+from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem
 
 
 class ImportBatchRepository:
@@ -128,3 +130,49 @@ class ImportBatchItemRepository:
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
         )
         return (await self.db.execute(stmt)).scalars().all()
+
+    async def list_review_summary_for_user(self, user_id: uuid.UUID) -> list[tuple[uuid.UUID, datetime, int]]:
+        has_character = (
+            select(MediaEntity.id)
+            .where(
+                MediaEntity.media_id == Media.id,
+                MediaEntity.entity_type == MediaEntityType.character,
+                func.length(func.btrim(MediaEntity.name)) > 0,
+            )
+            .limit(1)
+            .exists()
+        )
+        has_series = (
+            select(MediaEntity.id)
+            .where(
+                MediaEntity.media_id == Media.id,
+                MediaEntity.entity_type == MediaEntityType.series,
+                func.length(func.btrim(MediaEntity.name)) > 0,
+            )
+            .limit(1)
+            .exists()
+        )
+
+        stmt = (
+            select(
+                ImportBatch.id,
+                ImportBatch.created_at,
+                func.count(ImportBatchItem.id).label("unresolved_count"),
+            )
+            .join(ImportBatchItem, ImportBatch.id == ImportBatchItem.batch_id)
+            .join(Media, Media.id == ImportBatchItem.media_id)
+            .where(
+                ImportBatch.user_id == user_id,
+                ImportBatch.type == BatchType.upload,
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.metadata_review_dismissed.is_(False),
+                or_(~has_character, ~has_series),
+            )
+            .group_by(ImportBatch.id, ImportBatch.created_at)
+            .order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc())
+        )
+        return [
+            (row.id, row.created_at, int(row.unresolved_count))
+            for row in (await self.db.execute(stmt)).all()
+        ]

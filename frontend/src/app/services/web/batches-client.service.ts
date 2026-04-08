@@ -7,6 +7,7 @@ import {
   ImportBatchListResponse,
   ImportBatchRead,
   ImportBatchReviewListResponse,
+  ImportBatchReviewSummaryResponse,
 } from '../../models/processing';
 
 export interface BatchListParams {
@@ -74,6 +75,12 @@ export class BatchesClientService {
     return this.http.get<ImportBatchReviewListResponse>(
       `${this.base}/api/v1/me/import-batches/review-items`,
       { params },
+    );
+  }
+
+  listReviewSummary(): Observable<ImportBatchReviewSummaryResponse> {
+    return this.http.get<ImportBatchReviewSummaryResponse>(
+      `${this.base}/api/v1/me/import-batches/review-summary`,
     );
   }
 }

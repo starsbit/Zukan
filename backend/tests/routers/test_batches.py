@@ -192,3 +192,24 @@ def test_list_batch_review_items_with_recommendations_contract(api_client, monke
     )
 
     assert response.status_code == 200
+
+
+def test_get_review_summary_contract(api_client, monkeypatch):
+    async def _fake_summary(self, user_id):
+        now = datetime.now(timezone.utc).isoformat()
+        batch_id = str(uuid.uuid4())
+        return {
+            "unresolved_count": 4,
+            "review_batch_ids": [batch_id],
+            "latest_batch_id": batch_id,
+            "latest_batch_created_at": now,
+        }
+
+    monkeypatch.setattr(ProcessingService, "get_review_summary", _fake_summary)
+
+    response = api_client.get("/api/v1/me/import-batches/review-summary")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["unresolved_count"] == 4
+    assert len(payload["review_batch_ids"]) == 1
