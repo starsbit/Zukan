@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
     anilist_enabled: bool = True
+    anilist_client_id: str = ""
+    anilist_client_secret: str = ""
+    anilist_oauth_redirect_uri: str = ""
     anilist_timeout_seconds: float = 5.0
     anilist_base_url: str = "https://graphql.anilist.co"
     anilist_rate_limit_retry_attempts: int = 6
