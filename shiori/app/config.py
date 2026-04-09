@@ -33,10 +33,7 @@ class Settings(BaseSettings):
 
     twitter_auth_token: str = ""
     twitter_ct0: str = ""
-    twitter_bearer_token: str = (
-        "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAAfA3RzJ2LxQWfF8F3WZ0Zf4vF7A"
-        "%3D6c1Yz4X8FvABcdEfghIjklmnOpqrstuvWXyz123456"
-    )
+    twitter_bearer_token: str = ""
     twitter_user_id: str = ""
     twitter_likes_query_id: str = "nI8MO6A28zU6dgVq-1KjVw"
     twitter_max_pages_per_run: int = 10

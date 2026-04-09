@@ -66,6 +66,7 @@ class ConfigRead(BaseModel):
     has_zukan_token: bool = Field(description="Whether a Zukan token has been stored.")
     has_twitter_auth_token: bool = Field(description="Whether a Twitter/X auth_token cookie has been stored.")
     has_twitter_ct0: bool = Field(description="Whether a Twitter/X ct0 cookie has been stored.")
+    has_twitter_bearer_token: bool = Field(description="Whether a Twitter/X bearer token has been stored.")
 
     model_config = {
         "json_schema_extra": {
@@ -78,6 +79,7 @@ class ConfigRead(BaseModel):
                 "has_zukan_token": True,
                 "has_twitter_auth_token": True,
                 "has_twitter_ct0": False,
+                "has_twitter_bearer_token": True,
             }
         }
     }
@@ -88,6 +90,7 @@ class ConfigUpdate(BaseModel):
     zukan_token: str | None = Field(default=None, description="Write-only Zukan bearer token or API key. Send null to clear.")
     twitter_auth_token: str | None = Field(default=None, description="Write-only Twitter/X auth_token cookie. Send null to clear.")
     twitter_ct0: str | None = Field(default=None, description="Write-only Twitter/X ct0 cookie. Send null to clear.")
+    twitter_bearer_token: str | None = Field(default=None, description="Write-only Twitter/X bearer token. Send null to clear.")
     twitter_user_id: str | None = Field(default=None, description="Numeric Twitter/X user id to sync.")
     sync_interval_seconds: int | None = Field(default=None, ge=60, description="Polling interval in seconds.")
     default_visibility: str | None = Field(default=None, description="Visibility to apply to imported media.")
@@ -104,6 +107,7 @@ class ConfigUpdate(BaseModel):
                 "zukan_token": "zk_xxx",
                 "twitter_auth_token": "secret-cookie",
                 "twitter_ct0": "secret-ct0",
+                "twitter_bearer_token": "AAAA...",
             }
         }
     }
@@ -115,6 +119,7 @@ class RuntimeConfig:
     zukan_token: str
     twitter_auth_token: str
     twitter_ct0: str
+    twitter_bearer_token: str
     twitter_user_id: str
     sync_interval_seconds: int
     default_visibility: str
@@ -130,6 +135,8 @@ class RuntimeConfig:
             problems.append("Twitter auth_token is not configured.")
         if not self.twitter_ct0.strip():
             problems.append("Twitter ct0 token is not configured.")
+        if not self.twitter_bearer_token.strip():
+            problems.append("Twitter bearer token is not configured.")
         if not self.twitter_user_id.strip():
             problems.append("Twitter user id is not configured.")
         return problems

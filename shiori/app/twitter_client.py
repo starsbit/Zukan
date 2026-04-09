@@ -171,7 +171,7 @@ class CookieTwitterClient:
         return tweets
 
     async def _fetch_likes_page(self, *, config: RuntimeConfig, cursor: str | None) -> tuple[list[LikedTweet], str | None]:
-        if not config.twitter_auth_token or not config.twitter_ct0 or not config.twitter_user_id:
+        if not config.twitter_auth_token or not config.twitter_ct0 or not config.twitter_bearer_token or not config.twitter_user_id:
             raise RuntimeError("Twitter credentials are incomplete")
         variables = {
             "userId": config.twitter_user_id,
@@ -197,7 +197,7 @@ class CookieTwitterClient:
                 "features": json.dumps(features, separators=(",", ":")),
             },
             headers={
-                "Authorization": f"Bearer {self._settings.twitter_bearer_token}",
+                "Authorization": f"Bearer {config.twitter_bearer_token}",
                 "X-Csrf-Token": config.twitter_ct0,
                 "X-Twitter-Active-User": "yes",
                 "X-Twitter-Auth-Type": "OAuth2Session",

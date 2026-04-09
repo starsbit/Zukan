@@ -48,6 +48,7 @@ services:
       ZUKAN_TOKEN: ${ZUKAN_TOKEN}
       TWITTER_AUTH_TOKEN: ${TWITTER_AUTH_TOKEN}
       TWITTER_CT0: ${TWITTER_CT0}
+      TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN}
       TWITTER_USER_ID: ${TWITTER_USER_ID}
     volumes:
       - shiori_data:/data
@@ -56,7 +57,7 @@ services:
         condition: service_started
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/status')"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -11,7 +11,7 @@ from shiori.app.config import Settings
 from shiori.app.models import ConfigRead, RuntimeConfig
 
 CONFIG_PREFIX = "config:"
-SECRET_CONFIG_KEYS = {"zukan_token", "twitter_auth_token", "twitter_ct0"}
+SECRET_CONFIG_KEYS = {"zukan_token", "twitter_auth_token", "twitter_ct0", "twitter_bearer_token"}
 
 
 def utc_now() -> str:
@@ -250,6 +250,7 @@ class StateStore:
             "zukan_token": settings.zukan_token,
             "twitter_auth_token": settings.twitter_auth_token,
             "twitter_ct0": settings.twitter_ct0,
+            "twitter_bearer_token": settings.twitter_bearer_token,
             "twitter_user_id": settings.twitter_user_id,
             "sync_interval_seconds": settings.sync_interval_seconds,
             "default_visibility": settings.default_visibility,
@@ -289,6 +290,7 @@ class StateStore:
             zukan_token=str(values.get("zukan_token") or ""),
             twitter_auth_token=str(values.get("twitter_auth_token") or ""),
             twitter_ct0=str(values.get("twitter_ct0") or ""),
+            twitter_bearer_token=str(values.get("twitter_bearer_token") or ""),
             twitter_user_id=str(values.get("twitter_user_id") or ""),
             sync_interval_seconds=max(60, int(values.get("sync_interval_seconds") or settings.sync_interval_seconds)),
             default_visibility=str(values.get("default_visibility") or settings.default_visibility),
@@ -306,6 +308,7 @@ class StateStore:
             has_zukan_token=bool(config.zukan_token),
             has_twitter_auth_token=bool(config.twitter_auth_token),
             has_twitter_ct0=bool(config.twitter_ct0),
+            has_twitter_bearer_token=bool(config.twitter_bearer_token),
         )
 
     def update_config(self, settings: Settings, changes: dict[str, Any]) -> ConfigRead:

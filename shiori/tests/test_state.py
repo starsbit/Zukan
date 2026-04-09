@@ -71,6 +71,7 @@ def test_state_store_bootstraps_and_updates_config(tmp_path: Path):
         zukan_token="zk",
         twitter_auth_token="auth",
         twitter_ct0="ct0",
+        twitter_bearer_token="bearer",
         twitter_user_id="123",
         state_db_path=tmp_path / "state.db",
     )
@@ -82,6 +83,7 @@ def test_state_store_bootstraps_and_updates_config(tmp_path: Path):
     assert config.has_zukan_token is True
     assert config.has_twitter_auth_token is True
     assert config.has_twitter_ct0 is True
+    assert config.has_twitter_bearer_token is True
 
     updated = store.update_config(
         settings,
@@ -89,11 +91,13 @@ def test_state_store_bootstraps_and_updates_config(tmp_path: Path):
             "twitter_user_id": "456",
             "default_tags": ["twitter", "likes"],
             "twitter_auth_token": None,
+            "twitter_bearer_token": None,
         },
     )
     assert updated.twitter_user_id == "456"
     assert updated.default_tags == ["twitter", "likes"]
     assert updated.has_twitter_auth_token is False
+    assert updated.has_twitter_bearer_token is False
 
 
 def test_notification_dedupe_uses_cooldown(tmp_path: Path):
