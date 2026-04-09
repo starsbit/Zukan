@@ -50,7 +50,33 @@ services:
               count: 1
               capabilities: [gpu]
 
+  shiori:
+    profiles: ["shiori"]
+    build:
+      context: .
+      dockerfile: shiori/Dockerfile
+    ports:
+      - "8010:8010"
+    env_file:
+      - .env
+    environment:
+      ZUKAN_BASE_URL: http://api:8000
+      STATE_DB_PATH: /data/shiori.db
+      SYNC_INTERVAL_SECONDS: 900
+      DEFAULT_VISIBILITY: private
+    volumes:
+      - shiori_data:/data
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
   storage_data:
   model_cache:
+  shiori_data:

@@ -112,3 +112,14 @@ class AdminAppConfigUpdate(BaseModel):
     ocr_max_chars: int | None = Field(default=None, ge=0)
     thumbnail_size: int | None = Field(default=None, ge=64)
     trash_purge_interval_seconds: int | None = Field(default=None, ge=60)
+
+
+class AdminServiceNotificationCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    body: str = Field(min_length=1, max_length=2048)
+    link_url: str | None = Field(default=None, max_length=2048)
+    data: dict | None = None
+
+
+class AdminServiceNotificationResult(BaseModel):
+    notified: int = Field(ge=0)

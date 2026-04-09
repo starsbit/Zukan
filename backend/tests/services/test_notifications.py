@@ -150,3 +150,22 @@ async def test_publish_user_notification_creates_single_notification(fake_db, us
     added = [item for item in fake_db.added if isinstance(item, Notification)]
     assert len(added) == 1
     assert added[0].data["kind"] == "import_complete"
+
+
+@pytest.mark.asyncio
+async def test_publish_admin_notification_creates_notifications_for_all_admins(fake_db):
+    service = NotificationService(fake_db)
+    admin_ids = [uuid.uuid4(), uuid.uuid4()]
+    fake_db.execute = AsyncMock(return_value=ScalarResult(rows=admin_ids))
+
+    published = await service.publish_admin_notification(
+        title="Shiori alert",
+        body="Twitter auth failed",
+        data={"kind": "shiori_alert", "category": "auth_error"},
+    )
+
+    assert published == 2
+    notifications = [item for item in fake_db.added if isinstance(item, Notification)]
+    assert len(notifications) == 2
+    assert notifications[0].title == "Shiori alert"
+    assert notifications[0].data["kind"] == "shiori_alert"

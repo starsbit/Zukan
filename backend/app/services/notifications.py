@@ -82,6 +82,35 @@ class NotificationService:
         await self._db.commit()
         return len(user_ids)
 
+    async def publish_admin_notification(
+        self,
+        *,
+        title: str,
+        body: str,
+        link_url: str | None = None,
+        data: dict | None = None,
+    ) -> int:
+        user_ids = (
+            await self._db.execute(select(User.id).where(User.is_admin.is_(True)))
+        ).scalars().all()
+
+        for user_id in user_ids:
+            self._db.add(
+                Notification(
+                    user_id=user_id,
+                    type=NotificationType.app_update,
+                    title=title,
+                    body=body,
+                    is_read=False,
+                    link_url=link_url,
+                    data=data,
+                )
+            )
+
+        await self._db.commit()
+        logger.info("Published admin notification title=%s count=%s kind=%s", title, len(user_ids), (data or {}).get("kind"))
+        return len(user_ids)
+
     async def list_notifications(
         self,
         user_id: uuid.UUID,

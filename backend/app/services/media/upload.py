@@ -293,7 +293,7 @@ class MediaUploadWorkflow:
             logger.info("Upload duplicate skipped media_id=%s original_name=%s", existing.id, original_name)
             ctx.results.append(
                 UploadResult(
-                    id=None,
+                    id=existing.id,
                     batch_item_id=batch_item.id,
                     original_filename=original_name,
                     status="duplicate",

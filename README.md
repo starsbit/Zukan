@@ -2,6 +2,8 @@
 
 Self-hosted anime image server. Upload images and video, tag them automatically with AI (WD ViT tagger v3), and browse by character, series, artist, or rating.
 
+The repo also includes `Shiori`, an optional standalone companion service that can sync liked tweets into Zukan and attach the original post URL as an external reference.
+
 ---
 
 ## Table of Contents
@@ -58,6 +60,12 @@ cp .env.prod.example .env
 
 ```bash
 docker compose -f docker-compose.prod.yml up -d
+```
+
+To enable Shiori as an optional companion service:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile shiori up -d
 ```
 
 All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate limits, etc.) are configurable through the admin panel after first login — no env vars needed for those.
@@ -131,6 +139,12 @@ docker compose up -d
 ```
 
 This starts PostgreSQL, the API (port 8000), and the frontend (port 4200). The API rebuilds automatically when the compose file is re-run.
+
+If you configure the Twitter/X credentials and a Zukan API token in `.env`, you can enable the optional `shiori` companion service on port `8010`:
+
+```bash
+docker compose --profile shiori up -d
+```
 
 For faster backend iteration, run the API outside Docker:
 

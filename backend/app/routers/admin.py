@@ -15,6 +15,8 @@ from backend.app.schemas import (
     AdminAppConfigRead,
     AdminAppConfigUpdate,
     AdminHealthResponse,
+    AdminServiceNotificationCreate,
+    AdminServiceNotificationResult,
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserListResponse,
@@ -144,3 +146,23 @@ async def create_announcement(
     await db.refresh(announcement)
     await NotificationService(db).publish_announcement(announcement)
     return announcement
+
+
+@router.post(
+    "/service-notifications",
+    response_model=AdminServiceNotificationResult,
+    status_code=status.HTTP_201_CREATED,
+    summary="Publish Admin Service Notification",
+    description="Publish an operational notification to all admin users. Intended for trusted automation tools like Shiori.",
+)
+async def create_service_notification(
+    body: AdminServiceNotificationCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    notified = await NotificationService(db).publish_admin_notification(
+        title=body.title,
+        body=body.body,
+        link_url=body.link_url,
+        data=body.data,
+    )
+    return {"notified": notified}
