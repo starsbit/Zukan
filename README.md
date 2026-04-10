@@ -2,8 +2,6 @@
 
 Self-hosted anime image server. Upload images and video, tag them automatically with AI (WD ViT tagger v3), and browse by character, series, artist, or rating.
 
-The repo also includes `Shiori`, an optional standalone companion service that can sync liked tweets into Zukan and attach the original post URL as an external reference.
-
 ---
 
 ## Table of Contents
@@ -62,10 +60,10 @@ cp .env.prod.example .env
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-To enable Shiori as an optional companion service:
+On macOS hosts without NVIDIA GPUs, use the CPU-only compose variant instead:
 
 ```bash
-docker compose -f docker-compose.prod.yml --profile shiori up -d
+docker compose -f docker-compose.prod.macos.yml up -d
 ```
 
 All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate limits, etc.) are configurable through the admin panel after first login — no env vars needed for those.
@@ -140,10 +138,10 @@ docker compose up -d
 
 This starts PostgreSQL, the API (port 8000), and the frontend (port 4200). The API rebuilds automatically when the compose file is re-run.
 
-If you configure the Twitter/X credentials and a Zukan API token in `.env`, you can enable the optional `shiori` companion service on port `8010`:
+On macOS hosts, use the CPU-only stack file:
 
 ```bash
-docker compose --profile shiori up -d
+docker compose -f docker-compose.macos.yml up -d
 ```
 
 For faster backend iteration, run the API outside Docker:
@@ -205,18 +203,13 @@ The model is downloaded into the volume on the first run (~600 MB, takes a few m
 
 Two GitHub Actions workflows live in [.github/workflows/](.github/workflows/):
 
-| Workflow | Trigger | What it does |
-|---|---|---|
-| `test.yml` | Every push and PR to `main` | Runs backend tests (with Postgres) and verifies the frontend builds |
-| `release.yml` | Push of a `v*.*.*` tag | Runs backend tests and frontend build, then builds and pushes images to GHCR and creates a GitHub Release |
-
-Images are published to:
-- `ghcr.io/starsbit/zukan-api:<version>`
-- `ghcr.io/starsbit/zukan-frontend:<version>`
-
-Both images are also tagged `:latest`.
-
-The e2e job in the release workflow caches the tagger model in GitHub Actions cache (key: `zukan-model-cache-wd-vit-tagger-v3`) so subsequent releases don't re-download it.
+- `ci.yml`
+  - Runs backend tests
+  - Runs frontend build
+  - Runs e2e tests
+- `release.yml`
+  - Publishes versioned Docker images to GHCR
+  - Creates GitHub Releases
 
 ---
 

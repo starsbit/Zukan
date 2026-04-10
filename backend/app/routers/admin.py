@@ -153,7 +153,7 @@ async def create_announcement(
     response_model=AdminServiceNotificationResult,
     status_code=status.HTTP_201_CREATED,
     summary="Publish Admin Service Notification",
-    description="Publish an operational notification to all admin users. Intended for trusted automation tools like Shiori.",
+    description="Publish an operational notification to all admin users. Intended for trusted automation tools.",
 )
 async def create_service_notification(
     body: AdminServiceNotificationCreate,

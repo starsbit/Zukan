@@ -254,10 +254,10 @@ def test_admin_create_service_notification_contract(api_client):
         response = api_client.post(
             "/api/v1/admin/service-notifications",
             json={
-                "title": "Shiori alert",
-                "body": "Twitter auth failed",
+                "title": "Automation alert",
+                "body": "Background sync failed",
                 "link_url": None,
-                "data": {"kind": "shiori_alert", "category": "auth_error"},
+                "data": {"kind": "automation_alert", "category": "sync_error"},
             },
         )
 

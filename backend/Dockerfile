@@ -6,6 +6,7 @@ ENV PYTHONUNBUFFERED=1
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
+ARG REQUIREMENTS_FILE=requirements.txt
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
 	ffmpeg \
@@ -13,8 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 	tesseract-ocr-eng \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY backend/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+COPY backend/requirements*.txt ./
+RUN pip install --no-cache-dir -r "${REQUIREMENTS_FILE}"
 
 COPY backend/ ./backend/
 

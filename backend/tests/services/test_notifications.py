@@ -159,13 +159,13 @@ async def test_publish_admin_notification_creates_notifications_for_all_admins(f
     fake_db.execute = AsyncMock(return_value=ScalarResult(rows=admin_ids))
 
     published = await service.publish_admin_notification(
-        title="Shiori alert",
-        body="Twitter auth failed",
-        data={"kind": "shiori_alert", "category": "auth_error"},
+        title="Automation alert",
+        body="Background sync failed",
+        data={"kind": "automation_alert", "category": "sync_error"},
     )
 
     assert published == 2
     notifications = [item for item in fake_db.added if isinstance(item, Notification)]
     assert len(notifications) == 2
-    assert notifications[0].title == "Shiori alert"
-    assert notifications[0].data["kind"] == "shiori_alert"
+    assert notifications[0].title == "Automation alert"
+    assert notifications[0].data["kind"] == "automation_alert"

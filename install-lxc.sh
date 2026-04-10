@@ -118,15 +118,8 @@ write_compose_from_template() {
 
           if ($0 ~ /^  api:$/) {
             in_api = 1
-            in_shiori = 0
-          } else if ($0 ~ /^  shiori:$/) {
-            in_api = 0
-            in_shiori = 1
           } else if ($0 ~ /^  [^[:space:]]/ && $0 !~ /^  api:$/) {
             in_api = 0
-            if ($0 !~ /^  shiori:$/) {
-              in_shiori = 0
-            }
           }
 
           if (include_gpu != "1" && in_api && $0 ~ /^    deploy:$/) {
@@ -134,10 +127,6 @@ write_compose_from_template() {
             next
           }
 
-          if (in_shiori && $0 ~ /^      context: \.$/) {
-            print "      context: ./source"
-            next
-          }
 
           gsub(/ghcr\.io\/starsbit\/zukan-frontend:latest/, "ghcr.io/starsbit/zukan-frontend:" version)
           gsub(/ghcr\.io\/starsbit\/zukan-api:latest/, "ghcr.io/starsbit/zukan-api:" version)
@@ -165,8 +154,8 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=/opt/zukan
 EnvironmentFile=/opt/zukan/.env
-ExecStart=/usr/bin/docker compose --profile shiori up -d --pull always
-ExecStop=/usr/bin/docker compose --profile shiori down
+ExecStart=/usr/bin/docker compose up -d --pull always
+ExecStop=/usr/bin/docker compose down
 TimeoutStartSec=600
 
 [Install]
@@ -354,17 +343,11 @@ SECRET_KEY="$(openssl rand -hex 32)"
 
 run "mkdir -p '${INSTALL_DIR}'"
 write_compose_from_template "${INSTALL_DIR}/docker-compose.yml" "${GPU_ENABLED}"
-push_directory "${SCRIPT_DIR}/shiori" "${SOURCE_DIR}"
 
 ENV_TMP="$(mktemp)"
 cat > "${ENV_TMP}" <<ENV
 POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 SECRET_KEY=${SECRET_KEY}
-ZUKAN_TOKEN=
-TWITTER_AUTH_TOKEN=
-TWITTER_CT0=
-TWITTER_BEARER_TOKEN=
-TWITTER_USER_ID=
 ENV
 push "${ENV_TMP}" "${INSTALL_DIR}/.env"
 rm -f "${ENV_TMP}"
@@ -377,21 +360,16 @@ ok "Zukan service installed"
 
 # ── 10. Verification ─────────────────────────────────────────────────────────
 info "Verifying Docker, application startup, and service state..."
-run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' --profile shiori pull" \
+run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' pull" \
     || die "Docker image pull failed. Check whether the GHCR images for version ${APP_VERSION} are public and accessible from the container."
 run "systemctl start zukan"
 run "systemctl is-enabled zukan"
 run "systemctl is-active zukan"
-run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' --profile shiori ps"
+run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' ps"
 
 wait_for_http "http://127.0.0.1/" 36 5 || {
-    run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' --profile shiori logs --tail=200"
+    run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' logs --tail=200"
     die "Frontend did not become reachable on port 80 inside the container."
-}
-
-wait_for_http "http://127.0.0.1:8010/docs" 24 5 || {
-    run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' --profile shiori logs shiori --tail=200"
-    die "Shiori did not become reachable on port 8010 inside the container."
 }
 
 run "docker compose -f '${INSTALL_DIR}/docker-compose.yml' --env-file '${INSTALL_DIR}/.env' logs api --tail=200 | grep -q 'Database migration bootstrap finished'" \
@@ -422,7 +400,6 @@ echo "════════════════════════�
 echo "  Container  : ${CTID} (${HOSTNAME})"
 echo "  IP address : ${CT_IP}"
 echo "  Access URL : http://${CT_IP}"
-echo "  Shiori URL : http://${CT_IP}:8010/docs"
 if [[ "${GPU_ENABLED}" == "1" ]]; then
     echo "  Runtime    : GPU enabled (NVIDIA validated)"
 else
@@ -432,7 +409,7 @@ echo ""
 echo "  Config     : ${INSTALL_DIR}/docker-compose.yml"
 echo "  Secrets    : ${INSTALL_DIR}/.env"
 echo "  Service    : ${SERVICE_FILE}"
-echo "  Logs       : pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml --profile shiori logs -f"
+echo "  Logs       : pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f"
 echo ""
 echo "  Default login : admin / admin"
 echo "  Change your password immediately via the admin panel."
@@ -440,7 +417,7 @@ echo ""
 echo "  Useful commands:"
 echo "    pct enter ${CTID}"
 echo "    pct exec ${CTID} -- systemctl status zukan"
-echo "    pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml --profile shiori ps"
+echo "    pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml ps"
 echo ""
 echo "  To upgrade the app in-place inside the container:"
 echo "    edit ${INSTALL_DIR}/docker-compose.yml image tags"

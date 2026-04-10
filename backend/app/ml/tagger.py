@@ -44,10 +44,19 @@ class WDTagger:
         tags_path = hf_hub_download(repo_id=settings.tagger_model_repo, filename="selected_tags.csv", cache_dir=cache)
         logger.info("Tagger download finished file=selected_tags.csv path=%s", tags_path)
 
-        logger.info("Tagger inference session creation started providers=%s", ["CUDAExecutionProvider", "CPUExecutionProvider"])
+        available_providers = list(rt.get_available_providers())
+        preferred_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        providers = [provider for provider in preferred_providers if provider in available_providers]
+        if not providers:
+            providers = ["CPUExecutionProvider"]
+        logger.info(
+            "Tagger inference session creation started available_providers=%s selected_providers=%s",
+            available_providers,
+            providers,
+        )
         self._session = rt.InferenceSession(
             model_path,
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            providers=providers,
         )
         active_providers = (
             self._session.get_providers()

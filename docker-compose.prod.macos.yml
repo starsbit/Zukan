@@ -1,10 +1,10 @@
-# Production docker-compose for self-hosted Zukan.
-# Replace the image tags below with the version you want to run.
-# See: https://github.com/starsbit/zukan/releases
+# Production-style docker-compose for macOS hosts without NVIDIA GPUs.
 
 services:
   frontend:
-    image: ghcr.io/starsbit/zukan-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
       - "80:80"
     depends_on:
@@ -13,7 +13,11 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/starsbit/zukan-api:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS_FILE: requirements-macos.txt
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
@@ -25,13 +29,6 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   db:
     image: postgres:16-alpine
