@@ -29,7 +29,7 @@ CORES="${CORES:-4}"
 BRIDGE="${BRIDGE:-vmbr0}"
 IP="${IP:-dhcp}"              # Static IP in CIDR notation, or "dhcp"
 GATEWAY="${GATEWAY:-}"
-APP_VERSION="${APP_VERSION:-0.0.4}"
+APP_VERSION="${APP_VERSION:-0.0.5}"
 GPU_REQUIRED="${GPU_REQUIRED:-0}"
 
 INSTALL_DIR="/opt/zukan"
