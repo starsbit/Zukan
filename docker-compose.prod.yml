@@ -57,7 +57,7 @@ services:
     restart: unless-stopped
 
   watchtower:
-    image: containrrr/watchtower
+    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
     command: --http-api-update --label-enable --no-startup-message --interval 0
     environment:
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN}

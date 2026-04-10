@@ -16,6 +16,7 @@ ENV_FILE="$INSTALL_DIR/.env"
 SERVICE_FILE="/etc/systemd/system/zukan.service"
 GPU_ENABLED="${GPU_ENABLED:-0}"
 NO_SUMMARY="${NO_SUMMARY:-0}"
+WATCHTOWER_IMAGE="${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 info()    { echo "  [INFO]  $*"; }
@@ -156,7 +157,7 @@ COMPOSE
     restart: unless-stopped
 
   watchtower:
-    image: containrrr/watchtower
+    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
     command: --http-api-update --label-enable --no-startup-message --interval 86400
     environment:
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN}
@@ -191,6 +192,7 @@ write_env() {
 SECRET_KEY=${secret_key}
 POSTGRES_PASSWORD=${pg_password}
 WATCHTOWER_TOKEN=${watchtower_token}
+WATCHTOWER_IMAGE=${WATCHTOWER_IMAGE}
 ENV
     chmod 600 "$ENV_FILE"
     success "Generated $ENV_FILE with random secrets"

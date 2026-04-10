@@ -18,6 +18,7 @@ set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────────────
 REPO="starsbit/zukan"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CTID="${CTID:-}"
 HOSTNAME="${CT_HOSTNAME:-zukan}"
 STORAGE="${STORAGE:-local-lvm}"
@@ -273,12 +274,18 @@ verify_apt_package_available lsb-release \
 ok "Container networking verified"
 
 # ── 7. Run install.sh inside the container ───────────────────────────────────
-# Download install.sh on the host (curl is available here) and push it into the
-# container. The container has no curl yet — that is installed by install.sh itself.
+# Use the local install.sh when the script is run from a checkout so the LXC
+# installer can validate in-progress changes. Fall back to GitHub for curl/bash
+# usage where no local sibling file exists.
 INSTALLER_TMP="$(mktemp)"
 track_temp_file "${INSTALLER_TMP}"
-info "Downloading Zukan installer..."
-curl -fsSL "https://raw.githubusercontent.com/${REPO}/main/install.sh" -o "${INSTALLER_TMP}"
+if [[ -f "${SCRIPT_DIR}/install.sh" ]]; then
+    info "Using local install.sh from ${SCRIPT_DIR}"
+    cp "${SCRIPT_DIR}/install.sh" "${INSTALLER_TMP}"
+else
+    info "Downloading Zukan installer..."
+    curl -fsSL "https://raw.githubusercontent.com/${REPO}/main/install.sh" -o "${INSTALLER_TMP}"
+fi
 push "${INSTALLER_TMP}" /tmp/zukan-install.sh
 
 info "Running Zukan installer inside container (GPU_ENABLED=${GPU_ENABLED})..."
