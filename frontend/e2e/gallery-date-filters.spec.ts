@@ -42,7 +42,7 @@ const ALL_MEDIA = [
   mediaItem('m-2024-06', '2024-06-01T12:00:00Z'),
 ];
 
-// Timeline always returns all months regardless of filters — this is how the real backend behaves.
+// Timeline always returns all months regardless of filters - this is how the real backend behaves.
 const FULL_TIMELINE = {
   buckets: [
     { year: 2026, month: 3, count: 1 },
@@ -84,7 +84,7 @@ async function registerDateFilterRoutes(
     });
   });
 
-  // Timeline always returns the full month list — date range params are intentionally stripped
+  // Timeline always returns the full month list - date range params are intentionally stripped
   // from the timeline request, so this simulates real backend behaviour.
   await page.route('**/api/v1/media/timeline**', async (route: Route) => {
     await route.fulfill({ json: FULL_TIMELINE });
@@ -140,7 +140,7 @@ test.describe.serial('Gallery date filters', () => {
     await page.goto('/');
     await expect(page).toHaveURL('/');
 
-    // Wait for initial load — all 5 items visible
+    // Wait for initial load - all 5 items visible
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
     // Apply captured_before to see only media from before 2026
@@ -157,7 +157,7 @@ test.describe.serial('Gallery date filters', () => {
     // Only 3 items from before 2026 should be visible
     await expect(page.locator('.media-card')).toHaveCount(3, { timeout: 8000 });
 
-    // No skeleton placeholders should linger — months without matching data must not show skeletons
+    // No skeleton placeholders should linger - months without matching data must not show skeletons
     await expect(page.locator('.media-browser__day--skeleton')).toHaveCount(0, { timeout: 8000 });
   });
 
@@ -264,7 +264,7 @@ test.describe.serial('Gallery date filters', () => {
     await expect(page).toHaveURL('/');
     await expect(page.locator('.media-card')).toHaveCount(5, { timeout: 10000 });
 
-    // Filter to a time range with no media — before the earliest item
+    // Filter to a time range with no media - before the earliest item
     await openFiltersDialog(page);
     await fillDatetimeLocal(page, 'capturedBefore', '2020-01-01T00:00');
     await applyFilters(page);

@@ -42,7 +42,7 @@ The script will:
 4. Generate a random `SECRET_KEY` and `POSTGRES_PASSWORD` and write them to `/opt/zukan/.env`
 5. Pull the images and start the stack
 
-Once complete the app is available at `http://<host-ip>`. The default login is **admin / admin** — change it immediately via the account settings.
+Once complete the app is available at `http://<host-ip>`. The default login is **admin / admin** - change it immediately via the account settings.
 
 Re-running the script later upgrades to the latest release while preserving your `.env` and all data volumes.
 
@@ -207,7 +207,7 @@ Database migrations run automatically on startup, and the named Docker volumes a
 
 ```bash
 cp .env.prod.example .env
-# Edit .env — generate SECRET_KEY with: openssl rand -hex 32
+# Edit .env - generate SECRET_KEY with: openssl rand -hex 32
 ```
 
 **2. Start the stack:**
@@ -222,7 +222,7 @@ On macOS hosts without NVIDIA GPUs, use the CPU-only compose variant instead:
 docker compose -f docker-compose.prod.macos.yml up -d
 ```
 
-All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate limits, etc.) are configurable through the admin panel after first login — no env vars needed for those.
+All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate limits, etc.) are configurable through the admin panel after first login - no env vars needed for those.
 
 ---
 
@@ -313,7 +313,7 @@ The API docs (Swagger UI) are available at `http://localhost:8000/docs`.
 
 ### Backend tests
 
-The test suite uses `pytest` with `testcontainers` — a Postgres container is spun up automatically, no manual DB setup needed.
+The test suite uses `pytest` with `testcontainers` - a Postgres container is spun up automatically, no manual DB setup needed.
 
 ```bash
 # Run all tests

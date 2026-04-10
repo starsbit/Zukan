@@ -1,19 +1,20 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { HttpEventType, HttpResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { EMPTY, catchError, concatMap, filter, finalize, from, map, of, switchMap, tap, toArray } from 'rxjs';
+import { EMPTY, catchError, concatMap, filter, finalize, from, map, of, reduce, retry, switchMap, tap, throwError, timer } from 'rxjs';
 import { BatchUploadResponse } from '../../../../models/uploads';
 import { MediaVisibility } from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { ConfigClientService } from '../../../../services/web/config-client.service';
 import { UploadConfirmDialogComponent, UploadConfirmDialogData, UploadConfirmDialogResult } from './upload-confirm-dialog/upload-confirm-dialog.component';
+import { extractApiError } from '../../../../utils/api-error.utils';
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
@@ -213,9 +214,11 @@ export class NavbarUploadComponent {
           concatMap(([index, { files: batch, requestId }]) => {
             activeTrackedRequest = { files: batch, requestId, index };
             this.uploadTracker.markBatchUploading(requestId);
+            const idempotencyKey = crypto.randomUUID();
             return this.mediaService.uploadWithProgress(batch, {
               visibility,
               captured_at_values: this.getCapturedAtValues(batch),
+              idempotencyKey,
             }).pipe(
               tap((event) => {
                 if (event.type === HttpEventType.UploadProgress) {
@@ -223,30 +226,32 @@ export class NavbarUploadComponent {
                 }
               }),
               filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
-              map((event) => ({ response: event.body!, batch, requestId })),
+              map((event) => event.body!),
+              retry({
+                count: 3,
+                delay: (err: unknown, retryCount: number) => {
+                  if (err instanceof HttpErrorResponse && err.status >= 400 && err.status < 500 && err.status !== 429) {
+                    return throwError(() => err);
+                  }
+                  return timer(retryCount * 5000);
+                },
+              }),
+              tap((response) => {
+                this.uploadTracker.registerBatchStarted(requestId, response, batch, visibility);
+              }),
+              map((response) => response.accepted),
             );
           }),
-          toArray(),
-          tap((responses) => {
-            responses.forEach(({ response, batch, requestId }) => {
-              this.uploadTracker.registerBatchStarted(
-                requestId,
-                response,
-                batch,
-                visibility,
-              );
-            });
-            const accepted = responses.reduce((total, { response }) => total + response.accepted, 0);
+          reduce((total, accepted) => total + accepted, 0),
+          tap((accepted) => {
             this.snackBar.open(
               `Upload started for ${accepted} file${accepted === 1 ? '' : 's'}.`,
               'Close',
-              {
-                duration: 5000,
-              }
+              { duration: 5000 },
             );
           }),
-          catchError((err: { error?: { detail?: string } }) => {
-            const message = err.error?.detail ?? 'Unable to start upload.';
+          catchError((err: unknown) => {
+            const message = extractApiError(err, 'Unable to start upload.');
             if (activeTrackedRequest) {
               this.uploadTracker.registerBatchRequestFailed(
                 activeTrackedRequest.requestId,

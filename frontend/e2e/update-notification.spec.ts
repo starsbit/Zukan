@@ -19,7 +19,7 @@ const FAKE_UPDATE_NOTIFICATION = {
   created_at: new Date().toISOString(),
 };
 
-test.describe('Update notification — admin flow', () => {
+test.describe('Update notification - admin flow', () => {
   test.beforeEach(async ({ page }) => {
     await seedAuthenticatedSession(page, { is_admin: true });
   });

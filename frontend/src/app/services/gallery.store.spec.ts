@@ -146,7 +146,7 @@ describe('GalleryStore', () => {
 
     it('returns EMPTY when already loading', () => {
       store.load().subscribe();
-      // loading is now true — loadMore should be a no-op
+      // loading is now true - loadMore should be a no-op
       store.loadMore().subscribe();
       const reqs = http.match(r => r.url === '/api/v1/media/search');
       expect(reqs).toHaveLength(1);

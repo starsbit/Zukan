@@ -122,7 +122,7 @@ describe('AlbumStore', () => {
     (store as any)._selectedAlbum.set(existingAlbum);
     expect(store.selectedAlbum()?.id).toBe('album-1');
 
-    // Start fetching a different album — selectedAlbum must clear immediately (before the response)
+    // Start fetching a different album - selectedAlbum must clear immediately (before the response)
     let clearedBeforeResponse = false;
     client.get.mockImplementationOnce(() => {
       clearedBeforeResponse = store.selectedAlbum() === null;

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zukan — Proxmox LXC installer
+# Zukan - Proxmox LXC installer
 # Run on the Proxmox host as root.
 #
 # Usage:

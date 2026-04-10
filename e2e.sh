@@ -50,7 +50,7 @@ API_BASE_URL="$API_URL" \
 
 if [[ $E2E_FAILED -ne 0 ]]; then
   echo
-  echo "==> e2e tests FAILED — dumping service logs"
+  echo "==> e2e tests FAILED - dumping service logs"
   $COMPOSE logs api
   exit 1
 fi

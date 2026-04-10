@@ -131,7 +131,7 @@ COMPOSE
 
 write_env() {
     if [[ -f "$ENV_FILE" ]]; then
-        info ".env already exists — keeping existing secrets (delete $ENV_FILE to regenerate)"
+        info ".env already exists - keeping existing secrets (delete $ENV_FILE to regenerate)"
         # Ensure WATCHTOWER_TOKEN exists in existing .env (upgrade path)
         if ! grep -q "^WATCHTOWER_TOKEN=" "$ENV_FILE"; then
             local watchtower_token

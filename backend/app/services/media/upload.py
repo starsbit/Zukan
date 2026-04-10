@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -359,7 +360,8 @@ class MediaUploadWorkflow:
         visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
-        poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
+        loop = asyncio.get_running_loop()
+        poster, thumb = await loop.run_in_executor(None, generate_poster_and_thumbnail, str(saved.path), saved.media_type)
         normalized_tags = normalize_manual_tags(tags) if tags else []
         normalized_characters = _normalize_entity_names(character_names)
         normalized_series = _normalize_entity_names(series_names)
@@ -589,7 +591,8 @@ class MediaUploadWorkflow:
         tags: list[str] | None = None,
     ) -> Media:
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        poster, thumb = generate_poster_and_thumbnail(str(saved.path), saved.media_type)
+        loop = asyncio.get_running_loop()
+        poster, thumb = await loop.run_in_executor(None, generate_poster_and_thumbnail, str(saved.path), saved.media_type)
         normalized_tags = normalize_manual_tags(tags) if tags else []
 
         media = Media(

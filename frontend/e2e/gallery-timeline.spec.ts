@@ -154,7 +154,7 @@ test.describe.serial('Gallery timeline', () => {
     await expect(page.locator('.media-browser__day--skeleton')).toHaveCount(3);
     expect(await page.locator('.media-browser__skeleton-card').count()).toBeGreaterThan(0);
 
-    // Unblock search — skeleton sections should be replaced by real content
+    // Unblock search - skeleton sections should be replaced by real content
     resolveFirstSearch();
     await expect(page.locator('.media-browser__day--skeleton')).not.toHaveCount(3);
   });
@@ -204,7 +204,7 @@ test.describe.serial('Gallery timeline', () => {
     });
     await expect(activeMonth).not.toHaveAttribute('aria-label', 'Sep 2026');
 
-    // Clicking a month in the timeline scrolls to it — even before that page is fetched
+    // Clicking a month in the timeline scrolls to it - even before that page is fetched
     await page.getByRole('button', { name: 'Jan 2020' }).click();
     await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeInViewport();
 

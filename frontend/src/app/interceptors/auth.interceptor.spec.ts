@@ -65,7 +65,7 @@ describe('authInterceptor', () => {
     req.flush([]);
   });
 
-  it('skips auth endpoints — no header added', () => {
+  it('skips auth endpoints - no header added', () => {
     authStore.setTokens({ access_token: 'my-token', refresh_token: 'rt', token_type: 'bearer' }, false);
 
     http.post('/api/v1/auth/login', {}).subscribe();

@@ -31,7 +31,7 @@ test.describe.serial('Authentication workflows', () => {
 
     test('setup wizard is visible when admin:admin user exists', async ({ page }) => {
       const setupRequired = await isSetupRequired();
-      test.skip(!setupRequired, 'Setup already completed — admin:admin user no longer exists');
+      test.skip(!setupRequired, 'Setup already completed - admin:admin user no longer exists');
 
       await skipIfSetupCompleted(page, 'Setup completed while the suite was running');
       await expect(page.locator('zukan-setup-wizard')).toBeVisible();

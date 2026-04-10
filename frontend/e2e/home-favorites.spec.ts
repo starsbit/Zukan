@@ -122,7 +122,7 @@ test.describe.serial('Home page favorites', () => {
     await expect.poll(async () => (await revealFavoriteButton(page)).ariaPressed).toBe('false');
     await expect.poll(async () => (await revealFavoriteButton(page)).iconText).toBe('favorite_border');
 
-    // Click the button — should PATCH the backend
+    // Click the button - should PATCH the backend
     await clickFavoriteButton(page);
 
     await expect.poll(() => patchRequests.length, { timeout: 5000 }).toBe(1);
@@ -177,7 +177,7 @@ test.describe.serial('Home page favorites', () => {
 
     await clickFavoriteButton(page);
 
-    // URL should stay at '/' — no navigation to a detail view
+    // URL should stay at '/' - no navigation to a detail view
     await expect(page).toHaveURL('/');
   });
 });

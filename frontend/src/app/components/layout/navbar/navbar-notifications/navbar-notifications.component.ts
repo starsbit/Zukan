@@ -249,7 +249,7 @@ export class NavbarNotificationsComponent implements OnInit {
         );
       }),
     ).subscribe(() => {
-      this.snackBar.open('Update in progress — Zukan will restart shortly.', 'Close', { duration: 6000 });
+      this.snackBar.open('Update in progress - Zukan will restart shortly.', 'Close', { duration: 6000 });
       this.notificationsClient.markRead(notification.id).pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => EMPTY),

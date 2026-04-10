@@ -732,7 +732,7 @@ describe('UploadReviewDialogComponent', () => {
     const fixture = TestBed.createComponent(UploadReviewDialogComponent);
     fixture.detectChanges();
 
-    // Initial load completes — not refreshing
+    // Initial load completes - not refreshing
     expect(fixture.componentInstance.recommendationsRefreshing()).toBe(false);
 
     const refreshButton: HTMLButtonElement = fixture.nativeElement.querySelector('button[aria-label="Refresh grouping recommendations"]');
