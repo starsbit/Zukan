@@ -37,6 +37,7 @@ SERVICE_FILE="/etc/systemd/system/zukan.service"
 TEMP_FILES=()
 CONTAINER_CREATED=0
 INSTALL_SUCCEEDED=0
+EXIT_CODE=0
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 info()  { printf '\033[1;34m  [INFO]\033[0m  %s\n' "$*"; }
@@ -59,18 +60,28 @@ cleanup_temp_files() {
 }
 
 cleanup_failed_install() {
-    if [[ "${INSTALL_SUCCEEDED}" == "1" ]]; then
+    EXIT_CODE=$?
+
+    if [[ "${EXIT_CODE}" -eq 0 && "${INSTALL_SUCCEEDED}" == "1" ]]; then
         cleanup_temp_files
         return
     fi
 
+    warn "Install failed with exit code ${EXIT_CODE}."
     cleanup_temp_files
 
     if [[ "${CONTAINER_CREATED}" == "1" ]] && pct status "${CTID}" &>/dev/null; then
         warn "Install failed. Cleaning up container ${CTID} and partial Proxmox config..."
-        pct stop "${CTID}" --skiplock 1 &>/dev/null || true
+        pct stop "${CTID}" &>/dev/null || true
         pct destroy "${CTID}" --purge 1 &>/dev/null || true
+        if pct status "${CTID}" &>/dev/null; then
+            warn "Automatic cleanup could not fully remove container ${CTID}. Remove it manually with: pct destroy ${CTID} --purge 1"
+        else
+            ok "Cleaned up failed container ${CTID}"
+        fi
     fi
+
+    exit "${EXIT_CODE}"
 }
 
 trap cleanup_failed_install EXIT
@@ -99,6 +110,18 @@ apt-get clean
 rm -rf /var/lib/apt/lists/*
 mkdir -p /var/lib/apt/lists/partial"
     ok "APT sources reset"
+}
+
+apt_get() {
+    run "export DEBIAN_FRONTEND=noninteractive
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+apt-get -o Acquire::ForceIPv4=true -o Acquire::Retries=3 $*"
+}
+
+verify_apt_package_available() {
+    local package="$1"
+    run "apt-cache policy '${package}' | grep -q 'Candidate:' && ! apt-cache policy '${package}' | grep -q 'Candidate: (none)'"
 }
 
 wait_for_pct_exec() {
@@ -380,12 +403,11 @@ ok "Container running"
 # ── 6. Base packages ─────────────────────────────────────────────────────────
 info "Installing base packages..."
 reset_debian_apt_sources
-run "export DEBIAN_FRONTEND=noninteractive
-export LANG=C.UTF-8
-export LC_ALL=C.UTF-8
-apt-get update -qq
-apt-get upgrade -y -qq
-apt-get install -y -qq ca-certificates curl gnupg lsb-release"
+apt_get update -qq
+verify_apt_package_available gnupg || die "APT metadata is incomplete inside the container. Check container networking/DNS on bridge ${BRIDGE}."
+verify_apt_package_available lsb-release || die "APT metadata is incomplete inside the container. Check container networking/DNS on bridge ${BRIDGE}."
+apt_get upgrade -y -qq
+apt_get install -y -qq ca-certificates curl gnupg lsb-release
 ok "Base packages ready"
 
 # ── 7. Docker ────────────────────────────────────────────────────────────────
@@ -396,10 +418,10 @@ export LC_ALL=C.UTF-8
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 chmod a+r /etc/apt/keyrings/docker.gpg
 echo \"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \$(. /etc/os-release && echo \"\$VERSION_CODENAME\") stable\" > /etc/apt/sources.list.d/docker.list
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-systemctl enable --now docker"
+"
+apt_get update -qq
+apt_get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+run "systemctl enable --now docker"
 ok "Docker installed"
 
 # ── 8. NVIDIA Container Toolkit ──────────────────────────────────────────────
@@ -411,11 +433,10 @@ export LC_ALL=C.UTF-8
 curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
 curl -fsSL https://nvidia.github.io/libnvidia-container/\${distribution}/libnvidia-container.list \
   | sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' \
-  > /etc/apt/sources.list.d/nvidia-container-toolkit.list
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq nvidia-container-toolkit
-nvidia-ctk runtime configure --runtime=docker
+  > /etc/apt/sources.list.d/nvidia-container-toolkit.list"
+    apt_get update -qq
+    apt_get install -y -qq nvidia-container-toolkit
+    run "nvidia-ctk runtime configure --runtime=docker
 systemctl restart docker"
     ok "NVIDIA Container Toolkit installed"
 fi
