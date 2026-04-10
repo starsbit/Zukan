@@ -7,8 +7,8 @@
 #   bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
 #
 # Override defaults via environment variables:
-#   MEMORY=8192 STORAGE=local-lvm APP_VERSION=0.0.3 bash install-lxc.sh
-#   MEMORY=8192 STORAGE=local-lvm APP_VERSION=0.0.3 bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
+#   MEMORY=8192 STORAGE=local-lvm APP_VERSION=1.0.0 bash install-lxc.sh
+#   MEMORY=8192 STORAGE=local-lvm APP_VERSION=1.0.0 bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
 #   CTID=201 CT_HOSTNAME=zukan-test bash install-lxc.sh
 #
 # Requirements:
@@ -29,7 +29,7 @@ CORES="${CORES:-4}"
 BRIDGE="${BRIDGE:-vmbr0}"
 IP="${IP:-dhcp}"              # Static IP in CIDR notation, or "dhcp"
 GATEWAY="${GATEWAY:-}"
-APP_VERSION="${APP_VERSION:-0.0.3}"
+APP_VERSION="${APP_VERSION:-0.0.4}"
 GPU_REQUIRED="${GPU_REQUIRED:-0}"
 
 INSTALL_DIR="/opt/zukan"
