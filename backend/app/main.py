@@ -33,7 +33,7 @@ from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
-from backend.app.services.update_check import check_for_updates
+from backend.app.services.update_check import update_check_worker
 from backend.app.ml.tagger import tagger
 from backend.app.ml.ocr import ocr_backend
 
@@ -223,6 +223,7 @@ async def lifespan(_api: FastAPI):
     startup_started_at = time.perf_counter()
     worker: asyncio.Task | None = None
     purge_worker: asyncio.Task | None = None
+    update_worker: asyncio.Task | None = None
     try:
         logger.info("Startup phase: running database migrations")
         await init_db()
@@ -246,7 +247,7 @@ async def lifespan(_api: FastAPI):
         recovered_count = await _recover_pending_media_jobs(tag_queue)
         worker = asyncio.create_task(tagging_worker())
         purge_worker = asyncio.create_task(trash_purge_worker())
-        asyncio.create_task(check_for_updates())
+        update_worker = asyncio.create_task(update_check_worker())
         logger.info("Background tagging worker started")
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
@@ -264,6 +265,8 @@ async def lifespan(_api: FastAPI):
             worker.cancel()
         if purge_worker is not None:
             purge_worker.cancel()
+        if update_worker is not None:
+            update_worker.cancel()
         await health_monitor.stop()
         if worker is not None:
             try:
@@ -275,6 +278,11 @@ async def lifespan(_api: FastAPI):
                 await purge_worker
             except asyncio.CancelledError:
                 logger.info("Background trash purge worker stopped")
+        if update_worker is not None:
+            try:
+                await update_worker
+            except asyncio.CancelledError:
+                logger.info("Background update check worker stopped")
 
 
 api = FastAPI(

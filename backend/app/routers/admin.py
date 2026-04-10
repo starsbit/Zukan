@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import uuid
 from typing import Literal
 
@@ -29,9 +31,12 @@ from backend.app.schemas import (
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
+from backend.app.services.update_check import trigger_watchtower_update
 from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
+
+logger = logging.getLogger(__name__)
 
 
 @router.get("/app-config", response_model=AdminAppConfigRead)
@@ -166,3 +171,22 @@ async def create_service_notification(
         data=body.data,
     )
     return {"notified": notified}
+
+
+async def _deferred_update() -> None:
+    await asyncio.sleep(3)
+    try:
+        await trigger_watchtower_update()
+    except Exception:
+        logger.exception("Failed to trigger watchtower update")
+
+
+@router.post(
+    "/update",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Trigger Application Update",
+    description="Initiate a self-update via Watchtower. The server will pull the latest images and restart shortly.",
+)
+async def trigger_update():
+    asyncio.create_task(_deferred_update())
+    return {"message": "Update initiated"}

@@ -75,6 +75,10 @@ class Settings(BaseSettings):
 
     app_version: str = "dev"
 
+    update_poll_interval_seconds: int = 21600
+    watchtower_url: str = "http://watchtower:8080"
+    watchtower_token: str = ""
+
 
 settings = Settings()
 

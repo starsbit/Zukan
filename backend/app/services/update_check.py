@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 import httpx
@@ -14,7 +15,7 @@ logger = logging.getLogger(__name__)
 _RELEASES_URL = "https://api.github.com/repos/starsbit/zukan/releases/latest"
 
 
-async def check_for_updates() -> None:
+async def _check_for_updates() -> None:
     current_str = settings.app_version
     if current_str == "dev":
         return
@@ -56,8 +57,6 @@ async def check_for_updates() -> None:
         body = f"Zukan {tag} is available. You are running {current_str}."
         if release_notes:
             body += f"\n\n{release_notes}"
-        if html_url:
-            body += f"\n\nRelease notes: {html_url}"
 
         announcement = AppAnnouncement(
             version=tag,
@@ -69,5 +68,36 @@ async def check_for_updates() -> None:
         db.add(announcement)
         await db.commit()
         await db.refresh(announcement)
-        count = await NotificationService(db).publish_announcement(announcement)
-        logger.info("update_check: notified %d users of version %s", count, tag)
+
+        count = await NotificationService(db).publish_admin_notification(
+            title=announcement.title,
+            body=announcement.message,
+            link_url=html_url or None,
+            data={
+                "announcement_id": str(announcement.id),
+                "severity": announcement.severity.value,
+                "version": tag,
+                "starts_at": None,
+                "ends_at": None,
+            },
+        )
+        logger.info("update_check: notified %d admins of version %s", count, tag)
+
+
+async def update_check_worker() -> None:
+    while True:
+        try:
+            await _check_for_updates()
+        except Exception:
+            logger.exception("update_check: unhandled error during check")
+        await asyncio.sleep(settings.update_poll_interval_seconds)
+
+
+async def trigger_watchtower_update() -> None:
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        resp = await client.post(
+            f"{settings.watchtower_url}/v1/update",
+            headers={"Authorization": f"Bearer {settings.watchtower_token}"},
+        )
+        resp.raise_for_status()
+    logger.info("update_check: watchtower update triggered")

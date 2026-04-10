@@ -10,7 +10,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
-import { EMPTY, catchError, finalize, forkJoin, of } from 'rxjs';
+import { EMPTY, catchError, finalize, forkJoin, of, switchMap } from 'rxjs';
 import { AlbumStore } from '../../../../services/album.store';
 import {
   AppUpdateNotificationData,
@@ -24,6 +24,9 @@ import { ReviewReminderService } from '../../../../services/review-reminder.serv
 import { UploadReviewDialogComponent } from '../../upload-status/upload-review-dialog/upload-review-dialog.component';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
+import { AdminClientService } from '../../../../services/web/admin-client.service';
+import { ConfirmDialogService } from '../../../../services/confirm-dialog.service';
+import { UserStore } from '../../../../services/user.store';
 
 @Component({
   selector: 'zukan-navbar-notifications',
@@ -50,6 +53,9 @@ export class NavbarNotificationsComponent implements OnInit {
   private readonly snackBar = inject(MatSnackBar);
   private readonly reviewReminderService = inject(ReviewReminderService);
   private readonly dialog = inject(MatDialog);
+  private readonly adminClient = inject(AdminClientService);
+  private readonly confirmDialog = inject(ConfirmDialogService);
+  private readonly userStore = inject(UserStore);
 
   readonly notifications = signal<NotificationRead[]>([]);
   readonly loading = signal(false);
@@ -212,6 +218,45 @@ export class NavbarNotificationsComponent implements OnInit {
 
     this.reviewReminderService.dismissReminder(notification.data.dismiss_signature);
     this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
+  }
+
+  isAdminAppUpdate(notification: NotificationRead): boolean {
+    return this.isAppUpdate(notification) && this.userStore.isAdmin();
+  }
+
+  triggerUpdate(notification: NotificationRead, event: Event): void {
+    event.stopPropagation();
+    if (!this.isAdminAppUpdate(notification) || this.isActioning(notification.id)) {
+      return;
+    }
+
+    this.confirmDialog.open({
+      title: 'Update Zukan',
+      message: 'This will pull the latest images and restart Zukan. Brief downtime is expected.',
+      confirmLabel: 'Update Now',
+      cancelLabel: 'Cancel',
+    }).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      switchMap((confirmed) => {
+        if (!confirmed) return EMPTY;
+        this.setActioning(notification.id, true);
+        return this.adminClient.triggerUpdate().pipe(
+          finalize(() => this.setActioning(notification.id, false)),
+          catchError((error: { error?: { detail?: string } }) => {
+            this.snackBar.open(error.error?.detail ?? 'Failed to trigger update.', 'Close', { duration: 5000 });
+            return EMPTY;
+          }),
+        );
+      }),
+    ).subscribe(() => {
+      this.snackBar.open('Update in progress — Zukan will restart shortly.', 'Close', { duration: 6000 });
+      this.notificationsClient.markRead(notification.id).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => EMPTY),
+      ).subscribe(() => {
+        this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
+      });
+    });
   }
 
   iconFor(type: NotificationType): string {

@@ -275,6 +275,21 @@ def test_admin_app_config_contract(api_client):
     assert payload["upload_rate_limit_window_seconds"] >= 0
 
 
+def test_admin_trigger_update_returns_202(api_client):
+    with patch("backend.app.routers.admin.asyncio.create_task") as mock_create_task:
+        response = api_client.post("/api/v1/admin/update")
+
+    assert response.status_code == 202
+    assert response.json() == {"message": "Update initiated"}
+    mock_create_task.assert_called_once()
+
+
+def test_admin_trigger_update_requires_auth(unauthenticated_client):
+    response = unauthenticated_client.post("/api/v1/admin/update")
+
+    assert response.status_code == 401
+
+
 def test_admin_app_config_patch_updates_runtime_settings(api_client, monkeypatch):
     original_login_limit = settings.auth_login_rate_limit_requests
     original_upload_limit = settings.upload_rate_limit_requests

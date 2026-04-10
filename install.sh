@@ -70,23 +70,28 @@ write_compose() {
     cat > "$COMPOSE_FILE" << COMPOSE
 services:
   frontend:
-    image: ghcr.io/starsbit/zukan-frontend:${LATEST_VERSION}
+    image: ghcr.io/starsbit/zukan-frontend:latest
     ports:
       - "80:80"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       api:
         condition: service_started
     restart: unless-stopped
 
   api:
-    image: ghcr.io/starsbit/zukan-api:${LATEST_VERSION}
+    image: ghcr.io/starsbit/zukan-api:latest
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:\${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: \${SECRET_KEY}
+      WATCHTOWER_TOKEN: \${WATCHTOWER_TOKEN}
       LOG_LEVEL: INFO
     volumes:
       - storage_data:/backend/storage
       - model_cache:/backend/model_cache
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       db:
         condition: service_healthy
@@ -107,25 +112,43 @@ services:
       retries: 5
     restart: unless-stopped
 
+  watchtower:
+    image: containrrr/watchtower
+    command: --http-api-update --label-enable --no-startup-message --interval 0
+    environment:
+      WATCHTOWER_HTTP_API_TOKEN: \${WATCHTOWER_TOKEN}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   storage_data:
   model_cache:
 COMPOSE
-    success "Wrote $COMPOSE_FILE (version $LATEST_VERSION)"
+    success "Wrote $COMPOSE_FILE"
 }
 
 write_env() {
     if [[ -f "$ENV_FILE" ]]; then
         info ".env already exists — keeping existing secrets (delete $ENV_FILE to regenerate)"
+        # Ensure WATCHTOWER_TOKEN exists in existing .env (upgrade path)
+        if ! grep -q "^WATCHTOWER_TOKEN=" "$ENV_FILE"; then
+            local watchtower_token
+            watchtower_token=$(generate_secret | head -c 32)
+            echo "WATCHTOWER_TOKEN=${watchtower_token}" >> "$ENV_FILE"
+            success "Added WATCHTOWER_TOKEN to existing $ENV_FILE"
+        fi
         return
     fi
-    local secret_key pg_password
+    local secret_key pg_password watchtower_token
     secret_key=$(generate_secret)
     pg_password=$(generate_secret | head -c 32)
+    watchtower_token=$(generate_secret | head -c 32)
     cat > "$ENV_FILE" << ENV
 SECRET_KEY=${secret_key}
 POSTGRES_PASSWORD=${pg_password}
+WATCHTOWER_TOKEN=${watchtower_token}
 ENV
     chmod 600 "$ENV_FILE"
     success "Generated $ENV_FILE with random secrets"
@@ -144,7 +167,7 @@ print_summary() {
     host_ip=$(hostname -I | awk '{print $1}')
     echo
     echo "══════════════════════════════════════════"
-    echo "  Zukan v${LATEST_VERSION} ready"
+    echo "  Zukan ready (latest)"
     echo "══════════════════════════════════════════"
     echo "  URL:      http://${host_ip}"
     echo "  Install:  ${INSTALL_DIR}"

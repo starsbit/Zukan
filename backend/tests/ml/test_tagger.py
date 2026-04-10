@@ -89,6 +89,7 @@ def test_load_wires_session_and_input_metadata(monkeypatch):
             return [_Input()]
 
     fake_rt.InferenceSession = _Session
+    fake_rt.get_available_providers = lambda: ["CPUExecutionProvider"]
     monkeypatch.setitem(__import__("sys").modules, "onnxruntime", fake_rt)
 
     with patch("backend.app.ml.tagger.hf_hub_download", side_effect=["/tmp/model.onnx", "/tmp/tags.csv"]), patch(

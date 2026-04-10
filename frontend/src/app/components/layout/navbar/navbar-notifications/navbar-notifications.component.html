@@ -81,6 +81,24 @@
                     Dismiss
                   </button>
                 </div>
+              } @else if (isAdminAppUpdate(notification)) {
+                <div class="notification-actions">
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    type="button"
+                    [disabled]="isActioning(notification.id)"
+                    (click)="triggerUpdate(notification, $event)">
+                    Update Now
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="isActioning(notification.id)"
+                    (click)="markRead(notification, $event)">
+                    Dismiss
+                  </button>
+                </div>
               } @else if (canMarkRead(notification)) {
                 <div class="notification-actions">
                   <button

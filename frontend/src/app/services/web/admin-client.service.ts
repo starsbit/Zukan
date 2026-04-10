@@ -74,4 +74,8 @@ export class AdminClientService {
   createAnnouncement(body: AppAnnouncementCreate): Observable<AppAnnouncementRead> {
     return this.http.post<AppAnnouncementRead>(`${this.base}/api/v1/admin/announcements`, body);
   }
+
+  triggerUpdate(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.base}/api/v1/admin/update`, null);
+  }
 }
