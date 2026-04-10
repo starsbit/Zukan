@@ -4,5 +4,5 @@ set -euo pipefail
 services=(api frontend)
 
 docker compose stop "${services[@]}"
-docker compose build "${services[@]}"
-docker compose up -d "${services[@]}"
+docker compose -f docker-compose.macos.yml build "${services[@]}"
+docker compose -f docker-compose.macos.yml up -d "${services[@]}"

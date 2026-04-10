@@ -8,6 +8,7 @@ Self-hosted anime image server. Upload images and video, tag them automatically 
 
 - [Self-hosting](#self-hosting)
   - [Quick install (Proxmox LXC / Debian / Ubuntu)](#quick-install)
+  - [Proxmox LXC install](#proxmox-lxc-install)
   - [Manual install with Docker Compose](#manual-install)
   - [Upgrading](#upgrading)
   - [Configuration](#configuration)
@@ -32,6 +33,8 @@ Runs on any Debian 11+ or Ubuntu 22.04+ host, including Proxmox LXC containers.
 curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install.sh | bash
 ```
 
+If you are deploying on a Proxmox host and want Zukan to create and configure the LXC for you, use the dedicated [Proxmox LXC install](#proxmox-lxc-install) guide below instead of running this inside a container.
+
 The script will:
 1. Install Docker and the Compose plugin if not already present
 2. Fetch the latest release from GitHub
@@ -42,6 +45,159 @@ The script will:
 Once complete the app is available at `http://<host-ip>`. The default login is **admin / admin** — change it immediately via the account settings.
 
 Re-running the script later upgrades to the latest release while preserving your `.env` and all data volumes.
+
+---
+
+### Proxmox LXC install
+
+This is the recommended path if you want to deploy Zukan as a Proxmox LXC. The installer runs on the Proxmox host as `root`, creates an unprivileged Debian 12 container, installs Docker inside it, and starts Zukan for you.
+
+**1. Check the prerequisites on the Proxmox host**
+
+- Proxmox VE 8.x
+- Internet access from both the Proxmox host and the future container
+- A valid Proxmox storage for the container disk, such as `local-lvm`
+- A valid storage for LXC templates, such as `local`
+- A valid bridge, usually `vmbr0`
+- Optional: NVIDIA drivers and `/dev/nvidia*` devices on the host if you want GPU tagging
+
+The installer auto-detects NVIDIA devices. If no GPU is found, it falls back to CPU-only mode. Set `GPU_REQUIRED=1` if the install should fail instead of continuing without GPU support.
+
+**2. Run the installer directly on the Proxmox host**
+
+Run this on the Proxmox host shell, not inside a container:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
+```
+
+This downloads only the installer script into a temporary shell process. It does not require cloning the repository and does not leave a Zukan checkout behind on the Proxmox node after the install finishes.
+
+If the installer fails after creating the container, it cleans up the partial LXC automatically so the Proxmox node is not left with a half-finished Zukan install.
+
+**3. Run the installer**
+
+The command above is the default install command. By default, the script:
+
+- Picks the next free container ID automatically
+- Creates a container named `zukan`
+- Uses `local-lvm` for the root disk and `local` for the Debian template
+- Creates a 32 GB disk
+- Assigns 4 GB RAM, 2 GB swap, and 4 CPU cores
+- Attaches the container to `vmbr0`
+- Uses DHCP networking
+- Deploys Zukan version `0.0.3`
+
+**4. Customize the install if needed**
+
+Set environment variables before the command to override the defaults:
+
+```bash
+CTID=201 \
+CT_HOSTNAME=zukan \
+STORAGE=local-lvm \
+TEMPLATE_STORAGE=local \
+DISK_SIZE=64 \
+MEMORY=8192 \
+SWAP=2048 \
+CORES=6 \
+BRIDGE=vmbr0 \
+IP=192.168.178.50/24 \
+GATEWAY=192.168.178.1 \
+APP_VERSION=0.0.3 \
+GPU_REQUIRED=1 \
+bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
+```
+
+Common options:
+
+| Variable | Default | Description |
+|---|---|---|
+| `CTID` | next free ID | Proxmox container ID |
+| `CT_HOSTNAME` | `zukan` | Hostname inside Proxmox |
+| `STORAGE` | `local-lvm` | Storage used for the LXC root disk |
+| `TEMPLATE_STORAGE` | `local` | Storage used for the Debian 12 template |
+| `DISK_SIZE` | `32` | Root disk size in GB |
+| `MEMORY` | `4096` | RAM in MB |
+| `SWAP` | `2048` | Swap in MB |
+| `CORES` | `4` | Number of CPU cores |
+| `BRIDGE` | `vmbr0` | Proxmox network bridge |
+| `IP` | `dhcp` | Static IP in CIDR format, or `dhcp` |
+| `GATEWAY` | empty | Gateway for static IP setups |
+| `APP_VERSION` | `0.0.3` | Zukan image tag to deploy |
+| `GPU_REQUIRED` | `0` | Fail if no NVIDIA GPU is available |
+
+**5. What the installer does**
+
+The Proxmox installer performs these steps automatically:
+
+1. Detect NVIDIA GPU devices on the host
+2. Resolve and download the latest Debian 12 LXC template
+3. Create an unprivileged LXC with `nesting=1` and `keyctl=1`
+4. Optionally add NVIDIA device passthrough to the container config
+5. Start the container
+6. Install base packages, Docker Engine, Buildx, and Docker Compose
+7. Install the NVIDIA Container Toolkit when GPU passthrough is enabled
+8. Generate `/opt/zukan/.env` with a random `POSTGRES_PASSWORD` and `SECRET_KEY`
+9. Write `/opt/zukan/docker-compose.yml`
+10. Install `/etc/systemd/system/zukan.service`
+11. Pull the Zukan images, start the stack, and verify the frontend and API startup logs
+
+**6. Open Zukan after the installer finishes**
+
+At the end, the script prints the container ID, detected IP address, and access URL. Open:
+
+```text
+http://<container-ip>
+```
+
+The frontend listens on port `80` inside the container, so you normally do not need to add a port to the URL.
+
+**7. Sign in and secure the default account**
+
+The first login is:
+
+```text
+admin / admin
+```
+
+Change the password immediately in the Zukan account settings after the first sign-in.
+
+**8. Verify the deployment and manage the service**
+
+Useful commands after install:
+
+```bash
+pct enter 201
+pct exec 201 -- systemctl status zukan
+pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml ps
+pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml logs -f
+```
+
+Replace `201` with your actual container ID. The installer also writes:
+
+- Compose file: `/opt/zukan/docker-compose.yml`
+- Secrets file: `/opt/zukan/.env`
+- Systemd unit: `/etc/systemd/system/zukan.service`
+
+**9. Upgrade the Proxmox LXC install later**
+
+To upgrade an existing LXC deployment in place:
+
+1. Edit `/opt/zukan/docker-compose.yml` inside the container and change the image tags to the target version.
+2. Restart the service:
+
+```bash
+pct exec 201 -- systemctl restart zukan
+```
+
+You can also inspect the current stack state with:
+
+```bash
+pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml ps
+```
+
+Database migrations run automatically on startup, and the named Docker volumes are preserved.
 
 ---
 
