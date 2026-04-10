@@ -29,6 +29,7 @@ import { AnnouncementSeverity } from '../../models/notifications';
 import { AdminService } from '../../services/admin.service';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { UserStore } from '../../services/user.store';
+import { FormattedMessageComponent } from '../../components/shared/formatted-message/formatted-message.component';
 
 type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storage_used_mb';
 
@@ -40,6 +41,7 @@ type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storag
     DecimalPipe,
     LayoutComponent,
     EchartPanelComponent,
+    FormattedMessageComponent,
     MatButtonModule,
     MatCardModule,
     MatDividerModule,

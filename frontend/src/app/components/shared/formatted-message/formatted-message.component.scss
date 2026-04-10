@@ -1,0 +1,17 @@
+:host {
+  display: block;
+}
+
+.formatted-message {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.formatted-message__line {
+  min-height: 1lh;
+  overflow-wrap: anywhere;
+}
+
+a {
+  color: inherit;
+}

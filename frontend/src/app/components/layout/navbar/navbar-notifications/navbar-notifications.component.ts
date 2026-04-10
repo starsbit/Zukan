@@ -27,6 +27,7 @@ import { NotificationsClientService } from '../../../../services/web/notificatio
 import { AdminClientService } from '../../../../services/web/admin-client.service';
 import { ConfirmDialogService } from '../../../../services/confirm-dialog.service';
 import { UserStore } from '../../../../services/user.store';
+import { FormattedMessageComponent } from '../../../shared/formatted-message/formatted-message.component';
 
 @Component({
   selector: 'zukan-navbar-notifications',
@@ -40,6 +41,7 @@ import { UserStore } from '../../../../services/user.store';
     MatMenuModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    FormattedMessageComponent,
   ],
   templateUrl: './navbar-notifications.component.html',
   styleUrl: './navbar-notifications.component.scss',

@@ -19,6 +19,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
+      WATCHTOWER_URL: http://watchtower:8080
       WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN}
       LOG_LEVEL: INFO
     volumes:
@@ -29,6 +30,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      watchtower:
+        condition: service_started
     restart: unless-stopped
     deploy:
       resources:

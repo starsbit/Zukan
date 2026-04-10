@@ -1,0 +1,13 @@
+<div class="formatted-message">
+  @for (line of lines(); track line.key) {
+    <div class="formatted-message__line">
+      @for (segment of line.segments; track $index) {
+        @if (segment.kind === 'link') {
+          <a [href]="segment.value" target="_blank" rel="noreferrer">{{ segment.value }}</a>
+        } @else {
+          <span>{{ segment.value }}</span>
+        }
+      }
+    </div>
+  }
+</div>

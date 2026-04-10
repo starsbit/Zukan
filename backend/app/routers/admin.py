@@ -1,9 +1,9 @@
-import asyncio
 import logging
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import get_runtime_config, update_runtime_config
@@ -174,14 +174,6 @@ async def create_service_notification(
     return {"notified": notified}
 
 
-async def _deferred_update() -> None:
-    await asyncio.sleep(3)
-    try:
-        await trigger_watchtower_update()
-    except Exception:
-        logger.exception("Failed to trigger watchtower update")
-
-
 @router.post(
     "/check-updates",
     response_model=UpdateCheckResponse,
@@ -199,5 +191,23 @@ async def check_updates():
     description="Initiate a self-update via Watchtower. The server will pull the latest images and restart shortly.",
 )
 async def trigger_update():
-    asyncio.create_task(_deferred_update())
+    try:
+        await trigger_watchtower_update()
+    except httpx.HTTPError as exc:
+        logger.exception("Failed to trigger watchtower update")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Could not reach the Watchtower updater. "
+                "Check that the watchtower service is running, reachable from the API container, "
+                "and compatible with your Docker daemon."
+            ),
+        ) from exc
+    except Exception as exc:
+        logger.exception("Failed to trigger watchtower update")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to trigger the application update.",
+        ) from exc
+
     return {"message": "Update initiated"}

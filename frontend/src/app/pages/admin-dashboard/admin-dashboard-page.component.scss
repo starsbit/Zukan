@@ -122,6 +122,14 @@ h1 {
   margin-bottom: 1rem;
 }
 
+.update-check-message {
+  margin-bottom: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+  color: var(--mat-sys-on-surface-variant);
+}
+
 .health-summary article {
   padding: 0.9rem 1rem;
   border-radius: 1rem;
@@ -227,7 +235,7 @@ h1 {
   align-items: flex-start;
 }
 
-.announcement-header p,
+.announcement-message,
 .empty-copy,
 .panel-error {
   margin: 0.35rem 0 0;

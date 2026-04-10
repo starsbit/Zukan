@@ -13,6 +13,18 @@ from backend.app.services.notifications import NotificationService
 logger = logging.getLogger(__name__)
 
 _RELEASES_URL = "https://api.github.com/repos/starsbit/zukan/releases/latest"
+_COMPARE_URL_TEMPLATE = "https://github.com/starsbit/zukan/compare/v{current}...v{latest}"
+
+
+def _build_update_message(current_str: str, latest_str: str, release_notes: str = "") -> str:
+    lines = [
+        f"Zukan {latest_str} is available.",
+        f"You are running {current_str}.",
+        f"Full changelog: {_COMPARE_URL_TEMPLATE.format(current=current_str, latest=latest_str)}",
+    ]
+    if release_notes:
+        lines.extend(["", release_notes.strip()])
+    return "\n".join(lines).strip()
 
 
 async def _check_for_updates() -> None:
@@ -54,9 +66,7 @@ async def _check_for_updates() -> None:
         if await repo.find_by_version(tag):
             return
 
-        body = f"Zukan {tag} is available. You are running {current_str}."
-        if release_notes:
-            body += f"\n\n{release_notes}"
+        body = _build_update_message(current_str, tag, release_notes)
 
         announcement = AppAnnouncement(
             version=tag,
@@ -145,9 +155,7 @@ async def check_for_updates_now() -> dict:
     async with AsyncSessionLocal() as db:
         repo = AppAnnouncementRepository(db)
         if not await repo.find_by_version(tag):
-            body = f"Zukan {tag} is available. You are running {current_str}."
-            if release_notes:
-                body += f"\n\n{release_notes}"
+            body = _build_update_message(current_str, tag, release_notes)
 
             announcement = AppAnnouncement(
                 version=tag,
@@ -177,7 +185,7 @@ async def check_for_updates_now() -> dict:
         "current_version": current_str,
         "latest_version": tag,
         "up_to_date": False,
-        "message": f"Zukan {tag} is available. You are running {current_str}.",
+        "message": _build_update_message(current_str, tag),
     }
 
 

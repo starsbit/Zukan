@@ -26,7 +26,11 @@ def _make_announcement(version: str = "1.2.3") -> MagicMock:
     ann.id = uuid.uuid4()
     ann.version = version
     ann.title = f"Zukan {version} is available"
-    ann.message = f"Zukan {version} is available. You are running 1.0.0."
+    ann.message = (
+        f"Zukan {version} is available.\n"
+        "You are running 1.0.0.\n"
+        f"Full changelog: https://github.com/starsbit/zukan/compare/v1.0.0...v{version}"
+    )
     ann.severity = MagicMock(value="info")
     ann.starts_at = None
     ann.ends_at = None
@@ -152,6 +156,8 @@ async def test_check_creates_announcement_and_notifies_admins():
                         svc_cls.return_value.publish_admin_notification.assert_awaited_once()
                         call_kwargs = svc_cls.return_value.publish_admin_notification.call_args.kwargs
                         assert "1.2.3" in call_kwargs["title"]
+                        assert "Full changelog:" in call_kwargs["body"]
+                        assert "compare/v1.0.0...v1.2.3" in call_kwargs["body"]
                         assert call_kwargs["data"]["version"] == "1.2.3"
                         assert call_kwargs["data"]["severity"] == "info"
                         assert "announcement_id" in call_kwargs["data"]

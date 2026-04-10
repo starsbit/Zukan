@@ -62,6 +62,12 @@
               <mat-spinner diameter="36"></mat-spinner>
             </div>
           } @else {
+            @if (updateCheckResult(); as result) {
+              <div class="update-check-message">
+                <zukan-formatted-message [text]="result.message"></zukan-formatted-message>
+              </div>
+            }
+
             <div class="health-summary">
               <article>
                 <span>CPU</span>
@@ -247,7 +253,9 @@
                   <div class="announcement-header">
                     <div>
                       <strong>{{ announcement.title }}</strong>
-                      <p>{{ announcement.message }}</p>
+                      <div class="announcement-message">
+                        <zukan-formatted-message [text]="announcement.message"></zukan-formatted-message>
+                      </div>
                     </div>
                     <span class="severity-pill severity-{{ announcement.severity }}">{{ announcement.severity }}</span>
                   </div>

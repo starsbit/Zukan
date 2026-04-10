@@ -45,7 +45,9 @@
                   <span class="notification-severity-pill">{{ severity }}</span>
                 }
               </div>
-              <div class="notification-body">{{ notification.body }}</div>
+              <div class="notification-body">
+                <zukan-formatted-message [text]="notification.body"></zukan-formatted-message>
+              </div>
               <div class="notification-meta">{{ notification.created_at | date: 'medium' }}</div>
               @if (isPendingShareInvite(notification)) {
                 <div class="notification-actions">
