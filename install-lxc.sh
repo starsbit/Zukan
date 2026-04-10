@@ -30,6 +30,7 @@ CORES="${CORES:-4}"
 BRIDGE="${BRIDGE:-vmbr0}"
 IP="${IP:-dhcp}"              # Static IP in CIDR notation, or "dhcp"
 GATEWAY="${GATEWAY:-}"
+DNS_SERVERS="${DNS_SERVERS:-1.1.1.1 8.8.8.8}"
 GPU_REQUIRED="${GPU_REQUIRED:-0}"
 
 INSTALL_DIR="/opt/zukan"
@@ -230,6 +231,10 @@ else
     [[ -n "${GATEWAY}" ]] && NET_ARG+=",gw=${GATEWAY}"
 fi
 
+if [[ -n "${DNS_SERVERS}" ]]; then
+    info "Using container DNS servers: ${DNS_SERVERS}"
+fi
+
 pct create "${CTID}" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
     --hostname "${HOSTNAME}" \
     --rootfs "${STORAGE}:${DISK_SIZE}" \
@@ -237,6 +242,7 @@ pct create "${CTID}" "${TEMPLATE_STORAGE}:vztmpl/${TEMPLATE}" \
     --swap "${SWAP}" \
     --cores "${CORES}" \
     --net0 "${NET_ARG}" \
+    --nameserver "${DNS_SERVERS}" \
     --unprivileged 1 \
     --features nesting=1,keyctl=1 \
     --onboot 1
