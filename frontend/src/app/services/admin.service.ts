@@ -9,6 +9,7 @@ import {
   AdminUserDetail,
   AdminUserUpdate,
   DeleteUserMediaResponse,
+  UpdateCheckResponse,
   UserListResponse,
 } from '../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../models/notifications';
@@ -63,5 +64,9 @@ export class AdminService {
 
   createAnnouncement(body: AppAnnouncementCreate): Observable<AppAnnouncementRead> {
     return this.guard(() => this.client.createAnnouncement(body));
+  }
+
+  checkForUpdates(): Observable<UpdateCheckResponse> {
+    return this.guard(() => this.client.checkForUpdates());
   }
 }

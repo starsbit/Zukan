@@ -26,12 +26,13 @@ from backend.app.schemas import (
     AppAnnouncementCreate,
     AppAnnouncementRead,
     TaggingJobQueuedResponse,
+    UpdateCheckResponse,
     UserRead,
     error_responses,
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
-from backend.app.services.update_check import trigger_watchtower_update
+from backend.app.services.update_check import check_for_updates_now, trigger_watchtower_update
 from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
@@ -179,6 +180,16 @@ async def _deferred_update() -> None:
         await trigger_watchtower_update()
     except Exception:
         logger.exception("Failed to trigger watchtower update")
+
+
+@router.post(
+    "/check-updates",
+    response_model=UpdateCheckResponse,
+    summary="Check for Updates",
+    description="Query GitHub for the latest release and compare against the running version. Creates an announcement if a new version is found.",
+)
+async def check_updates():
+    return await check_for_updates_now()
 
 
 @router.post(

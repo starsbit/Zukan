@@ -89,6 +89,32 @@ h1 {
   background: color-mix(in srgb, var(--mat-sys-surface-container-low) 94%, transparent);
 }
 
+.card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
+
+.update-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: var(--mat-sys-on-surface-variant);
+
+  mat-icon {
+    font-size: 1.1rem;
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+}
+
+.update-status.update-available {
+  color: color-mix(in srgb, #f59e0b 78%, var(--mat-sys-on-surface));
+}
+
 .health-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -250,6 +276,13 @@ h1 {
 
 .announcement-item small {
   color: var(--mat-sys-on-surface-variant);
+}
+
+:host ::ng-deep .mat-mdc-card-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 :host ::ng-deep .admin-table .mat-mdc-header-cell,

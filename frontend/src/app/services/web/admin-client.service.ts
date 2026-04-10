@@ -9,6 +9,7 @@ import {
   AdminUserDetail,
   AdminUserUpdate,
   DeleteUserMediaResponse,
+  UpdateCheckResponse,
   UserListResponse,
 } from '../../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../../models/notifications';
@@ -73,6 +74,10 @@ export class AdminClientService {
 
   createAnnouncement(body: AppAnnouncementCreate): Observable<AppAnnouncementRead> {
     return this.http.post<AppAnnouncementRead>(`${this.base}/api/v1/admin/announcements`, body);
+  }
+
+  checkForUpdates(): Observable<UpdateCheckResponse> {
+    return this.http.post<UpdateCheckResponse>(`${this.base}/api/v1/admin/check-updates`, null);
   }
 
   triggerUpdate(): Observable<{ message: string }> {

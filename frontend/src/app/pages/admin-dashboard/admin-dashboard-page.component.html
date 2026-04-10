@@ -39,6 +39,22 @@
       <mat-card class="panel panel-wide">
         <mat-card-header>
           <mat-card-title>System Health</mat-card-title>
+          <span class="card-header-actions">
+            @if (updateCheckResult(); as result) {
+              <span class="update-status" [class.update-available]="!result.up_to_date">
+                <mat-icon>{{ result.up_to_date ? 'check_circle' : 'new_releases' }}</mat-icon>
+                {{ result.up_to_date ? 'Up to date' : 'Update available: ' + result.latest_version }}
+              </span>
+            }
+            <button mat-stroked-button type="button" (click)="checkForUpdates()" [disabled]="checkingForUpdates()">
+              @if (checkingForUpdates()) {
+                <mat-spinner diameter="16"></mat-spinner>
+              } @else {
+                <mat-icon>system_update</mat-icon>
+              }
+              Check for updates
+            </button>
+          </span>
         </mat-card-header>
         <mat-card-content>
           @if (loadingOverview() && !health()) {

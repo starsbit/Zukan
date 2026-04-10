@@ -56,3 +56,10 @@ export interface DeleteUserMediaResponse {
 }
 
 export type UserListResponse = PagedList<AdminUserSummary>;
+
+export interface UpdateCheckResponse {
+  current_version: string;
+  latest_version: string | null;
+  up_to_date: boolean;
+  message: string;
+}

@@ -84,6 +84,103 @@ async def _check_for_updates() -> None:
         logger.info("update_check: notified %d admins of version %s", count, tag)
 
 
+async def check_for_updates_now() -> dict:
+    current_str = settings.app_version
+    if current_str == "dev":
+        return {
+            "current_version": current_str,
+            "latest_version": None,
+            "up_to_date": True,
+            "message": "Running a development build — update check skipped.",
+        }
+
+    try:
+        current = Version(current_str)
+    except InvalidVersion:
+        return {
+            "current_version": current_str,
+            "latest_version": None,
+            "up_to_date": True,
+            "message": f"Could not parse current version {current_str!r}.",
+        }
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(_RELEASES_URL, headers={"Accept": "application/vnd.github+json"})
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:
+        logger.warning("check_for_updates_now: failed to reach GitHub: %s", exc)
+        return {
+            "current_version": current_str,
+            "latest_version": None,
+            "up_to_date": True,
+            "message": "Could not reach GitHub to check for updates.",
+        }
+
+    tag: str = data.get("tag_name", "").lstrip("v")
+    html_url: str = data.get("html_url", "")
+    release_notes: str = (data.get("body") or "")[:400]
+
+    try:
+        latest = Version(tag)
+    except InvalidVersion:
+        return {
+            "current_version": current_str,
+            "latest_version": tag or None,
+            "up_to_date": True,
+            "message": f"Could not parse latest version tag {tag!r} from GitHub.",
+        }
+
+    if latest <= current:
+        return {
+            "current_version": current_str,
+            "latest_version": tag,
+            "up_to_date": True,
+            "message": f"You are running the latest version ({current_str}).",
+        }
+
+    logger.info("check_for_updates_now: new version %s available (running %s)", tag, current_str)
+
+    async with AsyncSessionLocal() as db:
+        repo = AppAnnouncementRepository(db)
+        if not await repo.find_by_version(tag):
+            body = f"Zukan {tag} is available. You are running {current_str}."
+            if release_notes:
+                body += f"\n\n{release_notes}"
+
+            announcement = AppAnnouncement(
+                version=tag,
+                title=f"Zukan {tag} is available",
+                message=body.strip(),
+                severity=AnnouncementSeverity.info,
+                is_active=True,
+            )
+            db.add(announcement)
+            await db.commit()
+            await db.refresh(announcement)
+
+            await NotificationService(db).publish_admin_notification(
+                title=announcement.title,
+                body=announcement.message,
+                link_url=html_url or None,
+                data={
+                    "announcement_id": str(announcement.id),
+                    "severity": announcement.severity.value,
+                    "version": tag,
+                    "starts_at": None,
+                    "ends_at": None,
+                },
+            )
+
+    return {
+        "current_version": current_str,
+        "latest_version": tag,
+        "up_to_date": False,
+        "message": f"Zukan {tag} is available. You are running {current_str}.",
+    }
+
+
 async def update_check_worker() -> None:
     while True:
         try:

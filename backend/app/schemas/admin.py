@@ -123,3 +123,10 @@ class AdminServiceNotificationCreate(BaseModel):
 
 class AdminServiceNotificationResult(BaseModel):
     notified: int = Field(ge=0)
+
+
+class UpdateCheckResponse(BaseModel):
+    current_version: str
+    latest_version: str | None
+    up_to_date: bool
+    message: str

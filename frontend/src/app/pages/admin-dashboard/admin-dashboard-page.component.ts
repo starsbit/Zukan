@@ -23,6 +23,7 @@ import {
   AdminStatsResponse,
   AdminUserSummary,
   AdminUserUpdate,
+  UpdateCheckResponse,
 } from '../../models/admin';
 import { AnnouncementSeverity } from '../../models/notifications';
 import { AdminService } from '../../services/admin.service';
@@ -69,6 +70,8 @@ export class AdminDashboardPageComponent {
   readonly loadingUsers = signal(true);
   readonly loadingAnnouncements = signal(true);
   readonly submittingAnnouncement = signal(false);
+  readonly checkingForUpdates = signal(false);
+  readonly updateCheckResult = signal<UpdateCheckResponse | null>(null);
   readonly overviewError = signal<string | null>(null);
   readonly usersError = signal<string | null>(null);
   readonly announcementsError = signal<string | null>(null);
@@ -303,6 +306,29 @@ export class AdminDashboardPageComponent {
       },
       error: (err) => {
         this.snackBar.open(err.error?.detail ?? 'Unable to publish announcement.', 'Close');
+      },
+    });
+  }
+
+  checkForUpdates(): void {
+    if (this.checkingForUpdates()) {
+      return;
+    }
+    this.checkingForUpdates.set(true);
+    this.updateCheckResult.set(null);
+    this.adminService.checkForUpdates().pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.checkingForUpdates.set(false)),
+    ).subscribe({
+      next: (result) => {
+        this.updateCheckResult.set(result);
+        this.snackBar.open(result.message, 'Close', { duration: 6000 });
+        if (!result.up_to_date) {
+          this.loadAnnouncements();
+        }
+      },
+      error: (err) => {
+        this.snackBar.open(err.error?.detail ?? 'Unable to check for updates.', 'Close');
       },
     });
   }
