@@ -157,10 +157,9 @@ COMPOSE
       - sh
       - -c
       - |
-        mkdir -p /www/cgi-bin
-        cp /scripts/update.cgi /www/cgi-bin/update
-        chmod 755 /www/cgi-bin/update
-        exec busybox httpd -f -p 8080 -h /www
+        cp /scripts/serve-update.sh /tmp/serve-update.sh
+        chmod 755 /tmp/serve-update.sh
+        exec nc -lk -p 8080 -e /tmp/serve-update.sh
     environment:
       UPDATER_TOKEN: ${UPDATER_TOKEN}
     volumes:
@@ -229,8 +228,31 @@ if [ -z "${UPDATER_TOKEN:-}" ] || [ "$provided" != "$expected" ]; then
     exit 0
 fi
 
-nohup /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
+nohup sh /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
 json_response "202 Accepted" '{"message":"Update initiated"}'
+SCRIPT
+
+    cat > "$INSTALL_DIR/updater/serve-update.sh" << 'SCRIPT'
+#!/bin/sh
+set -eu
+
+REQUEST_METHOD=""
+HTTP_AUTHORIZATION=""
+
+IFS=' ' read -r REQUEST_METHOD _ _ || true
+
+while IFS= read -r line; do
+    stripped=$(printf '%s' "$line" | tr -d '\r')
+    [ -z "$stripped" ] && break
+    case "$stripped" in
+        Authorization:*)
+            HTTP_AUTHORIZATION=$(printf '%s' "$stripped" | sed 's/^Authorization:[[:space:]]*//')
+            ;;
+    esac
+done
+
+export REQUEST_METHOD HTTP_AUTHORIZATION
+exec /bin/sh /scripts/update.cgi
 SCRIPT
 
     cat > "$INSTALL_DIR/updater/run-update.sh" << 'SCRIPT'
@@ -247,7 +269,7 @@ docker compose -f /work/docker-compose.yml --env-file /work/.env pull api fronte
 docker compose -f /work/docker-compose.yml --env-file /work/.env up -d api frontend
 SCRIPT
 
-    chmod 755 "$INSTALL_DIR/updater/update.cgi" "$INSTALL_DIR/updater/run-update.sh"
+    chmod 755 "$INSTALL_DIR/updater/update.cgi" "$INSTALL_DIR/updater/serve-update.sh" "$INSTALL_DIR/updater/run-update.sh"
     success "Wrote updater scripts"
 }
 

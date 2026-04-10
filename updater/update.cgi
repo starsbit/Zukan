@@ -21,5 +21,5 @@ if [ -z "${UPDATER_TOKEN:-}" ] || [ "$provided" != "$expected" ]; then
     exit 0
 fi
 
-nohup /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
+nohup sh /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
 json_response "202 Accepted" '{"message":"Update initiated"}'
