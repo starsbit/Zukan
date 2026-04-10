@@ -278,7 +278,7 @@ def test_admin_app_config_contract(api_client):
 
 
 def test_admin_trigger_update_returns_202(api_client):
-    with patch("backend.app.routers.admin.trigger_watchtower_update", new=AsyncMock()) as trigger_update_mock:
+    with patch("backend.app.routers.admin.trigger_app_update", new=AsyncMock()) as trigger_update_mock:
         response = api_client.post("/api/v1/admin/update")
 
     assert response.status_code == 202
@@ -288,13 +288,13 @@ def test_admin_trigger_update_returns_202(api_client):
 
 def test_admin_trigger_update_returns_503_when_watchtower_is_unreachable(api_client):
     with patch(
-        "backend.app.routers.admin.trigger_watchtower_update",
+        "backend.app.routers.admin.trigger_app_update",
         new=AsyncMock(side_effect=httpx.ConnectError("boom")),
     ):
         response = api_client.post("/api/v1/admin/update")
 
     assert response.status_code == 503
-    assert "Watchtower updater" in response.json()["detail"]
+    assert "updater service" in response.json()["detail"]
 
 
 def test_admin_trigger_update_requires_auth(unauthenticated_client):

@@ -16,7 +16,6 @@ ENV_FILE="$INSTALL_DIR/.env"
 SERVICE_FILE="/etc/systemd/system/zukan.service"
 GPU_ENABLED="${GPU_ENABLED:-0}"
 NO_SUMMARY="${NO_SUMMARY:-0}"
-WATCHTOWER_IMAGE="${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}"
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 info()    { echo "  [INFO]  $*"; }
@@ -99,8 +98,6 @@ services:
     image: ghcr.io/starsbit/zukan-frontend:latest
     ports:
       - "80:80"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       api:
         condition: service_started
@@ -111,18 +108,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
-      WATCHTOWER_URL: http://watchtower:8080
-      WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN}
+      UPDATER_URL: http://updater:8080
+      UPDATER_TOKEN: ${UPDATER_TOKEN}
       LOG_LEVEL: INFO
     volumes:
       - storage_data:/backend/storage
       - model_cache:/backend/model_cache
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       db:
         condition: service_healthy
-      watchtower:
+      updater:
         condition: service_started
     restart: unless-stopped
 COMPOSE
@@ -156,13 +151,23 @@ COMPOSE
       retries: 5
     restart: unless-stopped
 
-  watchtower:
-    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
-    command: --http-api-update --label-enable --no-startup-message --interval 86400
+  updater:
+    image: docker:29.4.0-cli
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /www/cgi-bin
+        cp /scripts/update.cgi /www/cgi-bin/update
+        chmod +x /www/cgi-bin/update /scripts/run-update.sh
+        exec httpd -f -p 8080 -h /www
     environment:
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN}
+      UPDATER_TOKEN: ${UPDATER_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.yml:/work/docker-compose.yml:ro
+      - ./.env:/work/.env:ro
+      - ./updater:/scripts:ro
     restart: unless-stopped
 
 volumes:
@@ -176,26 +181,74 @@ COMPOSE
 write_env() {
     if [[ -f "$ENV_FILE" ]]; then
         info ".env already exists — keeping existing secrets (delete $ENV_FILE to regenerate)"
-        if ! grep -q "^WATCHTOWER_TOKEN=" "$ENV_FILE"; then
-            local watchtower_token
-            watchtower_token=$(generate_secret | head -c 32)
-            echo "WATCHTOWER_TOKEN=${watchtower_token}" >> "$ENV_FILE"
-            success "Added WATCHTOWER_TOKEN to existing $ENV_FILE"
+        if ! grep -q "^UPDATER_TOKEN=" "$ENV_FILE"; then
+            local updater_token
+            updater_token="$(grep '^WATCHTOWER_TOKEN=' "$ENV_FILE" | head -n 1 | cut -d= -f2-)"
+            [[ -n "$updater_token" ]] || updater_token=$(generate_secret | head -c 32)
+            echo "UPDATER_TOKEN=${updater_token}" >> "$ENV_FILE"
+            success "Added UPDATER_TOKEN to existing $ENV_FILE"
         fi
         return
     fi
-    local secret_key pg_password watchtower_token
+    local secret_key pg_password updater_token
     secret_key=$(generate_secret)
     pg_password=$(generate_secret | head -c 32)
-    watchtower_token=$(generate_secret | head -c 32)
+    updater_token=$(generate_secret | head -c 32)
     cat > "$ENV_FILE" << ENV
 SECRET_KEY=${secret_key}
 POSTGRES_PASSWORD=${pg_password}
-WATCHTOWER_TOKEN=${watchtower_token}
-WATCHTOWER_IMAGE=${WATCHTOWER_IMAGE}
+UPDATER_TOKEN=${updater_token}
 ENV
     chmod 600 "$ENV_FILE"
     success "Generated $ENV_FILE with random secrets"
+}
+
+write_updater_scripts() {
+    mkdir -p "$INSTALL_DIR/updater"
+    cat > "$INSTALL_DIR/updater/update.cgi" << 'SCRIPT'
+#!/bin/sh
+set -eu
+
+json_response() {
+    status="$1"
+    body="$2"
+    printf 'Status: %s\r\n' "$status"
+    printf 'Content-Type: application/json\r\n\r\n'
+    printf '%s\n' "$body"
+}
+
+if [ "${REQUEST_METHOD:-GET}" != "POST" ]; then
+    json_response "405 Method Not Allowed" '{"detail":"Method not allowed"}'
+    exit 0
+fi
+
+expected="Bearer ${UPDATER_TOKEN:-}"
+provided="${HTTP_AUTHORIZATION:-}"
+if [ -z "${UPDATER_TOKEN:-}" ] || [ "$provided" != "$expected" ]; then
+    json_response "401 Unauthorized" '{"detail":"Unauthorized"}'
+    exit 0
+fi
+
+nohup /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
+json_response "202 Accepted" '{"message":"Update initiated"}'
+SCRIPT
+
+    cat > "$INSTALL_DIR/updater/run-update.sh" << 'SCRIPT'
+#!/bin/sh
+set -eu
+
+lockdir=/tmp/zukan-updater.lock
+if ! mkdir "$lockdir" 2>/dev/null; then
+    exit 0
+fi
+trap 'rmdir "$lockdir"' EXIT
+
+docker compose -f /work/docker-compose.yml --env-file /work/.env pull api frontend
+docker compose -f /work/docker-compose.yml --env-file /work/.env up -d api frontend
+SCRIPT
+
+    chmod 755 "$INSTALL_DIR/updater/update.cgi" "$INSTALL_DIR/updater/run-update.sh"
+    success "Wrote updater scripts"
 }
 
 write_systemd_service() {
@@ -306,6 +359,7 @@ install_docker
 install_nvidia_toolkit
 write_compose
 write_env
+write_updater_scripts
 write_systemd_service
 pull_and_start
 verify_install

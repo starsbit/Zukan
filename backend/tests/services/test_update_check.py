@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from backend.app.services.update_check import _check_for_updates, trigger_watchtower_update
+from backend.app.services.update_check import _check_for_updates, trigger_app_update
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -164,14 +164,14 @@ async def test_check_creates_announcement_and_notifies_admins():
                         assert mock_db.add.called
 
 
-# ── trigger_watchtower_update ─────────────────────────────────────────────────
+# ── trigger_app_update ────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_trigger_watchtower_update_success():
+async def test_trigger_app_update_success():
     with patch("backend.app.services.update_check.settings") as mock_settings:
-        mock_settings.watchtower_url = "http://watchtower:8080"
-        mock_settings.watchtower_token = "secret"
+        mock_settings.updater_url = "http://updater:8080"
+        mock_settings.updater_token = "secret"
 
         mock_response = MagicMock()
         mock_response.raise_for_status = MagicMock()
@@ -181,20 +181,20 @@ async def test_trigger_watchtower_update_success():
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
         with patch("backend.app.services.update_check.httpx.AsyncClient", return_value=mock_client):
-            await trigger_watchtower_update()
+            await trigger_app_update()
 
         mock_client.post.assert_awaited_once_with(
-            "http://watchtower:8080/v1/update",
+            "http://updater:8080/update",
             headers={"Authorization": "Bearer secret"},
         )
         mock_response.raise_for_status.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_trigger_watchtower_update_raises_on_http_error():
+async def test_trigger_app_update_raises_on_http_error():
     with patch("backend.app.services.update_check.settings") as mock_settings:
-        mock_settings.watchtower_url = "http://watchtower:8080"
-        mock_settings.watchtower_token = "secret"
+        mock_settings.updater_url = "http://updater:8080"
+        mock_settings.updater_token = "secret"
 
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=httpx.HTTPError("connection refused"))
@@ -203,4 +203,4 @@ async def test_trigger_watchtower_update_raises_on_http_error():
 
         with patch("backend.app.services.update_check.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(httpx.HTTPError):
-                await trigger_watchtower_update()
+                await trigger_app_update()

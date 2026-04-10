@@ -32,7 +32,7 @@ from backend.app.schemas import (
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
-from backend.app.services.update_check import check_for_updates_now, trigger_watchtower_update
+from backend.app.services.update_check import check_for_updates_now, trigger_app_update
 from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
@@ -192,19 +192,19 @@ async def check_updates():
 )
 async def trigger_update():
     try:
-        await trigger_watchtower_update()
+        await trigger_app_update()
     except httpx.HTTPError as exc:
-        logger.exception("Failed to trigger watchtower update")
+        logger.exception("Failed to trigger updater service")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
-                "Could not reach the Watchtower updater. "
-                "Check that the watchtower service is running, reachable from the API container, "
-                "and compatible with your Docker daemon."
+                "Could not reach the updater service. "
+                "Check that the updater container is running, reachable from the API container, "
+                "and able to access Docker."
             ),
         ) from exc
     except Exception as exc:
-        logger.exception("Failed to trigger watchtower update")
+        logger.exception("Failed to trigger updater service")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to trigger the application update.",

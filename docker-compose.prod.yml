@@ -7,8 +7,6 @@ services:
     image: ghcr.io/starsbit/zukan-frontend:latest
     ports:
       - "80:80"
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       api:
         condition: service_started
@@ -19,18 +17,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
-      WATCHTOWER_URL: http://watchtower:8080
-      WATCHTOWER_TOKEN: ${WATCHTOWER_TOKEN}
+      UPDATER_URL: http://updater:8080
+      UPDATER_TOKEN: ${UPDATER_TOKEN}
       LOG_LEVEL: INFO
     volumes:
       - storage_data:/backend/storage
       - model_cache:/backend/model_cache
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
     depends_on:
       db:
         condition: service_healthy
-      watchtower:
+      updater:
         condition: service_started
     restart: unless-stopped
     deploy:
@@ -56,13 +52,23 @@ services:
       retries: 5
     restart: unless-stopped
 
-  watchtower:
-    image: ${WATCHTOWER_IMAGE:-containrrr/watchtower:1.7.1}
-    command: --http-api-update --label-enable --no-startup-message --interval 0
+  updater:
+    image: docker:29.4.0-cli
+    command:
+      - sh
+      - -c
+      - |
+        mkdir -p /www/cgi-bin
+        cp /scripts/update.cgi /www/cgi-bin/update
+        chmod +x /www/cgi-bin/update /scripts/run-update.sh
+        exec httpd -f -p 8080 -h /www
     environment:
-      WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN}
+      UPDATER_TOKEN: ${UPDATER_TOKEN}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./docker-compose.prod.yml:/work/docker-compose.yml:ro
+      - ./.env:/work/.env:ro
+      - ./updater:/scripts:ro
     restart: unless-stopped
 
 volumes:

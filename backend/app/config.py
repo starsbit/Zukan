@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CONFIG_FILE = Path(__file__).resolve()
@@ -76,8 +77,14 @@ class Settings(BaseSettings):
     app_version: str = "dev"
 
     update_poll_interval_seconds: int = 21600
-    watchtower_url: str = "http://watchtower:8080"
-    watchtower_token: str = ""
+    updater_url: str = Field(
+        default="http://updater:8080",
+        validation_alias=AliasChoices("UPDATER_URL", "WATCHTOWER_URL"),
+    )
+    updater_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("UPDATER_TOKEN", "WATCHTOWER_TOKEN"),
+    )
 
 
 settings = Settings()

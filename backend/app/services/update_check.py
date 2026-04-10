@@ -198,11 +198,11 @@ async def update_check_worker() -> None:
         await asyncio.sleep(settings.update_poll_interval_seconds)
 
 
-async def trigger_watchtower_update() -> None:
+async def trigger_app_update() -> None:
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.post(
-            f"{settings.watchtower_url}/v1/update",
-            headers={"Authorization": f"Bearer {settings.watchtower_token}"},
+            f"{settings.updater_url}/update",
+            headers={"Authorization": f"Bearer {settings.updater_token}"},
         )
         resp.raise_for_status()
-    logger.info("update_check: watchtower update triggered")
+    logger.info("update_check: updater service triggered")
