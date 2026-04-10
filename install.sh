@@ -159,8 +159,8 @@ COMPOSE
       - |
         mkdir -p /www/cgi-bin
         cp /scripts/update.cgi /www/cgi-bin/update
-        chmod +x /www/cgi-bin/update /scripts/run-update.sh
-        exec httpd -f -p 8080 -h /www
+        chmod 755 /www/cgi-bin/update
+        exec busybox httpd -f -p 8080 -h /www
     environment:
       UPDATER_TOKEN: ${UPDATER_TOKEN}
     volumes:
