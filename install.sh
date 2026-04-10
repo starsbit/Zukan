@@ -154,7 +154,7 @@ COMPOSE
 
   watchtower:
     image: containrrr/watchtower
-    command: --http-api-update --label-enable --no-startup-message --interval 0
+    command: --http-api-update --label-enable --no-startup-message --interval 86400
     environment:
       WATCHTOWER_HTTP_API_TOKEN: ${WATCHTOWER_TOKEN}
     volumes:

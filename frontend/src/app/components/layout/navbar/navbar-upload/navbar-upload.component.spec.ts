@@ -1,10 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpEventType, HttpResponse } from '@angular/common/http';
+import { HttpErrorResponse, HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MediaVisibility } from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
@@ -12,6 +12,15 @@ import { ConfigClientService } from '../../../../services/web/config-client.serv
 import { NavbarUploadComponent } from './navbar-upload.component';
 
 describe('NavbarUploadComponent', () => {
+  const originalCrypto = globalThis.crypto;
+
+  afterEach(() => {
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: originalCrypto,
+    });
+  });
+
   function toFileList(files: File[]): FileList {
     return {
       ...files,
@@ -110,6 +119,7 @@ describe('NavbarUploadComponent', () => {
       expect.objectContaining({
         visibility,
         captured_at_values: expect.any(Array),
+        idempotencyKey: expect.any(String),
       }),
     );
   }
@@ -129,6 +139,7 @@ describe('NavbarUploadComponent', () => {
         '2022-01-02T03:04:05.000Z',
         '2021-06-06T07:08:09.000Z',
       ],
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -329,6 +340,7 @@ describe('NavbarUploadComponent', () => {
     expect(upload).toHaveBeenCalledWith([file], {
       visibility: MediaVisibility.PUBLIC,
       captured_at_values: ['2025-07-08T09:10:11.000Z'],
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -342,6 +354,7 @@ describe('NavbarUploadComponent', () => {
     expect(upload).toHaveBeenCalledWith([file], {
       visibility: MediaVisibility.PRIVATE,
       captured_at_values: ['2025-07-08T09:10:11.000Z'],
+      idempotencyKey: expect.any(String),
     });
   });
 
@@ -352,7 +365,28 @@ describe('NavbarUploadComponent', () => {
 
     component.onFileSelection(toFileList([file]));
 
-    expect(upload).toHaveBeenCalledWith([file], { visibility: MediaVisibility.PRIVATE });
+    expect(upload).toHaveBeenCalledWith([file], {
+      visibility: MediaVisibility.PRIVATE,
+      idempotencyKey: expect.any(String),
+    });
+  });
+
+  it('falls back to a generated idempotency key when randomUUID is unavailable', async () => {
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: undefined,
+    });
+
+    const { component, upload } = await createComponent();
+    const file = new File(['a'], 'photo.jpg', { type: 'image/jpeg' });
+
+    component.onFileSelection(toFileList([file]));
+
+    expect(upload).toHaveBeenCalledWith([file], expect.objectContaining({
+      visibility: MediaVisibility.PRIVATE,
+      idempotencyKey: expect.stringMatching(/^fallback-/),
+    }));
+
   });
 
   it('registers successful batch uploads with the upload tracker', async () => {
@@ -410,7 +444,10 @@ describe('NavbarUploadComponent', () => {
   });
 
   it('registers failed upload requests with the upload tracker', async () => {
-    const upload = vi.fn().mockReturnValue(throwError(() => ({ error: { detail: 'boom' } })));
+    const upload = vi.fn().mockReturnValue(throwError(() => new HttpErrorResponse({
+      status: 400,
+      error: { detail: 'boom' },
+    })));
     const tracker = {
       registerPendingBatch: vi.fn().mockReturnValue('request-1'),
       markBatchUploading: vi.fn(),
