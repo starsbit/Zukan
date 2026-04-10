@@ -69,11 +69,11 @@ cleanup_failed_install() {
     warn "Install failed with exit code ${EXIT_CODE}."
     cleanup_temp_files
 
-    if [[ "${CONTAINER_CREATED}" == "1" ]] && pct status "${CTID}" &>/dev/null; then
+    if [[ "${CONTAINER_CREATED}" == "1" ]]; then
         warn "Install failed. Cleaning up container ${CTID} and partial Proxmox config..."
-        pct stop "${CTID}" &>/dev/null || true
-        pct destroy "${CTID}" --purge 1 &>/dev/null || true
-        if pct status "${CTID}" &>/dev/null; then
+        pct stop "${CTID}" >/dev/null 2>&1 || true
+        pct destroy "${CTID}" --purge 1 >/dev/null 2>&1 || true
+        if pct status "${CTID}" >/dev/null 2>&1; then
             warn "Automatic cleanup could not fully remove container ${CTID}. Remove it manually with: pct destroy ${CTID} --purge 1"
         else
             ok "Cleaned up failed container ${CTID}"
@@ -160,7 +160,7 @@ require_command openssl
 require_command lspci
 
 if [[ -z "${CTID}" ]]; then
-    CTID="$(pvesh get /cluster/nextid 2>/dev/null)" || die "Unable to determine the next free Proxmox container ID."
+    CTID="$(pvesh get /cluster/nextid 2>/dev/null | tr -d '[:space:]')" || die "Unable to determine the next free Proxmox container ID."
     [[ -n "${CTID}" ]] || die "Proxmox did not return a next free container ID."
     info "Selected next available container ID: ${CTID}"
 elif pct status "${CTID}" &>/dev/null; then
