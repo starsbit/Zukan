@@ -40,6 +40,7 @@ import {
 } from '../album/album-picker-dialog/album-picker-dialog.component';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
+import { MediaService } from '../../services/media.service';
 
 interface JustifiedRowItem {
   media: MediaRead | null;
@@ -123,6 +124,7 @@ export class MediaBrowserComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly mediaService = inject(MediaService);
   private inspectorRef: MatDialogRef<MediaInspectorDialogComponent> | null = null;
 
   @ViewChildren('monthSection', { read: ElementRef })
@@ -470,6 +472,25 @@ export class MediaBrowserComponent {
               { duration: 4000 },
             );
           });
+      });
+  }
+
+  downloadSelection(): void {
+    const ids = this.selectedIds();
+    if (ids.length === 0) {
+      return;
+    }
+
+    this.mediaService
+      .download(ids)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'media.zip';
+        a.click();
+        URL.revokeObjectURL(url);
       });
   }
 
