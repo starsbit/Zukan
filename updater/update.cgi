@@ -4,7 +4,7 @@ set -eu
 json_response() {
     status="$1"
     body="$2"
-    printf 'Status: %s\r\n' "$status"
+    printf 'HTTP/1.1 %s\r\n' "$status"
     printf 'Content-Type: application/json\r\n\r\n'
     printf '%s\n' "$body"
 }
@@ -21,5 +21,6 @@ if [ -z "${UPDATER_TOKEN:-}" ] || [ "$provided" != "$expected" ]; then
     exit 0
 fi
 
-nohup sh /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
+run_update_script="${RUN_UPDATE_SCRIPT:-/scripts/run-update.sh}"
+nohup sh "$run_update_script" >/tmp/zukan-updater.log 2>&1 &
 json_response "202 Accepted" '{"message":"Update initiated"}'

@@ -162,6 +162,7 @@ COMPOSE
         exec nc -lk -p 8080 -e /tmp/serve-update.sh
     environment:
       UPDATER_TOKEN: ${UPDATER_TOKEN}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.yml:/work/docker-compose.yml:ro
@@ -211,7 +212,7 @@ set -eu
 json_response() {
     status="$1"
     body="$2"
-    printf 'Status: %s\r\n' "$status"
+    printf 'HTTP/1.1 %s\r\n' "$status"
     printf 'Content-Type: application/json\r\n\r\n'
     printf '%s\n' "$body"
 }
@@ -228,7 +229,8 @@ if [ -z "${UPDATER_TOKEN:-}" ] || [ "$provided" != "$expected" ]; then
     exit 0
 fi
 
-nohup sh /scripts/run-update.sh >/tmp/zukan-updater.log 2>&1 &
+run_update_script="${RUN_UPDATE_SCRIPT:-/scripts/run-update.sh}"
+nohup sh "$run_update_script" >/tmp/zukan-updater.log 2>&1 &
 json_response "202 Accepted" '{"message":"Update initiated"}'
 SCRIPT
 
@@ -255,18 +257,38 @@ export REQUEST_METHOD HTTP_AUTHORIZATION
 exec /bin/sh /scripts/update.cgi
 SCRIPT
 
-    cat > "$INSTALL_DIR/updater/run-update.sh" << 'SCRIPT'
+cat > "$INSTALL_DIR/updater/run-update.sh" << 'SCRIPT'
 #!/bin/sh
 set -eu
 
 lockdir=/tmp/zukan-updater.lock
-if ! mkdir "$lockdir" 2>/dev/null; then
-    exit 0
-fi
-trap 'rmdir "$lockdir"' EXIT
+pidfile="$lockdir/pid"
 
-docker compose -f /work/docker-compose.yml --env-file /work/.env pull api frontend
-docker compose -f /work/docker-compose.yml --env-file /work/.env up -d api frontend
+cleanup() {
+    rm -f "$pidfile"
+    rmdir "$lockdir"
+}
+
+if ! mkdir "$lockdir" 2>/dev/null; then
+    if [ -f "$pidfile" ]; then
+        stale_pid=$(cat "$pidfile" 2>/dev/null || true)
+        if [ -n "$stale_pid" ] && kill -0 "$stale_pid" 2>/dev/null; then
+            exit 0
+        fi
+    fi
+
+    rm -f "$pidfile"
+    rmdir "$lockdir" 2>/dev/null || exit 0
+    mkdir "$lockdir"
+fi
+
+printf '%s\n' "$$" > "$pidfile"
+trap cleanup EXIT INT TERM
+
+project_name="${COMPOSE_PROJECT_NAME:-zukan}"
+
+docker compose -p "$project_name" -f /work/docker-compose.yml --env-file /work/.env pull api frontend
+docker compose -p "$project_name" -f /work/docker-compose.yml --env-file /work/.env up -d --no-deps --force-recreate api frontend
 SCRIPT
 
     chmod 755 "$INSTALL_DIR/updater/update.cgi" "$INSTALL_DIR/updater/serve-update.sh" "$INSTALL_DIR/updater/run-update.sh"

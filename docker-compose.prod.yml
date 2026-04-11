@@ -63,6 +63,7 @@ services:
         exec nc -lk -p 8080 -e /tmp/serve-update.sh
     environment:
       UPDATER_TOKEN: ${UPDATER_TOKEN}
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./docker-compose.prod.yml:/work/docker-compose.yml:ro
