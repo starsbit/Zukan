@@ -1,12 +1,14 @@
 :host {
   display: block;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .layout-shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .layout-container {
@@ -21,6 +23,16 @@
   min-height: 100%;
   padding: 24px;
   box-sizing: border-box;
+}
+
+@media (max-width: 1023px) {
+  .layout-sidebar {
+    max-width: min(82vw, 320px);
+  }
+
+  .layout-content {
+    padding: 18px;
+  }
 }
 
 @media (max-width: 599px) {

@@ -20,7 +20,11 @@
   overflow: hidden;
 }
 
-@media (max-width: 899px) {
+.navbar-menu-toggle {
+  display: none;
+}
+
+@media (max-width: 1023px) {
   :host {
     --zukan-shell-content-padding: 16px;
     --zukan-navbar-inline-padding: 12px;
@@ -28,24 +32,19 @@
 
   .navbar-shell {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    column-gap: 12px;
-    padding-inline: 0 var(--zukan-navbar-inline-padding);
-  }
-}
-
-@media (max-width: 599px) {
-  :host {
-    --zukan-navbar-inline-padding: 10px;
-  }
-
-  .navbar-shell {
-    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "brand actions"
-      "search search";
+      "toggle brand actions"
+      "search search search";
+    column-gap: 12px;
     row-gap: 10px;
     align-items: start;
-    padding-block: 10px;
+    padding: 10px var(--zukan-navbar-inline-padding);
+  }
+
+  .navbar-menu-toggle {
+    display: inline-flex;
+    grid-area: toggle;
+    align-self: start;
   }
 
   .navbar-shell > zukan-navbar-brand {
@@ -60,5 +59,15 @@
   .navbar-shell > zukan-navbar-actions {
     grid-area: actions;
     justify-self: end;
+  }
+}
+
+@media (max-width: 599px) {
+  :host {
+    --zukan-navbar-inline-padding: 10px;
+  }
+
+  .navbar-shell {
+    padding-inline: var(--zukan-navbar-inline-padding);
   }
 }

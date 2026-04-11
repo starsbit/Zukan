@@ -1,5 +1,5 @@
 import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
-import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
@@ -9,7 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EMPTY, catchError, map, switchMap, tap } from 'rxjs';
+import { EMPTY, catchError, combineLatest, distinctUntilChanged, filter, forkJoin, map, of, switchMap, tap } from 'rxjs';
 import { AlbumAccessRole } from '../../models/albums';
 import { MediaListState, MediaRead } from '../../models/media';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
@@ -92,34 +92,45 @@ export class AlbumDetailComponent {
 
   private headerPreviewRequestId = 0;
 
+  private static hasLoadContext(
+    value: [boolean, string | null, ReturnType<NavbarSearchService['appliedParams']>],
+  ): value is [true, string, ReturnType<NavbarSearchService['appliedParams']>] {
+    return value[0] && typeof value[1] === 'string' && value[1].length > 0;
+  }
+
   constructor() {
-    effect(() => {
-      if (!this.authStore.isAuthenticated()) {
-        return;
-      }
+    combineLatest([
+      toObservable(this.authStore.isAuthenticated),
+      toObservable(this.albumId),
+      toObservable(this.searchService.appliedParams).pipe(
+        map((params) => ({ params, key: JSON.stringify(params) })),
+        distinctUntilChanged((left, right) => left.key === right.key),
+        map(({ params }) => params),
+      ),
+    ]).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      filter(AlbumDetailComponent.hasLoadContext),
+      switchMap(([, albumId, appliedParams]) => {
+        const params = {
+          ...appliedParams,
+          album_id: albumId,
+          state: MediaListState.ACTIVE,
+        };
 
-      const albumId = this.albumId();
-      if (!albumId) {
-        return;
-      }
+        this.galleryStore.setParams(params);
 
-      this.albumStore.get(albumId).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError(() => {
-          void this.router.navigate(['/album']);
-          return EMPTY;
-        }),
-      ).subscribe();
-
-      const params = {
-        ...this.searchService.appliedParams(),
-        album_id: albumId,
-        state: MediaListState.ACTIVE,
-      };
-      this.galleryStore.setParams(params);
-      this.galleryStore.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-      this.galleryStore.loadTimeline().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    });
+        return forkJoin({
+          album: this.albumStore.get(albumId).pipe(
+            catchError(() => {
+              void this.router.navigate(['/album']);
+              return of(null);
+            }),
+          ),
+          page: this.galleryStore.load(),
+          timeline: this.galleryStore.loadTimeline(),
+        });
+      }),
+    ).subscribe();
 
     effect(() => {
       if (this.galleryStore.hasMore() && !this.galleryStore.loading()) {

@@ -1,4 +1,15 @@
 <mat-toolbar class="navbar-shell">
+  @if (showMenuToggle()) {
+    <button
+      mat-icon-button
+      type="button"
+      class="navbar-menu-toggle"
+      aria-label="Open navigation menu"
+      (click)="onMenuToggle()"
+    >
+      <mat-icon>menu</mat-icon>
+    </button>
+  }
   <zukan-navbar-brand></zukan-navbar-brand>
   <zukan-navbar-search class="navbar-search"></zukan-navbar-search>
   <zukan-navbar-actions></zukan-navbar-actions>

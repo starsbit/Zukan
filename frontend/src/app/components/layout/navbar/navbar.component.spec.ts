@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { describe, expect, it } from 'vitest';
 import { LOCAL_STORAGE, SESSION_STORAGE } from '../../../services/web/auth.store';
 import { ThemeService } from '../../../services/theme.service';
 import { NavbarComponent } from './navbar.component';
@@ -32,5 +33,24 @@ describe('NavbarComponent', () => {
     expect(element.querySelector('zukan-navbar-brand')).not.toBeNull();
     expect(element.querySelector('zukan-navbar-search')).not.toBeNull();
     expect(element.querySelector('zukan-navbar-actions')).not.toBeNull();
+  });
+
+  it('shows a menu toggle button when enabled', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavbarComponent],
+      providers: [
+        provideRouter([]),
+        { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },
+        { provide: LOCAL_STORAGE, useValue: storageMock },
+        { provide: SESSION_STORAGE, useValue: storageMock },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(NavbarComponent);
+    fixture.componentRef.setInput('showMenuToggle', true);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.navbar-menu-toggle')).not.toBeNull();
   });
 });

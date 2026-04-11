@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
+import { describe, expect, it } from 'vitest';
 import { AdminDashboardPageComponent } from './admin-dashboard-page.component';
 import { AdminService } from '../../services/admin.service';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
@@ -19,7 +20,7 @@ const storageStub: Storage = {
 };
 
 describe('AdminDashboardPageComponent', () => {
-  it('renders dashboard data and exposes user actions', async () => {
+  async function configureDashboardTestingModule() {
     await TestBed.configureTestingModule({
       imports: [AdminDashboardPageComponent, NoopAnimationsModule],
       providers: [
@@ -124,6 +125,10 @@ describe('AdminDashboardPageComponent', () => {
         },
       ],
     }).compileComponents();
+  }
+
+  it('renders dashboard data and exposes user actions', async () => {
+    await configureDashboardTestingModule();
 
     const fixture = TestBed.createComponent(AdminDashboardPageComponent);
     fixture.detectChanges();
@@ -133,5 +138,35 @@ describe('AdminDashboardPageComponent', () => {
     expect(text).toContain('Maintenance');
     expect(text).toContain('alice@example.com');
     expect(text).toContain('Delete Media');
+  });
+
+  it('renders the responsive grid hooks used by the narrow-screen layout', async () => {
+    await configureDashboardTestingModule();
+
+    const fixture = TestBed.createComponent(AdminDashboardPageComponent);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('.content-grid')).not.toBeNull();
+    expect(element.querySelector('.chart-grid')).not.toBeNull();
+    expect(element.querySelector('.announcement-form')).not.toBeNull();
+  });
+
+  it('keeps a single-column mobile breakpoint for the admin grids', async () => {
+    await configureDashboardTestingModule();
+
+    const fixture = TestBed.createComponent(AdminDashboardPageComponent);
+    fixture.detectChanges();
+
+    const styles = Array.from(document.querySelectorAll('style'))
+      .map((node) => node.textContent ?? '')
+      .join('\n');
+
+    expect(styles).toContain('@media (max-width: 1023px)');
+    expect(styles).toContain('.content-grid');
+    expect(styles).toContain('.chart-grid');
+    expect(styles).toContain('.announcement-form');
+    expect(styles).toMatch(/@media \(max-width: 1023px\)[\s\S]*grid-template-columns:\s*1fr;/);
+    expect(styles).toContain('grid-template-columns: 1fr;');
   });
 });

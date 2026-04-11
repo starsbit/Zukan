@@ -77,6 +77,12 @@ h1 {
   gap: 1rem;
 }
 
+.content-grid > *,
+.chart-grid > *,
+.announcement-form > * {
+  min-width: 0;
+}
+
 .panel-wide {
   grid-column: 1 / -1;
 }
@@ -84,6 +90,8 @@ h1 {
 .panel,
 .kpi-card,
 .status-card {
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 52%, transparent);
   box-shadow: 0 12px 32px color-mix(in srgb, black 12%, transparent);
   background: color-mix(in srgb, var(--mat-sys-surface-container-low) 94%, transparent);
@@ -131,6 +139,7 @@ h1 {
 }
 
 .health-summary article {
+  min-width: 0;
   padding: 0.9rem 1rem;
   border-radius: 1rem;
   background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
@@ -174,11 +183,17 @@ h1 {
 }
 
 .table-shell {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .admin-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
 }
 
 .primary-cell {
@@ -303,10 +318,66 @@ h1 {
   background: transparent;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1023px) {
   .content-grid,
   .chart-grid,
   .announcement-form {
     grid-template-columns: 1fr;
+  }
+
+  .toolbar-row,
+  .announcement-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .card-header-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .card-header-actions > * {
+    min-width: 0;
+  }
+
+  .card-header-actions > button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .update-status {
+    width: 100%;
+  }
+
+  .chart-grid > div,
+  .health-summary,
+  .update-check-message {
+    min-width: 0;
+  }
+
+  .panel-wide mat-card-content,
+  .table-shell {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .admin-table th,
+  .admin-table td {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 767px) {
+  .admin-shell {
+    padding: 0.9rem;
+  }
+
+  .health-summary {
+    grid-template-columns: 1fr;
+  }
+
+  :host ::ng-deep .mat-mdc-card-header,
+  :host ::ng-deep .mat-mdc-card-content {
+    min-width: 0;
   }
 }

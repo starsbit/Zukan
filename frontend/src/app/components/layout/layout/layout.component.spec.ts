@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
+import { MatSidenav } from '@angular/material/sidenav';
 import { provideRouter } from '@angular/router';
+import { By } from '@angular/platform-browser';
+import { BehaviorSubject } from 'rxjs';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { LayoutComponent } from './layout.component';
 import { ThemeService } from '../../../services/theme.service';
 import { UploadTrackerService } from '../../../services/upload-tracker.service';
@@ -11,6 +16,8 @@ const mockThemeService = {
 };
 
 describe('LayoutComponent', () => {
+  let breakpointState$: BehaviorSubject<BreakpointState>;
+
   function storageStub(): Storage {
     return {
       length: 0,
@@ -43,17 +50,29 @@ describe('LayoutComponent', () => {
     };
   }
 
-  it('renders the navbar and sidebar shell', async () => {
+  beforeEach(() => {
+    breakpointState$ = new BehaviorSubject<BreakpointState>({
+      matches: false,
+      breakpoints: { '(max-width: 1023px)': false },
+    });
+  });
+
+  async function configureLayoutTestingModule() {
     await TestBed.configureTestingModule({
       imports: [LayoutComponent],
       providers: [
         provideRouter([]),
+        { provide: BreakpointObserver, useValue: { observe: () => breakpointState$.asObservable() } },
         { provide: ThemeService, useValue: mockThemeService },
         { provide: UploadTrackerService, useValue: uploadTrackerStub() },
         { provide: LOCAL_STORAGE, useValue: storageStub() },
         { provide: SESSION_STORAGE, useValue: storageStub() },
       ],
     }).compileComponents();
+  }
+
+  it('renders the navbar and sidebar shell', async () => {
+    await configureLayoutTestingModule();
 
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
@@ -63,5 +82,65 @@ describe('LayoutComponent', () => {
     expect(element.querySelector('zukan-sidebar')).not.toBeNull();
     expect(element.querySelector('zukan-navbar-brand')).not.toBeNull();
     expect(element.querySelector('zukan-upload-status-island')).not.toBeNull();
+  });
+
+  it('starts with the sidebar closed on mobile viewports', async () => {
+    breakpointState$.next({
+      matches: true,
+      breakpoints: { '(max-width: 1023px)': true },
+    });
+    await configureLayoutTestingModule();
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.sidenavOpened()).toBe(false);
+  });
+
+  it('starts with the sidebar open on desktop viewports', async () => {
+    await configureLayoutTestingModule();
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.sidenavOpened()).toBe(true);
+  });
+
+  it('toggleSidenav opens the sidebar when it is closed', async () => {
+    breakpointState$.next({
+      matches: true,
+      breakpoints: { '(max-width: 1023px)': true },
+    });
+    await configureLayoutTestingModule();
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.toggleSidenav();
+
+    expect(fixture.componentInstance.sidenavOpened()).toBe(true);
+  });
+
+  it('uses overlay mode on mobile so the sidebar does not compress content', async () => {
+    breakpointState$.next({
+      matches: true,
+      breakpoints: { '(max-width: 1023px)': true },
+    });
+    await configureLayoutTestingModule();
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    let sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+    expect(sidenav.mode).toBe('over');
+
+    breakpointState$.next({
+      matches: false,
+      breakpoints: { '(max-width: 1023px)': false },
+    });
+    fixture.detectChanges();
+
+    sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
+    expect(sidenav.mode).toBe('side');
   });
 });

@@ -59,6 +59,11 @@
   line-height: 1.1;
 }
 
+.album-detail__author {
+  color: var(--mat-sys-on-surface-variant);
+  font-weight: 600;
+}
+
 .album-detail__copy p {
   margin: 0;
   max-width: 72ch;

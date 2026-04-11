@@ -419,6 +419,27 @@ describe('MediaBrowserComponent', () => {
     );
   });
 
+  it('treats tablet-sized content widths as compact to avoid oversized mobile rows', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', [
+      {
+        date: '2026-03-28',
+        label: 'March 28, 2026',
+        items: [makeMedia('m1', 1600, 900), makeMedia('m2', 700, 1000), makeMedia('m3', 1300, 900)],
+      },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', []);
+    fixture.componentInstance.contentWidth.set(900);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.isCompactLayout()).toBe(true);
+    expect(fixture.componentInstance.justifiedMonthGroups()[0]?.days[0]?.rows[0]?.height).toBeLessThanOrEqual(
+      260,
+    );
+  });
+
   it('enters selection mode when a media card is selected', async () => {
     await configureBrowserTestingModule();
 
@@ -669,6 +690,38 @@ describe('MediaBrowserComponent', () => {
   });
 
   describe('inspect query param routing', () => {
+    it('does not open the inspector when the inspect param is present but dayGroups has not loaded yet', async () => {
+      const querySubject = new BehaviorSubject(makeParamMap('m1'));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+    });
+
+    it('opens the inspector once dayGroups arrives after page load with inspect param', async () => {
+      const querySubject = new BehaviorSubject(makeParamMap('m1'));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledWith(
+        MediaInspectorDialogComponent,
+        expect.objectContaining({
+          data: expect.objectContaining({ activeMediaId: 'm1' }),
+        }),
+      );
+    });
+
     it('opens the inspector dialog when the inspect query param is set', async () => {
       const querySubject = new BehaviorSubject(makeParamMap(null));
       await configureBrowserTestingModuleWithRoute(querySubject);

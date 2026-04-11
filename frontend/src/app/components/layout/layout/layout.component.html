@@ -1,8 +1,8 @@
 <div class="layout-shell">
-  <zukan-navbar></zukan-navbar>
+  <zukan-navbar [showMenuToggle]="isMobile()" (menuToggle)="toggleSidenav()"></zukan-navbar>
 
   <mat-sidenav-container class="layout-container">
-    <mat-sidenav mode="side" opened class="layout-sidebar">
+    <mat-sidenav [mode]="isMobile() ? 'over' : 'side'" [opened]="sidenavOpened()" class="layout-sidebar">
       <zukan-sidebar></zukan-sidebar>
     </mat-sidenav>
 

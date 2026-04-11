@@ -9,6 +9,7 @@
   gap: 24px;
   align-items: stretch;
   height: calc(100vh - var(--zukan-media-browser-viewport-offset));
+  height: calc(100dvh - var(--zukan-media-browser-viewport-offset));
   min-height: 0;
 }
 
@@ -244,29 +245,13 @@
   }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1023px) {
   :host {
-    --zukan-media-browser-viewport-offset: 96px;
+    --zukan-media-browser-viewport-offset: 124px;
   }
 
-  .media-browser {
-    gap: 14px;
-  }
-
-  .media-browser__month + .media-browser__month {
-    margin-top: 32px;
-  }
-
-  .media-browser__day + .media-browser__day {
-    margin-top: 22px;
-  }
-
-  .media-browser__row {
-    gap: 12px;
-  }
-
-  .media-browser__row + .media-browser__row {
-    margin-top: 12px;
+  .media-browser__content {
+    padding-right: 0;
   }
 
   .media-browser__day-header {
@@ -292,6 +277,33 @@
   .media-browser__day-header span {
     font-size: 0.82rem;
   }
+}
+
+@media (max-width: 767px) {
+  :host {
+    --zukan-media-browser-viewport-offset: 96px;
+  }
+
+  .media-browser {
+    gap: 14px;
+  }
+
+  .media-browser__month + .media-browser__month {
+    margin-top: 32px;
+  }
+
+  .media-browser__day + .media-browser__day {
+    margin-top: 22px;
+  }
+
+  .media-browser__row {
+    gap: 12px;
+  }
+
+  .media-browser__row + .media-browser__row {
+    margin-top: 12px;
+  }
+
 }
 
 @media (max-width: 479px) {

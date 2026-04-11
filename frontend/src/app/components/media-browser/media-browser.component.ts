@@ -140,7 +140,7 @@ export class MediaBrowserComponent {
   readonly maxScrollTop = signal(0);
   readonly hoveredDay = signal<string | null>(null);
   readonly selectedIds = signal<string[]>([]);
-  readonly isCompactLayout = computed(() => this.contentWidth() < 768);
+  readonly isCompactLayout = computed(() => this.contentWidth() < 1024);
   readonly isEmpty = computed(
     () => !this.loading() && this.dayGroups().length === 0 && this.timeline().length === 0,
   );
@@ -162,6 +162,7 @@ export class MediaBrowserComponent {
   private metricsFrameId: number | null = null;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
+  private pendingInspectId: string | null = null;
 
   private static readonly MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
@@ -180,6 +181,7 @@ export class MediaBrowserComponent {
 
       this.reconcileSelection();
       this.tryResolvePendingJump();
+      this.tryOpenPendingInspector();
       this.scheduleLayoutSync();
     });
 
@@ -190,6 +192,7 @@ export class MediaBrowserComponent {
         if (inspectId) {
           this.openInspectorForId(inspectId);
         } else {
+          this.pendingInspectId = null;
           this.inspectorRef?.close();
           this.inspectorRef = null;
         }
@@ -244,6 +247,12 @@ export class MediaBrowserComponent {
       return;
     }
     const items = this.dayGroups().flatMap((group) => group.items);
+    if (items.length === 0) {
+      this.pendingInspectId = id;
+      return;
+    }
+
+    this.pendingInspectId = null;
     this.inspectorRef = this.dialog.open(MediaInspectorDialogComponent, {
       data: { items, activeMediaId: id },
       width: '100vw',
@@ -261,6 +270,19 @@ export class MediaBrowserComponent {
         queryParamsHandling: 'merge',
       });
     });
+  }
+
+  private tryOpenPendingInspector(): void {
+    if (!this.pendingInspectId || this.inspectorRef) {
+      return;
+    }
+
+    const items = this.dayGroups().flatMap((group) => group.items);
+    if (items.length === 0) {
+      return;
+    }
+
+    this.openInspectorForId(this.pendingInspectId);
   }
 
   onFavoriteToggled(media: MediaRead): void {
@@ -893,8 +915,8 @@ export class MediaBrowserComponent {
   ): JustifiedRow[] {
     const rows: JustifiedRow[] = [];
     let remaining = count;
-    const minH = contentWidth < 768 ? MIN_ROW_HEIGHT_COMPACT : MIN_ROW_HEIGHT;
-    const maxH = contentWidth < 768 ? MAX_ROW_HEIGHT_COMPACT : MAX_ROW_HEIGHT;
+    const minH = contentWidth < 1024 ? MIN_ROW_HEIGHT_COMPACT : MIN_ROW_HEIGHT;
+    const maxH = contentWidth < 1024 ? MAX_ROW_HEIGHT_COMPACT : MAX_ROW_HEIGHT;
 
     while (remaining > 0) {
       const itemsPerRow = Math.max(
@@ -940,8 +962,8 @@ export class MediaBrowserComponent {
     const rows: JustifiedRow[] = [];
     let rowItems: MediaRead[] = [];
     let aspectSum = 0;
-    const minRowHeight = contentWidth < 768 ? MIN_ROW_HEIGHT_COMPACT : MIN_ROW_HEIGHT;
-    const maxRowHeight = contentWidth < 768 ? MAX_ROW_HEIGHT_COMPACT : MAX_ROW_HEIGHT;
+    const minRowHeight = contentWidth < 1024 ? MIN_ROW_HEIGHT_COMPACT : MIN_ROW_HEIGHT;
+    const maxRowHeight = contentWidth < 1024 ? MAX_ROW_HEIGHT_COMPACT : MAX_ROW_HEIGHT;
 
     const pushRow = (justify: boolean): void => {
       if (rowItems.length === 0) {
@@ -1008,7 +1030,7 @@ export class MediaBrowserComponent {
   }
 
   private gridGap(contentWidth: number): number {
-    return contentWidth < 768 ? MOBILE_GRID_GAP : DESKTOP_GRID_GAP;
+    return contentWidth < 1024 ? MOBILE_GRID_GAP : DESKTOP_GRID_GAP;
   }
 
   private aspectRatioFor(media: MediaRead): number {

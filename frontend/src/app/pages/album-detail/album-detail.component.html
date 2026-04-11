@@ -16,9 +16,9 @@
         <div class="album-detail__copy">
           <div class="album-detail__meta">
             <mat-chip>{{ accessLabel() }}</mat-chip>
-            <span>by {{ ownerName() }}</span>
           </div>
           <h1>{{ album.name }}</h1>
+          <div class="album-detail__author">by {{ ownerName() }}</div>
           <p>{{ album.description || 'No description yet.' }}</p>
         </div>
 

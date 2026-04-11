@@ -1,9 +1,9 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { BehaviorSubject, of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlbumAccessRole, AlbumShareRole } from '../../models/albums';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
@@ -132,6 +132,102 @@ describe('AlbumDetailComponent', () => {
     });
     expect(albumStore.get).toHaveBeenCalledWith('album-1');
     expect(mediaService.getThumbnailUrl).toHaveBeenCalledWith('album-1-preview');
+  });
+
+  it('does not repeatedly reload an empty album result', async () => {
+    const dialog = {
+      open: vi.fn(() => ({ afterClosed: () => of(undefined) })),
+    };
+    const routeParamMap = new BehaviorSubject(convertToParamMap({ albumId: 'album-empty' }));
+    const paramsState = signal<Record<string, unknown>>({});
+    const groupedByDay = signal([]);
+    const timeline = signal([]);
+    const loading = signal(false);
+    const hasMore = signal(false);
+    const galleryStore = {
+      setParams: vi.fn((params: Record<string, unknown>) => {
+        paramsState.set(params);
+      }),
+      load: vi.fn(() => {
+        paramsState();
+        loading.set(true);
+        return of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 }).pipe();
+      }),
+      loadTimeline: vi.fn(() => {
+        paramsState();
+        loading.set(false);
+        return of({ buckets: [] });
+      }),
+      loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      clearOptimisticItems: vi.fn(),
+      groupedByDay: () => groupedByDay(),
+      timeline: () => timeline(),
+      loading: () => loading(),
+      hasMore: () => hasMore(),
+    };
+    const albumStore = {
+      selectedAlbum: () => ({
+        id: 'album-empty',
+        owner_id: 'u1',
+        owner: { id: 'u1', username: 'owner' },
+        access_role: AlbumAccessRole.VIEWER,
+        name: 'Empty album',
+        description: null,
+        cover_media_id: null,
+        preview_media: [],
+        media_count: 0,
+        version: 1,
+        created_at: '2026-03-20T00:00:00Z',
+        updated_at: '2026-03-21T00:00:00Z',
+      }),
+      selectedAlbumLoading: () => false,
+      get: vi.fn(() => of({})),
+      share: vi.fn(() => of({})),
+      update: vi.fn(() => of({})),
+      delete: vi.fn(() => of(void 0)),
+    };
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      upload: vi.fn(),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [AlbumDetailComponent],
+      providers: [
+        provideRouter([]),
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { paramMap: convertToParamMap({ albumId: 'album-empty' }) },
+            paramMap: routeParamMap,
+            queryParamMap: of(convertToParamMap({})),
+          },
+        },
+        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+        { provide: MatDialog, useValue: dialog },
+        { provide: AlbumStore, useValue: albumStore },
+        { provide: GalleryStore, useValue: galleryStore },
+        { provide: MediaService, useValue: mediaService },
+        { provide: MatSnackBar, useValue: { open: vi.fn() } },
+        { provide: NavbarSearchService, useValue: { appliedParams: () => ({}) } },
+        { provide: ConfirmDialogService, useValue: { open: vi.fn(() => of(true)) } },
+        { provide: UserStore, useValue: { isAdmin: () => false } },
+      ],
+    })
+      .overrideComponent(AlbumDetailComponent, {
+        remove: { imports: [LayoutComponent] },
+        add: { imports: [TestLayoutComponent] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(AlbumDetailComponent);
+    fixture.detectChanges();
+    routeParamMap.next(convertToParamMap({ albumId: 'album-empty' }));
+    await fixture.whenStable();
+
+    expect(galleryStore.load).toHaveBeenCalledTimes(1);
+    expect(galleryStore.loadTimeline).toHaveBeenCalledTimes(1);
+    expect(galleryStore.loadMore).not.toHaveBeenCalled();
   });
 
   it('offers an invite action to album owners and sends the share request', async () => {
