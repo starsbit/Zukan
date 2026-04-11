@@ -72,7 +72,7 @@
     } @else if (displayUrl(); as url) {
       <img class="media-card__image" [src]="url" [alt]="media().original_filename ?? media().filename">
     } @else {
-      <div class="media-card__placeholder" [class.media-card__placeholder--loading]="loading()">
+      <div class="media-card__placeholder" [class.media-card__placeholder--loading]="loading() || isProcessing()">
         @if (loading() || isProcessing()) {
           <span class="media-card__placeholder-spinner" aria-hidden="true"></span>
         }

@@ -304,6 +304,7 @@ describe('MediaCardComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.nativeElement.querySelector('.media-card__placeholder-spinner')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.media-card__placeholder--loading')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
   });
 
