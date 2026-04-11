@@ -1,97 +1,141 @@
-<mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
-  <mat-icon matPrefix class="search-prefix-icon">search</mat-icon>
-
-  <div class="search-token-row">
-    @for (chip of chips(); track chip.type + ':' + chip.value) {
-      <button
-        type="button"
-        class="search-chip"
-        [class.search-chip-character]="chip.type === 'character'"
-        [class.search-chip-series]="chip.type === 'series'"
-        [class.search-chip-ocr]="chip.type === 'ocr'"
-        [attr.aria-label]="'Remove ' + chipLabel(chip)"
-        (click)="onRemoveChip(chip)"
-      >
-        <mat-icon class="search-chip-kind-icon">{{ chipIcon(chip) }}</mat-icon>
-        <span class="search-chip-label">{{ chipLabel(chip) }}</span>
-        <mat-icon class="search-chip-remove-icon">close</mat-icon>
-      </button>
-    }
-
-    <input
-      #searchInput
-      matInput
-      class="search-input"
-      [formControl]="query"
-      [matAutocomplete]="autocomplete"
-      [placeholder]="disabled() ? 'Search available after sign in' : (chips().length > 0 ? 'Add more tags, characters, series, or OCR text' : 'Search by tags, character, series, or OCR text')"
-      aria-label="Search your photos"
-      (keydown.backspace)="onBackspace()"
-      (keydown.enter)="onEnter($event)"
-      (keydown.escape)="onEscape($event)"
-    />
-  </div>
-
+@if (shouldShowMobileSummary()) {
   <button
-    mat-icon-button
-    matSuffix
     type="button"
-    aria-label="Open filters"
-    class="search-filter-button"
-    [class.search-filter-button-active]="activeAdvancedFilterCount() > 0"
-    (click)="openFilters()"
+    class="search-mobile-trigger"
+    aria-label="Open search"
+    (click)="openMobileSearch()"
   >
-    <mat-icon>tune</mat-icon>
+    <span class="search-mobile-trigger__icon">
+      <mat-icon>search</mat-icon>
+    </span>
+    <span class="search-mobile-trigger__copy">
+      <span class="search-mobile-trigger__label">{{ mobileSummaryLabel() }}</span>
+      <span class="search-mobile-trigger__hint">
+        @if (activeAdvancedFilterCount() > 0) {
+          {{ activeAdvancedFilterCount() }} filter{{ activeAdvancedFilterCount() === 1 ? '' : 's' }} active
+        } @else {
+          Search and filters
+        }
+      </span>
+    </span>
     @if (activeAdvancedFilterCount() > 0) {
-      <span class="search-filter-indicator" aria-hidden="true">
+      <span class="search-mobile-trigger__badge" aria-hidden="true">
         {{ activeAdvancedFilterCount() }}
       </span>
     }
   </button>
+}
 
-  @if (hasSearchValue()) {
-    <button mat-icon-button matSuffix type="button" aria-label="Clear search" (click)="clearAll()">
-      <mat-icon>close</mat-icon>
-    </button>
-  }
-
-  <mat-autocomplete
-    #autocomplete="matAutocomplete"
-    [displayWith]="null"
-    autoActiveFirstOption
-    (optionSelected)="onSuggestionSelected($event)"
-  >
-    @if (characterSuggestions().length > 0) {
-      <mat-optgroup label="Characters">
-        @for (suggestion of characterSuggestions(); track suggestion.type + ':' + suggestion.value) {
-          <mat-option [value]="suggestion">
-            <span>{{ suggestion.label }}</span>
-            <span class="option-secondary">{{ suggestion.subtitle }}</span>
-          </mat-option>
-        }
-      </mat-optgroup>
+@if (showSearchField()) {
+  <div class="search-field-shell">
+    @if (isMobile()) {
+      <button
+        mat-icon-button
+        type="button"
+        class="search-mobile-close"
+        aria-label="Collapse search"
+        (click)="collapseMobileSearch()"
+      >
+        <mat-icon>arrow_upward</mat-icon>
+      </button>
     }
 
-    @if (seriesSuggestions().length > 0) {
-      <mat-optgroup label="Series">
-        @for (suggestion of seriesSuggestions(); track suggestion.type + ':' + suggestion.value) {
-          <mat-option [value]="suggestion">
-            <span>{{ suggestion.label }}</span>
-            <span class="option-secondary">{{ suggestion.subtitle }}</span>
-          </mat-option>
-        }
-      </mat-optgroup>
-    }
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field">
+      <mat-icon matPrefix class="search-prefix-icon">search</mat-icon>
 
-    @if (tagSuggestions().length > 0) {
-      <mat-optgroup label="Tags">
-        @for (suggestion of tagSuggestions(); track suggestion.type + ':' + suggestion.value) {
-          <mat-option [value]="suggestion">
-            <span>{{ suggestion.label }}</span>
-            <span class="option-secondary">{{ suggestion.subtitle }}</span>
-          </mat-option>
+      <div class="search-token-row">
+        @for (chip of chips(); track chip.type + ':' + chip.value) {
+          <button
+            type="button"
+            class="search-chip"
+            [class.search-chip-character]="chip.type === 'character'"
+            [class.search-chip-series]="chip.type === 'series'"
+            [class.search-chip-ocr]="chip.type === 'ocr'"
+            [attr.aria-label]="'Remove ' + chipLabel(chip)"
+            (click)="onRemoveChip(chip)"
+          >
+            <mat-icon class="search-chip-kind-icon">{{ chipIcon(chip) }}</mat-icon>
+            <span class="search-chip-label">{{ chipLabel(chip) }}</span>
+            <mat-icon class="search-chip-remove-icon">close</mat-icon>
+          </button>
         }
-      </mat-optgroup>
-    }
-  </mat-autocomplete>
-</mat-form-field>
+
+        <input
+          #searchInput
+          matInput
+          class="search-input"
+          [formControl]="query"
+          [matAutocomplete]="autocomplete"
+          [placeholder]="disabled() ? 'Search available after sign in' : (chips().length > 0 ? 'Add more tags, characters, series, or OCR text' : 'Search by tags, character, series, or OCR text')"
+          aria-label="Search your photos"
+          (keydown.backspace)="onBackspace()"
+          (keydown.enter)="onEnter($event)"
+          (keydown.escape)="onEscape($event)"
+        />
+      </div>
+
+      <button
+        mat-icon-button
+        matSuffix
+        type="button"
+        aria-label="Open filters"
+        class="search-filter-button"
+        [class.search-filter-button-active]="activeAdvancedFilterCount() > 0"
+        (click)="openFilters()"
+      >
+        <mat-icon>tune</mat-icon>
+        @if (activeAdvancedFilterCount() > 0) {
+          <span class="search-filter-indicator" aria-hidden="true">
+            {{ activeAdvancedFilterCount() }}
+          </span>
+        }
+      </button>
+
+      @if (hasSearchValue()) {
+        <button mat-icon-button matSuffix type="button" aria-label="Clear search" (click)="clearAll()">
+          <mat-icon>close</mat-icon>
+        </button>
+      }
+
+      <mat-autocomplete
+        #autocomplete="matAutocomplete"
+        [displayWith]="null"
+        autoActiveFirstOption
+        (optionSelected)="onSuggestionSelected($event)"
+      >
+        @if (characterSuggestions().length > 0) {
+          <mat-optgroup label="Characters">
+            @for (suggestion of characterSuggestions(); track suggestion.type + ':' + suggestion.value) {
+              <mat-option [value]="suggestion">
+                <span>{{ suggestion.label }}</span>
+                <span class="option-secondary">{{ suggestion.subtitle }}</span>
+              </mat-option>
+            }
+          </mat-optgroup>
+        }
+
+        @if (seriesSuggestions().length > 0) {
+          <mat-optgroup label="Series">
+            @for (suggestion of seriesSuggestions(); track suggestion.type + ':' + suggestion.value) {
+              <mat-option [value]="suggestion">
+                <span>{{ suggestion.label }}</span>
+                <span class="option-secondary">{{ suggestion.subtitle }}</span>
+              </mat-option>
+            }
+          </mat-optgroup>
+        }
+
+        @if (tagSuggestions().length > 0) {
+          <mat-optgroup label="Tags">
+            @for (suggestion of tagSuggestions(); track suggestion.type + ':' + suggestion.value) {
+              <mat-option [value]="suggestion">
+                <span>{{ suggestion.label }}</span>
+                <span class="option-secondary">{{ suggestion.subtitle }}</span>
+              </mat-option>
+            }
+          </mat-optgroup>
+        }
+      </mat-autocomplete>
+    </mat-form-field>
+  </div>
+}

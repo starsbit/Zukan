@@ -4,10 +4,27 @@
   min-width: 0;
 }
 
+.search-field-shell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .search-field {
+  flex: 1 1 auto;
   width: 100%;
   max-width: 100%;
   --mat-form-field-outlined-container-shape: 1rem;
+}
+
+.search-mobile-trigger {
+  display: none;
+}
+
+.search-mobile-close {
+  display: none;
+  flex: 0 0 auto;
+  margin-top: 4px;
 }
 
 .search-token-row {
@@ -199,6 +216,10 @@
 }
 
 @media (max-width: 767px) {
+  .search-field-shell {
+    align-items: stretch;
+  }
+
   .search-field {
     --mat-form-field-outlined-container-shape: 0.9rem;
   }
@@ -229,6 +250,78 @@
   :host ::ng-deep .search-field .mat-mdc-form-field-icon-suffix {
     gap: 2px;
     padding-inline-end: 2px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .search-mobile-trigger {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    padding: 0.8rem 0.95rem;
+    border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 75%, transparent);
+    border-radius: 1rem;
+    background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .search-mobile-trigger__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--mat-sys-primary) 14%, transparent);
+    color: var(--mat-sys-primary);
+    flex: 0 0 auto;
+  }
+
+  .search-mobile-trigger__copy {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .search-mobile-trigger__label,
+  .search-mobile-trigger__hint {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .search-mobile-trigger__label {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--mat-sys-on-surface);
+  }
+
+  .search-mobile-trigger__hint {
+    font-size: 0.76rem;
+    color: var(--mat-sys-on-surface-variant);
+  }
+
+  .search-mobile-trigger__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.35rem;
+    height: 1.35rem;
+    padding-inline: 0.3rem;
+    border-radius: 999px;
+    background: var(--mat-sys-primary);
+    color: var(--mat-sys-on-primary);
+    font-size: 0.74rem;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+
+  .search-mobile-close {
+    display: inline-flex;
   }
 }
 

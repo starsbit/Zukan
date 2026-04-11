@@ -1,7 +1,9 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of } from 'rxjs';
+import { BehaviorSubject, of } from 'rxjs';
+import { MediaType } from '../../../../models/media';
 import { NavbarSearchService } from '../../../../services/navbar-search.service';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
 import { MediaClientService } from '../../../../services/web/media-client.service';
@@ -9,6 +11,18 @@ import { AuthStore } from '../../../../services/web/auth.store';
 import { NavbarSearchComponent } from './navbar-search.component';
 
 describe('NavbarSearchComponent', () => {
+  function createBreakpointObserver() {
+    const state$ = new BehaviorSubject({ matches: false, breakpoints: {} as Record<string, boolean> });
+    return {
+      observer: {
+        observe: () => state$.asObservable(),
+      },
+      setMatches(matches: boolean) {
+        state$.next({ matches, breakpoints: {} });
+      },
+    };
+  }
+
   async function flushDebounce(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
@@ -30,9 +44,11 @@ describe('NavbarSearchComponent', () => {
   }
 
   async function createComponent() {
+    const breakpoint = createBreakpointObserver();
     await TestBed.configureTestingModule({
       imports: [NavbarSearchComponent, NoopAnimationsModule],
       providers: [
+        { provide: BreakpointObserver, useValue: breakpoint.observer },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         {
           provide: TagsClientService,
@@ -71,6 +87,7 @@ describe('NavbarSearchComponent', () => {
       component: fixture.componentInstance,
       element: fixture.nativeElement as HTMLElement,
       overlay: TestBed.inject(OverlayContainer).getContainerElement(),
+      breakpoint,
       searchService: TestBed.inject(NavbarSearchService),
     };
   }
@@ -220,6 +237,62 @@ describe('NavbarSearchComponent', () => {
     component.openFilters();
 
     expect(overlay.textContent).toContain('Search Filters');
+  });
+
+  it('shows a collapsed mobile trigger and expands into the full search UI', async () => {
+    const { fixture, element, breakpoint } = await createComponent();
+
+    breakpoint.setMatches(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(element.querySelector('.search-mobile-trigger')).not.toBeNull();
+    expect(element.querySelector('.search-field')).toBeNull();
+
+    (element.querySelector('.search-mobile-trigger') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(element.querySelector('.search-field')).not.toBeNull();
+    expect(element.querySelector('.search-mobile-close')).not.toBeNull();
+  });
+
+  it('shows the active filter count on the mobile trigger', async () => {
+    const { fixture, element, breakpoint, searchService } = await createComponent();
+
+    searchService.setAdvancedFilters({ favorited: true, mediaTypes: [MediaType.IMAGE] });
+    breakpoint.setMatches(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const trigger = element.querySelector('.search-mobile-trigger') as HTMLElement;
+    expect(trigger.textContent).toContain('2 filters active');
+    expect(trigger.querySelector('.search-mobile-trigger__badge')?.textContent?.trim()).toBe('2');
+  });
+
+  it('keeps entered mobile search state when collapsed and reopened', async () => {
+    const { fixture, element, breakpoint, searchService } = await createComponent();
+
+    searchService.addTag('Saber');
+    searchService.setText('rin');
+    breakpoint.setMatches(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect((element.querySelector('.search-mobile-trigger__label') as HTMLElement).textContent).toContain('Saber');
+
+    (element.querySelector('.search-mobile-trigger') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (element.querySelector('.search-mobile-close') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    (element.querySelector('.search-mobile-trigger') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(searchService.draftChips()).toContainEqual({ type: 'tag', value: 'Saber' });
+    expect(searchService.draftText()).toBe('rin');
+    expect(element.querySelectorAll('.search-chip')).toHaveLength(1);
   });
 
   it('keeps the input usable when chips are present', async () => {

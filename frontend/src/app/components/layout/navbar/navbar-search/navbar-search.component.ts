@@ -1,3 +1,4 @@
+import { BreakpointObserver } from '@angular/cdk/layout';
 import { Component, DestroyRef, computed, effect, ElementRef, inject, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
@@ -40,6 +41,9 @@ interface SearchSuggestion {
   styleUrl: './navbar-search.component.scss',
 })
 export class NavbarSearchComponent {
+  private static readonly MOBILE_QUERY = '(max-width: 1023px)';
+
+  private readonly breakpointObserver = inject(BreakpointObserver);
   private readonly authStore = inject(AuthStore);
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
@@ -60,8 +64,37 @@ export class NavbarSearchComponent {
   readonly tagSuggestions = signal<SearchSuggestion[]>([]);
   readonly characterSuggestions = signal<SearchSuggestion[]>([]);
   readonly seriesSuggestions = signal<SearchSuggestion[]>([]);
+  readonly isMobile = signal(false);
+  readonly mobileExpanded = signal(false);
+  readonly shouldShowMobileSummary = computed(() => this.isMobile() && !this.mobileExpanded());
+  readonly showSearchField = computed(() => !this.isMobile() || this.mobileExpanded());
+  readonly mobileSummaryLabel = computed(() => {
+    const chips = this.chips();
+    const query = this.query.value.trim();
+    if (chips.length > 0) {
+      return chips
+        .slice(0, 2)
+        .map((chip) => this.chipLabel(chip))
+        .join(', ');
+    }
+
+    if (query) {
+      return `Search: ${query}`;
+    }
+
+    return 'Search media';
+  });
 
   constructor() {
+    this.breakpointObserver.observe(NavbarSearchComponent.MOBILE_QUERY)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(({ matches }) => {
+        this.isMobile.set(matches);
+        if (!matches) {
+          this.mobileExpanded.set(false);
+        }
+      });
+
     effect(() => {
       const value = this.searchService.draftText();
       if (value !== this.query.value) {
@@ -172,6 +205,16 @@ export class NavbarSearchComponent {
 
   hasSearchValue(): boolean {
     return this.chips().length > 0 || this.query.value.trim().length > 0;
+  }
+
+  openMobileSearch(): void {
+    this.mobileExpanded.set(true);
+    setTimeout(() => this.searchInput()?.nativeElement.focus());
+  }
+
+  collapseMobileSearch(): void {
+    this.mobileExpanded.set(false);
+    this.autocompleteTrigger()?.closePanel();
   }
 
   onSuggestionSelected(event: MatAutocompleteSelectedEvent): void {

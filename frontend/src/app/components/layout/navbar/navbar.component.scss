@@ -11,7 +11,9 @@
   align-items: center;
   column-gap: var(--zukan-shell-content-padding);
   padding: 0 var(--zukan-navbar-inline-padding) 0 0;
-  overflow: hidden;
+  min-height: 64px;
+  height: auto;
+  overflow: visible;
 }
 
 .navbar-search {
@@ -39,6 +41,7 @@
     row-gap: 10px;
     align-items: start;
     padding: 10px var(--zukan-navbar-inline-padding);
+    min-height: 0;
   }
 
   .navbar-menu-toggle {

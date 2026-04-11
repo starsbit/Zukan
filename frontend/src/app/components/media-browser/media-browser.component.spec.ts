@@ -541,7 +541,7 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     const text = fixture.nativeElement.textContent;
-    expect(text).toContain('Restore selected');
+    expect(text).toContain('restore_from_trash');
     expect(text).not.toContain('Reprocess tagging');
     expect(text).not.toContain('Make public');
   });
