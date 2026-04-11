@@ -20,6 +20,7 @@ import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import { fromEvent } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
@@ -86,6 +87,7 @@ const SKELETON_ASPECT_RATIO = 4 / 3;
     MatIconModule,
     MatSnackBarModule,
     MatToolbarModule,
+    MatTooltipModule,
     MediaCardComponent,
     MediaTimelineComponent,
     TodayStoriesRailComponent,

@@ -52,6 +52,7 @@
 
 .media-browser__action-buttons {
   display: flex;
+  flex: 1;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;

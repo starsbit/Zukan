@@ -15,41 +15,34 @@
         </div>
 
         <div class="media-browser__action-buttons">
-          <button mat-button type="button" (click)="clearSelection()">
-            Discard
-          </button>
           @if (selectionActionMode() === 'trash') {
-            <button mat-stroked-button type="button" (click)="requestRestoreSelection()">
-              <mat-icon aria-hidden="true">restore_from_trash</mat-icon>
-              Restore selected
+            <button mat-icon-button type="button" (click)="requestRestoreSelection()" matTooltip="Restore selected">
+              <mat-icon>restore_from_trash</mat-icon>
             </button>
           } @else {
-            <button mat-stroked-button type="button" (click)="addSelectionToAlbum()">
-              <mat-icon aria-hidden="true">collections_bookmark</mat-icon>
-              Add to album
+            <button mat-icon-button type="button" (click)="addSelectionToAlbum()" matTooltip="Add to album">
+              <mat-icon>collections_bookmark</mat-icon>
             </button>
-            <button mat-stroked-button type="button" (click)="trashSelection()">
-              <mat-icon aria-hidden="true">delete_outline</mat-icon>
-              Trash
+            <button mat-icon-button type="button" (click)="trashSelection()" matTooltip="Move to trash">
+              <mat-icon>delete_outline</mat-icon>
             </button>
-            <button mat-stroked-button type="button" (click)="reprocessSelection()">
-              <mat-icon aria-hidden="true">local_offer</mat-icon>
-              Reprocess tagging
+            <button mat-icon-button type="button" (click)="reprocessSelection()" matTooltip="Reprocess tagging">
+              <mat-icon>local_offer</mat-icon>
             </button>
-            <button mat-stroked-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PRIVATE)">
-              <mat-icon aria-hidden="true">lock</mat-icon>
-              Make private
+            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PRIVATE)" matTooltip="Make private">
+              <mat-icon>lock</mat-icon>
             </button>
-            <button mat-stroked-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PUBLIC)">
-              <mat-icon aria-hidden="true">public</mat-icon>
-              Make public
+            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PUBLIC)" matTooltip="Make public">
+              <mat-icon>public</mat-icon>
             </button>
-            <button mat-stroked-button type="button" (click)="downloadSelection()">
-              <mat-icon aria-hidden="true">download</mat-icon>
-              Download
+            <button mat-icon-button type="button" (click)="downloadSelection()" matTooltip="Download as ZIP">
+              <mat-icon>download</mat-icon>
             </button>
           }
         </div>
+        <button mat-button type="button" (click)="clearSelection()">
+          Discard
+        </button>
       </mat-toolbar>
     }
 
