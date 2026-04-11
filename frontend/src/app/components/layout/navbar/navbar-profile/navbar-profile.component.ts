@@ -8,6 +8,7 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../../../services/auth.service';
 import { UserStore } from '../../../../services/user.store';
 import { UserSettingsDialogComponent } from '../user-settings-dialog/user-settings-dialog.component';
+import { ContactDialogComponent } from '../../../../components/contact-dialog/contact-dialog.component';
 
 @Component({
   selector: 'zukan-navbar-profile',
@@ -38,5 +39,9 @@ export class NavbarProfileComponent {
 
   openSettings(): void {
     this.dialog.open(UserSettingsDialogComponent, { width: '520px' });
+  }
+
+  openContact(): void {
+    this.dialog.open(ContactDialogComponent, { width: '400px' });
   }
 }

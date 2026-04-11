@@ -1,0 +1,25 @@
+<h2 mat-dialog-title>Contact</h2>
+
+<mat-dialog-content>
+  <p class="contact-dialog__subtitle">
+    Reach the developer of this application through any of these links, or visit
+    <a href="https://starsbit.space" target="_blank" rel="noreferrer">starsbit.space</a>
+  </p>
+
+  <div class="contact-dialog__links">
+    @for (link of links; track link.label) {
+      <a [href]="link.href" target="_blank" rel="noreferrer" class="contact-dialog__link" [attr.aria-label]="link.label">
+        <img [src]="link.icon" [alt]="link.label" width="28" height="28" />
+      </a>
+    }
+  </div>
+
+  <div class="contact-dialog__footer">
+    <img class="contact-dialog__logo contact-dialog__logo--light" src="/assets/starsbit-logo-black.webp" alt="starsbit" />
+    <img class="contact-dialog__logo contact-dialog__logo--dark" src="/assets/starsbit-logo-white.webp" alt="starsbit" />
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Close</button>
+</mat-dialog-actions>
