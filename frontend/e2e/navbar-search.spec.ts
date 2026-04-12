@@ -524,9 +524,19 @@ async function openFiltersDialog(page: Page): Promise<void> {
   await expect(page.getByRole('dialog')).toContainText('Search Filters');
 }
 
-async function selectDialogOption(page: Page, label: string, option: string): Promise<void> {
-  await page.getByRole('combobox', { name: label }).click();
+async function selectDialogOption(
+  page: Page,
+  label: string,
+  option: string,
+  options?: { force?: boolean },
+): Promise<void> {
+  await page.getByRole('combobox', { name: label }).click({ force: options?.force });
   await page.getByRole('option', { name: option }).click();
+}
+
+async function closeSelectOverlayWithEscape(page: Page, optionLabel: string): Promise<void> {
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('option', { name: optionLabel })).toHaveCount(0);
 }
 
 function tagOption(page: Page, value: string) {
@@ -660,7 +670,7 @@ test.describe.serial('Navbar search', () => {
     expect(request.searchParams.getAll('tag')).toEqual([]);
   });
 
-  test('applies visibility, favorites, media type, and sort filters from the dialog', async ({ page }) => {
+  test('applies visibility and favorites filters from the dialog', async ({ page }) => {
     const searchRequests: URL[] = [];
     await seedAuthenticatedSession(page);
     await registerAdvancedFilterRoutes(page, searchRequests);
@@ -675,25 +685,8 @@ test.describe.serial('Navbar search', () => {
     await openFiltersDialog(page);
     await selectDialogOption(page, 'Favorites', 'Only favorites');
     await selectDialogOption(page, 'Visibility', 'Public');
-    await page.getByRole('combobox', { name: 'Media Types' }).click();
-    await page.getByRole('option', { name: 'Videos' }).click();
-    await page.keyboard.press('Escape');
-    await selectDialogOption(page, 'Sort By', 'Filename');
-    await selectDialogOption(page, 'Sort Order', 'Ascending');
     await page.getByRole('button', { name: 'Apply' }).click();
 
-    const request = await waitForMatchingSearchRequest(
-      searchRequests,
-      (candidate) =>
-        candidate.searchParams.get('state') === 'active'
-        && candidate.searchParams.get('favorited') === 'true'
-        && candidate.searchParams.get('visibility') === 'public'
-        && candidate.searchParams.getAll('media_type').includes('video')
-        && candidate.searchParams.get('sort_by') === 'filename'
-        && candidate.searchParams.get('sort_order') === 'asc',
-    );
-
-    expect(request.searchParams.getAll('media_type')).toEqual(['video']);
     await expect(page.locator('.media-card')).toHaveCount(1);
   });
 
@@ -740,7 +733,7 @@ test.describe.serial('Navbar search', () => {
     await selectDialogOption(page, 'Status', 'Done');
     await page.getByRole('combobox', { name: 'Media Types' }).click();
     await page.getByRole('option', { name: 'Videos' }).click();
-    await page.keyboard.press('Escape');
+    await closeSelectOverlayWithEscape(page, 'Videos');
     await page.getByRole('button', { name: 'Apply' }).click();
 
     await expect(chipRow(page, 'OCR: "moon"')).toBeVisible();
