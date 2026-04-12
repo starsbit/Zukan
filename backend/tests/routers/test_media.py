@@ -240,7 +240,40 @@ def test_media_timeline_contract(api_client, monkeypatch):
 
 
 def test_character_suggestions_contract(api_client, monkeypatch):
-    async def _fake_suggestions(self, user, q, limit):
+    captured = {}
+
+    async def _fake_list(self, user, q, limit, scope="accessible"):
+        captured.update({"q": q, "limit": limit, "scope": scope})
+        return [{"name": "Saber", "media_count": 3}]
+
+    monkeypatch.setattr(MediaQueryService, "list_character_suggestions", _fake_list)
+
+    response = api_client.get("/api/v1/media/character-suggestions", params={"q": "Sab", "limit": 5, "scope": "owner"})
+
+    assert response.status_code == 200
+    assert response.json() == [{"name": "Saber", "media_count": 3}]
+    assert captured == {"q": "Sab", "limit": 5, "scope": "owner"}
+
+
+def test_series_suggestions_contract(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_list(self, user, q, limit, scope="accessible"):
+        captured.update({"q": q, "limit": limit, "scope": scope})
+        return [{"name": "Fate/stay night", "media_count": 4}]
+
+    monkeypatch.setattr(MediaQueryService, "list_series_suggestions", _fake_list)
+
+    response = api_client.get("/api/v1/media/series-suggestions", params={"q": "Fate", "limit": 6, "scope": "owner"})
+
+    assert response.status_code == 200
+    assert response.json() == [{"name": "Fate/stay night", "media_count": 4}]
+    assert captured == {"q": "Fate", "limit": 6, "scope": "owner"}
+
+
+def test_character_suggestions_contract(api_client, monkeypatch):
+    async def _fake_suggestions(self, user, q, limit, scope="accessible"):
+        assert scope == "accessible"
         return [{"name": "Saber", "media_count": 2}]
 
     monkeypatch.setattr(MediaQueryService, "list_character_suggestions", _fake_suggestions)
@@ -252,9 +285,10 @@ def test_character_suggestions_contract(api_client, monkeypatch):
 
 
 def test_series_suggestions_contract(api_client, monkeypatch):
-    async def _fake_suggestions(self, user, q, limit):
+    async def _fake_suggestions(self, user, q, limit, scope="accessible"):
         assert q == "S"
         assert limit == 6
+        assert scope == "accessible"
         return [{"name": "Fate/stay night", "media_count": 2}]
 
     monkeypatch.setattr(MediaQueryService, "list_series_suggestions", _fake_suggestions)

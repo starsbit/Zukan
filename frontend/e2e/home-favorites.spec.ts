@@ -109,8 +109,8 @@ test.describe.serial('Home page favorites', () => {
   });
 
   test('favorite button appears on card hover and emits a PATCH to the backend', async ({ page }) => {
-    const { patchRequests } = await setupHomeMocks(page);
     await seedAuthenticatedSession(page);
+    const { patchRequests } = await setupHomeMocks(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -130,8 +130,8 @@ test.describe.serial('Home page favorites', () => {
   });
 
   test('favorite icon changes to filled heart after clicking', async ({ page }) => {
-    await setupHomeMocks(page);
     await seedAuthenticatedSession(page);
+    await setupHomeMocks(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -149,8 +149,8 @@ test.describe.serial('Home page favorites', () => {
   });
 
   test('clicking a filled heart unfavorites the item', async ({ page }) => {
-    const { patchRequests } = await setupHomeMocks(page, { initiallyFavorited: true });
     await seedAuthenticatedSession(page);
+    const { patchRequests } = await setupHomeMocks(page, { initiallyFavorited: true });
     await page.goto('/');
 
     const card = page.locator('.media-card').first();
@@ -167,8 +167,8 @@ test.describe.serial('Home page favorites', () => {
   });
 
   test('clicking the favorite button does not open the media viewer', async ({ page }) => {
-    await setupHomeMocks(page);
     await seedAuthenticatedSession(page);
+    await setupHomeMocks(page);
     await page.goto('/');
 
     const card = page.locator('.media-card').first();

@@ -60,7 +60,8 @@ function fulfillEmptySearch(route: Route): Promise<void> {
 }
 
 function matchesQuery(value: string, query: string): boolean {
-  return value.toLowerCase().includes(query.toLowerCase());
+  const normalize = (input: string) => input.toLowerCase().replace(/[_\s]+/g, ' ').trim();
+  return normalize(value).includes(normalize(query));
 }
 
 async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<void> {
@@ -548,9 +549,9 @@ test.describe.serial('Navbar search', () => {
 
   test('shows tag and character suggestions and keeps only one character chip', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await registerSearchRoutes(page, searchRequests);
-
     await seedAuthenticatedSession(page);
+    await registerSearchRoutes(page, searchRequests);
+    await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -576,9 +577,9 @@ test.describe.serial('Navbar search', () => {
 
   test('applies OCR search on enter, persists across routes, and escape clears it', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await registerSearchRoutes(page, searchRequests);
-
     await seedAuthenticatedSession(page);
+    await registerSearchRoutes(page, searchRequests);
+    await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -639,9 +640,8 @@ test.describe.serial('Navbar search', () => {
 
   test('includes album context when search is applied on the album page', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await registerSearchRoutes(page, searchRequests);
-
     await seedAuthenticatedSession(page);
+    await registerSearchRoutes(page, searchRequests);
     await expect(page).toHaveURL('/');
     await page.goto('/album/album-1');
     await expect(page).toHaveURL('/album/album-1');
@@ -662,9 +662,8 @@ test.describe.serial('Navbar search', () => {
 
   test('applies visibility, favorites, media type, and sort filters from the dialog', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await registerAdvancedFilterRoutes(page, searchRequests);
-
     await seedAuthenticatedSession(page);
+    await registerAdvancedFilterRoutes(page, searchRequests);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
@@ -701,9 +700,8 @@ test.describe.serial('Navbar search', () => {
   test('applies status, NSFW, sensitive, and exclude-tag filters from the dialog', async ({ page }) => {
     const searchRequests: URL[] = [];
     const timelineRequests: URL[] = [];
-    await registerAdvancedFilterRoutes(page, searchRequests, timelineRequests);
-
     await seedAuthenticatedSession(page);
+    await registerAdvancedFilterRoutes(page, searchRequests, timelineRequests);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
@@ -726,9 +724,8 @@ test.describe.serial('Navbar search', () => {
 
   test('preserves applied filters across gallery, favorites, trash, and album routes', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await registerAdvancedFilterRoutes(page, searchRequests);
-
     await seedAuthenticatedSession(page);
+    await registerAdvancedFilterRoutes(page, searchRequests);
     await page.getByRole('link', { name: 'Gallery' }).click();
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(

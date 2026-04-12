@@ -20,8 +20,8 @@ from backend.app.models.tags import Tag
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
-from backend.app.schemas import CATEGORY_NAMES, TagListResponse, TagManagementResult, TagRead
-from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
+from backend.app.schemas import CATEGORY_NAMES, MetadataListScope, TagListResponse, TagManagementResult, TagRead
+from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 from backend.app.utils.tagging import (
     TaggerBackend,
     TaggingResult,
@@ -48,6 +48,7 @@ class TagService:
 
     async def list_tags(
         self,
+        user: User,
         *,
         after: str | None = None,
         page_size: int = 100,
@@ -55,36 +56,34 @@ class TagService:
         query: str | None = None,
         sort_by: str = "media_count",
         sort_order: str = "desc",
+        scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
     ) -> TagListResponse:
-        sort_col = Tag.name if sort_by == "name" else Tag.media_count
-        base_stmt = select(Tag)
-        if category is not None:
-            base_stmt = base_stmt.where(Tag.category == category)
-        if query:
-            base_stmt = base_stmt.where(Tag.name.ilike(f"{query}%"))
+        tags_repo = TagRepository(self._db)
+        total = await tags_repo.count_accessible(user, category=category, query=query, scope=scope)
+        tag_list = await tags_repo.list_accessible(user, category=category, query=query, scope=scope)
+
+        reverse = sort_order == "desc"
+        if sort_by == "name":
+            tag_list = sorted(tag_list, key=lambda row: (row.name, row.id), reverse=reverse)
+        else:
+            tag_list = sorted(tag_list, key=lambda row: (row.media_count, row.id), reverse=reverse)
 
         if after:
             value_type = "str" if sort_by == "name" else "int"
             decoded = decode_cursor_typed(after, value_type, id_type="int")
             if decoded is not None:
                 cursor_val, cursor_id = decoded
-                base_stmt = apply_cursor_where_expr(
-                    base_stmt,
-                    sort_expr=sort_col,
-                    id_expr=Tag.id,
-                    sort_order=sort_order,
-                    cursor_val=cursor_val,
-                    cursor_id=cursor_id,
-                )
+                tag_list = [
+                    row for row in tag_list
+                    if _tag_row_after_cursor(
+                        row,
+                        sort_by=sort_by,
+                        sort_order=sort_order,
+                        cursor_val=cursor_val,
+                        cursor_id=cursor_id,
+                    )
+                ]
 
-        if sort_order == "asc":
-            order_exprs = [sort_col.asc(), Tag.id.asc()]
-        else:
-            order_exprs = [sort_col.desc(), Tag.id.desc()]
-
-        tags_repo = TagRepository(self._db)
-        total = await tags_repo.count(base_stmt)
-        tag_list = (await self._db.execute(base_stmt.order_by(*order_exprs).limit(page_size + 1))).scalars().all()
         has_more = len(tag_list) > page_size
         tag_list = tag_list[:page_size]
 
@@ -99,7 +98,7 @@ class TagService:
             next_cursor=next_cursor,
             has_more=has_more,
             page_size=page_size,
-            items=[_to_tag_read(tag) for tag in tag_list],
+            items=[_to_tag_read(row) for row in tag_list],
         )
 
     async def remove_tag_from_media_by_id(self, user, *, tag_id: int) -> TagManagementResult:
@@ -151,7 +150,61 @@ class TagService:
             updated,
             deleted_tag,
         )
-        return TagManagementResult(matched_media=len(media_rows), updated_media=updated, deleted_tag=deleted_tag)
+        return TagManagementResult(
+            matched_media=len(media_rows),
+            updated_media=updated,
+            deleted_tag=deleted_tag,
+            deleted_source=deleted_tag,
+        )
+
+    async def merge_tag_by_id(self, user, *, tag_id: int, target_tag_id: int) -> TagManagementResult:
+        source_tag = await self.get_tag_by_id(tag_id)
+        target_tag = await self.get_tag_by_id(target_tag_id)
+        return await self.merge_tag(user, source_tag=source_tag, target_tag=target_tag)
+
+    async def merge_tag(self, user, *, source_tag: Tag, target_tag: Tag) -> TagManagementResult:
+        if source_tag.id == target_tag.id:
+            return TagManagementResult(matched_media=0, updated_media=0)
+
+        tags_repo = TagRepository(self._db)
+        media_rows = (
+            await self._db.execute(
+                _accessible_media_stmt(user)
+                .where(Media.id.in_(select(MediaTag.media_id).where(MediaTag.tag_id == source_tag.id)))
+                .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
+            )
+        ).scalars().all()
+
+        updated = 0
+        for media in media_rows:
+            next_payloads = _merge_media_tag_payloads(media, source_tag=source_tag, target_tag=target_tag)
+            if next_payloads is None:
+                continue
+            await tags_repo.set_media_tag_links(media, next_payloads)
+            remaining_names = [name for name, _, _ in next_payloads]
+            media.is_nsfw = tag_names_mark_nsfw(remaining_names)
+            media.is_sensitive = tag_names_mark_sensitive(remaining_names)
+            updated += 1
+
+        await self._db.flush()
+        remaining = await tags_repo.get_by_id(source_tag.id)
+        deleted_source = remaining is None
+        await self._db.commit()
+        logger.info(
+            "Merged tag user_id=%s source_tag_id=%s target_tag_id=%s matched_media=%s updated_media=%s deleted_source=%s",
+            user.id,
+            source_tag.id,
+            target_tag.id,
+            len(media_rows),
+            updated,
+            deleted_source,
+        )
+        return TagManagementResult(
+            matched_media=len(media_rows),
+            updated_media=updated,
+            deleted_tag=deleted_source,
+            deleted_source=deleted_source,
+        )
 
     async def trash_media_by_tag(self, user, *, tag_name: str) -> TagManagementResult:
         matches = (
@@ -286,7 +339,52 @@ def _accessible_media_stmt(user):
     return stmt
 
 
-def _to_tag_read(tag: Tag) -> TagRead:
+def _merge_media_tag_payloads(media: Media, *, source_tag: Tag, target_tag: Tag) -> list[tuple[str, int, float]] | None:
+    payloads: list[tuple[str, int, float]] = []
+    changed = False
+    merged_confidence = 0.0
+    target_present = False
+
+    for media_tag in media.media_tags:
+        if media_tag.tag_id == source_tag.id:
+            changed = True
+            merged_confidence = max(merged_confidence, media_tag.confidence)
+            continue
+        if media_tag.tag_id == target_tag.id:
+            target_present = True
+            merged_confidence = max(merged_confidence, media_tag.confidence)
+            target_category = target_tag.category if target_tag.category != 0 else source_tag.category
+            payloads.append((target_tag.name, target_category, media_tag.confidence))
+            continue
+        payloads.append((media_tag.tag.name, media_tag.tag.category, media_tag.confidence))
+
+    if not changed:
+        return None
+
+    if target_present:
+        payloads = [
+            (
+                name,
+                category,
+                max(confidence, merged_confidence) if name == target_tag.name else confidence,
+            )
+            for name, category, confidence in payloads
+        ]
+        return payloads
+
+    target_category = target_tag.category if target_tag.category != 0 else source_tag.category
+    payloads.append((target_tag.name, target_category, merged_confidence))
+    return payloads
+
+
+def _tag_row_after_cursor(row, *, sort_by: str, sort_order: str, cursor_val, cursor_id: int) -> bool:
+    row_val = row.name if sort_by == "name" else row.media_count
+    if sort_order == "asc":
+        return row_val > cursor_val or (row_val == cursor_val and row.id > cursor_id)
+    return row_val < cursor_val or (row_val == cursor_val and row.id < cursor_id)
+
+
+def _to_tag_read(tag) -> TagRead:
     category_key = CATEGORY_NAMES.get(tag.category, "unknown")
     return TagRead(
         id=tag.id,

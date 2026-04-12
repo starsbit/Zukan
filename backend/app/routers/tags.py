@@ -4,9 +4,17 @@ from fastapi import APIRouter, Depends, Path, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.database import get_db
-from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
-from backend.app.schemas import AUTHENTICATED_ERROR_RESPONSES, TagListResponse, TagManagementResult
+from backend.app.routers.deps import current_user
+from backend.app.schemas import (
+    AUTHENTICATED_ERROR_RESPONSES,
+    MetadataListScope,
+    MetadataNameListResponse,
+    NameMergeRequest,
+    TagListResponse,
+    TagManagementResult,
+    TagMergeRequest,
+)
 from backend.app.services.relations import RelationService
 from backend.app.services.tags import TagService
 
@@ -21,10 +29,64 @@ async def list_tags(
     q: str | None = Query(default=None, min_length=1),
     sort_by: Literal["name", "media_count"] = Query(default="media_count", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
-    _: User = Depends(current_user),
+    scope: MetadataListScope = Query(default=MetadataListScope.ACCESSIBLE, description="Result visibility scope."),
+    user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await TagService(db).list_tags(after=after, page_size=page_size, category=category, query=q, sort_by=sort_by, sort_order=sort_order)
+    return await TagService(db).list_tags(
+        user,
+        after=after,
+        page_size=page_size,
+        category=category,
+        query=q,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        scope=scope,
+    )
+
+
+@router.get("/character-names", response_model=MetadataNameListResponse)
+async def list_character_names(
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
+    page_size: int = Query(default=100, ge=1, le=1000),
+    q: str | None = Query(default=None, min_length=1),
+    sort_by: Literal["name", "media_count"] = Query(default="media_count", description="Field to sort by."),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
+    scope: MetadataListScope = Query(default=MetadataListScope.ACCESSIBLE, description="Result visibility scope."),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).list_character_names(
+        user,
+        after=after,
+        page_size=page_size,
+        query=q,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        scope=scope,
+    )
+
+
+@router.get("/series-names", response_model=MetadataNameListResponse)
+async def list_series_names(
+    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination."),
+    page_size: int = Query(default=100, ge=1, le=1000),
+    q: str | None = Query(default=None, min_length=1),
+    sort_by: Literal["name", "media_count"] = Query(default="media_count", description="Field to sort by."),
+    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
+    scope: MetadataListScope = Query(default=MetadataListScope.ACCESSIBLE, description="Result visibility scope."),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).list_series_names(
+        user,
+        after=after,
+        page_size=page_size,
+        query=q,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        scope=scope,
+    )
 
 
 @router.post("/tags/{tag_id}/actions/remove-from-media", response_model=TagManagementResult, summary="Remove Tag From Matching Media")
@@ -34,6 +96,16 @@ async def remove_tag_from_media(
     db: AsyncSession = Depends(get_db),
 ):
     return await TagService(db).remove_tag_from_media_by_id(user, tag_id=tag_id)
+
+
+@router.post("/tags/{tag_id}/actions/merge", response_model=TagManagementResult, summary="Merge Tag Into Target Tag")
+async def merge_tag(
+    body: TagMergeRequest,
+    tag_id: int = Path(ge=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TagService(db).merge_tag_by_id(user, tag_id=tag_id, target_tag_id=body.target_tag_id)
 
 
 @router.post("/tags/{tag_id}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
@@ -59,6 +131,20 @@ async def remove_character_name_from_media(
 
 
 @router.post(
+    "/character-names/{character_name}/actions/merge",
+    response_model=TagManagementResult,
+    summary="Merge Character Name Into Target Character Name",
+)
+async def merge_character_name(
+    body: NameMergeRequest,
+    character_name: str = Path(min_length=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).merge_character_name(user, character_name=character_name, target_name=body.target_name)
+
+
+@router.post(
     "/character-names/{character_name}/actions/trash-media",
     response_model=TagManagementResult,
     summary="Move Matching Character Media To Trash",
@@ -69,3 +155,30 @@ async def trash_media_by_character_name(
     db: AsyncSession = Depends(get_db),
 ):
     return await RelationService(db).trash_media_by_character_name(user, character_name=character_name)
+
+
+@router.post(
+    "/series-names/{series_name}/actions/remove-from-media",
+    response_model=TagManagementResult,
+    summary="Remove Series Name From Matching Media",
+)
+async def remove_series_name_from_media(
+    series_name: str = Path(min_length=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).clear_series_name(user, series_name=series_name)
+
+
+@router.post(
+    "/series-names/{series_name}/actions/merge",
+    response_model=TagManagementResult,
+    summary="Merge Series Name Into Target Series Name",
+)
+async def merge_series_name(
+    body: NameMergeRequest,
+    series_name: str = Path(min_length=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).merge_series_name(user, series_name=series_name, target_name=body.target_name)

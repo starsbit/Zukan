@@ -76,9 +76,8 @@ test.describe.serial('Favorites page', () => {
 
   test('shows a user-owned favorited item instead of the empty state', async ({ page }) => {
     const searchRequests: URL[] = [];
-    await setupFavoritesMocks(page, searchRequests, { items: [mediaItem('own-favorite-1')], total: 1 });
-
     await seedAuthenticatedSession(page);
+    await setupFavoritesMocks(page, searchRequests, { items: [mediaItem('own-favorite-1')], total: 1 });
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
@@ -104,9 +103,8 @@ test.describe.serial('Favorites page', () => {
       visibility: 'private',
       filename: 'shared-album-favorite-1.jpg',
     };
-    await setupFavoritesMocks(page, searchRequests, { items: [publicFavorite, sharedAlbumFavorite], total: 2 });
-
     await seedAuthenticatedSession(page);
+    await setupFavoritesMocks(page, searchRequests, { items: [publicFavorite, sharedAlbumFavorite], total: 2 });
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
@@ -117,6 +115,7 @@ test.describe.serial('Favorites page', () => {
   test('shows the empty state after previously visible favorites lose access', async ({ page }) => {
     const searchRequests: URL[] = [];
     let accessRevoked = false;
+    await seedAuthenticatedSession(page);
     await setupFavoritesMocks(page, searchRequests, { items: [], total: 0 });
     await page.unroute('**/api/v1/media/search**');
     await page.route('**/api/v1/media/search**', async (route: Route) => {
@@ -137,8 +136,6 @@ test.describe.serial('Favorites page', () => {
         },
       });
     });
-
-    await seedAuthenticatedSession(page);
     await page.goto('/favorites');
 
     await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);

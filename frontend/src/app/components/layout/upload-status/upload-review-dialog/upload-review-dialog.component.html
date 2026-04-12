@@ -70,7 +70,7 @@
         (optionSelected)="addCharacter($event.option.value)"
       >
         @for (suggestion of characterSuggestions(); track suggestion.name) {
-          <mat-option [value]="suggestion.name">{{ suggestion.name }}</mat-option>
+          <mat-option [value]="suggestion.name">{{ displayMetadataName(suggestion.name) }}</mat-option>
         }
       </mat-autocomplete>
 
@@ -91,7 +91,7 @@
         (optionSelected)="addSeries($event.option.value)"
       >
         @for (suggestion of seriesSuggestions(); track suggestion.name) {
-          <mat-option [value]="suggestion.name">{{ suggestion.name }}</mat-option>
+          <mat-option [value]="suggestion.name">{{ displayMetadataName(suggestion.name) }}</mat-option>
         }
       </mat-autocomplete>
     </div>
@@ -101,8 +101,8 @@
         <mat-chip-set aria-label="Selected character names">
           @for (name of characterNames(); track name) {
             <mat-chip-row [removable]="true" (removed)="removeCharacter(name)">
-              {{ name }}
-              <button matChipRemove type="button" aria-label="Remove character {{ name }}">
+              {{ displayMetadataName(name) }}
+              <button matChipRemove type="button" aria-label="Remove character {{ displayMetadataName(name) }}">
                 <mat-icon>cancel</mat-icon>
               </button>
             </mat-chip-row>
@@ -114,8 +114,8 @@
         <mat-chip-set aria-label="Selected series names">
           @for (name of seriesNames(); track name) {
             <mat-chip-row [removable]="true" (removed)="removeSeries(name)">
-              {{ name }}
-              <button matChipRemove type="button" aria-label="Remove series {{ name }}">
+              {{ displayMetadataName(name) }}
+              <button matChipRemove type="button" aria-label="Remove series {{ displayMetadataName(name) }}">
                 <mat-icon>cancel</mat-icon>
               </button>
             </mat-chip-row>

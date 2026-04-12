@@ -40,22 +40,35 @@ export async function seedAuthenticatedSession(
     tag_confidence_threshold: 0.35,
     version: 1,
     created_at: '2026-03-28T12:00:00Z',
-    updated_at: '2026-03-28T12:00:00Z',
+    storage_quota_mb: 10240,
+    storage_used_mb: 0,
   };
 
   await page.addInitScript(() => {
     localStorage.setItem('zukan_at', 'test-access-token');
     localStorage.setItem('zukan_rt', 'test-refresh-token');
+    sessionStorage.setItem('zukan_at', 'test-access-token');
+    sessionStorage.setItem('zukan_rt', 'test-refresh-token');
   });
 
+  await page.evaluate(() => {
+    localStorage.setItem('zukan_at', 'test-access-token');
+    localStorage.setItem('zukan_rt', 'test-refresh-token');
+    sessionStorage.setItem('zukan_at', 'test-access-token');
+    sessionStorage.setItem('zukan_rt', 'test-refresh-token');
+  }).catch(() => undefined);
+
+  await page.unroute('**/api/v1/config/setup-required**').catch(() => undefined);
   await page.route('**/api/v1/config/setup-required**', async (route) => {
     await route.fulfill({ json: { setup_required: false } });
   });
 
+  await page.unroute(/\/api\/v1\/me(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/me(?:\?.*)?$/, async (route) => {
     await route.fulfill({ json: profile });
   });
 
+  await page.unroute(/\/api\/v1\/me\/notifications(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/me\/notifications(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
@@ -68,6 +81,7 @@ export async function seedAuthenticatedSession(
     });
   });
 
+  await page.unroute(/\/api\/v1\/me\/import-batches(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/me\/import-batches(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
@@ -80,6 +94,7 @@ export async function seedAuthenticatedSession(
     });
   });
 
+  await page.unroute(/\/api\/v1\/me\/import-batches\/review-summary(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/me\/import-batches\/review-summary(?:\?.*)?$/, async (route) => {
     await route.fulfill({
       json: {
@@ -91,6 +106,7 @@ export async function seedAuthenticatedSession(
     });
   });
 
+  await page.unroute('**/api/v1/auth/refresh').catch(() => undefined);
   await page.route('**/api/v1/auth/refresh', async (route) => {
     await route.fulfill({
       json: {
@@ -99,6 +115,18 @@ export async function seedAuthenticatedSession(
         token_type: 'bearer',
       },
     });
+  });
+
+  await page.unroute('**/api/v1/media/search**').catch(() => undefined);
+  await page.route('**/api/v1/media/search**', async (route) => {
+    await route.fulfill({
+      json: { items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 },
+    });
+  });
+
+  await page.unroute('**/api/v1/media/timeline**').catch(() => undefined);
+  await page.route('**/api/v1/media/timeline**', async (route) => {
+    await route.fulfill({ json: { buckets: [] } });
   });
 
   await page.goto('/');

@@ -11,7 +11,7 @@ from testcontainers.postgres import PostgresContainer
 from backend.app.database.base import Base
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareRole
 from backend.app.models.auth import RefreshToken, User
-from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
+from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.notifications import AppAnnouncement, Notification, NotificationType
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus
@@ -93,6 +93,7 @@ async def make_media(db_session: AsyncSession):
         phash: str | None = None,
         tagging_status: TaggingStatus = TaggingStatus.PENDING,
         file_size: int = 1,
+        visibility: MediaVisibility = MediaVisibility.private,
     ) -> Media:
         mid = uuid.uuid4()
         now = datetime.now(timezone.utc)
@@ -121,6 +122,7 @@ async def make_media(db_session: AsyncSession):
             deleted_at=now if deleted else None,
             version=1,
             phash=phash,
+            visibility=visibility,
         )
         db_session.add(media)
         await db_session.flush()

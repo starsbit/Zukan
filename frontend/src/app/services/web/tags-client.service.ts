@@ -2,7 +2,8 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
-import { TagListResponse, TagManagementResult } from '../../models/tags';
+import { MetadataListScope, MetadataNameListResponse, TagListResponse, TagManagementResult } from '../../models/tags';
+import { normalizeMetadataNameForSubmission } from '../../utils/media-display.utils';
 
 export interface TagListParams {
   after?: string;
@@ -11,6 +12,16 @@ export interface TagListParams {
   q?: string;
   sort_by?: 'name' | 'media_count';
   sort_order?: 'asc' | 'desc';
+  scope?: MetadataListScope;
+}
+
+export interface MetadataNameListParams {
+  after?: string;
+  page_size?: number;
+  q?: string;
+  sort_by?: 'name' | 'media_count';
+  sort_order?: 'asc' | 'desc';
+  scope?: MetadataListScope;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -23,16 +34,32 @@ export class TagsClientService {
     if (p.after != null) params = params.set('after', p.after);
     if (p.page_size != null) params = params.set('page_size', p.page_size);
     if (p.category != null) params = params.set('category', p.category);
-    if (p.q != null) params = params.set('q', p.q);
+    if (p.q != null) params = params.set('q', normalizeMetadataQuery(p.q));
     if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
     if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
+    if (p.scope != null) params = params.set('scope', p.scope);
     return this.http.get<TagListResponse>(`${this.base}/api/v1/tags`, { params });
+  }
+
+  listCharacterNames(p: MetadataNameListParams = {}): Observable<MetadataNameListResponse> {
+    return this.listMetadataNames('/api/v1/character-names', p);
+  }
+
+  listSeriesNames(p: MetadataNameListParams = {}): Observable<MetadataNameListResponse> {
+    return this.listMetadataNames('/api/v1/series-names', p);
   }
 
   removeFromMedia(tagId: number): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
       `${this.base}/api/v1/tags/${tagId}/actions/remove-from-media`,
       null,
+    );
+  }
+
+  merge(tagId: number, targetTagId: number): Observable<TagManagementResult> {
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/tags/${tagId}/actions/merge`,
+      { target_tag_id: targetTagId },
     );
   }
 
@@ -44,9 +71,19 @@ export class TagsClientService {
   }
 
   removeCharacterFromMedia(characterName: string): Observable<TagManagementResult> {
+    const normalized = normalizeMetadataNameForSubmission(characterName);
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/character-names/${encodeURIComponent(characterName)}/actions/remove-from-media`,
+      `${this.base}/api/v1/character-names/${encodeURIComponent(normalized)}/actions/remove-from-media`,
       null,
+    );
+  }
+
+  mergeCharacterName(characterName: string, targetName: string): Observable<TagManagementResult> {
+    const normalizedSource = normalizeMetadataNameForSubmission(characterName);
+    const normalizedTarget = normalizeMetadataNameForSubmission(targetName);
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/character-names/${encodeURIComponent(normalizedSource)}/actions/merge`,
+      { target_name: normalizedTarget },
     );
   }
 
@@ -56,4 +93,36 @@ export class TagsClientService {
       null,
     );
   }
+
+  removeSeriesFromMedia(seriesName: string): Observable<TagManagementResult> {
+    const normalized = normalizeMetadataNameForSubmission(seriesName);
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/series-names/${encodeURIComponent(normalized)}/actions/remove-from-media`,
+      null,
+    );
+  }
+
+  mergeSeriesName(seriesName: string, targetName: string): Observable<TagManagementResult> {
+    const normalizedSource = normalizeMetadataNameForSubmission(seriesName);
+    const normalizedTarget = normalizeMetadataNameForSubmission(targetName);
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/series-names/${encodeURIComponent(normalizedSource)}/actions/merge`,
+      { target_name: normalizedTarget },
+    );
+  }
+
+  private listMetadataNames(endpoint: string, p: MetadataNameListParams): Observable<MetadataNameListResponse> {
+    let params = new HttpParams();
+    if (p.after != null) params = params.set('after', p.after);
+    if (p.page_size != null) params = params.set('page_size', p.page_size);
+    if (p.q != null) params = params.set('q', normalizeMetadataQuery(p.q));
+    if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
+    if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
+    if (p.scope != null) params = params.set('scope', p.scope);
+    return this.http.get<MetadataNameListResponse>(`${this.base}${endpoint}`, { params });
+  }
+}
+
+function normalizeMetadataQuery(value: string): string {
+  return normalizeMetadataNameForSubmission(value) || value.trim();
 }

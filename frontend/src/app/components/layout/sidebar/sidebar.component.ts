@@ -52,6 +52,7 @@ export class SidebarComponent {
       label: 'Library',
       items: [
         { icon: 'collections_bookmark', label: 'Album', path: '/album' },
+        { icon: 'sell', label: 'Tags', path: '/tags' },
         { icon: 'delete_outline', label: 'Trash', path: '/trash' },
       ],
     },

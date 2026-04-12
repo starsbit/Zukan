@@ -8,12 +8,14 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
+import { Router } from '@angular/router';
 import { SearchFiltersDialogComponent } from '../search-filters-dialog/search-filters-dialog.component';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
 import { MediaClientService } from '../../../../services/web/media-client.service';
 import { NavbarSearchService, SearchChip } from '../../../../services/navbar-search.service';
 import { debounceTime, distinctUntilChanged, forkJoin, of, switchMap } from 'rxjs';
+import { MetadataListScope } from '../../../../models/tags';
 import { formatMetadataName } from '../../../../utils/media-display.utils';
 
 type SuggestionType = 'tag' | 'character' | 'series';
@@ -48,8 +50,14 @@ export class NavbarSearchComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
   private readonly mediaClient = inject(MediaClientService);
+  private readonly router = inject(Router);
   private readonly searchService = inject(NavbarSearchService);
   private readonly tagsClient = inject(TagsClientService);
+
+  private readonly suggestionScope = computed<MetadataListScope>(() => {
+    const url = this.router.url ?? '';
+    return url.startsWith('/browse') || url.startsWith('/favorites') ? 'accessible' : 'owner';
+  });
 
   readonly autocompleteTrigger = viewChild(MatAutocompleteTrigger);
   readonly searchInput = viewChild<ElementRef<HTMLInputElement>>('searchInput');
@@ -120,10 +128,11 @@ export class NavbarSearchComponent {
           return of({ tags: [], characters: [], series: [] });
         }
 
+        const scope = this.suggestionScope();
         return forkJoin({
-          tags: this.tagsClient.list({ q: query, page_size: 6 }),
-          characters: this.mediaClient.getCharacterSuggestions(query, 6),
-          series: this.mediaClient.getSeriesSuggestions(query, 6),
+          tags: this.tagsClient.list({ q: query, page_size: 6, scope }),
+          characters: this.mediaClient.getCharacterSuggestions(query, 6, scope),
+          series: this.mediaClient.getSeriesSuggestions(query, 6, scope),
         });
       }),
     ).subscribe(({ tags, characters, series }) => {

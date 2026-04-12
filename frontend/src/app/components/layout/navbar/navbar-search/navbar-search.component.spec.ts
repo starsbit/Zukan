@@ -2,6 +2,7 @@ import { BreakpointObserver } from '@angular/cdk/layout';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
+import { provideRouter, Router } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { MediaType } from '../../../../models/media';
 import { NavbarSearchService } from '../../../../services/navbar-search.service';
@@ -43,39 +44,49 @@ describe('NavbarSearchComponent', () => {
     return input;
   }
 
-  async function createComponent() {
+  async function createComponent(initialUrl = '/') {
     const breakpoint = createBreakpointObserver();
+    const tagsList = vi.fn((params: { q?: string; scope?: string }) => of({
+      items: params.q ? [{ id: 1, name: 'Saber', media_count: 10, category: 4, category_name: 'character', category_key: 'character' }] : [],
+      total: 1,
+      next_cursor: null,
+      has_more: false,
+      page_size: 6,
+    }));
+    const getCharacterSuggestions = vi.fn((query: string) => of(
+      query ? [{ name: 'Rin Tohsaka', media_count: 4 }] : [],
+    ));
+    const getSeriesSuggestions = vi.fn((query: string) => of(
+      query ? [{ name: 'Fate/stay night', media_count: 9 }] : [],
+    ));
     await TestBed.configureTestingModule({
       imports: [NavbarSearchComponent, NoopAnimationsModule],
       providers: [
+        provideRouter([]),
         { provide: BreakpointObserver, useValue: breakpoint.observer },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         {
           provide: TagsClientService,
           useValue: {
-            list: (params: { q?: string }) => of({
-              items: params.q ? [{ id: 1, name: 'Saber', media_count: 10, category: 4, category_name: 'character', category_key: 'character' }] : [],
-              total: 1,
-              next_cursor: null,
-              has_more: false,
-              page_size: 6,
-            }),
+            list: tagsList,
           },
         },
         {
           provide: MediaClientService,
           useValue: {
-            getCharacterSuggestions: (query: string) => of(
-              query ? [{ name: 'Rin Tohsaka', media_count: 4 }] : [],
-            ),
-            getSeriesSuggestions: (query: string) => of(
-              query ? [{ name: 'Fate/stay night', media_count: 9 }] : [],
-            ),
+            getCharacterSuggestions,
+            getSeriesSuggestions,
           },
         },
         NavbarSearchService,
       ],
     }).compileComponents();
+
+    const router = TestBed.inject(Router);
+    Object.defineProperty(router, 'url', {
+      configurable: true,
+      get: () => initialUrl,
+    });
 
     const fixture = TestBed.createComponent(NavbarSearchComponent);
     fixture.detectChanges();
@@ -88,9 +99,32 @@ describe('NavbarSearchComponent', () => {
       element: fixture.nativeElement as HTMLElement,
       overlay: TestBed.inject(OverlayContainer).getContainerElement(),
       breakpoint,
+      tagsList,
+      getCharacterSuggestions,
+      getSeriesSuggestions,
       searchService: TestBed.inject(NavbarSearchService),
     };
   }
+
+  it('uses owner-scoped suggestions outside browse and favorites', async () => {
+    const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/gallery');
+
+    await setInputValue(fixture, element, 'Sab');
+
+    expect(tagsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'Sab', scope: 'owner' }));
+    expect(getCharacterSuggestions).toHaveBeenCalledWith('Sab', 6, 'owner');
+    expect(getSeriesSuggestions).toHaveBeenCalledWith('Sab', 6, 'owner');
+  });
+
+  it('uses accessible suggestions on browse', async () => {
+    const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/browse');
+
+    await setInputValue(fixture, element, 'Sab');
+
+    expect(tagsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'Sab', scope: 'accessible' }));
+    expect(getCharacterSuggestions).toHaveBeenCalledWith('Sab', 6, 'accessible');
+    expect(getSeriesSuggestions).toHaveBeenCalledWith('Sab', 6, 'accessible');
+  });
 
   it('creates a tag chip from a suggestion selection', async () => {
     const { fixture, element, overlay, searchService } = await createComponent();

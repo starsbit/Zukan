@@ -1,6 +1,40 @@
 # Zukan
 
-Self-hosted anime image server. Upload images and video, tag them automatically with AI (WD ViT tagger v3), and browse by character, series, artist, or rating.
+Self-hosted media server for anime illustrations, fanart, and video clips. Upload your collection, let AI tag everything automatically with Danbooru-style tags, then browse and search by character, series, artist, rating, or any combination.
+
+---
+
+## Why self-host?
+
+Most anime image boards and booru sites are public. You upload an image and it's indexed, scraped, and visible to anyone forever. That's fine for sharing, but it's not how most people want to store a personal collection — fan edits, private commissions, screenshots, clips, or anything you just want organised for yourself.
+
+Zukan runs entirely on your own hardware. Nothing leaves your network unless you choose to make it public. There are no accounts to create on third-party services, no usage limits, and no ads. When the project stops being maintained, your library and metadata are still yours in a plain PostgreSQL database you control.
+
+### What you get
+
+**Automatic tagging** — every image and video you upload is analysed by WD ViT tagger v3, a state-of-the-art ONNX model trained on Danbooru. Characters, series, artists, styles, and ratings are detected without any manual work. Tags are stored at configurable confidence thresholds you can tune in the admin panel.
+
+**Tag-based search** — filter your library by any combination of tags, characters, series, artists, and ratings. Include and exclude tags simultaneously. Filter by NSFW or sensitive content flags independently.
+
+**Albums** — organise media into curated albums with cover images and descriptions. Share individual albums with other users at viewer or editor access level, with invite notifications built in.
+
+**Favorites** — star any image or clip for fast access without moving it out of its album or timeline view.
+
+**Timeline and gallery views** — media is grouped by capture date so your library feels chronological. The "On This Day" rail surfaces media from the same calendar date in previous years.
+
+**URL ingest** — paste a URL to import media directly from the web without downloading it to your machine first.
+
+**Characters and series tracking** — the tagger detects character and series entities and links them to media automatically. You can browse by character or series across your whole library.
+
+**OCR** — optional text extraction from images, configurable per language, with a manual override field for corrections.
+
+**Trash and soft-delete** — deleted media goes to trash first with a configurable purge interval, so accidental deletes are recoverable.
+
+**Multi-user with admin controls** — register multiple accounts, manage users from the admin dashboard, and configure the whole application (tagger thresholds, token expiry, rate limits, OCR settings, and more) through a built-in admin panel without touching config files.
+
+**SHA-256 deduplication** — uploading the same file twice doesn't create a duplicate. The second upload is silently ignored.
+
+**GPU or CPU** — the tagger runs on NVIDIA GPUs for fast batch processing, and falls back to CPU automatically if no GPU is present.
 
 ---
 

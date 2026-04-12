@@ -1,0 +1,64 @@
+<h2 mat-dialog-title>Merge Tag</h2>
+
+<mat-dialog-content class="merge-dialog">
+  <div class="merge-dialog__source">
+    <span class="merge-dialog__label">Source tag</span>
+    <strong>{{ displayMetadataName(data.sourceTag.name) }}</strong>
+    <span class="merge-dialog__meta">{{ data.sourceTag.media_count }} media currently use this tag</span>
+  </div>
+
+  <mat-form-field appearance="outline" class="merge-dialog__field">
+    <mat-label>Target tag</mat-label>
+    <input
+      matInput
+      type="text"
+      [formControl]="targetQuery"
+      [matAutocomplete]="targetAutocomplete"
+      placeholder="Search tags to merge into" />
+    @if (loading()) {
+      <mat-spinner matSuffix diameter="18"></mat-spinner>
+    } @else {
+      <button
+        mat-icon-button
+        matSuffix
+        type="button"
+        aria-label="Clear target tag"
+        [disabled]="!targetQuery.value"
+        (click)="clearSelected()">
+        <mat-icon>close</mat-icon>
+      </button>
+    }
+  </mat-form-field>
+
+  <mat-autocomplete #targetAutocomplete="matAutocomplete" (optionSelected)="onOptionSelected($event)">
+    @for (tag of suggestions(); track tag.id) {
+      <mat-option [value]="tag.id">
+        <div class="merge-dialog__option">
+          <span>{{ displayMetadataName(tag.name) }}</span>
+          <small>{{ tag.media_count }} media</small>
+        </div>
+      </mat-option>
+    }
+  </mat-autocomplete>
+
+  @if (selectedTag(); as selected) {
+    <div class="merge-dialog__target">
+      <span class="merge-dialog__label">Target</span>
+      <strong>{{ displayMetadataName(selected.name) }}</strong>
+      <span class="merge-dialog__meta">{{ selected.media_count }} media currently use this tag</span>
+    </div>
+  } @else {
+    <p class="merge-dialog__hint">Search for the target tag and select it from the list.</p>
+  }
+
+  @if (error(); as errorMessage) {
+    <p class="merge-dialog__error">{{ errorMessage }}</p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button color="primary" type="button" [disabled]="!canSubmit()" (click)="confirm()">
+    Merge
+  </button>
+</mat-dialog-actions>

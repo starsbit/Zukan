@@ -1,0 +1,57 @@
+:host {
+  display: block;
+}
+
+.merge-dialog {
+  display: grid;
+  gap: 1rem;
+  min-width: min(34rem, 84vw);
+}
+
+.merge-dialog__source,
+.merge-dialog__target {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
+}
+
+.merge-dialog__label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.merge-dialog__meta,
+.merge-dialog__hint {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.merge-dialog__field {
+  width: 100%;
+}
+
+.merge-dialog__option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.merge-dialog__option small,
+.merge-dialog__error {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.merge-dialog__error {
+  margin: 0;
+  color: var(--mat-sys-error);
+}
+
+@media (max-width: 767px) {
+  .merge-dialog {
+    min-width: 0;
+  }
+}

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.models.auth import User
+from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.tags import MediaTag, Tag
+from backend.app.schemas import MetadataListScope
 
 
 class TagRepository:
@@ -22,6 +25,56 @@ class TagRepository:
     async def get_by_names(self, names: list[str]) -> dict[str, Tag]:
         tags = (await self.db.execute(select(Tag).where(Tag.name.in_(names)))).scalars().all()
         return {tag.name: tag for tag in tags}
+
+    def _accessible_tag_count_stmt(self, user: User, *, category: int | None, query: str | None, scope: MetadataListScope):
+        stmt = (
+            select(
+                Tag.id.label("id"),
+                Tag.name.label("name"),
+                Tag.category.label("category"),
+                func.count(func.distinct(Media.id)).label("media_count"),
+            )
+            .join(MediaTag, MediaTag.tag_id == Tag.id)
+            .join(Media, Media.id == MediaTag.media_id)
+            .where(Media.deleted_at.is_(None))
+            .group_by(Tag.id, Tag.name, Tag.category)
+        )
+        if category is not None:
+            stmt = stmt.where(Tag.category == category)
+        if query:
+            stmt = stmt.where(Tag.name.ilike(f"{query}%"))
+        if scope == MetadataListScope.OWNER:
+            stmt = stmt.where(Media.uploader_id == user.id)
+        elif not user.is_admin:
+            stmt = stmt.where(
+                or_(
+                    Media.uploader_id == user.id,
+                    and_(Media.visibility == MediaVisibility.public),
+                )
+            )
+        return stmt
+
+    async def count_accessible(
+        self,
+        user: User,
+        *,
+        category: int | None,
+        query: str | None,
+        scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
+    ) -> int:
+        base_stmt = self._accessible_tag_count_stmt(user, category=category, query=query, scope=scope)
+        return (await self.db.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()
+
+    async def list_accessible(
+        self,
+        user: User,
+        *,
+        category: int | None,
+        query: str | None,
+        scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
+    ):
+        stmt = self._accessible_tag_count_stmt(user, category=category, query=query, scope=scope)
+        return (await self.db.execute(stmt)).all()
 
     async def count(self, base_stmt) -> int:
         return (await self.db.execute(select(func.count()).select_from(base_stmt.subquery()))).scalar_one()

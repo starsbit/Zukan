@@ -62,11 +62,11 @@ describe('MediaClientService', () => {
   });
 
   it('search sends GET /api/v1/media/search with tag array params', () => {
-    service.search({ tag: ['cat', 'night'], mode: TagFilterMode.AND }).subscribe();
+    service.search({ tag: ['Cat Girl', 'night'], mode: TagFilterMode.AND }).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.getAll('tag')).toEqual(['cat', 'night']);
+    expect(req.request.params.getAll('tag')).toEqual(['cat_girl', 'night']);
     expect(req.request.params.get('mode')).toBe('and');
     req.flush(mockPage);
   });
@@ -90,17 +90,17 @@ describe('MediaClientService', () => {
   });
 
   it('search passes exclude_tag array params', () => {
-    service.search({ exclude_tag: ['bad', 'tag'] }).subscribe();
+    service.search({ exclude_tag: ['Bad Tag', 'spoiler'] }).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
-    expect(req.request.params.getAll('exclude_tag')).toEqual(['bad', 'tag']);
+    expect(req.request.params.getAll('exclude_tag')).toEqual(['bad_tag', 'spoiler']);
     req.flush(mockPage);
   });
 
   it('search passes advanced filter and sort params', () => {
     service.search({
       status: 'reviewed',
-      series_name: 'Fate/stay night',
+      series_name: 'Fate stay night',
       visibility: MediaVisibility.PUBLIC,
       media_type: ['video', 'gif'],
       sort_by: 'filename',
@@ -116,7 +116,7 @@ describe('MediaClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
     expect(req.request.params.get('status')).toBe('reviewed');
-    expect(req.request.params.get('series_name')).toBe('Fate/stay night');
+    expect(req.request.params.get('series_name')).toBe('fate_stay_night');
     expect(req.request.params.get('visibility')).toBe('public');
     expect(req.request.params.getAll('media_type')).toEqual(['video', 'gif']);
     expect(req.request.params.get('sort_by')).toBe('filename');
@@ -135,8 +135,8 @@ describe('MediaClientService', () => {
     service.getTimeline({
       tag: ['cat'],
       character_name: 'Rin Tohsaka',
-      series_name: 'Fate/stay night',
-      exclude_tag: ['spoiler'],
+      series_name: 'Fate stay night',
+      exclude_tag: ['Big Spoiler'],
       mode: TagFilterMode.OR,
       nsfw: NsfwFilter.ONLY,
       sensitive: SensitiveFilter.INCLUDE,
@@ -149,9 +149,9 @@ describe('MediaClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
     expect(req.request.params.getAll('tag')).toEqual(['cat']);
-    expect(req.request.params.get('character_name')).toBe('Rin Tohsaka');
-    expect(req.request.params.get('series_name')).toBe('Fate/stay night');
-    expect(req.request.params.getAll('exclude_tag')).toEqual(['spoiler']);
+    expect(req.request.params.get('character_name')).toBe('rin_tohsaka');
+    expect(req.request.params.get('series_name')).toBe('fate_stay_night');
+    expect(req.request.params.getAll('exclude_tag')).toEqual(['big_spoiler']);
     expect(req.request.params.get('mode')).toBe('or');
     expect(req.request.params.get('nsfw')).toBe('only');
     expect(req.request.params.get('sensitive')).toBe('include');
@@ -204,22 +204,34 @@ describe('MediaClientService', () => {
   });
 
   it('getSeriesSuggestions sends GET /api/v1/media/series-suggestions with q', () => {
-    service.getSeriesSuggestions('fate', 5).subscribe();
+    service.getSeriesSuggestions('Fate Stay Night', 5).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/series-suggestions');
-    expect(req.request.params.get('q')).toBe('fate');
+    expect(req.request.params.get('q')).toBe('fate_stay_night');
     expect(req.request.params.get('limit')).toBe('5');
     req.flush([{ name: 'Fate/stay night', media_count: 9 }]);
   });
 
+  it('getSeriesSuggestions passes scope when provided', () => {
+    service.getSeriesSuggestions('fate', 5, 'owner').subscribe();
+
+    const req = http.expectOne(r => r.url === '/api/v1/media/series-suggestions');
+    expect(req.request.params.get('scope')).toBe('owner');
+    req.flush([{ name: 'Fate/stay night', media_count: 9 }]);
+  });
+
   it('update sends PATCH /api/v1/media/{id} with body', () => {
-    const body = { tags: ['saber'], version: 1 };
+    const body = { tags: ['Saber Alter'], entities: [{ entity_type: 'character', name: 'Rin Tohsaka' }], version: 1 } as any;
 
     service.update('m1', body).subscribe(res => expect(res).toEqual(mockMedia));
 
     const req = http.expectOne('/api/v1/media/m1');
     expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual(body);
+    expect(req.request.body).toEqual({
+      tags: ['saber_alter'],
+      entities: [{ entity_type: 'character', name: 'rin_tohsaka' }],
+      version: 1,
+    });
     req.flush(mockMedia);
   });
 
@@ -260,14 +272,18 @@ describe('MediaClientService', () => {
   });
 
   it('batchUpdateEntities sends PATCH /api/v1/media/entities with body', () => {
-    const body = { media_ids: ['m1', 'm2'], character_names: ['Saber'], series_names: ['Fate'] };
+    const body = { media_ids: ['m1', 'm2'], character_names: ['Saber Alter'], series_names: ['Fate stay night'] };
     const mock = { processed: 2, skipped: 0 };
 
     service.batchUpdateEntities(body).subscribe(res => expect(res).toEqual(mock));
 
     const req = http.expectOne('/api/v1/media/entities');
     expect(req.request.method).toBe('PATCH');
-    expect(req.request.body).toEqual(body);
+    expect(req.request.body).toEqual({
+      media_ids: ['m1', 'm2'],
+      character_names: ['saber_alter'],
+      series_names: ['fate_stay_night'],
+    });
     req.flush(mock);
   });
 
@@ -325,11 +341,21 @@ describe('MediaClientService', () => {
   it('getCharacterSuggestions sends GET with q param', () => {
     const mock = [{ name: 'Saber', media_count: 5 }];
 
-    service.getCharacterSuggestions('Sab').subscribe(res => expect(res).toEqual(mock));
+    service.getCharacterSuggestions('Saber Alter').subscribe(res => expect(res).toEqual(mock));
 
     const req = http.expectOne(r => r.url === '/api/v1/media/character-suggestions');
-    expect(req.request.params.get('q')).toBe('Sab');
+    expect(req.request.params.get('q')).toBe('saber_alter');
     expect(req.request.params.get('limit')).toBe('20');
+    req.flush(mock);
+  });
+
+  it('getCharacterSuggestions passes scope when provided', () => {
+    const mock = [{ name: 'Saber', media_count: 5 }];
+
+    service.getCharacterSuggestions('Sab', 20, 'owner').subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne(r => r.url === '/api/v1/media/character-suggestions');
+    expect(req.request.params.get('scope')).toBe('owner');
     req.flush(mock);
   });
 
@@ -378,7 +404,7 @@ describe('MediaClientService', () => {
     const file = new File(['content'], 'test.jpg', { type: 'image/jpeg' });
     const mock = { batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items', poll_after_seconds: 2, webhooks_supported: false, accepted: 1, duplicates: 0, errors: 0, results: [] };
 
-    service.upload([file], { tags: ['saber'] }).subscribe(res => {
+    service.upload([file], { tags: ['Saber Alter'] }).subscribe(res => {
       if (res.type === HttpEventType.Response) {
         expect((res as HttpResponse<unknown>).body).toEqual(mock);
       }
@@ -387,6 +413,7 @@ describe('MediaClientService', () => {
     const req = http.expectOne('/api/v1/media');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toBeInstanceOf(FormData);
+    expect((req.request.body as FormData).getAll('tags')).toEqual(['saber_alter']);
     req.flush(mock);
   });
 

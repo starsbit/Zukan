@@ -1,5 +1,7 @@
+import '@angular/compiler';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { describe, expect, it } from 'vitest';
 import { SidebarComponent } from './sidebar.component';
 
 describe('SidebarComponent', () => {
@@ -18,7 +20,7 @@ describe('SidebarComponent', () => {
     const sectionTitles = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'))
       .map((title) => title.textContent?.trim());
 
-    expect(labels).toEqual(['Gallery', 'Browse', 'Favorites', 'Album', 'Trash']);
+    expect(labels).toEqual(['Gallery', 'Browse', 'Favorites', 'Album', 'Tags', 'Trash']);
     expect(sectionTitles).toEqual(['Browse', 'Library']);
   });
 });

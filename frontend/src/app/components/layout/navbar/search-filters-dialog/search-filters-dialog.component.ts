@@ -14,6 +14,7 @@ import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
 import { AdvancedSearchFilters } from '../../../../services/navbar-search.service';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
+import { formatMetadataName } from '../../../../utils/media-display.utils';
 
 interface SearchFilterDialogData {
   filters: AdvancedSearchFilters;
@@ -165,6 +166,10 @@ export class SearchFiltersDialogComponent {
 
   onExcludeTagInputEnter(): void {
     this.addExcludeTag(this.excludeTagInput.value);
+  }
+
+  protected displayMetadataName(value: string): string {
+    return formatMetadataName(value);
   }
 
   apply(): void {

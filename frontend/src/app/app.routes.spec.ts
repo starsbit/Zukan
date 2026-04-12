@@ -1,3 +1,5 @@
+import '@angular/compiler';
+import { describe, expect, it } from 'vitest';
 import { adminGuard } from './guards/admin.guard';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
@@ -11,7 +13,7 @@ describe('routes', () => {
   });
 
   it('protects the authenticated pages', () => {
-    const protectedPaths = ['browse', 'album', 'album/:albumId', 'trash'];
+    const protectedPaths = ['browse', 'album', 'album/:albumId', 'favorites', 'tags', 'trash'];
 
     for (const path of protectedPaths) {
       const route = routes.find((candidate) => candidate.path === path);

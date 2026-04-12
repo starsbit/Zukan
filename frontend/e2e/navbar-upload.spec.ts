@@ -25,7 +25,8 @@ async function createUniquePngPayloads(
   page: import('@playwright/test').Page,
   count: number,
 ): Promise<Array<{ name: string; mimeType: string; buffer: Buffer }>> {
-  const payloads = await page.evaluate(async (payloadCount) => {
+  const seed = Date.now();
+  const payloads = await page.evaluate(async ({ payloadCount, batchSeed }) => {
     const toBase64 = (bytes: Uint8Array) => {
       let binary = '';
       for (const byte of bytes) {
@@ -44,7 +45,10 @@ async function createUniquePngPayloads(
         throw new Error('2D context unavailable');
       }
 
-      context.fillStyle = `rgb(${(50 + index * 40) % 255}, ${(90 + index * 50) % 255}, ${(130 + index * 60) % 255})`;
+      const r = (50 + index * 40 + (batchSeed % 256)) % 255;
+      const g = (90 + index * 50 + ((batchSeed >> 8) % 256)) % 255;
+      const b = (130 + index * 60 + ((batchSeed >> 16) % 256)) % 255;
+      context.fillStyle = `rgb(${r}, ${g}, ${b})`;
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.fillStyle = `rgb(${(200 + index * 20) % 255}, ${(120 + index * 30) % 255}, ${(40 + index * 40) % 255})`;
       context.fillRect(index * 3, index * 3, 8, 8);
@@ -60,14 +64,14 @@ async function createUniquePngPayloads(
       });
 
       items.push({
-        name: `chunk-upload-${Date.now()}-${index + 1}.png`,
+        name: `chunk-upload-${batchSeed}-${index + 1}.png`,
         mimeType: 'image/png',
         base64: toBase64(new Uint8Array(await blob.arrayBuffer())),
       });
     }
 
     return items;
-  }, count);
+  }, { payloadCount: count, batchSeed: seed });
 
   return payloads.map((item) => ({
     name: item.name,

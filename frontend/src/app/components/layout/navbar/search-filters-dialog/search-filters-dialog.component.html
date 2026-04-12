@@ -7,8 +7,8 @@
       <mat-chip-grid #excludeChipGrid>
         @for (tag of excludeTagChips(); track tag) {
           <mat-chip-row (removed)="removeExcludeTag(tag)">
-            {{ tag }}
-            <button matChipRemove [attr.aria-label]="'Remove ' + tag"><mat-icon>cancel</mat-icon></button>
+            {{ displayMetadataName(tag) }}
+            <button matChipRemove [attr.aria-label]="'Remove ' + displayMetadataName(tag)"><mat-icon>cancel</mat-icon></button>
           </mat-chip-row>
         }
       </mat-chip-grid>
@@ -21,7 +21,7 @@
       />
       <mat-autocomplete #excludeAutocomplete (optionSelected)="onExcludeTagSelected($event)">
         @for (tag of excludeTagSuggestions(); track tag) {
-          <mat-option [value]="tag">{{ tag }}</mat-option>
+          <mat-option [value]="tag">{{ displayMetadataName(tag) }}</mat-option>
         }
       </mat-autocomplete>
     </mat-form-field>

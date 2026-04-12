@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE="docker compose --project-name zukan-e2e -f $ROOT_DIR/docker-compose.e2e.yml"
 FRONTEND_URL="http://localhost:4201"
 API_URL="http://localhost:4201"   # goes through nginx proxy
+HOST_OS="$(uname -s)"
 
 E2E_FAILED=0
 
@@ -35,6 +36,8 @@ wait_for() {
 }
 
 echo "==> Building and starting e2e stack"
+echo "    Host OS: ${HOST_OS}"
+echo "    Runtime: CPU-only backend image"
 $COMPOSE up -d --build
 
 # API is health-checked inside compose, but we also poll from the host

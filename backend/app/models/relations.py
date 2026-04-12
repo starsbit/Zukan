@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, UniqueConstraint, func
+from sqlalchemy import DateTime, Float, ForeignKey, Index, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -16,6 +16,9 @@ class MediaEntityType(str, Enum):
 
 class MediaEntity(Base):
     __tablename__ = "media_entities"
+    __table_args__ = (
+        Index("idx_media_entities_type_name_media_id", "entity_type", "name", "media_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     media_id: Mapped[uuid.UUID] = mapped_column(

@@ -27,6 +27,8 @@ def decode_cursor_typed(cursor: str, value_type: str, id_type: str = "uuid") -> 
         data = json.loads(base64.urlsafe_b64decode(padded))
         if id_type == "int":
             item_id = int(data["id"])
+        elif id_type == "str":
+            item_id = str(data["id"])
         else:
             item_id = uuid.UUID(data["id"])
         s = data["s"]

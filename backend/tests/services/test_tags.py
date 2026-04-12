@@ -30,18 +30,21 @@ async def test_get_tag_by_id_not_found(fake_db):
 @pytest.mark.asyncio
 async def test_list_tags_returns_cursor_page(fake_db):
     service = TagService(fake_db)
-    t1 = Tag(id=1, name="a", category=0, media_count=5)
-    t2 = Tag(id=2, name="b", category=0, media_count=4)
-    t3 = Tag(id=3, name="c", category=0, media_count=3)
-    fake_db.execute = AsyncMock(return_value=ScalarResult(rows=[t1, t2, t3]))
+    user = SimpleNamespace(id=uuid.uuid4(), is_admin=False)
+    t1 = SimpleNamespace(id=1, name="a", category=0, media_count=5)
+    t2 = SimpleNamespace(id=2, name="b", category=0, media_count=4)
+    t3 = SimpleNamespace(id=3, name="c", category=0, media_count=3)
 
     with patch("backend.app.services.tags.TagRepository") as repo_cls:
-        repo_cls.return_value.count = AsyncMock(return_value=3)
-        page = await service.list_tags(page_size=2, category=None)
+        repo_cls.return_value.count_accessible = AsyncMock(return_value=3)
+        repo_cls.return_value.list_accessible = AsyncMock(return_value=[t1, t2, t3])
+        page = await service.list_tags(user, page_size=2, category=None, scope="owner")
 
     assert page.total == 3
     assert page.has_more is True
     assert len(page.items) == 2
+    repo_cls.return_value.count_accessible.assert_awaited_once_with(user, category=None, query=None, scope="owner")
+    repo_cls.return_value.list_accessible.assert_awaited_once_with(user, category=None, query=None, scope="owner")
 
 
 @pytest.mark.asyncio
@@ -64,6 +67,30 @@ async def test_remove_tag_from_media_updates_links_and_nsfw(fake_db, user, media
     assert result.deleted_tag is True
     assert media.is_nsfw is False
     assert media.is_sensitive is False
+    assert result.deleted_source is True
+
+
+@pytest.mark.asyncio
+async def test_merge_tag_updates_only_accessible_media_and_deduplicates(fake_db, user, media):
+    source_tag = Tag(id=1, name="old", category=1, media_count=1)
+    target_tag = Tag(id=2, name="new", category=0, media_count=1)
+    media.media_tags = [
+        MediaTag(tag_id=1, tag=source_tag, confidence=0.8),
+        MediaTag(tag_id=2, tag=target_tag, confidence=0.4),
+    ]
+    fake_db.execute = AsyncMock(return_value=ScalarResult(rows=[media]))
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls:
+        repo = repo_cls.return_value
+        repo.set_media_tag_links = AsyncMock()
+        repo.get_by_id = AsyncMock(return_value=None)
+
+        result = await TagService(fake_db).merge_tag(user, source_tag=source_tag, target_tag=target_tag)
+
+    assert result.matched_media == 1
+    assert result.updated_media == 1
+    assert result.deleted_source is True
+    repo.set_media_tag_links.assert_awaited_once_with(media, [("new", 1, 0.8)])
 
 
 @pytest.mark.asyncio
@@ -190,12 +217,18 @@ async def test_tag_wrappers_and_tag_media_missing_media(fake_db, user):
 
     with patch.object(service, "get_tag_by_id", AsyncMock(return_value=SimpleNamespace(name="safe"))), patch.object(
         service, "remove_tag_from_media", AsyncMock(return_value=SimpleNamespace(matched_media=1))
-    ) as remove_fn, patch.object(service, "trash_media_by_tag", AsyncMock(return_value=SimpleNamespace(matched_media=1))) as trash_fn:
+    ) as remove_fn, patch.object(service, "trash_media_by_tag", AsyncMock(return_value=SimpleNamespace(matched_media=1))) as trash_fn, patch.object(
+        service,
+        "merge_tag",
+        AsyncMock(return_value=SimpleNamespace(matched_media=1)),
+    ) as merge_fn:
         await service.remove_tag_from_media_by_id(user, tag_id=1)
         await service.trash_media_by_tag_id(user, tag_id=1)
+        await service.merge_tag_by_id(user, tag_id=1, target_tag_id=2)
 
     assert remove_fn.await_count == 1
     assert trash_fn.await_count == 1
+    assert merge_fn.await_count == 1
 
     tagger = SimpleNamespace(predict=AsyncMock())
     service_with_tagger = TagService(fake_db, tagger=tagger)

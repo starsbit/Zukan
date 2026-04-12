@@ -40,7 +40,7 @@ test.describe('Update notification - admin flow', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Notifications' }).click();
 
-    await expect(page.getByText('Zukan 9.9.9 is available')).toBeVisible();
+    await expect(page.getByText('Zukan 9.9.9 is available').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Update Now' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Dismiss' })).toBeVisible();
   });
@@ -178,7 +178,7 @@ test.describe('Update notification - admin flow', () => {
     await page.goto('/');
     await page.getByRole('button', { name: 'Notifications' }).click();
 
-    await expect(page.getByText('Zukan 9.9.9 is available')).toBeVisible();
+    await expect(page.getByText('Zukan 9.9.9 is available').first()).toBeVisible();
     await expect(page.getByRole('button', { name: 'Update Now' })).toHaveCount(0);
     // Non-admin sees the generic "Mark as read" button instead
     await expect(page.getByRole('button', { name: 'Mark as read' })).toBeVisible();

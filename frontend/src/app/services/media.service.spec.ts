@@ -232,7 +232,7 @@ describe('MediaService', () => {
 
       const req = http.expectOne('/api/v1/media/entities');
       expect(req.request.method).toBe('PATCH');
-      expect(req.request.body).toEqual({ media_ids: ['m1'], character_names: ['Saber'] });
+      expect(req.request.body).toEqual({ media_ids: ['m1'], character_names: ['saber'] });
       req.flush({ processed: 1, skipped: 0 });
     });
   });

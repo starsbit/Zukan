@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy import select
 
+from backend.app.models.media import MediaVisibility
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.repositories.tags import TagRepository
 
@@ -45,3 +46,27 @@ async def test_set_media_tag_links_insert_update_delete(db_session, make_user, m
     assert [mt.tag.name for mt in media_tags2] == ["safe"]
     assert media_tags2[0].confidence == 0.95
     assert media_tags2[0].tag.category == 1
+
+
+@pytest.mark.asyncio
+async def test_list_accessible_counts_use_own_and_public_media_only(db_session, make_user, make_media):
+    viewer = await make_user()
+    public_owner = await make_user()
+    private_owner = await make_user()
+
+    viewer_media = await make_media(uploader_id=viewer.id)
+    public_media = await make_media(uploader_id=public_owner.id, visibility=MediaVisibility.public)
+    private_media = await make_media(uploader_id=private_owner.id)
+
+    repo = TagRepository(db_session)
+    await repo.set_media_tag_links(viewer_media, [("shared", 0, 0.9), ("mine", 0, 0.8)])
+    await repo.set_media_tag_links(public_media, [("shared", 0, 0.9)])
+    await repo.set_media_tag_links(private_media, [("shared", 0, 0.9), ("private_only", 0, 0.9)])
+    await db_session.flush()
+
+    rows = await repo.list_accessible(viewer, category=None, query=None)
+    by_name = {row.name: row.media_count for row in rows}
+
+    assert by_name["shared"] == 2
+    assert by_name["mine"] == 1
+    assert "private_only" not in by_name

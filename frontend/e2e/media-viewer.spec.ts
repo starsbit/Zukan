@@ -259,10 +259,10 @@ test.describe.serial('Media viewer', () => {
 
     await expect.poll(() => patchBodies.length, { timeout: 5000 }).toBe(1);
     expect(patchBodies[0]).toEqual({
-      tags: ['starter-tag', 'hero'],
+      tags: ['starter_tag', 'hero'],
       entities: [
-        { entity_type: 'character', name: 'Saber Alter' },
-        { entity_type: 'character', name: 'Rin Tohsaka' },
+        { entity_type: 'character', name: 'saber_alter' },
+        { entity_type: 'character', name: 'rin_tohsaka' },
       ],
       ocr_text_override: 'Manual OCR text',
       version: 1,

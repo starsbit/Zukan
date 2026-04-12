@@ -30,6 +30,7 @@ from backend.app.schemas import (
     MediaListState,
     MediaMetadataFilter,
     MediaTimeline,
+    MetadataListScope,
     MediaUploadRequest,
     MediaUpdate,
     UrlIngestRequest,
@@ -494,11 +495,12 @@ async def get_media_timeline(
 async def list_character_suggestions(
     q: str = Query(min_length=1, description="Prefix query for persisted character names."),
     limit: int = Query(default=20, ge=1, le=100),
+    scope: MetadataListScope = Query(default=MetadataListScope.ACCESSIBLE, description="Result visibility scope."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query, _, _, _, _, _ = _media_services(db)
-    return await query.list_character_suggestions(user, q=q, limit=limit)
+    return await query.list_character_suggestions(user, q=q, limit=limit, scope=scope)
 
 
 @router.get(
@@ -510,11 +512,12 @@ async def list_character_suggestions(
 async def list_series_suggestions(
     q: str = Query(min_length=1, description="Prefix query for persisted series names."),
     limit: int = Query(default=20, ge=1, le=100),
+    scope: MetadataListScope = Query(default=MetadataListScope.ACCESSIBLE, description="Result visibility scope."),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
     query, _, _, _, _, _ = _media_services(db)
-    return await query.list_series_suggestions(user, q=q, limit=limit)
+    return await query.list_series_suggestions(user, q=q, limit=limit, scope=scope)
 
 
 @router.patch(

@@ -6,7 +6,7 @@ import { BlobUrlCache } from '../utils/blob-url.utils';
 import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads';
 import { BulkResult } from '../models/common';
-import { CharacterSuggestion, SeriesSuggestion } from '../models/tags';
+import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../models/tags';
 
 @Injectable({ providedIn: 'root' })
 export class MediaService implements OnDestroy {
@@ -178,12 +178,12 @@ export class MediaService implements OnDestroy {
     return this.client.batchQueueTaggingJobs({ media_ids: ids });
   }
 
-  getCharacterSuggestions(q: string, limit?: number): Observable<CharacterSuggestion[]> {
-    return this.client.getCharacterSuggestions(q, limit);
+  getCharacterSuggestions(q: string, limit?: number, scope?: MetadataListScope): Observable<CharacterSuggestion[]> {
+    return this.client.getCharacterSuggestions(q, limit, scope);
   }
 
-  getSeriesSuggestions(q: string, limit?: number): Observable<SeriesSuggestion[]> {
-    return this.client.getSeriesSuggestions(q, limit);
+  getSeriesSuggestions(q: string, limit?: number, scope?: MetadataListScope): Observable<SeriesSuggestion[]> {
+    return this.client.getSeriesSuggestions(q, limit, scope);
   }
 
   getThumbnailUrl(id: string): Observable<string> {

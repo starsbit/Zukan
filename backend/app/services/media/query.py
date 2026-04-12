@@ -30,6 +30,7 @@ from backend.app.schemas import (
     MediaListState,
     MediaMetadataFilter,
     MediaTimeline,
+    MetadataListScope,
     NsfwFilter,
     SensitiveFilter,
     TagFilterMode,
@@ -370,16 +371,17 @@ class MediaQueryService:
         *,
         q: str,
         limit: int,
+        scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
     ) -> list[dict[str, int | str]]:
         query = q.strip()
         if not query:
             return []
 
         return await self._entity_repo.list_character_suggestions(
+            user=user,
             query=query,
             limit=limit,
-            show_nsfw=user.show_nsfw,
-            is_admin=user.is_admin,
+            scope=scope,
         )
 
     async def list_series_suggestions(
@@ -388,16 +390,17 @@ class MediaQueryService:
         *,
         q: str,
         limit: int,
+        scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
     ) -> list[dict[str, int | str]]:
         query = q.strip()
         if not query:
             return []
 
         return await self._entity_repo.list_series_suggestions(
+            user=user,
             query=query,
             limit=limit,
-            show_nsfw=user.show_nsfw,
-            is_admin=user.is_admin,
+            scope=scope,
         )
 
     async def get_downloadable_media(self, user: User, media_ids: list[uuid.UUID]) -> list[Media]:

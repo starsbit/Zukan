@@ -211,7 +211,7 @@ export class UploadReviewDialogComponent {
       distinctUntilChanged(),
       switchMap((value) => {
         const query = value.trim();
-        return query ? this.mediaService.getCharacterSuggestions(query, 8) : of([]);
+        return query ? this.mediaService.getCharacterSuggestions(query, 8, 'owner') : of([]);
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((items) => this.characterSuggestions.set(items));
@@ -221,7 +221,7 @@ export class UploadReviewDialogComponent {
       distinctUntilChanged(),
       switchMap((value) => {
         const query = value.trim();
-        return query ? this.mediaService.getSeriesSuggestions(query, 8) : of([]);
+        return query ? this.mediaService.getSeriesSuggestions(query, 8, 'owner') : of([]);
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((items) => this.seriesSuggestions.set(items));

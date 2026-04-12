@@ -210,7 +210,7 @@ export class MediaInspectorDialogComponent {
           if (!query) {
             return of({ items: [] as TagRead[] });
           }
-          return this.tagsClient.list({ q: query, page_size: 8 });
+          return this.tagsClient.list({ q: query, page_size: 8, scope: 'owner' });
         }),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -228,7 +228,7 @@ export class MediaInspectorDialogComponent {
           if (!query) {
             return of([]);
           }
-          return this.mediaService.getCharacterSuggestions(query, 8);
+          return this.mediaService.getCharacterSuggestions(query, 8, 'owner');
         }),
         takeUntilDestroyed(this.destroyRef),
       )
@@ -246,7 +246,7 @@ export class MediaInspectorDialogComponent {
           if (!query) {
             return of([]);
           }
-          return this.mediaService.getSeriesSuggestions(query, 8);
+          return this.mediaService.getSeriesSuggestions(query, 8, 'owner');
         }),
         takeUntilDestroyed(this.destroyRef),
       )

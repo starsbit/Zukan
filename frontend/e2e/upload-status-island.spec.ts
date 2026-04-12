@@ -237,8 +237,8 @@ test.describe.serial('Upload status island', () => {
   });
 
   test('shows optimistic uploads immediately, keeps them in timeline order, and resolves them after processing', async ({ page }) => {
-    await registerUploadStatusRoutes(page);
     await seedAuthenticatedSession(page);
+    await registerUploadStatusRoutes(page);
     await expect(page).toHaveURL('/');
 
     await page.goto('/');

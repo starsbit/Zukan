@@ -9,6 +9,7 @@ import { FavoritesComponent } from './pages/favorites/favorites.component';
 import { GalleryComponent } from './pages/gallery/gallery.component';
 import { BrowseComponent } from './pages/browse/browse.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
+import { MetadataManagerPageComponent } from './pages/metadata-manager/metadata-manager-page.component';
 import { TrashComponent } from './pages/trash/trash.component';
 
 export const routes: Routes = [
@@ -45,6 +46,11 @@ export const routes: Routes = [
   {
     path: 'favorites',
     component: FavoritesComponent,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'tags',
+    component: MetadataManagerPageComponent,
     canActivate: [authGuard],
   },
   {

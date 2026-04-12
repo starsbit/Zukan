@@ -30,7 +30,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
       args:
-        REQUIREMENTS_FILE: requirements-macos.txt
+        REQUIREMENTS_FILE: requirements-cpu.txt
     ports:
       - "8000:8000"
     env_file:

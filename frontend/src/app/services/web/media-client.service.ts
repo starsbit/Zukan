@@ -16,8 +16,9 @@ import {
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
-import { CharacterSuggestion, SeriesSuggestion } from '../../models/tags';
+import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../../models/tags';
 import { MediaTimeline } from '../../models/timeline';
+import { normalizeMetadataNameForSubmission } from '../../utils/media-display.utils';
 
 export interface MediaListParams {
   state?: MediaListState;
@@ -89,10 +90,10 @@ export class MediaClientService {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
-    if (p.tag) p.tag.forEach(t => (params = params.append('tag', t)));
-    if (p.character_name != null) params = params.set('character_name', p.character_name);
-    if (p.series_name != null) params = params.set('series_name', p.series_name);
-    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
+    if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
+    if (p.character_name != null) params = params.set('character_name', normalizeMetadataValue(p.character_name));
+    if (p.series_name != null) params = params.set('series_name', normalizeMetadataValue(p.series_name));
+    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
     if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
@@ -120,7 +121,7 @@ export class MediaClientService {
     const form = new FormData();
     files.forEach(f => form.append('files', f));
     if (p.album_id != null) form.append('album_id', p.album_id);
-    if (p.tags) p.tags.forEach(t => form.append('tags', t));
+    if (p.tags) p.tags.forEach(t => form.append('tags', normalizeMetadataValue(t)));
     if (p.captured_at != null) form.append('captured_at', p.captured_at);
     if (p.captured_at_values)
       p.captured_at_values.forEach(v => form.append('captured_at_values', v));
@@ -139,7 +140,11 @@ export class MediaClientService {
   }
 
   batchUpdateEntities(body: MediaEntityBatchUpdate): Observable<BulkResult> {
-    return this.http.patch<BulkResult>(`${this.base}/api/v1/media/entities`, body);
+    return this.http.patch<BulkResult>(`${this.base}/api/v1/media/entities`, {
+      ...body,
+      character_names: body.character_names?.map((name) => normalizeMetadataValue(name)),
+      series_names: body.series_names?.map((name) => normalizeMetadataValue(name)),
+    });
   }
 
   batchDelete(body: MediaIdsRequest): Observable<BulkResult> {
@@ -164,10 +169,10 @@ export class MediaClientService {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
-    if (p.tag) p.tag.forEach(t => (params = params.append('tag', t)));
-    if (p.character_name != null) params = params.set('character_name', p.character_name);
-    if (p.series_name != null) params = params.set('series_name', p.series_name);
-    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', t)));
+    if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
+    if (p.character_name != null) params = params.set('character_name', normalizeMetadataValue(p.character_name));
+    if (p.series_name != null) params = params.set('series_name', normalizeMetadataValue(p.series_name));
+    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.nsfw != null) params = params.set('nsfw', p.nsfw);
     if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
@@ -179,16 +184,18 @@ export class MediaClientService {
     return this.http.get<MediaTimeline>(`${this.base}/api/v1/media/timeline`, { params });
   }
 
-  getCharacterSuggestions(q: string, limit = 20): Observable<CharacterSuggestion[]> {
-    const params = new HttpParams().set('q', q).set('limit', limit);
+  getCharacterSuggestions(q: string, limit = 20, scope?: MetadataListScope): Observable<CharacterSuggestion[]> {
+    let params = new HttpParams().set('q', normalizeMetadataQuery(q)).set('limit', limit);
+    if (scope != null) params = params.set('scope', scope);
     return this.http.get<CharacterSuggestion[]>(
       `${this.base}/api/v1/media/character-suggestions`,
       { params },
     );
   }
 
-  getSeriesSuggestions(q: string, limit = 20): Observable<SeriesSuggestion[]> {
-    const params = new HttpParams().set('q', q).set('limit', limit);
+  getSeriesSuggestions(q: string, limit = 20, scope?: MetadataListScope): Observable<SeriesSuggestion[]> {
+    let params = new HttpParams().set('q', normalizeMetadataQuery(q)).set('limit', limit);
+    if (scope != null) params = params.set('scope', scope);
     return this.http.get<SeriesSuggestion[]>(
       `${this.base}/api/v1/media/series-suggestions`,
       { params },
@@ -200,7 +207,7 @@ export class MediaClientService {
   }
 
   update(id: string, body: MediaUpdate): Observable<MediaDetail> {
-    return this.http.patch<MediaDetail>(`${this.base}/api/v1/media/${id}`, body);
+    return this.http.patch<MediaDetail>(`${this.base}/api/v1/media/${id}`, normalizeMediaUpdate(body));
   }
 
   delete(id: string): Observable<void> {
@@ -240,4 +247,23 @@ export class MediaClientService {
   getPoster(id: string): Observable<Blob> {
     return this.http.get(`${this.base}/api/v1/media/${id}/poster`, { responseType: 'blob' });
   }
+}
+
+function normalizeMetadataValue(value: string): string {
+  return normalizeMetadataNameForSubmission(value) || value.trim();
+}
+
+function normalizeMetadataQuery(value: string): string {
+  return normalizeMetadataValue(value);
+}
+
+function normalizeMediaUpdate(body: MediaUpdate): MediaUpdate {
+  return {
+    ...body,
+    tags: body.tags?.map((tag) => normalizeMetadataValue(tag)),
+    entities: body.entities?.map((entity) => ({
+      ...entity,
+      name: normalizeMetadataValue(entity.name),
+    })),
+  };
 }

@@ -16,26 +16,26 @@
 
         <div class="media-browser__action-buttons">
           @if (selectionActionMode() === 'trash') {
-            <button mat-icon-button type="button" (click)="requestRestoreSelection()" matTooltip="Restore selected">
+            <button mat-icon-button type="button" (click)="requestRestoreSelection()" matTooltip="Restore selected" aria-label="Restore selected">
               <mat-icon>restore_from_trash</mat-icon>
             </button>
           } @else {
-            <button mat-icon-button type="button" (click)="addSelectionToAlbum()" matTooltip="Add to album">
+            <button mat-icon-button type="button" (click)="addSelectionToAlbum()" matTooltip="Add to album" aria-label="Add to album">
               <mat-icon>collections_bookmark</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="trashSelection()" matTooltip="Move to trash">
+            <button mat-icon-button type="button" (click)="trashSelection()" matTooltip="Move to trash" aria-label="Move to trash">
               <mat-icon>delete_outline</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="reprocessSelection()" matTooltip="Reprocess tagging">
+            <button mat-icon-button type="button" (click)="reprocessSelection()" matTooltip="Reprocess tagging" aria-label="Reprocess tagging">
               <mat-icon>local_offer</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PRIVATE)" matTooltip="Make private">
+            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PRIVATE)" matTooltip="Make private" aria-label="Make private">
               <mat-icon>lock</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PUBLIC)" matTooltip="Make public">
+            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PUBLIC)" matTooltip="Make public" aria-label="Make public">
               <mat-icon>public</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="downloadSelection()" matTooltip="Download as ZIP">
+            <button mat-icon-button type="button" (click)="downloadSelection()" matTooltip="Download as ZIP" aria-label="Download as ZIP">
               <mat-icon>download</mat-icon>
             </button>
           }
