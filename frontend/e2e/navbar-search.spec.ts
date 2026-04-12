@@ -674,7 +674,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await seedAuthenticatedSession(page);
     await registerAdvancedFilterRoutes(page, searchRequests);
-    await page.getByRole('link', { name: 'Gallery' }).click();
+    await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -695,7 +695,7 @@ test.describe.serial('Navbar search', () => {
     const timelineRequests: URL[] = [];
     await seedAuthenticatedSession(page);
     await registerAdvancedFilterRoutes(page, searchRequests, timelineRequests);
-    await page.getByRole('link', { name: 'Gallery' }).click();
+    await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
@@ -719,7 +719,7 @@ test.describe.serial('Navbar search', () => {
     const searchRequests: URL[] = [];
     await seedAuthenticatedSession(page);
     await registerAdvancedFilterRoutes(page, searchRequests);
-    await page.getByRole('link', { name: 'Gallery' }).click();
+    await page.goto('/');
     await expect(page).toHaveURL('/');
     await waitForMatchingSearchRequest(
       searchRequests,
