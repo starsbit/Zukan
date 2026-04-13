@@ -46,6 +46,12 @@ class TagService:
             raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
         return tag
 
+    async def get_manageable_tag_by_id(self, user: User, tag_id: int) -> Tag:
+        tag = await self.get_tag_by_id(tag_id)
+        if not user.is_admin and tag.owner_user_id != user.id:
+            raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
+        return tag
+
     async def list_tags(
         self,
         user: User,
@@ -102,20 +108,19 @@ class TagService:
         )
 
     async def remove_tag_from_media_by_id(self, user, *, tag_id: int) -> TagManagementResult:
-        tag = await self.get_tag_by_id(tag_id)
-        return await self.remove_tag_from_media(user, tag_name=tag.name)
+        tag = await self.get_manageable_tag_by_id(user, tag_id)
+        return await self.remove_tag_from_media(user, source_tag=tag)
 
     async def trash_media_by_tag_id(self, user, *, tag_id: int) -> TagManagementResult:
-        tag = await self.get_tag_by_id(tag_id)
-        return await self.trash_media_by_tag(user, tag_name=tag.name)
+        tag = await self.get_manageable_tag_by_id(user, tag_id)
+        return await self.trash_media_by_tag(user, tag=tag)
 
-    async def remove_tag_from_media(self, user, *, tag_name: str) -> TagManagementResult:
+    async def remove_tag_from_media(self, user, *, source_tag: Tag) -> TagManagementResult:
         tags_repo = TagRepository(self._db)
-        tag = await tags_repo.get_by_name(tag_name)
         media_rows = (
             await self._db.execute(
-                _accessible_media_stmt(user)
-                .where(Media.id.in_(select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name)))
+                _manageable_media_stmt(user)
+                .where(Media.id.in_(select(MediaTag.media_id).where(MediaTag.tag_id == source_tag.id)))
                 .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
             )
         ).scalars().all()
@@ -125,7 +130,7 @@ class TagService:
             next_payloads = [
                 (mt.tag.name, mt.tag.category, mt.confidence)
                 for mt in media.media_tags
-                if mt.tag.name != tag_name
+                if mt.tag_id != source_tag.id
             ]
             if len(next_payloads) == len(media.media_tags):
                 continue
@@ -136,16 +141,15 @@ class TagService:
             updated += 1
 
         await self._db.flush()
-        deleted_tag = False
-        if tag is not None:
-            remaining = await tags_repo.get_by_id(tag.id)
-            deleted_tag = remaining is None
+        remaining = await tags_repo.get_by_id(source_tag.id)
+        deleted_tag = remaining is None
 
         await self._db.commit()
         logger.info(
-            "Removed tag from media user_id=%s tag_name=%s matched_media=%s updated_media=%s deleted_tag=%s",
+            "Removed tag from media user_id=%s tag_id=%s tag_name=%s matched_media=%s updated_media=%s deleted_tag=%s",
             user.id,
-            tag_name,
+            source_tag.id,
+            source_tag.name,
             len(media_rows),
             updated,
             deleted_tag,
@@ -158,18 +162,20 @@ class TagService:
         )
 
     async def merge_tag_by_id(self, user, *, tag_id: int, target_tag_id: int) -> TagManagementResult:
-        source_tag = await self.get_tag_by_id(tag_id)
-        target_tag = await self.get_tag_by_id(target_tag_id)
+        source_tag = await self.get_manageable_tag_by_id(user, tag_id)
+        target_tag = await self.get_manageable_tag_by_id(user, target_tag_id)
         return await self.merge_tag(user, source_tag=source_tag, target_tag=target_tag)
 
     async def merge_tag(self, user, *, source_tag: Tag, target_tag: Tag) -> TagManagementResult:
         if source_tag.id == target_tag.id:
             return TagManagementResult(matched_media=0, updated_media=0)
+        if source_tag.owner_user_id != target_tag.owner_user_id:
+            raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
 
         tags_repo = TagRepository(self._db)
         media_rows = (
             await self._db.execute(
-                _accessible_media_stmt(user)
+                _manageable_media_stmt(user)
                 .where(Media.id.in_(select(MediaTag.media_id).where(MediaTag.tag_id == source_tag.id)))
                 .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
             )
@@ -206,11 +212,11 @@ class TagService:
             deleted_source=deleted_source,
         )
 
-    async def trash_media_by_tag(self, user, *, tag_name: str) -> TagManagementResult:
+    async def trash_media_by_tag(self, user, *, tag: Tag) -> TagManagementResult:
         matches = (
             await self._db.execute(
-                _accessible_media_stmt(user)
-                .where(Media.id.in_(select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name)))
+                _manageable_media_stmt(user)
+                .where(Media.id.in_(select(MediaTag.media_id).where(MediaTag.tag_id == tag.id)))
             )
         ).scalars().all()
         trashed = 0
@@ -224,9 +230,10 @@ class TagService:
                 already_trashed += 1
         await self._db.commit()
         logger.info(
-            "Trashed media by tag user_id=%s tag_name=%s trashed=%s already_trashed=%s",
+            "Trashed media by tag user_id=%s tag_id=%s tag_name=%s trashed=%s already_trashed=%s",
             user.id,
-            tag_name,
+            tag.id,
+            tag.name,
             trashed,
             already_trashed,
         )
@@ -293,11 +300,6 @@ class TagService:
         media.tagging_status = "done"
         media.tagging_error = None
 
-        entity_repo = MediaEntityRepository(self._db)
-        for entity_type in (MediaEntityType.character, MediaEntityType.series):
-            for entity in await entity_repo.get_tagger_entities(media.id, entity_type):
-                await self._db.delete(entity)
-
         entity_predictions = [
             (MediaEntityType.character, prediction)
             for prediction in filtered_predictions
@@ -312,14 +314,32 @@ class TagService:
             if key in seen_entities:
                 continue
             seen_entities.add(key)
-            self._db.add(MediaEntity(
-                media_id=media.id,
-                entity_type=entity_type,
-                name=prediction.name,
-                role="primary",
-                source="tagger",
-                confidence=prediction.confidence,
-            ))
+        entity_repo = MediaEntityRepository(self._db)
+        character_names = [prediction.name for entity_type, prediction in entity_predictions if entity_type == MediaEntityType.character]
+        series_names = [prediction.name for entity_type, prediction in entity_predictions if entity_type == MediaEntityType.series]
+        await entity_repo.add_media_entities(
+            media,
+            entity_type=MediaEntityType.character,
+            names=character_names,
+            source="tagger",
+            confidence=None,
+            replace_existing_type=True,
+        )
+        await entity_repo.add_media_entities(
+            media,
+            entity_type=MediaEntityType.series,
+            names=series_names,
+            source="tagger",
+            confidence=None,
+            replace_existing_type=True,
+        )
+
+        if character_names or series_names:
+            by_name = {prediction.name: prediction.confidence for _, prediction in entity_predictions}
+            for entity in await entity_repo.get_by_media(media.id):
+                if entity.entity_type not in {MediaEntityType.character, MediaEntityType.series}:
+                    continue
+                entity.confidence = by_name.get(entity.name, entity.confidence)
 
         await self._db.commit()
         logger.info(
@@ -332,10 +352,12 @@ class TagService:
         )
 
 
-def _accessible_media_stmt(user):
+def _manageable_media_stmt(user):
     stmt = select(Media)
     if not user.is_admin:
-        stmt = stmt.where(Media.uploader_id == user.id)
+        stmt = stmt.where(
+            (Media.uploader_id == user.id) | (Media.owner_id == user.id)
+        )
     return stmt
 
 

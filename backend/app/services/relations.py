@@ -9,7 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.media import Media
 from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.repositories.relations import MediaEntityRepository
+from backend.app.repositories.relations import MediaEntityRepository, OwnedEntityRepository
+from backend.app.repositories.tags import effective_media_owner_id
 from backend.app.schemas import EntityCreate, ExternalRefCreate, MetadataListScope, MetadataNameListResponse, MetadataNameRead, TagManagementResult
 from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 
@@ -22,19 +23,11 @@ class RelationService:
 
     async def replace_entities(self, media: Media, entity_creates: list[EntityCreate]) -> None:
         logger.info("Replacing entities media_id=%s entity_count=%s", media.id, len(entity_creates))
-        for entity in await MediaEntityRepository(self._db).get_by_media(media.id):
-            await self._db.delete(entity)
-        await self._db.flush()
-        for entity_create in entity_creates:
-            self._db.add(MediaEntity(
-                media_id=media.id,
-                entity_type=entity_create.entity_type,
-                entity_id=entity_create.entity_id,
-                name=entity_create.name,
-                role=entity_create.role,
-                source="manual",
-                confidence=entity_create.confidence,
-            ))
+        await MediaEntityRepository(self._db).replace_media_entities(
+            media,
+            entity_creates=entity_creates,
+            source="manual",
+        )
 
     async def replace_external_refs(self, media: Media, ref_creates: list[ExternalRefCreate]) -> None:
         from backend.app.models.relations import MediaExternalRef
@@ -123,7 +116,7 @@ class RelationService:
             MediaEntity.name == character_name,
         )
         matches = (
-            await self._db.execute(_accessible_media_stmt(user).where(Media.id.in_(char_media_ids)))
+            await self._db.execute(_manageable_media_stmt(user).where(Media.id.in_(char_media_ids)))
         ).scalars().all()
         trashed = 0
         already_trashed = 0
@@ -145,14 +138,23 @@ class RelationService:
         return TagManagementResult(matched_media=len(matches), trashed_media=trashed, already_trashed=already_trashed)
 
     async def _clear_entity_name(self, user, *, entity_type: MediaEntityType, name: str) -> TagManagementResult:
-        media_rows = await self._media_rows_for_entity_name(user, entity_type=entity_type, name=name)
+        owned_entity = await OwnedEntityRepository(self._db).get_by_owner_type_name(
+            owner_user_id=user.id,
+            entity_type=entity_type,
+            name=name,
+        )
+        if owned_entity is None:
+            return TagManagementResult(matched_media=0, updated_media=0, deleted_source=True)
+
+        media_rows = await self._media_rows_for_owned_entity(user, owned_entity_id=owned_entity.id)
         accessible_ids = {m.id for m in media_rows}
         repo = MediaEntityRepository(self._db)
-        entities = await repo.get_entities_by_name_for_media_ids(accessible_ids, entity_type=entity_type, name=name)
+        entities = await repo.get_entities_for_owned_entity(owned_entity.id, media_ids=accessible_ids)
         for entity in entities:
             await self._db.delete(entity)
         await self._db.flush()
-        deleted_source = not await repo.source_name_exists(entity_type=entity_type, name=name)
+        await OwnedEntityRepository(self._db).recount_entity_ids({owned_entity.id})
+        deleted_source = await OwnedEntityRepository(self._db).get_by_id(owned_entity.id) is None
         await self._db.commit()
         logger.info(
             "Cleared entities user_id=%s entity_type=%s name=%s matched_media=%s deleted_source=%s",
@@ -180,26 +182,46 @@ class RelationService:
         if not normalized_target or normalized_target == source_name:
             return TagManagementResult(matched_media=0, updated_media=0)
 
-        media_rows = await self._media_rows_for_entity_name(user, entity_type=entity_type, name=source_name)
+        owner_user_id = user.id
+        owned_repo = OwnedEntityRepository(self._db)
+        source_entity = await owned_repo.get_by_owner_type_name(
+            owner_user_id=owner_user_id,
+            entity_type=entity_type,
+            name=source_name,
+        )
+        if source_entity is None:
+            return TagManagementResult(matched_media=0, updated_media=0, deleted_source=True)
+
+        target_entity = await owned_repo.get_or_create(
+            owner_user_id=owner_user_id,
+            entity_type=entity_type,
+            name=normalized_target,
+        )
+        if target_entity.id == source_entity.id:
+            return TagManagementResult(matched_media=0, updated_media=0)
+
+        source_media_rows = await self._media_rows_for_owned_entity(user, owned_entity_id=source_entity.id)
+        source_media_ids = {media.id for media in source_media_rows}
         repo = MediaEntityRepository(self._db)
-        updated = 0
+        source_links = await repo.get_entities_for_owned_entity(source_entity.id, media_ids=source_media_ids)
+        target_links = await repo.get_entities_for_owned_entity(target_entity.id, media_ids=source_media_ids)
+        target_by_media_id = {entity.media_id: entity for entity in target_links}
+        updated_media_ids: set[uuid.UUID] = set()
 
-        for media in media_rows:
-            entities = await repo.get_by_media(media.id)
-            merged = _merge_entities_for_media(entities, entity_type=entity_type, source_name=source_name, target_name=normalized_target)
-            if not merged:
-                continue
-
-            for entity in merged["delete"]:
-                await self._db.delete(entity)
-            if merged["keep"] is not None:
-                merged["keep"].name = normalized_target
-                if merged["keep"].confidence is None and merged["best_confidence"] is not None:
-                    merged["keep"].confidence = merged["best_confidence"]
-            updated += 1
+        for source_link in source_links:
+            target_link = target_by_media_id.get(source_link.media_id)
+            if target_link is not None:
+                if target_link.confidence is None and source_link.confidence is not None:
+                    target_link.confidence = source_link.confidence
+                await self._db.delete(source_link)
+            else:
+                source_link.entity_id = target_entity.id
+                source_link.name = target_entity.name
+            updated_media_ids.add(source_link.media_id)
 
         await self._db.flush()
-        deleted_source = not await repo.source_name_exists(entity_type=entity_type, name=source_name)
+        await owned_repo.recount_entity_ids({source_entity.id, target_entity.id})
+        deleted_source = await owned_repo.get_by_id(source_entity.id) is None
         await self._db.commit()
         logger.info(
             "Merged entities user_id=%s entity_type=%s source_name=%s target_name=%s matched_media=%s updated_media=%s deleted_source=%s",
@@ -207,23 +229,20 @@ class RelationService:
             entity_type,
             source_name,
             normalized_target,
-            len(media_rows),
-            updated,
+            len(source_media_rows),
+            len(updated_media_ids),
             deleted_source,
         )
         return TagManagementResult(
-            matched_media=len(media_rows),
-            updated_media=updated,
+            matched_media=len(source_media_rows),
+            updated_media=len(updated_media_ids),
             deleted_source=deleted_source,
         )
 
-    async def _media_rows_for_entity_name(self, user, *, entity_type: MediaEntityType, name: str) -> list[Media]:
-        media_ids = select(MediaEntity.media_id).where(
-            MediaEntity.entity_type == entity_type,
-            MediaEntity.name == name,
-        )
+    async def _media_rows_for_owned_entity(self, user, *, owned_entity_id) -> list[Media]:
+        media_ids = select(MediaEntity.media_id).where(MediaEntity.entity_id == owned_entity_id)
         return (
-            await self._db.execute(_accessible_media_stmt(user).where(Media.id.in_(media_ids)))
+            await self._db.execute(_manageable_media_stmt(user).where(Media.id.in_(media_ids)))
         ).scalars().all()
 
     async def _list_entity_names(
@@ -278,47 +297,15 @@ class RelationService:
             next_cursor=next_cursor,
             has_more=has_more,
             page_size=page_size,
-            items=[MetadataNameRead(name=row.name, media_count=row.media_count) for row in rows],
+            items=[MetadataNameRead(id=getattr(row, "id", None), name=row.name, media_count=row.media_count) for row in rows],
         )
 
 
-def _accessible_media_stmt(user):
+def _manageable_media_stmt(user):
     stmt = select(Media)
     if not user.is_admin:
-        stmt = stmt.where(Media.uploader_id == user.id)
+        stmt = stmt.where((Media.uploader_id == user.id) | (Media.owner_id == user.id))
     return stmt
-
-
-def _merge_entities_for_media(
-    entities: list[MediaEntity],
-    *,
-    entity_type: MediaEntityType,
-    source_name: str,
-    target_name: str,
-):
-    matching = [
-        entity for entity in entities
-        if entity.entity_type == entity_type and entity.name in {source_name, target_name}
-    ]
-    source_entities = [entity for entity in matching if entity.name == source_name]
-    if not source_entities:
-        return None
-
-    keep = sorted(matching, key=_entity_merge_priority)[0]
-    best_confidence = max((entity.confidence for entity in matching if entity.confidence is not None), default=None)
-    to_delete = [entity for entity in matching if entity is not keep]
-    return {
-        "keep": keep,
-        "delete": to_delete,
-        "best_confidence": best_confidence,
-    }
-
-
-def _entity_merge_priority(entity: MediaEntity) -> tuple[int, float, datetime]:
-    manual_rank = 0 if entity.source == "manual" else 1
-    confidence_rank = -(entity.confidence if entity.confidence is not None else -1.0)
-    created_at = entity.created_at if entity.created_at is not None else datetime.min.replace(tzinfo=timezone.utc)
-    return (manual_rank, confidence_rank, created_at)
 
 
 def _name_row_after_cursor(row, *, sort_by: str, sort_order: str, cursor_val, cursor_name: str) -> bool:

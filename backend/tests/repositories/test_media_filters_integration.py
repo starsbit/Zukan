@@ -18,8 +18,8 @@ async def test_media_filters_tag_character_ocr_and_nsfw(db_session, make_user, m
     m1 = await make_media(uploader_id=user.id, is_nsfw=False)
     m2 = await make_media(uploader_id=user.id, is_nsfw=True)
 
-    t_safe = Tag(name="safe", category=0, media_count=1)
-    t_nsfw = Tag(name="nsfw", category=9, media_count=1)
+    t_safe = Tag(owner_user_id=user.id, name="safe", category=0, media_count=1)
+    t_nsfw = Tag(owner_user_id=user.id, name="nsfw", category=9, media_count=1)
     db_session.add_all([t_safe, t_nsfw])
     await db_session.flush()
     db_session.add_all(
@@ -92,9 +92,9 @@ async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_s
     m2 = await make_media(uploader_id=user.id)
     m3 = await make_media(uploader_id=user.id)
 
-    tag_hero = Tag(name="hero", category=0, media_count=2)
-    tag_night = Tag(name="night", category=0, media_count=2)
-    tag_spoiler = Tag(name="spoiler", category=0, media_count=1)
+    tag_hero = Tag(owner_user_id=user.id, name="hero", category=0, media_count=2)
+    tag_night = Tag(owner_user_id=user.id, name="night", category=0, media_count=2)
+    tag_spoiler = Tag(owner_user_id=user.id, name="spoiler", category=0, media_count=1)
     db_session.add_all([tag_hero, tag_night, tag_spoiler])
     await db_session.flush()
 

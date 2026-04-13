@@ -79,11 +79,9 @@ export class TagsClientService {
   }
 
   mergeCharacterName(characterName: string, targetName: string): Observable<TagManagementResult> {
-    const normalizedSource = normalizeMetadataNameForSubmission(characterName);
-    const normalizedTarget = normalizeMetadataNameForSubmission(targetName);
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/character-names/${encodeURIComponent(normalizedSource)}/actions/merge`,
-      { target_name: normalizedTarget },
+      `${this.base}/api/v1/character-names/${encodeURIComponent(characterName)}/actions/merge`,
+      { target_name: targetName.trim() },
     );
   }
 
@@ -103,11 +101,9 @@ export class TagsClientService {
   }
 
   mergeSeriesName(seriesName: string, targetName: string): Observable<TagManagementResult> {
-    const normalizedSource = normalizeMetadataNameForSubmission(seriesName);
-    const normalizedTarget = normalizeMetadataNameForSubmission(targetName);
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/series-names/${encodeURIComponent(normalizedSource)}/actions/merge`,
-      { target_name: normalizedTarget },
+      `${this.base}/api/v1/series-names/${encodeURIComponent(seriesName)}/actions/merge`,
+      { target_name: targetName.trim() },
     );
   }
 

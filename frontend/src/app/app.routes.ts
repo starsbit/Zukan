@@ -24,6 +24,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'gallery',
+    component: GalleryComponent,
+    canActivate: [authGuard],
+  },
+  {
     path: 'browse',
     component: BrowseComponent,
     canActivate: [authGuard],
@@ -57,5 +62,9 @@ export const routes: Routes = [
     path: 'trash',
     component: TrashComponent,
     canActivate: [authGuard],
+  },
+  {
+    path: '**',
+    redirectTo: '',
   },
 ];

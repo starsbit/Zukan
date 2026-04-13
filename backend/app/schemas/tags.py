@@ -1,3 +1,4 @@
+import uuid
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -27,6 +28,7 @@ class SeriesSuggestion(BaseModel):
 
 
 class MetadataNameRead(BaseModel):
+    id: uuid.UUID | None = Field(default=None, description="Owner-scoped canonical metadata id when available.")
     name: str = Field(description="Exact persisted metadata name.")
     media_count: int = Field(description="Number of media items currently associated with this name.")
 

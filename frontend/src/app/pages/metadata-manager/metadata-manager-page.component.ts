@@ -11,8 +11,8 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
-import { debounceTime, distinctUntilChanged, finalize, map } from 'rxjs';
-import { MetadataNameRead, TagManagementResult, TagRead } from '../../models/tags';
+import { Observable, debounceTime, distinctUntilChanged, finalize, map } from 'rxjs';
+import { MetadataNameListResponse, MetadataNameRead, TagListResponse, TagManagementResult, TagRead } from '../../models/tags';
 import { MetadataNameMergeDialogComponent } from '../../components/metadata/metadata-name-merge-dialog/metadata-name-merge-dialog.component';
 import { TagMergeDialogComponent } from '../../components/metadata/tag-merge-dialog/tag-merge-dialog.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
@@ -223,7 +223,7 @@ export class MetadataManagerPageComponent {
 
     this.confirmDialog.open({
       title: 'Remove tag from your media?',
-      message: `This will remove "${tag.name}" from matching media in your library. ${tag.media_count} media currently match.`,
+      message: `This will remove "${formatMetadataName(tag.name)}" from matching media in your library. ${tag.media_count} media currently match.`,
       confirmLabel: 'Remove tag',
       cancelLabel: 'Cancel',
       tone: 'warn',
@@ -264,7 +264,7 @@ export class MetadataManagerPageComponent {
     const noun = kind === 'characters' ? 'character name' : 'series name';
     this.confirmDialog.open({
       title: `Remove ${noun} from your media?`,
-      message: `This will remove "${item.name}" from matching media in your library. ${item.media_count} media currently match.`,
+      message: `This will remove "${formatMetadataName(item.name)}" from matching media in your library. ${item.media_count} media currently match.`,
       confirmLabel: `Remove ${noun}`,
       cancelLabel: 'Cancel',
       tone: 'warn',
@@ -319,7 +319,7 @@ export class MetadataManagerPageComponent {
     }
 
     const { sort_by, sort_order } = this.resolveSort();
-    const request = this.activeTab() === 'tags'
+    const request: Observable<TagListResponse | MetadataNameListResponse> = this.activeTab() === 'tags'
       ? this.tagsClient.list({
           after: after ?? undefined,
           page_size: 100,
@@ -353,13 +353,13 @@ export class MetadataManagerPageComponent {
       }),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe({
-      next: (page) => {
+      next: (page: TagListResponse | MetadataNameListResponse) => {
         this.replaceActiveItems(page.items, append);
         this.total.set(page.total);
         this.nextCursor.set(page.next_cursor);
         this.hasMore.set(page.has_more);
       },
-      error: (err) => {
+      error: (err: { error?: { detail?: string } }) => {
         this.error.set(err.error?.detail ?? `Unable to load your ${this.activeViewLabel().toLowerCase()}.`);
       },
     });

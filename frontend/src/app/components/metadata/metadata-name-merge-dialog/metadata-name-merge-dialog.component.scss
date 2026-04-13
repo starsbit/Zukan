@@ -8,8 +8,20 @@
   min-width: min(34rem, 84vw);
 }
 
+.merge-dialog__intro,
+.merge-dialog__meta,
+.merge-dialog__hint {
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.merge-dialog__intro {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .merge-dialog__source,
-.merge-dialog__target {
+.merge-dialog__target,
+.merge-dialog__summary {
   display: grid;
   gap: 0.2rem;
   padding: 0.9rem 1rem;
@@ -24,9 +36,15 @@
   color: var(--mat-sys-on-surface-variant);
 }
 
-.merge-dialog__meta,
-.merge-dialog__hint {
-  color: var(--mat-sys-on-surface-variant);
+.merge-dialog__summary {
+  gap: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 30%, var(--mat-sys-surface-container-high));
+}
+
+.merge-dialog__summary p {
+  margin: 0;
+  line-height: 1.45;
 }
 
 .merge-dialog__field {

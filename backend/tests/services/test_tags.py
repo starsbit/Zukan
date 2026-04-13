@@ -49,18 +49,20 @@ async def test_list_tags_returns_cursor_page(fake_db):
 
 @pytest.mark.asyncio
 async def test_remove_tag_from_media_updates_links_and_nsfw(fake_db, user, media):
-    safe_tag = Tag(id=1, name="safe", category=0, media_count=1)
-    nsfw_tag = Tag(id=2, name="nsfw", category=9, media_count=1)
-    media.media_tags = [MediaTag(tag=safe_tag, confidence=0.9), MediaTag(tag=nsfw_tag, confidence=0.8)]
+    safe_tag = Tag(id=1, owner_user_id=user.id, name="safe", category=0, media_count=1)
+    nsfw_tag = Tag(id=2, owner_user_id=user.id, name="nsfw", category=9, media_count=1)
+    media.media_tags = [
+        MediaTag(tag_id=1, tag=safe_tag, confidence=0.9),
+        MediaTag(tag_id=2, tag=nsfw_tag, confidence=0.8),
+    ]
     fake_db.execute = AsyncMock(return_value=ScalarResult(rows=[media]))
 
     with patch("backend.app.services.tags.TagRepository") as repo_cls:
         repo = repo_cls.return_value
-        repo.get_by_name = AsyncMock(return_value=SimpleNamespace(id=1))
         repo.get_by_id = AsyncMock(return_value=None)
         repo.set_media_tag_links = AsyncMock()
 
-        result = await TagService(fake_db).remove_tag_from_media(user, tag_name="nsfw")
+        result = await TagService(fake_db).remove_tag_from_media(user, source_tag=nsfw_tag)
 
     assert result.matched_media == 1
     assert result.updated_media == 1
@@ -72,8 +74,8 @@ async def test_remove_tag_from_media_updates_links_and_nsfw(fake_db, user, media
 
 @pytest.mark.asyncio
 async def test_merge_tag_updates_only_accessible_media_and_deduplicates(fake_db, user, media):
-    source_tag = Tag(id=1, name="old", category=1, media_count=1)
-    target_tag = Tag(id=2, name="new", category=0, media_count=1)
+    source_tag = Tag(id=1, owner_user_id=user.id, name="old", category=1, media_count=1)
+    target_tag = Tag(id=2, owner_user_id=user.id, name="new", category=0, media_count=1)
     media.media_tags = [
         MediaTag(tag_id=1, tag=source_tag, confidence=0.8),
         MediaTag(tag_id=2, tag=target_tag, confidence=0.4),
@@ -98,8 +100,9 @@ async def test_trash_media_by_tag_counts(fake_db, user):
     m1 = SimpleNamespace(deleted_at=None)
     m2 = SimpleNamespace(deleted_at=datetime.now(timezone.utc))
     fake_db.execute = AsyncMock(return_value=ScalarResult(rows=[m1, m2]))
+    tag = Tag(id=1, owner_user_id=user.id, name="safe", category=0, media_count=2)
 
-    result = await TagService(fake_db).trash_media_by_tag(user, tag_name="safe")
+    result = await TagService(fake_db).trash_media_by_tag(user, tag=tag)
 
     assert result.matched_media == 2
     assert result.trashed_media == 1
@@ -141,7 +144,12 @@ async def test_store_tagging_result_sets_status_and_persists_all_character_and_s
         "backend.app.services.tags.MediaEntityRepository"
     ) as entity_repo_cls:
         tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
-        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[SimpleNamespace(id=1)], [SimpleNamespace(id=2)]])
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+        entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=[
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="tagger", confidence=None),
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name="Rin Tohsaka", role="primary", source="tagger", confidence=None),
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.series, name="Fate/stay night", role="primary", source="tagger", confidence=None),
+        ])
         fake_db.get = AsyncMock(return_value=user)
 
         await TagService(fake_db)._store_tagging_result(media, result)
@@ -149,13 +157,22 @@ async def test_store_tagging_result_sets_status_and_persists_all_character_and_s
     assert media.tagging_status == "done"
     assert media.tagging_error is None
     assert media.is_sensitive is False
-    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
-    assert {(item.entity_type, item.name) for item in added_entities} == {
-        (MediaEntityType.character, "Saber"),
-        (MediaEntityType.character, "Rin Tohsaka"),
-        (MediaEntityType.series, "Fate/stay night"),
-    }
-    assert all(item.confidence is not None and item.confidence >= user.tag_confidence_threshold for item in added_entities)
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(
+        media,
+        entity_type=MediaEntityType.character,
+        names=["Saber", "Rin Tohsaka"],
+        source="tagger",
+        confidence=None,
+        replace_existing_type=True,
+    )
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(
+        media,
+        entity_type=MediaEntityType.series,
+        names=["Fate/stay night"],
+        source="tagger",
+        confidence=None,
+        replace_existing_type=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -175,17 +192,28 @@ async def test_store_tagging_result_derives_series_from_character_suffix_when_no
         "backend.app.services.tags.MediaEntityRepository"
     ) as entity_repo_cls:
         tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
-        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[SimpleNamespace(id=1)], [SimpleNamespace(id=2)]])
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+        entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=[])
         fake_db.get = AsyncMock(return_value=user)
 
         await TagService(fake_db)._store_tagging_result(media, result)
 
-    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
-    assert {(item.entity_type, item.name, item.confidence) for item in added_entities} == {
-        (MediaEntityType.character, "kanna_(blue_archive)", 0.91),
-        (MediaEntityType.character, "hoshino_(blue_archive)", 0.89),
-        (MediaEntityType.series, "blue_archive", 0.91),
-    }
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(
+        media,
+        entity_type=MediaEntityType.character,
+        names=["kanna_(blue_archive)", "hoshino_(blue_archive)"],
+        source="tagger",
+        confidence=None,
+        replace_existing_type=True,
+    )
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(
+        media,
+        entity_type=MediaEntityType.series,
+        names=["blue_archive"],
+        source="tagger",
+        confidence=None,
+        replace_existing_type=True,
+    )
 
 
 @pytest.mark.asyncio
@@ -202,7 +230,8 @@ async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, u
         "backend.app.services.tags.MediaEntityRepository"
     ) as entity_repo_cls:
         tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
-        entity_repo_cls.return_value.get_tagger_entities = AsyncMock(side_effect=[[], []])
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+        entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=[])
         fake_db.get = AsyncMock(return_value=user)
 
         await TagService(fake_db)._store_tagging_result(media, result)
@@ -215,7 +244,8 @@ async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, u
 async def test_tag_wrappers_and_tag_media_missing_media(fake_db, user):
     service = TagService(fake_db)
 
-    with patch.object(service, "get_tag_by_id", AsyncMock(return_value=SimpleNamespace(name="safe"))), patch.object(
+    tag = SimpleNamespace(id=1, name="safe", owner_user_id=user.id)
+    with patch.object(service, "get_manageable_tag_by_id", AsyncMock(return_value=tag)), patch.object(
         service, "remove_tag_from_media", AsyncMock(return_value=SimpleNamespace(matched_media=1))
     ) as remove_fn, patch.object(service, "trash_media_by_tag", AsyncMock(return_value=SimpleNamespace(matched_media=1))) as trash_fn, patch.object(
         service,
@@ -235,6 +265,29 @@ async def test_tag_wrappers_and_tag_media_missing_media(fake_db, user):
     with patch("backend.app.services.tags.MediaRepository") as media_repo_cls:
         media_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
         await service_with_tagger.tag_media(uuid.uuid4())
+
+
+@pytest.mark.asyncio
+async def test_manageable_tag_rejects_foreign_owner(fake_db, user):
+    foreign_tag = Tag(id=7, owner_user_id=uuid.uuid4(), name="shared", category=0, media_count=1)
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls:
+        repo_cls.return_value.get_by_id = AsyncMock(return_value=foreign_tag)
+        with pytest.raises(AppError) as exc:
+            await TagService(fake_db).get_manageable_tag_by_id(user, 7)
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_merge_tag_rejects_cross_owner_target(fake_db, user):
+    source_tag = Tag(id=1, owner_user_id=user.id, name="old", category=1, media_count=1)
+    target_tag = Tag(id=2, owner_user_id=uuid.uuid4(), name="new", category=0, media_count=1)
+
+    with pytest.raises(AppError) as exc:
+        await TagService(fake_db).merge_tag(user, source_tag=source_tag, target_tag=target_tag)
+
+    assert exc.value.status_code == 404
 
 
 @pytest.mark.asyncio

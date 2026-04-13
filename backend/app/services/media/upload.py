@@ -16,6 +16,7 @@ from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, MediaVisibility
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.models.relations import MediaEntity, MediaEntityType
+from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, UploadResult
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
@@ -474,29 +475,25 @@ class MediaUploadWorkflow:
             await self._db.delete(entity)
         await self._db.flush()
 
-        entities: list[MediaEntity] = []
-        for character_name in normalized_characters:
-            entity = MediaEntity(
-                media_id=media.id,
+        entity_repo = MediaEntityRepository(self._db)
+        if normalized_characters:
+            await entity_repo.add_media_entities(
+                media,
                 entity_type=MediaEntityType.character,
-                name=character_name,
-                role="primary",
+                names=normalized_characters,
                 source="manual",
                 confidence=1.0,
+                replace_existing_type=False,
             )
-            entities.append(entity)
-            self._db.add(entity)
-        for series_name in normalized_series:
-            entity = MediaEntity(
-                media_id=media.id,
+        if normalized_series:
+            await entity_repo.add_media_entities(
+                media,
                 entity_type=MediaEntityType.series,
-                name=series_name,
-                role="primary",
+                names=normalized_series,
                 source="manual",
                 confidence=1.0,
+                replace_existing_type=False,
             )
-            entities.append(entity)
-            self._db.add(entity)
 
     async def run_from_url(
         self,

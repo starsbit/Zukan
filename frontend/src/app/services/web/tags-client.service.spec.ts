@@ -116,9 +116,9 @@ describe('TagsClientService', () => {
   it('mergeCharacterName sends POST to character merge action', () => {
     service.mergeCharacterName('Saber Alter', 'Artoria Pendragon').subscribe(res => expect(res).toEqual(mockResult));
 
-    const req = http.expectOne('/api/v1/character-names/saber_alter/actions/merge');
+    const req = http.expectOne('/api/v1/character-names/Saber%20Alter/actions/merge');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ target_name: 'artoria_pendragon' });
+    expect(req.request.body).toEqual({ target_name: 'Artoria Pendragon' });
     req.flush(mockResult);
   });
 
@@ -133,9 +133,18 @@ describe('TagsClientService', () => {
   it('mergeSeriesName sends POST to series merge action', () => {
     service.mergeSeriesName('Fate Zero', 'Fate stay night').subscribe(res => expect(res).toEqual(mockResult));
 
-    const req = http.expectOne('/api/v1/series-names/fate_zero/actions/merge');
+    const req = http.expectOne('/api/v1/series-names/Fate%20Zero/actions/merge');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ target_name: 'fate_stay_night' });
+    expect(req.request.body).toEqual({ target_name: 'Fate stay night' });
+    req.flush(mockResult);
+  });
+
+  it('mergeCharacterName preserves existing punctuation in selected names', () => {
+    service.mergeCharacterName('nero_claudius_(fate/extra)', 'nero_claudius_(fate/extra)').subscribe(res => expect(res).toEqual(mockResult));
+
+    const req = http.expectOne('/api/v1/character-names/nero_claudius_(fate%2Fextra)/actions/merge');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ target_name: 'nero_claudius_(fate/extra)' });
     req.flush(mockResult);
   });
 });

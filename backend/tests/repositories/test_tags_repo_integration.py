@@ -9,16 +9,17 @@ from backend.app.repositories.tags import TagRepository
 
 
 @pytest.mark.asyncio
-async def test_tag_repository_basic_queries(db_session):
-    t1 = Tag(name="safe", category=0, media_count=1)
-    t2 = Tag(name="nsfw", category=9, media_count=1)
+async def test_tag_repository_basic_queries(db_session, make_user):
+    user = await make_user()
+    t1 = Tag(owner_user_id=user.id, name="safe", category=0, media_count=1)
+    t2 = Tag(owner_user_id=user.id, name="nsfw", category=9, media_count=1)
     db_session.add_all([t1, t2])
     await db_session.flush()
 
     repo = TagRepository(db_session)
     assert (await repo.get_by_id(t1.id)).name == "safe"
-    assert (await repo.get_by_name("nsfw")).id == t2.id
-    by_names = await repo.get_by_names(["safe", "nsfw", "missing"])
+    assert (await repo.get_by_name(user.id, "nsfw")).id == t2.id
+    by_names = await repo.get_by_names(user.id, ["safe", "nsfw", "missing"])
     assert set(by_names.keys()) == {"safe", "nsfw"}
 
     base_stmt = select(Tag)
@@ -46,6 +47,7 @@ async def test_set_media_tag_links_insert_update_delete(db_session, make_user, m
     assert [mt.tag.name for mt in media_tags2] == ["safe"]
     assert media_tags2[0].confidence == 0.95
     assert media_tags2[0].tag.category == 1
+    assert media_tags2[0].tag.owner_user_id == user.id
 
 
 @pytest.mark.asyncio
@@ -70,3 +72,42 @@ async def test_list_accessible_counts_use_own_and_public_media_only(db_session, 
     assert by_name["shared"] == 2
     assert by_name["mine"] == 1
     assert "private_only" not in by_name
+
+    owner_rows = await repo.list_accessible(viewer, category=None, query=None, scope="owner")
+    assert {row.name: row.media_count for row in owner_rows} == {"shared": 1, "mine": 1}
+
+
+@pytest.mark.asyncio
+async def test_list_accessible_supports_fuzzy_tag_queries(db_session, make_user, make_media):
+    viewer = await make_user()
+    media = await make_media(uploader_id=viewer.id)
+
+    repo = TagRepository(db_session)
+    await repo.set_media_tag_links(media, [("white_shirt", 0, 0.9), ("nero_claudius_(fate/extra)", 0, 0.8)])
+    await db_session.flush()
+
+    middle_rows = await repo.list_accessible(viewer, category=None, query="shirt")
+    separator_rows = await repo.list_accessible(viewer, category=None, query="fate extra")
+
+    assert [row.name for row in middle_rows] == ["white_shirt"]
+    assert [row.name for row in separator_rows] == ["nero_claudius_(fate/extra)"]
+
+
+@pytest.mark.asyncio
+async def test_set_media_tag_links_create_same_name_rows_per_owner(db_session, make_user, make_media):
+    owner_a = await make_user()
+    owner_b = await make_user()
+    media_a = await make_media(uploader_id=owner_a.id)
+    media_b = await make_media(uploader_id=owner_b.id)
+
+    repo = TagRepository(db_session)
+    await repo.set_media_tag_links(media_a, [("shared", 0, 0.9)])
+    await repo.set_media_tag_links(media_b, [("shared", 0, 0.8)])
+    await db_session.commit()
+
+    tags = (await db_session.execute(select(Tag).where(Tag.name == "shared").order_by(Tag.owner_user_id))).scalars().all()
+    media_tags = (await db_session.execute(select(MediaTag).where(MediaTag.tag_id.in_([tag.id for tag in tags])))).scalars().all()
+
+    assert len(tags) == 2
+    assert {tag.owner_user_id for tag in tags} == {owner_a.id, owner_b.id}
+    assert {media_tag.tag_id for media_tag in media_tags} == {tag.id for tag in tags}

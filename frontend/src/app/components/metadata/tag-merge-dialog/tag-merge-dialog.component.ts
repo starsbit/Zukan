@@ -47,6 +47,14 @@ export class TagMergeDialogComponent {
   readonly selectedTag = signal<TagRead | null>(null);
   readonly pendingSelectedName = signal<string | null>(null);
   readonly canSubmit = computed(() => this.selectedTag() !== null);
+  readonly sourceLabel = computed(() => 'Replace this tag');
+  readonly targetLabel = computed(() => 'Keep this tag');
+  readonly actionLabel = computed(() => {
+    const selected = this.selectedTag();
+    return selected
+      ? `Merge into ${this.displayMetadataName(selected.name)}`
+      : 'Merge tag';
+  });
 
   constructor() {
     this.targetQuery.valueChanges.pipe(
@@ -90,6 +98,10 @@ export class TagMergeDialogComponent {
       error: (err) => {
         this.loading.set(false);
         this.suggestions.set([]);
+        if (this.selectedTag() || this.pendingSelectedName()) {
+          this.error.set(null);
+          return;
+        }
         this.error.set(err.error?.detail ?? 'Unable to load target tags.');
       },
     });
@@ -99,6 +111,7 @@ export class TagMergeDialogComponent {
     const selected = this.suggestions().find((tag) => tag.id === event.option.value) ?? null;
     this.pendingSelectedName.set(selected?.name ?? null);
     this.selectedTag.set(selected);
+    this.error.set(null);
     if (selected) {
       this.targetQuery.setValue(selected.name, { emitEvent: false });
     }
@@ -119,5 +132,16 @@ export class TagMergeDialogComponent {
 
   protected displayMetadataName(value: string): string {
     return formatMetadataName(value);
+  }
+
+  protected mergePreviewLines(selected: TagRead): string[] {
+    const sourceName = this.displayMetadataName(this.data.sourceTag.name);
+    const targetName = this.displayMetadataName(selected.name);
+
+    return [
+      `${this.data.sourceTag.media_count} media using "${sourceName}" will use "${targetName}" instead.`,
+      `"${targetName}" will stay as the tag you keep.`,
+      `"${sourceName}" will be removed if nothing still uses this tag.`,
+    ];
   }
 }

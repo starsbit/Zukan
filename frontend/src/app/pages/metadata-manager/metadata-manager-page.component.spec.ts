@@ -348,6 +348,22 @@ describe('MetadataManagerPageComponent', () => {
     expect(snackBarOpenSpy).toHaveBeenCalled();
   });
 
+  it('formats metadata names in remove confirmation dialogs', async () => {
+    const { fixture, confirmDialog } = await createComponent();
+
+    fixture.componentInstance['onTabChange'](1);
+    fixture.detectChanges();
+
+    fixture.componentInstance['removeNameFromMedia']({ name: 'artoria_pendragon_(fate)', media_count: 208 });
+
+    expect(confirmDialog.open).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Remove character name from your media?',
+        message: 'This will remove "Artoria Pendragon (Fate)" from matching media in your library. 208 media currently match.',
+      }),
+    );
+  });
+
   it('removes and merges series names on the series tab', async () => {
     const {
       fixture,

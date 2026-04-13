@@ -11,6 +11,7 @@ from backend.app.errors.upload import version_conflict
 from backend.app.models.auth import User
 from backend.app.models.relations import MediaEntityType
 from backend.app.models.relations import MediaEntity, MediaExternalRef
+from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BulkResult, MediaDetail, MediaEntityBatchUpdate, MediaUpdate
 from backend.app.services.media.interactions import MediaInteractionService
@@ -64,19 +65,11 @@ class MediaMetadataService:
             media.is_sensitive = tag_names_mark_sensitive(normalized_tags)
 
         if "entities" in payload.model_fields_set and payload.entities is not None:
-            for entity in await self._query.get_media_entities(media.id):
-                await self._db.delete(entity)
-            await self._db.flush()
-            for entity_create in payload.entities:
-                self._db.add(MediaEntity(
-                    media_id=media.id,
-                    entity_type=entity_create.entity_type,
-                    entity_id=entity_create.entity_id,
-                    name=entity_create.name,
-                    role=entity_create.role,
-                    source="manual",
-                    confidence=entity_create.confidence,
-                ))
+            await MediaEntityRepository(self._db).replace_media_entities(
+                media,
+                entity_creates=payload.entities,
+                source="manual",
+            )
         if "metadata" in payload.model_fields_set and "captured_at" in metadata_fields:
             media.captured_at = payload.metadata.captured_at or media.created_at
         if "deleted" in payload.model_fields_set:
@@ -167,24 +160,22 @@ class MediaMetadataService:
                 skipped += 1
                 continue
 
-            existing_entities = await self._query.get_media_entities(media.id)
-            to_delete: list[MediaEntity] = []
-
             if payload.character_names is not None:
-                to_delete.extend([entity for entity in existing_entities if entity.entity_type == MediaEntityType.character])
+                await MediaEntityRepository(self._db).add_media_entities(
+                    media,
+                    entity_type=MediaEntityType.character,
+                    names=normalized_characters,
+                    source="manual",
+                    replace_existing_type=True,
+                )
             if payload.series_names is not None:
-                to_delete.extend([entity for entity in existing_entities if entity.entity_type == MediaEntityType.series])
-
-            for entity in to_delete:
-                await self._db.delete(entity)
-
-            if to_delete:
-                await self._db.flush()
-
-            if payload.character_names is not None:
-                self._add_manual_entities(media.id, MediaEntityType.character, normalized_characters)
-            if payload.series_names is not None:
-                self._add_manual_entities(media.id, MediaEntityType.series, normalized_series)
+                await MediaEntityRepository(self._db).add_media_entities(
+                    media,
+                    entity_type=MediaEntityType.series,
+                    names=normalized_series,
+                    source="manual",
+                    replace_existing_type=True,
+                )
 
             processed += 1
 
@@ -198,16 +189,6 @@ class MediaMetadataService:
             len(normalized_series),
         )
         return BulkResult(processed=processed, skipped=skipped)
-
-    def _add_manual_entities(self, media_id: uuid.UUID, entity_type: MediaEntityType, names: list[str]) -> None:
-        for name in names:
-            self._db.add(MediaEntity(
-                media_id=media_id,
-                entity_type=entity_type,
-                name=name,
-                role="primary",
-                source="manual",
-            ))
 
     def _normalize_entity_names(self, names: list[str] | None) -> list[str]:
         if names is None:

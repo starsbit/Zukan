@@ -609,7 +609,7 @@ test.describe.serial('Navbar search', () => {
     await expect(chipRow(page, 'OCR: "burning field text"')).toBeVisible();
 
     await page.getByRole('link', { name: 'Gallery' }).click();
-    await expect(page).toHaveURL('/');
+    await expect(page).toHaveURL('/gallery');
     await expect(chipRow(page, 'OCR: "burning field text"')).toBeVisible();
 
     request = await waitForMatchingSearchRequest(

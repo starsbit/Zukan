@@ -53,6 +53,14 @@ export class MetadataNameMergeDialogComponent {
   readonly canSubmit = computed(() => this.selectedItem() !== null);
   readonly kindLabel = computed(() => this.data.kind === 'characters' ? 'character' : 'series');
   readonly pluralLabel = computed(() => this.data.kind === 'characters' ? 'characters' : 'series');
+  readonly sourceLabel = computed(() => `Replace this ${this.kindLabel()}`);
+  readonly targetLabel = computed(() => `Keep this ${this.kindLabel()}`);
+  readonly actionLabel = computed(() => {
+    const selected = this.selectedItem();
+    return selected
+      ? `Merge into ${this.displayMetadataName(selected.name)}`
+      : `Merge ${this.kindLabel()}`;
+  });
 
   constructor() {
     this.targetQuery.valueChanges.pipe(
@@ -134,5 +142,17 @@ export class MetadataNameMergeDialogComponent {
 
   protected displayMetadataName(value: string): string {
     return formatMetadataName(value);
+  }
+
+  protected mergePreviewLines(selected: MetadataNameRead): string[] {
+    const sourceName = this.displayMetadataName(this.data.sourceName);
+    const targetName = this.displayMetadataName(selected.name);
+    const noun = this.kindLabel();
+
+    return [
+      `${this.data.mediaCount} media using "${sourceName}" will use "${targetName}" instead.`,
+      `"${targetName}" will stay as the name you keep.`,
+      `"${sourceName}" will be removed if nothing still uses this ${noun}.`,
+    ];
   }
 }

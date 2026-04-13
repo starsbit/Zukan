@@ -112,7 +112,7 @@ describe('LoginPageComponent', () => {
       expect(authService.login).toHaveBeenCalledWith('alice', 'secret', true);
     });
 
-    it('navigates to /gallery on successful login', async () => {
+    it('navigates to / on successful login', async () => {
       const { component, fixture } = await createComponent();
       const router = TestBed.inject(Router);
       const spy = vi.spyOn(router, 'navigateByUrl');
@@ -185,7 +185,7 @@ describe('LoginPageComponent', () => {
       expect(authService.setupAdmin).toHaveBeenCalledWith('admin2', 'admin@example.com', 'password1');
     });
 
-    it('navigates to /gallery after successful setup', async () => {
+    it('navigates to / after successful setup', async () => {
       const { component, fixture } = await createComponent(true);
       const router = TestBed.inject(Router);
       const spy = vi.spyOn(router, 'navigate');

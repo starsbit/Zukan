@@ -29,6 +29,7 @@ export interface SeriesSuggestion {
 }
 
 export interface MetadataNameRead {
+  id?: string | null;
   name: string;
   media_count: number;
 }

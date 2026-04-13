@@ -1,20 +1,24 @@
 <h2 mat-dialog-title>Merge {{ kindLabel() | titlecase }}</h2>
 
 <mat-dialog-content class="merge-dialog">
+  <p class="merge-dialog__intro">
+    Choose the {{ kindLabel() }} name you want to keep. Everything using the old name will be moved to the one you keep.
+  </p>
+
   <div class="merge-dialog__source">
-    <span class="merge-dialog__label">Source {{ kindLabel() }}</span>
+    <span class="merge-dialog__label">{{ sourceLabel() }}</span>
     <strong>{{ displayMetadataName(data.sourceName) }}</strong>
     <span class="merge-dialog__meta">{{ data.mediaCount }} media currently use this {{ kindLabel() }}</span>
   </div>
 
   <mat-form-field appearance="outline" class="merge-dialog__field">
-    <mat-label>Target {{ kindLabel() }}</mat-label>
+    <mat-label>{{ targetLabel() }}</mat-label>
     <input
       matInput
       type="text"
       [formControl]="targetQuery"
       [matAutocomplete]="targetAutocomplete"
-      [placeholder]="'Search ' + pluralLabel() + ' to merge into'" />
+      [placeholder]="'Search ' + pluralLabel() + ' to keep'" />
     @if (loading()) {
       <mat-spinner matSuffix diameter="18"></mat-spinner>
     } @else {
@@ -42,13 +46,20 @@
   </mat-autocomplete>
 
   @if (selectedItem(); as selected) {
+    <div class="merge-dialog__summary" aria-live="polite">
+      <span class="merge-dialog__label">What happens next</span>
+      @for (line of mergePreviewLines(selected); track line) {
+        <p>{{ line }}</p>
+      }
+    </div>
+
     <div class="merge-dialog__target">
-      <span class="merge-dialog__label">Target {{ kindLabel() }}</span>
+      <span class="merge-dialog__label">{{ targetLabel() }}</span>
       <strong>{{ displayMetadataName(selected.name) }}</strong>
       <span class="merge-dialog__meta">{{ selected.media_count }} media currently use this {{ kindLabel() }}</span>
     </div>
   } @else {
-    <p class="merge-dialog__hint">Search for the target {{ kindLabel() }} and select it from the list.</p>
+    <p class="merge-dialog__hint">Search for the {{ kindLabel() }} name you want to keep, then select it from the list.</p>
   }
 
   @if (error(); as errorMessage) {
@@ -59,6 +70,6 @@
 <mat-dialog-actions align="end">
   <button mat-stroked-button type="button" (click)="cancel()">Cancel</button>
   <button mat-flat-button color="primary" type="button" [disabled]="!canSubmit()" (click)="confirm()">
-    Merge
+    {{ actionLabel() }}
   </button>
 </mat-dialog-actions>

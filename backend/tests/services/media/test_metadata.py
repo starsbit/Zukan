@@ -31,13 +31,11 @@ async def test_update_media_metadata_raises_on_version_conflict(fake_db, stub_qu
 
 @pytest.mark.asyncio
 async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_query, media, user):
-    old_entity = SimpleNamespace(id=1)
     old_ref = SimpleNamespace(id=2)
     expected_detail = SimpleNamespace(id=media.id)
     captured = datetime.now(timezone.utc)
 
     stub_query.get_owned_or_admin_media.return_value = media
-    stub_query.get_media_entities.return_value = [old_entity]
     stub_query.get_media_external_refs.return_value = [old_ref]
     stub_query.get_media_with_relations.return_value = media
     stub_query.build_media_detail.return_value = expected_detail
@@ -57,9 +55,12 @@ async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_
 
     service = MediaMetadataService(fake_db, stub_query, interactions)
 
-    with patch("backend.app.services.media.metadata.TagRepository") as repo_cls:
+    with patch("backend.app.services.media.metadata.TagRepository") as repo_cls, patch(
+        "backend.app.services.media.metadata.MediaEntityRepository"
+    ) as entity_repo_cls:
         repo = repo_cls.return_value
         repo.set_media_tag_links = AsyncMock()
+        entity_repo_cls.return_value.replace_media_entities = AsyncMock()
 
         detail = await service.update_media_metadata(media.id, user, payload)
 
@@ -70,9 +71,9 @@ async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_
     assert media.is_nsfw is True
     assert media.is_sensitive is False
     assert media.visibility == MediaVisibility.public
-    assert old_entity in fake_db.deleted
     assert old_ref in fake_db.deleted
     assert interactions._set_favorite_state.await_count == 1
+    entity_repo_cls.return_value.replace_media_entities.assert_awaited_once()
     fake_db.commit.assert_awaited_once()
 
 
@@ -144,33 +145,31 @@ async def test_bulk_update_metadata_review_dismissed_updates_only_manageable_med
 
 @pytest.mark.asyncio
 async def test_bulk_update_entities_replaces_only_requested_types(fake_db, stub_query, user):
-    media_one = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id)
-    media_two = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4())
-    old_character = MediaEntity(media_id=media_one.id, entity_type=MediaEntityType.character, name="Old Saber", role="primary", source="tagger")
-    preserved_series = MediaEntity(media_id=media_one.id, entity_type=MediaEntityType.series, name="Fate/stay night", role="primary", source="tagger")
-    foreign_character = MediaEntity(media_id=media_two.id, entity_type=MediaEntityType.character, name="Blocked", role="primary", source="tagger")
+    media_one = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
+    media_two = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4(), owner_id=uuid.uuid4())
     stub_query.get_media_by_ids.return_value = [media_one, media_two]
-    stub_query.get_media_entities = AsyncMock(side_effect=[
-        [old_character, preserved_series],
-        [foreign_character],
-    ])
 
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
 
-    result = await service.bulk_update_entities(
-        MediaEntityBatchUpdate(
-            media_ids=[media_one.id, media_two.id, uuid.uuid4()],
-            character_names=["  Saber  ", "Saber", "Rin"],
-            series_names=None,
-        ),
-        user,
-    )
+    with patch("backend.app.services.media.metadata.MediaEntityRepository") as repo_cls:
+        repo_cls.return_value.add_media_entities = AsyncMock()
 
-    added_entities = [item for item in fake_db.added if isinstance(item, MediaEntity)]
+        result = await service.bulk_update_entities(
+            MediaEntityBatchUpdate(
+                media_ids=[media_one.id, media_two.id, uuid.uuid4()],
+                character_names=["  Saber  ", "Saber", "Rin"],
+                series_names=None,
+            ),
+            user,
+        )
+
     assert result.processed == 1
     assert result.skipped == 2
-    assert old_character in fake_db.deleted
-    assert preserved_series not in fake_db.deleted
-    assert [entity.name for entity in added_entities] == ["Saber", "Rin"]
-    assert all(entity.entity_type == MediaEntityType.character for entity in added_entities)
+    repo_cls.return_value.add_media_entities.assert_awaited_once_with(
+        media_one,
+        entity_type=MediaEntityType.character,
+        names=["Saber", "Rin"],
+        source="manual",
+        replace_existing_type=True,
+    )
     fake_db.commit.assert_awaited_once()

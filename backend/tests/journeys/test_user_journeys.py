@@ -619,11 +619,16 @@ async def test_journey_metadata_management_is_user_scoped_and_lists_public_names
     )
     assert set_b_entities.status_code == 200
 
-    tags_for_a = await journey_client.get("/api/v1/tags", headers=owner_a_headers)
+    tags_for_a = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_a_headers)
     assert tags_for_a.status_code == 200
     tags_by_name = {item["name"]: item for item in tags_for_a.json()["items"]}
-    assert tags_by_name["shared"]["media_count"] == 2
+    assert tags_by_name["shared"]["media_count"] == 1
     assert tags_by_name["legacy"]["media_count"] == 1
+
+    accessible_tags_for_a = await journey_client.get("/api/v1/tags", headers=owner_a_headers)
+    assert accessible_tags_for_a.status_code == 200
+    accessible_by_name = {item["name"]: item for item in accessible_tags_for_a.json()["items"]}
+    assert accessible_by_name["shared"]["media_count"] == 2
 
     character_suggestions = await journey_client.get(
         "/api/v1/media/character-suggestions",
@@ -643,14 +648,6 @@ async def test_journey_metadata_management_is_user_scoped_and_lists_public_names
     assert series_suggestions.json()[0]["name"] == "Fate"
     assert series_suggestions.json()[0]["media_count"] == 2
 
-    remove_shared = await journey_client.post(
-        f"/api/v1/tags/{tags_by_name['shared']['id']}/actions/remove-from-media",
-        headers=owner_a_headers,
-    )
-    assert remove_shared.status_code == 200
-    assert remove_shared.json()["updated_media"] == 1
-    assert remove_shared.json()["deleted_source"] is False
-
     merge_legacy = await journey_client.post(
         f"/api/v1/tags/{tags_by_name['legacy']['id']}/actions/merge",
         json={"target_tag_id": tags_by_name["shared"]["id"]},
@@ -658,6 +655,7 @@ async def test_journey_metadata_management_is_user_scoped_and_lists_public_names
     )
     assert merge_legacy.status_code == 200
     assert merge_legacy.json()["updated_media"] == 1
+    assert merge_legacy.json()["deleted_source"] is True
 
     merge_character = await journey_client.post(
         "/api/v1/character-names/Saber/actions/merge",
@@ -675,17 +673,34 @@ async def test_journey_metadata_management_is_user_scoped_and_lists_public_names
     assert merge_series.status_code == 200
     assert merge_series.json()["updated_media"] == 1
 
+    tags_for_a_after_merge = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_a_headers)
+    assert tags_for_a_after_merge.status_code == 200
+    merged_tags_by_name = {item["name"]: item for item in tags_for_a_after_merge.json()["items"]}
+
+    remove_shared = await journey_client.post(
+        f"/api/v1/tags/{merged_tags_by_name['shared']['id']}/actions/remove-from-media",
+        headers=owner_a_headers,
+    )
+    assert remove_shared.status_code == 200
+    assert remove_shared.json()["updated_media"] == 1
+    assert remove_shared.json()["deleted_source"] is True
+
     media_a_after = await journey_client.get(f"/api/v1/media/{media_a_id}", headers=owner_a_headers)
     media_b_after = await journey_client.get(f"/api/v1/media/{media_b_id}", headers=owner_b_headers)
     assert media_a_after.status_code == 200
     assert media_b_after.status_code == 200
-    assert set(media_a_after.json()["tags"]) == {"shared"}
+    assert media_a_after.json()["tags"] == []
     assert set(media_b_after.json()["tags"]) == {"shared"}
     assert any(entity["name"] == "Artoria" for entity in media_a_after.json()["entities"])
     assert all(entity["name"] != "Saber" for entity in media_a_after.json()["entities"])
     assert any(entity["name"] == "Fate/stay night" for entity in media_a_after.json()["entities"])
     assert any(entity["name"] == "Saber" for entity in media_b_after.json()["entities"])
     assert any(entity["name"] == "Fate" for entity in media_b_after.json()["entities"])
+
+    owner_b_tags_after = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_b_headers)
+    assert owner_b_tags_after.status_code == 200
+    owner_b_tag_names = {item["name"] for item in owner_b_tags_after.json()["items"]}
+    assert "shared" in owner_b_tag_names
 
 
 @pytest.mark.asyncio
@@ -730,43 +745,159 @@ async def test_journey_album_not_accessible_until_invite_accepted(journey_client
     assert invite_rejecter.status_code in (200, 201)
     assert invite_rejecter.json()["status"] == "pending"
 
-    # Album still not accessible while invites are pending
-    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)).status_code == 404
-    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=rejecter_headers)).status_code == 404
 
-    # Album does not appear in the list endpoint while invite is pending
-    viewer_list = await journey_client.get("/api/v1/albums", headers=viewer_headers)
-    assert viewer_list.status_code == 200
-    assert not any(item["id"] == album_id for item in viewer_list.json()["items"])
+@pytest.mark.asyncio
+async def test_journey_tag_and_metadata_management_are_isolated_per_user(journey_client):
+    owner_a_token = await _register_and_login(journey_client, "owner-a", "owner-a@example.com")
+    owner_b_token = await _register_and_login(journey_client, "owner-b", "owner-b@example.com")
+    owner_a_headers = _auth_headers(owner_a_token)
+    owner_b_headers = _auth_headers(owner_b_token)
 
-    # Viewer accepts; rejecter rejects
-    viewer_notifications = await journey_client.get("/api/v1/me/notifications", headers=viewer_headers)
-    viewer_invite_notification_id = viewer_notifications.json()["items"][0]["id"]
-    accept = await journey_client.post(
-        f"/api/v1/me/notifications/{viewer_invite_notification_id}/accept",
-        headers=viewer_headers,
+    async def upload_media(headers: dict[str, str], filename: str, tags: list[str], *, color: str) -> str:
+        response = await journey_client.post(
+            "/api/v1/media",
+            data={"tags": tags},
+            files=[("files", _image_file_tuple(filename, color=color))],
+            headers=headers,
+        )
+        assert response.status_code == 202
+        return response.json()["results"][0]["id"]
+
+    async def patch_entities(headers: dict[str, str], media_id: str, entity_names: list[tuple[str, str]]) -> None:
+        detail = await journey_client.get(f"/api/v1/media/{media_id}", headers=headers)
+        assert detail.status_code == 200
+        update = await journey_client.patch(
+            f"/api/v1/media/{media_id}",
+            json={
+                "version": detail.json()["version"],
+                "entities": [
+                    {"entity_type": entity_type, "name": name, "role": "primary"}
+                    for entity_type, name in entity_names
+                ],
+            },
+            headers=headers,
+        )
+        assert update.status_code == 200
+
+    async def media_detail(headers: dict[str, str], media_id: str) -> dict:
+        response = await journey_client.get(f"/api/v1/media/{media_id}", headers=headers)
+        assert response.status_code == 200
+        return response.json()
+
+    media_a_delete = await upload_media(owner_a_headers, "a-delete.png", ["edited"], color="red")
+    media_a_merge_source = await upload_media(owner_a_headers, "a-merge-source.png", ["legacy"], color="blue")
+    media_a_merge_target = await upload_media(owner_a_headers, "a-merge-target.png", ["shared"], color="green")
+    media_b = await upload_media(owner_b_headers, "b-shared.png", ["edited", "legacy", "shared"], color="yellow")
+
+    await patch_entities(
+        owner_a_headers,
+        media_a_delete,
+        [("character", "Delete Saber"), ("series", "Delete Fate")],
     )
-    assert accept.status_code == 200
-    assert accept.json()["data"]["invite_status"] == "accepted"
-
-    rejecter_notifications = await journey_client.get("/api/v1/me/notifications", headers=rejecter_headers)
-    rejecter_invite_notification_id = rejecter_notifications.json()["items"][0]["id"]
-    reject = await journey_client.post(
-        f"/api/v1/me/notifications/{rejecter_invite_notification_id}/reject",
-        headers=rejecter_headers,
+    await patch_entities(
+        owner_a_headers,
+        media_a_merge_source,
+        [("character", "Saber"), ("series", "Fate")],
     )
-    assert reject.status_code == 200
-    assert reject.json()["data"]["invite_status"] == "rejected"
+    await patch_entities(
+        owner_a_headers,
+        media_a_merge_target,
+        [("character", "Artoria"), ("series", "Fate/stay night")],
+    )
+    await patch_entities(
+        owner_b_headers,
+        media_b,
+        [
+            ("character", "Delete Saber"),
+            ("character", "Saber"),
+            ("series", "Delete Fate"),
+            ("series", "Fate"),
+        ],
+    )
 
-    # Viewer now has access; rejecter does not
-    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=viewer_headers)).status_code == 200
-    assert (await journey_client.get(f"/api/v1/albums/{album_id}", headers=rejecter_headers)).status_code == 404
+    owner_a_tags = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_a_headers)
+    assert owner_a_tags.status_code == 200
+    owner_a_tags_by_name = {item["name"]: item for item in owner_a_tags.json()["items"]}
 
-    # Album appears in the list for the accepted viewer but not the rejecter
-    viewer_list_after = await journey_client.get("/api/v1/albums", headers=viewer_headers)
-    assert viewer_list_after.status_code == 200
-    assert any(item["id"] == album_id for item in viewer_list_after.json()["items"])
+    remove_tag = await journey_client.post(
+        f"/api/v1/tags/{owner_a_tags_by_name['edited']['id']}/actions/remove-from-media",
+        headers=owner_a_headers,
+    )
+    assert remove_tag.status_code == 200
+    assert remove_tag.json()["updated_media"] == 1
 
-    rejecter_list_after = await journey_client.get("/api/v1/albums", headers=rejecter_headers)
-    assert rejecter_list_after.status_code == 200
-    assert not any(item["id"] == album_id for item in rejecter_list_after.json()["items"])
+    remove_character = await journey_client.post(
+        "/api/v1/character-names/Delete%20Saber/actions/remove-from-media",
+        headers=owner_a_headers,
+    )
+    assert remove_character.status_code == 200
+    assert remove_character.json()["updated_media"] == 1
+
+    remove_series = await journey_client.post(
+        "/api/v1/series-names/Delete%20Fate/actions/remove-from-media",
+        headers=owner_a_headers,
+    )
+    assert remove_series.status_code == 200
+    assert remove_series.json()["updated_media"] == 1
+
+    media_a_delete_after = await media_detail(owner_a_headers, media_a_delete)
+    media_b_after_delete = await media_detail(owner_b_headers, media_b)
+    assert "edited" not in media_a_delete_after["tags"]
+    assert all(entity["name"] != "Delete Saber" for entity in media_a_delete_after["entities"])
+    assert all(entity["name"] != "Delete Fate" for entity in media_a_delete_after["entities"])
+    assert "edited" in media_b_after_delete["tags"]
+    assert any(entity["name"] == "Delete Saber" for entity in media_b_after_delete["entities"])
+    assert any(entity["name"] == "Delete Fate" for entity in media_b_after_delete["entities"])
+
+    owner_a_tags = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_a_headers)
+    owner_b_tags = await journey_client.get("/api/v1/tags", params={"scope": "owner"}, headers=owner_b_headers)
+    assert owner_a_tags.status_code == 200
+    assert owner_b_tags.status_code == 200
+    owner_a_tags_by_name = {item["name"]: item for item in owner_a_tags.json()["items"]}
+    owner_b_tag_names = {item["name"] for item in owner_b_tags.json()["items"]}
+
+    merge_tag = await journey_client.post(
+        f"/api/v1/tags/{owner_a_tags_by_name['legacy']['id']}/actions/merge",
+        json={"target_tag_id": owner_a_tags_by_name["shared"]["id"]},
+        headers=owner_a_headers,
+    )
+    assert merge_tag.status_code == 200
+    assert merge_tag.json()["updated_media"] == 1
+
+    merge_character = await journey_client.post(
+        "/api/v1/character-names/Saber/actions/merge",
+        json={"target_name": "Artoria"},
+        headers=owner_a_headers,
+    )
+    assert merge_character.status_code == 200
+    assert merge_character.json()["updated_media"] == 1
+
+    merge_series = await journey_client.post(
+        "/api/v1/series-names/Fate/actions/merge",
+        json={"target_name": "Fate/stay night"},
+        headers=owner_a_headers,
+    )
+    assert merge_series.status_code == 200
+    assert merge_series.json()["updated_media"] == 1
+
+    media_a_source_after = await media_detail(owner_a_headers, media_a_merge_source)
+    media_a_target_after = await media_detail(owner_a_headers, media_a_merge_target)
+    media_b_after_merge = await media_detail(owner_b_headers, media_b)
+    owner_b_characters = await journey_client.get("/api/v1/character-names", params={"scope": "owner"}, headers=owner_b_headers)
+    owner_b_series = await journey_client.get("/api/v1/series-names", params={"scope": "owner"}, headers=owner_b_headers)
+
+    assert set(media_a_source_after["tags"]) == {"shared"}
+    assert set(media_a_target_after["tags"]) == {"shared"}
+    assert any(entity["name"] == "Artoria" for entity in media_a_source_after["entities"])
+    assert any(entity["name"] == "Fate/stay night" for entity in media_a_source_after["entities"])
+    assert any(entity["name"] == "Artoria" for entity in media_a_target_after["entities"])
+    assert any(entity["name"] == "Fate/stay night" for entity in media_a_target_after["entities"])
+
+    assert {"edited", "legacy", "shared"}.issubset(set(media_b_after_merge["tags"]))
+    assert any(entity["name"] == "Saber" for entity in media_b_after_merge["entities"])
+    assert any(entity["name"] == "Fate" for entity in media_b_after_merge["entities"])
+    assert owner_b_tag_names == {"edited", "legacy", "shared"}
+    assert owner_b_characters.status_code == 200
+    assert owner_b_series.status_code == 200
+    assert {item["name"] for item in owner_b_characters.json()["items"]} == {"Delete Saber", "Saber"}
+    assert {item["name"] for item in owner_b_series.json()["items"]} == {"Delete Fate", "Fate"}

@@ -43,7 +43,7 @@ export class SidebarComponent {
     {
       label: 'Browse',
       items: [
-        { icon: 'photo_library', label: 'Gallery', path: '/' },
+        { icon: 'photo_library', label: 'Gallery', path: '/gallery' },
         { icon: 'travel_explore', label: 'Browse', path: '/browse' },
         { icon: 'favorite', label: 'Favorites', path: '/favorites' },
       ],
