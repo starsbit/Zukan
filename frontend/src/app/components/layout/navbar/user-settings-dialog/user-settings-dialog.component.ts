@@ -1,3 +1,4 @@
+import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -21,6 +22,7 @@ import { UsersClientService } from '../../../../services/web/users-client.servic
   selector: 'zukan-user-settings-dialog',
   imports: [
     ReactiveFormsModule,
+    ClipboardModule,
     DatePipe,
     MatButtonModule,
     MatCheckboxModule,
@@ -39,6 +41,7 @@ export class UserSettingsDialogComponent implements OnInit {
   private readonly dialogRef = inject(MatDialogRef<UserSettingsDialogComponent>);
   private readonly destroyRef = inject(DestroyRef);
   private readonly fb = inject(FormBuilder);
+  private readonly clipboard = inject(Clipboard);
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
   private readonly usersClient = inject(UsersClientService);
@@ -145,15 +148,17 @@ export class UserSettingsDialogComponent implements OnInit {
 
   copyApiKey(): void {
     const key = this.createdApiKey();
-    if (!key || !navigator.clipboard) {
+    if (!key) {
       this.snackBar.open('Clipboard access is unavailable.', 'Close', { duration: 4000 });
       return;
     }
 
-    void navigator.clipboard.writeText(key).then(
-      () => this.snackBar.open('API key copied.', 'Close', { duration: 3000 }),
-      () => this.snackBar.open('Unable to copy API key.', 'Close', { duration: 4000 }),
-    );
+    if (this.clipboard.copy(key)) {
+      this.snackBar.open('API key copied.', 'Close', { duration: 3000 });
+      return;
+    }
+
+    this.snackBar.open('Unable to copy API key.', 'Close', { duration: 4000 });
   }
 
   private loadApiKeyStatus(): void {

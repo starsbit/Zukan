@@ -1,6 +1,8 @@
+import { Clipboard } from '@angular/cdk/clipboard';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { MatDialogRef } from '@angular/material/dialog';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
@@ -230,5 +232,63 @@ describe('UserSettingsDialogComponent', () => {
     expect(createApiKey).toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('zk_created_key');
     expect(fixture.nativeElement.textContent).toContain('This key is only shown once');
+  });
+
+  it('copies a newly created api key to the clipboard', async () => {
+    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+
+    await TestBed.configureTestingModule({
+      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
+        { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
+    fixture.detectChanges();
+
+    const copy = vi.spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy').mockReturnValue(true);
+    const open = vi.spyOn((fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar, 'open');
+
+    fixture.componentInstance.createApiKey();
+    fixture.detectChanges();
+
+    fixture.componentInstance.copyApiKey();
+
+    expect(copy).toHaveBeenCalledWith('zk_created_key');
+    expect(open).toHaveBeenCalledWith('API key copied.', 'Close', { duration: 3000 });
+  });
+
+  it('shows an error when copying the api key fails', async () => {
+    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+
+    await TestBed.configureTestingModule({
+      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
+        { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
+    fixture.detectChanges();
+
+    const copy = vi.spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy').mockReturnValue(false);
+    const open = vi.spyOn((fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar, 'open');
+
+    fixture.componentInstance.createApiKey();
+    fixture.detectChanges();
+
+    fixture.componentInstance.copyApiKey();
+
+    expect(copy).toHaveBeenCalledWith('zk_created_key');
+    expect(open).toHaveBeenCalledWith('Unable to copy API key.', 'Close', { duration: 4000 });
   });
 });
