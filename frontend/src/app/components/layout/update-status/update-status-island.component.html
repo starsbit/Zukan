@@ -1,0 +1,26 @@
+@if (visible()) {
+  <aside class="status-island">
+    <mat-card appearance="outlined" class="status-card">
+      <mat-card-header>
+        <div mat-card-avatar class="status-avatar">
+          <mat-icon>{{ icon() }}</mat-icon>
+        </div>
+        <mat-card-title>{{ title() }}</mat-card-title>
+        <mat-card-subtitle>{{ subtitle() }}</mat-card-subtitle>
+      </mat-card-header>
+
+      <mat-card-content>
+        @if (updateService.status() !== 'done') {
+          <mat-progress-bar mode="indeterminate" class="progress-bar" />
+        }
+      </mat-card-content>
+
+      @if (updateService.status() === 'done') {
+        <mat-card-actions align="end">
+          <button mat-button type="button" (click)="dismiss()">Dismiss</button>
+          <button mat-flat-button type="button" (click)="reload()">Refresh page</button>
+        </mat-card-actions>
+      }
+    </mat-card>
+  </aside>
+}

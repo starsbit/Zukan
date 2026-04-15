@@ -27,6 +27,7 @@ import { NotificationsClientService } from '../../../../services/web/notificatio
 import { AdminClientService } from '../../../../services/web/admin-client.service';
 import { ConfirmDialogService } from '../../../../services/confirm-dialog.service';
 import { UserStore } from '../../../../services/user.store';
+import { AppUpdateService } from '../../../../services/app-update.service';
 import { FormattedMessageComponent } from '../../../shared/formatted-message/formatted-message.component';
 
 @Component({
@@ -58,6 +59,7 @@ export class NavbarNotificationsComponent implements OnInit {
   private readonly adminClient = inject(AdminClientService);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly userStore = inject(UserStore);
+  private readonly appUpdateService = inject(AppUpdateService);
 
   readonly notifications = signal<NotificationRead[]>([]);
   readonly loading = signal(false);
@@ -251,7 +253,7 @@ export class NavbarNotificationsComponent implements OnInit {
         );
       }),
     ).subscribe(() => {
-      this.snackBar.open('Update in progress - Zukan will restart shortly.', 'Close', { duration: 6000 });
+      this.appUpdateService.startUpdate();
       this.notificationsClient.markRead(notification.id).pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => EMPTY),
