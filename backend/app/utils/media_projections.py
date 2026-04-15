@@ -14,7 +14,7 @@ def build_media_metadata(media: Media) -> MediaMetadata:
         duration_seconds=media.duration_seconds,
         frame_count=media.frame_count,
         mime_type=media.mime_type,
-        captured_at=media.captured_at or media.created_at,
+        captured_at=media.captured_at or media.uploaded_at,
     )
 
 
@@ -43,7 +43,7 @@ def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0, 
         tagging_error=media.tagging_error,
         thumbnail_status=media.thumbnail_status,
         poster_status=media.poster_status,
-        created_at=media.created_at,
+        uploaded_at=media.uploaded_at,
         deleted_at=media.deleted_at,
         is_favorited=is_favorited,
         favorite_count=favorite_count,

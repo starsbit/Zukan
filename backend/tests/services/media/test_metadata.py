@@ -106,6 +106,27 @@ async def test_update_metadata_visibility_requires_owner_access(fake_db, stub_qu
 
 
 @pytest.mark.asyncio
+async def test_update_media_metadata_resets_captured_at_to_uploaded_at(fake_db, stub_query, media, user):
+    expected_detail = SimpleNamespace(id=media.id)
+    media.uploaded_at = datetime(2026, 4, 1, 10, 0, tzinfo=timezone.utc)
+    media.captured_at = datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc)
+
+    stub_query.get_owned_or_admin_media.return_value = media
+    stub_query.get_media_with_relations.return_value = media
+    stub_query.build_media_detail.return_value = expected_detail
+
+    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
+    detail = await service.update_media_metadata(
+        media.id,
+        user,
+        MediaUpdate(metadata=MediaMetadataUpdate(captured_at=None), version=media.version),
+    )
+
+    assert detail is expected_detail
+    assert media.captured_at == media.uploaded_at
+
+
+@pytest.mark.asyncio
 async def test_bulk_update_visibility_updates_only_manageable_media(fake_db, stub_query, user):
     own_private = SimpleNamespace(id=1, uploader_id=user.id, visibility=MediaVisibility.private)
     own_public = SimpleNamespace(id=2, uploader_id=user.id, visibility=MediaVisibility.public)

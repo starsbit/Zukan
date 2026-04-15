@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import UploadFile
 
-from backend.app.models.media import MediaVisibility
+from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.services.media.upload import (
     MediaPostProcessor,
@@ -119,6 +119,8 @@ async def test_handle_new_media_with_manual_tags_marks_done(fake_db, stub_query,
     assert ctx.done_items == 1
     assert ctx.accepted == 1
     assert tags_repo.set_media_tag_links.await_count == 1
+    created_media = next(item for item in fake_db.added if isinstance(item, Media))
+    assert created_media is not None
 
 
 @pytest.mark.asyncio

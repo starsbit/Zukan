@@ -218,6 +218,12 @@ describe('NavbarSearchComponent', () => {
         capturedDay: null,
         capturedAfter: null,
         capturedBefore: null,
+        uploadedYear: null,
+        uploadedMonth: null,
+        uploadedDay: null,
+        uploadedAfter: null,
+        uploadedBefore: null,
+        uploadedBeforeYear: null,
         capturedBeforeYear: null,
       },
     });

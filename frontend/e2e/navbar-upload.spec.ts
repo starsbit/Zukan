@@ -110,7 +110,7 @@ async function getMostRecentMedia(
 ): Promise<Array<{ id: string; visibility: string; original_filename: string | null; filename: string }>> {
   return page.evaluate(async (token) => {
     const response = await fetch(
-      '/api/v1/media/search?page_size=10&sort_by=created_at&sort_order=desc',
+      '/api/v1/media/search?page_size=10&sort_by=uploaded_at&sort_order=desc',
       { headers: { Authorization: `Bearer ${token}` } },
     );
     const data = await response.json() as {

@@ -11,7 +11,7 @@ from sqlalchemy import select
 from backend.app.errors.error import AppError
 from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.processing import ItemStatus
-from backend.app.schemas import MediaListState, NsfwFilter, SensitiveFilter, TagFilterMode
+from backend.app.schemas import MediaListState, MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.services.media.query import MediaQueryService
 
 
@@ -245,9 +245,9 @@ def test_apply_visibility_scope_for_favorites_still_honors_explicit_public_filte
 @pytest.mark.asyncio
 async def test_list_media_orchestrates_filter_pipeline(service, user):
     user.id = uuid.uuid4()
-    row1 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), created_at=datetime.now(timezone.utc))
-    row2 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), created_at=datetime.now(timezone.utc))
-    row3 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), created_at=datetime.now(timezone.utc))
+    row1 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
+    row2 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
+    row3 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
 
     service._build_base_list_stmt = lambda: "stmt0"
     service._apply_album_filter = AsyncMock(return_value="stmt1")
@@ -283,7 +283,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             nsfw=NsfwFilter.DEFAULT,
             sensitive=SensitiveFilter.DEFAULT,
             status_filter=None,
-            metadata=SimpleNamespace(),
+            metadata=MediaMetadataFilter(),
             favorited=None,
             visibility=MediaVisibility.public,
             page_size=2,

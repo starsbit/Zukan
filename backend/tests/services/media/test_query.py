@@ -6,7 +6,7 @@ import pytest
 
 from backend.app.errors.error import AppError
 from backend.app.models.media import Media
-from backend.app.schemas import NsfwFilter, SensitiveFilter
+from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.pagination import decode_cursor
 
@@ -42,12 +42,12 @@ def test_assert_nsfw_visible_raises_for_non_admin(service, user, media):
 
 
 def test_build_next_cursor_round_trips(service, media):
-    media.created_at = datetime.now(timezone.utc)
+    media.uploaded_at = datetime.now(timezone.utc)
     media.captured_at = None
-    cursor = service._build_next_cursor([media], True, "created_at")
+    cursor = service._build_next_cursor([media], True, "uploaded_at")
 
     assert cursor is not None
-    decoded = decode_cursor(cursor, "created_at")
+    decoded = decode_cursor(cursor, "uploaded_at")
     assert decoded is not None
     assert decoded[1] == media.id
 
@@ -58,8 +58,8 @@ def test_get_sort_column_rejects_unsupported(service):
 
 
 def test_build_order_expressions_returns_two_terms(service):
-    asc = service._build_order_expressions(Media.created_at, "asc")
-    desc = service._build_order_expressions(Media.created_at, "desc")
+    asc = service._build_order_expressions(Media.uploaded_at, "asc")
+    desc = service._build_order_expressions(Media.uploaded_at, "desc")
 
     assert len(asc) == 2
     assert len(desc) == 2
@@ -103,3 +103,11 @@ def test_apply_status_filter_supports_csv_and_any(service):
     params = stmt.compile().params
     assert "tagging_status_1" in params
     assert params["tagging_status_1"] == ["done", "failed"]
+
+
+def test_media_metadata_filter_rejects_invalid_uploaded_range():
+    with pytest.raises(ValueError):
+        MediaMetadataFilter(
+            uploaded_after=datetime(2026, 4, 2, tzinfo=timezone.utc),
+            uploaded_before=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )

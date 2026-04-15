@@ -143,13 +143,19 @@ export class MediaInspectorDialogComponent {
         value: media.metadata.frame_count == null ? '' : `${media.metadata.frame_count}`,
       },
       { label: 'Captured at', value: formatDateTime(media.metadata.captured_at) },
-      { label: 'Added at', value: formatDateTime(media.created_at) },
+      { label: 'Added at', value: formatDateTime(media.uploaded_at) },
       { label: 'Visibility', value: formatVisibility(media.visibility) },
       { label: 'NSFW', value: media.is_nsfw ? 'Yes' : 'No' },
       { label: 'Sensitive', value: media.is_sensitive ? 'Yes' : 'No' },
       { label: 'Tagging status', value: formatProcessingStatus(media.tagging_status) },
       { label: 'Thumbnail status', value: formatProcessingStatus(media.thumbnail_status) },
       { label: 'Poster status', value: formatProcessingStatus(media.poster_status) },
+    ].filter((field) => field.value);
+  });
+  readonly uploadFields = computed<InspectorField[]>(() => {
+    const media = this.media();
+    return [
+      { label: 'Uploaded at', value: formatDateTime(media.uploaded_at) },
     ].filter((field) => field.value);
   });
   readonly authorFields = computed<InspectorField[]>(() => {

@@ -18,7 +18,7 @@ function makeMedia(id: string, captured_at: string) {
       mime_type: 'image/jpeg', captured_at,
     },
     version: 1,
-    created_at: captured_at,
+    uploaded_at: captured_at,
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

@@ -79,6 +79,27 @@ async def test_media_filters_media_type_and_captured_at(db_session, make_user, m
     assert {r.id for r in rows2} == {m1.id}
 
 
+@pytest.mark.asyncio
+async def test_media_filters_support_uploaded_at_constraints(db_session, make_user, make_media):
+    user = await make_user()
+    march_match = await make_media(uploader_id=user.id)
+    future_media = await make_media(uploader_id=user.id)
+
+    march_match.uploaded_at = datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc)
+    future_media.uploaded_at = datetime(2027, 1, 1, 12, 0, tzinfo=timezone.utc)
+    await db_session.flush()
+
+    metadata = MediaMetadataFilter(
+        uploaded_year=2026,
+        uploaded_month=3,
+        uploaded_day=29,
+        uploaded_before_year=2027,
+    )
+    stmt = media_filters.apply_uploaded_at_filters(select(type(march_match)), metadata)
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert {row.id for row in rows} == {march_match.id}
+
+
 def test_fuzzy_ocr_pattern_helper():
     assert media_filters._build_fuzzy_ocr_like_pattern("abc") is None
     pattern = media_filters._build_fuzzy_ocr_like_pattern("ab cd")

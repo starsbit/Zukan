@@ -15,7 +15,11 @@ from backend.app.utils.search import normalize_character_name_search
 
 
 def captured_timestamp_expr():
-    return func.coalesce(Media.captured_at, Media.created_at)
+    return func.coalesce(Media.captured_at, Media.uploaded_at)
+
+
+def uploaded_timestamp_expr():
+    return Media.uploaded_at
 
 def apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | None, mode: TagFilterMode):
     if tags:
@@ -104,6 +108,23 @@ def apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
         stmt = stmt.where(captured_at <= metadata.captured_before)
     if metadata.captured_before_year is not None:
         stmt = stmt.where(extract("year", captured_at) < metadata.captured_before_year)
+    return stmt
+
+
+def apply_uploaded_at_filters(stmt, metadata: MediaMetadataFilter):
+    uploaded_at = uploaded_timestamp_expr()
+    if metadata.uploaded_year is not None:
+        stmt = stmt.where(extract("year", uploaded_at) == metadata.uploaded_year)
+    if metadata.uploaded_month is not None:
+        stmt = stmt.where(extract("month", uploaded_at) == metadata.uploaded_month)
+    if metadata.uploaded_day is not None:
+        stmt = stmt.where(extract("day", uploaded_at) == metadata.uploaded_day)
+    if metadata.uploaded_after is not None:
+        stmt = stmt.where(uploaded_at >= metadata.uploaded_after)
+    if metadata.uploaded_before is not None:
+        stmt = stmt.where(uploaded_at <= metadata.uploaded_before)
+    if metadata.uploaded_before_year is not None:
+        stmt = stmt.where(extract("year", uploaded_at) < metadata.uploaded_before_year)
     return stmt
 
 def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):

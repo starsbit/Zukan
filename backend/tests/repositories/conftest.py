@@ -118,7 +118,7 @@ async def make_media(db_session: AsyncSession):
             thumbnail_status=ProcessingStatus.DONE,
             poster_status=ProcessingStatus.NOT_APPLICABLE,
             captured_at=now,
-            created_at=now,
+            uploaded_at=now,
             deleted_at=now if deleted else None,
             version=1,
             phash=phash,

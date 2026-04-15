@@ -97,7 +97,7 @@ async function fetchMediaByTag(
   return page.evaluate(async ({ authToken, searchTag }) => {
     const params = new URLSearchParams();
     params.append('tag', searchTag);
-    params.set('sort_by', 'created_at');
+    params.set('sort_by', 'uploaded_at');
     params.set('sort_order', 'desc');
     params.set('page_size', '20');
     params.set('include_total', 'true');
@@ -366,7 +366,7 @@ test.describe.serial('Gallery bulk actions', () => {
               captured_at: `2026-03-30T12:0${index}:00Z`,
             },
             version: 1,
-            created_at: `2026-03-30T12:0${index}:00Z`,
+            uploaded_at: `2026-03-30T12:0${index}:00Z`,
             deleted_at: null,
             tags: [tag],
             ocr_text_override: null,

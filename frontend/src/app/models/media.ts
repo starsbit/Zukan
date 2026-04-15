@@ -79,7 +79,7 @@ export interface MediaRead {
   media_type: MediaType;
   metadata: MediaMetadata;
   version: number;
-  created_at: string;
+  uploaded_at: string;
   deleted_at: string | null;
   tags: string[];
   ocr_text_override: string | null;
@@ -143,6 +143,12 @@ export interface MediaListParams {
   captured_after?: string;
   captured_before?: string;
   captured_before_year?: number;
+  uploaded_year?: number;
+  uploaded_month?: number;
+  uploaded_day?: number;
+  uploaded_after?: string;
+  uploaded_before?: string;
+  uploaded_before_year?: number;
 }
 
 export interface MediaBatchUpdate {

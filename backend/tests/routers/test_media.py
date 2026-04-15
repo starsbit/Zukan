@@ -38,7 +38,7 @@ def _media_read_payload(media_id: str) -> dict:
             "captured_at": now,
         },
         "version": 1,
-        "created_at": now,
+        "uploaded_at": now,
         "deleted_at": None,
         "tags": ["safe"],
         "ocr_text_override": None,

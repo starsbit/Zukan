@@ -89,6 +89,12 @@ def media_metadata_filter_query(
     captured_after: datetime | None = Query(default=None, description="Filter media captured on or after the given timestamp."),
     captured_before: datetime | None = Query(default=None, description="Filter media captured on or before the given timestamp."),
     captured_before_year: int | None = Query(default=None, description="Filter media captured before the given year."),
+    uploaded_year: int | None = Query(default=None, description="Filter media by the upload year."),
+    uploaded_month: int | None = Query(default=None, ge=1, le=12, description="Filter media by upload month."),
+    uploaded_day: int | None = Query(default=None, ge=1, le=31, description="Filter media by upload day."),
+    uploaded_after: datetime | None = Query(default=None, description="Filter media uploaded on or after the given timestamp."),
+    uploaded_before: datetime | None = Query(default=None, description="Filter media uploaded on or before the given timestamp."),
+    uploaded_before_year: int | None = Query(default=None, description="Filter media uploaded before the given year."),
 ) -> MediaMetadataFilter:
     try:
         return MediaMetadataFilter(
@@ -98,6 +104,12 @@ def media_metadata_filter_query(
             captured_after=captured_after,
             captured_before=captured_before,
             captured_before_year=captured_before_year,
+            uploaded_year=uploaded_year,
+            uploaded_month=uploaded_month,
+            uploaded_day=uploaded_day,
+            uploaded_after=uploaded_after,
+            uploaded_before=uploaded_before,
+            uploaded_before_year=uploaded_before_year,
         )
     except ValidationError as exc:
         raise RequestValidationError(exc.errors()) from exc
@@ -341,7 +353,7 @@ async def list_media(
     state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
     album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
     visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
-    sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
+    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
     page_size: int = Query(default=20, ge=1, le=1000, description="Maximum number of items to return."),
@@ -402,7 +414,7 @@ async def search_media(
     favorited: bool | None = Query(default=None, description="If true, return only media favorited by the current user."),
     visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
     media_type: Annotated[list[str] | None, Query(description="Media type filter. Repeat for multiple: ?media_type=image&media_type=gif")] = None,
-    sort_by: Literal["captured_at", "created_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
+    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
     sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
     after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
     page_size: int = Query(default=20, ge=1, le=1000, description="Maximum number of items to return."),

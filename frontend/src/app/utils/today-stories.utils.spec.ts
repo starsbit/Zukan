@@ -21,7 +21,7 @@ describe('today-stories utils', () => {
       captured_year: 2024,
       captured_after: '2024-04-02T00:00:00Z',
       captured_before: '2024-04-02T23:59:59Z',
-      sort_by: 'created_at',
+      sort_by: 'uploaded_at',
       sort_order: 'asc',
     }, new Date('2026-04-02T12:00:00'))).toEqual({
       state: MediaListState.ACTIVE,
@@ -81,7 +81,7 @@ function buildMedia(id: string, capturedAt: string) {
       captured_at: capturedAt,
     },
     version: 1,
-    created_at: capturedAt,
+    uploaded_at: capturedAt,
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

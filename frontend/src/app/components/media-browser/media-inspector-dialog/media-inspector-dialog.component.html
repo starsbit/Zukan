@@ -144,6 +144,20 @@
 
       <mat-card appearance="outlined">
         <mat-card-header>
+          <mat-card-title>Upload</mat-card-title>
+        </mat-card-header>
+        <mat-card-content class="inspector-fields">
+          @for (field of uploadFields(); track trackByLabel($index, field)) {
+            <div class="inspector-field">
+              <span>{{ field.label }}</span>
+              <strong>{{ field.value }}</strong>
+            </div>
+          }
+        </mat-card-content>
+      </mat-card>
+
+      <mat-card appearance="outlined">
+        <mat-card-header>
           <mat-card-title>Characters</mat-card-title>
         </mat-card-header>
         <mat-card-content class="inspector-section-content">

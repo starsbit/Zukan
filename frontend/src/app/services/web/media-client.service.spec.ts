@@ -11,7 +11,7 @@ const mockMedia = {
   id: 'm1', uploader_id: 'u1', owner_id: 'u1', visibility: MediaVisibility.PRIVATE,
   filename: 'test.webp', original_filename: 'test.webp', media_type: 'image' as const,
   metadata: { captured_at: '2026-01-01T00:00:00Z', file_size: 1000, width: 800, height: 600, duration_seconds: null, frame_count: null, mime_type: 'image/webp' },
-  version: 1, created_at: '2026-01-01T00:00:00Z', deleted_at: null, tags: [],
+  version: 1, uploaded_at: '2026-01-01T00:00:00Z', deleted_at: null, tags: [],
   ocr_text_override: null, is_nsfw: false, is_sensitive: false, tagging_status: 'done' as const,
   tagging_error: null, thumbnail_status: 'done' as const, poster_status: 'pending' as const,
   ocr_text: null, is_favorited: false,
@@ -112,6 +112,12 @@ describe('MediaClientService', () => {
       captured_after: '2026-03-01T00:00',
       captured_before: '2026-03-31T23:59',
       captured_before_year: 2027,
+      uploaded_year: 2026,
+      uploaded_month: 4,
+      uploaded_day: 2,
+      uploaded_after: '2026-04-01T00:00',
+      uploaded_before: '2026-04-30T23:59',
+      uploaded_before_year: 2027,
     }).subscribe();
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
@@ -128,6 +134,12 @@ describe('MediaClientService', () => {
     expect(req.request.params.get('captured_after')).toBe('2026-03-01T00:00');
     expect(req.request.params.get('captured_before')).toBe('2026-03-31T23:59');
     expect(req.request.params.get('captured_before_year')).toBe('2027');
+    expect(req.request.params.get('uploaded_year')).toBe('2026');
+    expect(req.request.params.get('uploaded_month')).toBe('4');
+    expect(req.request.params.get('uploaded_day')).toBe('2');
+    expect(req.request.params.get('uploaded_after')).toBe('2026-04-01T00:00');
+    expect(req.request.params.get('uploaded_before')).toBe('2026-04-30T23:59');
+    expect(req.request.params.get('uploaded_before_year')).toBe('2027');
     req.flush(mockPage);
   });
 
@@ -174,6 +186,12 @@ describe('MediaClientService', () => {
       captured_after: '2026-03-01T00:00',
       captured_before: '2026-03-31T23:59',
       captured_before_year: 2027,
+      uploaded_year: 2026,
+      uploaded_month: 4,
+      uploaded_day: 1,
+      uploaded_after: '2026-04-01T00:00',
+      uploaded_before: '2026-04-30T23:59',
+      uploaded_before_year: 2027,
       after: 'cursor-1',
       page_size: 10,
       include_total: true,
@@ -189,6 +207,12 @@ describe('MediaClientService', () => {
     expect(req.request.params.has('captured_after')).toBe(false);
     expect(req.request.params.has('captured_before')).toBe(false);
     expect(req.request.params.has('captured_before_year')).toBe(false);
+    expect(req.request.params.has('uploaded_year')).toBe(false);
+    expect(req.request.params.has('uploaded_month')).toBe(false);
+    expect(req.request.params.has('uploaded_day')).toBe(false);
+    expect(req.request.params.has('uploaded_after')).toBe(false);
+    expect(req.request.params.has('uploaded_before')).toBe(false);
+    expect(req.request.params.has('uploaded_before_year')).toBe(false);
     expect(req.request.params.has('after')).toBe(false);
     expect(req.request.params.has('page_size')).toBe(false);
     expect(req.request.params.has('include_total')).toBe(false);

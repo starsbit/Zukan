@@ -260,7 +260,7 @@ function makeMedia(id: string, capturedAt: string, isFavorited = false) {
       captured_at: capturedAt,
     },
     version: 1,
-    created_at: capturedAt,
+    uploaded_at: capturedAt,
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

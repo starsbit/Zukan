@@ -13,7 +13,7 @@ function makeMedia(id: string, captured_at = '2026-03-28T12:00:00Z') {
     filename: `${id}.jpg`, original_filename: null,
     media_type: MediaType.IMAGE,
     metadata: { file_size: 100, width: 10, height: 10, duration_seconds: null, frame_count: null, mime_type: 'image/jpeg', captured_at },
-    version: 1, created_at: captured_at, deleted_at: null, tags: [],
+    version: 1, uploaded_at: captured_at, deleted_at: null, tags: [],
     ocr_text_override: null, is_nsfw: false,
     tagging_status: TaggingStatus.DONE, tagging_error: null,
     thumbnail_status: ProcessingStatus.DONE, poster_status: ProcessingStatus.NOT_APPLICABLE,

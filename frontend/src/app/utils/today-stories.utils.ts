@@ -35,7 +35,7 @@ export function buildTodayStoriesParams(
 }
 
 export function toTodayStoryItem(media: MediaRead, now = new Date()): TodayStoryItem {
-  const capturedAt = new Date(media.metadata.captured_at || media.created_at);
+  const capturedAt = new Date(media.metadata.captured_at || media.uploaded_at);
   const capturedYear = Number.isFinite(capturedAt.getFullYear()) ? capturedAt.getFullYear() : now.getFullYear();
   const yearsAgo = Math.max(0, now.getFullYear() - capturedYear);
 
@@ -49,8 +49,8 @@ export function toTodayStoryItem(media: MediaRead, now = new Date()): TodayStory
 
 export function sortTodayStoryItems(items: TodayStoryItem[]): TodayStoryItem[] {
   return items.slice().sort((left, right) => {
-    const leftDate = left.metadata.captured_at || left.created_at;
-    const rightDate = right.metadata.captured_at || right.created_at;
+    const leftDate = left.metadata.captured_at || left.uploaded_at || '';
+    const rightDate = right.metadata.captured_at || right.uploaded_at || '';
     return rightDate.localeCompare(leftDate);
   });
 }

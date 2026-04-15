@@ -142,7 +142,7 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
                             "captured_at": now,
                         },
                         "version": 1,
-                        "created_at": now,
+                        "uploaded_at": now,
                         "deleted_at": None,
                         "tags": [],
                         "ocr_text_override": None,

@@ -119,7 +119,7 @@ export class GalleryStore {
   }
 
   loadTimeline(): Observable<MediaTimeline> {
-    const { captured_year, captured_month, captured_day, captured_after, captured_before, captured_before_year, after, page_size, include_total, ...timelineParams } = this._params();
+    const { captured_year, captured_month, captured_day, captured_after, captured_before, captured_before_year, uploaded_year, uploaded_month, uploaded_day, uploaded_after, uploaded_before, uploaded_before_year, after, page_size, include_total, ...timelineParams } = this._params();
     this._timelineLoading.set(true);
     return this.client.getTimeline(timelineParams).pipe(
       tap((tl) => {
@@ -332,7 +332,7 @@ export class GalleryStore {
         captured_at: this.capturedAtForFile(file),
       },
       version: 1,
-      created_at: new Date().toISOString(),
+      uploaded_at: new Date().toISOString(),
       deleted_at: null,
       tags: [],
       ocr_text_override: null,
@@ -426,8 +426,8 @@ export class GalleryStore {
       return items;
     }
     return items.slice().sort((left, right) => {
-      const rightDate = right.metadata.captured_at || right.created_at;
-      const leftDate = left.metadata.captured_at || left.created_at;
+      const rightDate = right.metadata.captured_at || right.uploaded_at || '';
+      const leftDate = left.metadata.captured_at || left.uploaded_at || '';
       return rightDate.localeCompare(leftDate);
     });
   }

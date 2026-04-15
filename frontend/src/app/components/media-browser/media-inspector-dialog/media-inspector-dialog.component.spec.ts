@@ -31,7 +31,7 @@ function makeMedia(id = 'm1', overrides: Partial<MediaRead> = {}): MediaRead {
       captured_at: '2026-03-24T15:07:11Z',
     },
     version: 1,
-    created_at: '2026-03-24T15:07:13Z',
+    uploaded_at: '2026-03-24T15:07:13Z',
     deleted_at: null,
     tags: ['Saber', 'white hair'],
     ocr_text_override: null,
@@ -134,6 +134,8 @@ describe('MediaInspectorDialogComponent', () => {
     expect(mediaService.get).toHaveBeenCalledWith('m1');
     expect(mediaService.getFileUrl).toHaveBeenCalledWith('m1');
     expect(fixture.nativeElement.textContent).toContain('Summary');
+    expect(fixture.nativeElement.textContent).toContain('Upload');
+    expect(fixture.nativeElement.textContent).toContain('Uploaded at');
     expect(fixture.nativeElement.textContent).toContain('Characters');
     expect(fixture.nativeElement.textContent).toContain('Saber Alter');
     expect(fixture.nativeElement.textContent).toContain('Series');

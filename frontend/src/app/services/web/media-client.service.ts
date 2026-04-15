@@ -24,7 +24,7 @@ export interface MediaListParams {
   state?: MediaListState;
   album_id?: string;
   visibility?: MediaVisibility;
-  sort_by?: 'captured_at' | 'created_at' | 'filename' | 'file_size';
+  sort_by?: 'captured_at' | 'uploaded_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
   after?: string;
   page_size?: number;
@@ -45,7 +45,7 @@ export interface MediaSearchParams {
   favorited?: boolean;
   visibility?: MediaVisibility;
   media_type?: string[];
-  sort_by?: 'captured_at' | 'created_at' | 'filename' | 'file_size';
+  sort_by?: 'captured_at' | 'uploaded_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
   after?: string;
   page_size?: number;
@@ -57,6 +57,12 @@ export interface MediaSearchParams {
   captured_after?: string;
   captured_before?: string;
   captured_before_year?: number;
+  uploaded_year?: number;
+  uploaded_month?: number;
+  uploaded_day?: number;
+  uploaded_after?: string;
+  uploaded_before?: string;
+  uploaded_before_year?: number;
 }
 
 export interface UploadParams {
@@ -114,6 +120,13 @@ export class MediaClientService {
     if (p.captured_before != null) params = params.set('captured_before', p.captured_before);
     if (p.captured_before_year != null)
       params = params.set('captured_before_year', p.captured_before_year);
+    if (p.uploaded_year != null) params = params.set('uploaded_year', p.uploaded_year);
+    if (p.uploaded_month != null) params = params.set('uploaded_month', p.uploaded_month);
+    if (p.uploaded_day != null) params = params.set('uploaded_day', p.uploaded_day);
+    if (p.uploaded_after != null) params = params.set('uploaded_after', p.uploaded_after);
+    if (p.uploaded_before != null) params = params.set('uploaded_before', p.uploaded_before);
+    if (p.uploaded_before_year != null)
+      params = params.set('uploaded_before_year', p.uploaded_before_year);
     return this.http.get<MediaCursorPage>(`${this.base}/api/v1/media/search`, { params });
   }
 
@@ -165,7 +178,7 @@ export class MediaClientService {
     });
   }
 
-  getTimeline(p: Omit<MediaSearchParams, 'after' | 'page_size' | 'include_total' | 'captured_year' | 'captured_month' | 'captured_day' | 'captured_after' | 'captured_before' | 'captured_before_year'> = {}): Observable<MediaTimeline> {
+  getTimeline(p: Omit<MediaSearchParams, 'after' | 'page_size' | 'include_total' | 'captured_year' | 'captured_month' | 'captured_day' | 'captured_after' | 'captured_before' | 'captured_before_year' | 'uploaded_year' | 'uploaded_month' | 'uploaded_day' | 'uploaded_after' | 'uploaded_before' | 'uploaded_before_year'> = {}): Observable<MediaTimeline> {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);

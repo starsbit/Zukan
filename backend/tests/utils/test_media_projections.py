@@ -32,7 +32,7 @@ def _make_media() -> Media:
         thumbnail_status=ProcessingStatus.DONE,
         poster_status=ProcessingStatus.NOT_APPLICABLE,
         captured_at=now,
-        created_at=now,
+        uploaded_at=now,
         deleted_at=None,
         version=1,
         visibility=MediaVisibility.private,
@@ -61,6 +61,7 @@ def test_build_media_read_and_enrich_media():
     assert read.tags == ["a", "b"]
     assert read.uploader_username == "uploader"
     assert read.owner_username == "owner"
+    assert read.uploaded_at == media.uploaded_at
 
     result = enrich_media([media], {media.id}, {media.id: 3})
     assert len(result) == 1

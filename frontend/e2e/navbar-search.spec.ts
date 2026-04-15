@@ -30,7 +30,7 @@ function sampleMedia(
       captured_at: capturedAt,
     },
     version: 1,
-    created_at: capturedAt,
+    uploaded_at: capturedAt,
     deleted_at: null,
     tags: [],
     ocr_text_override: null,
@@ -78,7 +78,7 @@ async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<
         preview_media: [],
         media_count: 3,
         version: 1,
-        created_at: '2026-03-20T00:00:00Z',
+        uploaded_at: '2026-03-20T00:00:00Z',
         updated_at: '2026-03-20T00:00:00Z',
       },
     });
@@ -151,7 +151,7 @@ async function registerMobileGalleryRoutes(page: Page, searchRequests: URL[]): P
         preview_media: [],
         media_count: 3,
         version: 1,
-        created_at: '2026-03-20T00:00:00Z',
+        uploaded_at: '2026-03-20T00:00:00Z',
         updated_at: '2026-03-20T00:00:00Z',
       },
     });
@@ -332,8 +332,8 @@ function sortMediaForRequest(items: MockMedia[], request: URL): MockMedia[] {
       switch (sortBy) {
         case 'captured_at':
           return new Date(left.metadata.captured_at).getTime() - new Date(right.metadata.captured_at).getTime();
-        case 'created_at':
-          return new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+        case 'uploaded_at':
+          return new Date(left.uploaded_at).getTime() - new Date(right.uploaded_at).getTime();
         case 'filename':
           return left.filename.localeCompare(right.filename);
         case 'file_size':
@@ -421,7 +421,7 @@ async function registerAdvancedFilterRoutes(
         preview_media: [],
         media_count: 3,
         version: 1,
-        created_at: '2026-03-20T00:00:00Z',
+        uploaded_at: '2026-03-20T00:00:00Z',
         updated_at: '2026-03-20T00:00:00Z',
       },
     });

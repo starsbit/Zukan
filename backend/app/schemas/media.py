@@ -36,6 +36,15 @@ class MediaMetadataFilter(BaseModel):
         default=None,
         description="Filter media captured before the given year. Useful for on-this-day style lookups.",
     )
+    uploaded_year: int | None = Field(default=None, description="Filter media by the upload year.")
+    uploaded_month: int | None = Field(default=None, ge=1, le=12, description="Filter media by upload month.")
+    uploaded_day: int | None = Field(default=None, ge=1, le=31, description="Filter media by upload day.")
+    uploaded_after: datetime | None = Field(default=None, description="Filter media uploaded on or after this timestamp.")
+    uploaded_before: datetime | None = Field(default=None, description="Filter media uploaded on or before this timestamp.")
+    uploaded_before_year: int | None = Field(
+        default=None,
+        description="Filter media uploaded before the given year.",
+    )
 
     @model_validator(mode="after")
     def validate_date_filters(self):
@@ -46,6 +55,13 @@ class MediaMetadataFilter(BaseModel):
                 raise ValueError("Invalid captured month/day combination") from exc
         if self.captured_after is not None and self.captured_before is not None and self.captured_after > self.captured_before:
             raise ValueError("captured_after must be before or equal to captured_before")
+        if self.uploaded_month is not None and self.uploaded_day is not None:
+            try:
+                datetime(2000, self.uploaded_month, self.uploaded_day)
+            except ValueError as exc:
+                raise ValueError("Invalid uploaded month/day combination") from exc
+        if self.uploaded_after is not None and self.uploaded_before is not None and self.uploaded_after > self.uploaded_before:
+            raise ValueError("uploaded_after must be before or equal to uploaded_before")
         return self
 
 
@@ -73,7 +89,7 @@ class MediaRead(BaseModel):
     media_type: MediaType = MediaType.IMAGE
     metadata: MediaMetadata
     version: int
-    created_at: datetime
+    uploaded_at: datetime
     deleted_at: datetime | None = None
     tags: list[str] = Field(description="All tags currently stored for the media.")
     ocr_text_override: str | None = Field(
@@ -131,7 +147,7 @@ class MediaDetail(MediaRead):
                     "captured_at": "2026-03-24T15:07:11Z"
                 },
                 "version": 5,
-                "created_at": "2026-03-24T15:07:13Z",
+                "uploaded_at": "2026-03-24T15:07:13Z",
                 "deleted_at": None,
                 "tags": ["Saber", "white hair", "cat", "burger"],
                 "ocr_text_override": None,

@@ -100,7 +100,7 @@ class Media(Base):
     )
     # Lifecycle
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+    uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -115,7 +115,6 @@ class Media(Base):
         server_default="private",
         index=True,
     )
-    ingested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     phash: Mapped[str | None] = mapped_column(String(16), nullable=True)
     tagging_model_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     tagging_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

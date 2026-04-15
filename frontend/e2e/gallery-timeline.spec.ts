@@ -25,7 +25,7 @@ function mediaItem(id: string, capturedAt: string, width = 1200, height = 800) {
       captured_at: capturedAt,
     },
     version: 1,
-    created_at: capturedAt,
+    uploaded_at: capturedAt,
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

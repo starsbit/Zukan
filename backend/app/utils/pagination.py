@@ -45,7 +45,7 @@ def decode_cursor_typed(cursor: str, value_type: str, id_type: str = "uuid") -> 
 
 def decode_cursor(cursor: str, sort_by: str) -> tuple | None:
     value_type = "str"
-    if sort_by in ("captured_at", "created_at"):
+    if sort_by in ("captured_at", "uploaded_at"):
         value_type = "datetime"
     elif sort_by == "file_size":
         value_type = "int"
@@ -61,7 +61,7 @@ def apply_cursor_where_expr(stmt, *, sort_expr, id_expr, sort_order: str, cursor
 def apply_cursor_where(stmt, sort_by: str, sort_order: str, cursor_val, cursor_id: uuid.UUID):
     sort_expr = {
         "captured_at": captured_timestamp_expr(),
-        "created_at": Media.created_at,
+        "uploaded_at": Media.uploaded_at,
         "filename": Media.filename,
         "file_size": Media.file_size,
     }[sort_by]

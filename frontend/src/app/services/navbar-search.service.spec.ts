@@ -69,6 +69,12 @@ describe('NavbarSearchService', () => {
         capturedAfter: null,
         capturedBefore: null,
         capturedBeforeYear: null,
+        uploadedYear: null,
+        uploadedMonth: null,
+        uploadedDay: null,
+        uploadedAfter: null,
+        uploadedBefore: null,
+        uploadedBeforeYear: null,
       },
     });
   });
@@ -89,6 +95,7 @@ describe('NavbarSearchService', () => {
       sortBy: 'captured_at',
       sortOrder: 'desc',
       capturedYear: 2026,
+      uploadedYear: 2025,
     });
     service.apply();
 
@@ -107,6 +114,7 @@ describe('NavbarSearchService', () => {
       sort_by: 'captured_at',
       sort_order: 'desc',
       captured_year: 2026,
+      uploaded_year: 2025,
     });
   });
 
@@ -115,9 +123,10 @@ describe('NavbarSearchService', () => {
       excludeTags: ['spoiler'],
       visibility: MediaVisibility.PUBLIC,
       mediaTypes: [MediaType.VIDEO],
+      uploadedBeforeYear: 2027,
     });
 
-    expect(service.activeAdvancedFilterCount()).toBe(3);
+    expect(service.activeAdvancedFilterCount()).toBe(4);
   });
 
   it('normalizes advanced filters and preserves false-y filter values in applied params', () => {
@@ -129,6 +138,9 @@ describe('NavbarSearchService', () => {
       capturedAfter: ' 2026-03-01T00:00 ',
       capturedBefore: ' 2026-03-31T23:59 ',
       capturedBeforeYear: 2027,
+      uploadedAfter: ' 2026-04-01T00:00 ',
+      uploadedBefore: ' 2026-04-30T23:59 ',
+      uploadedBeforeYear: 2028,
     });
     service.apply();
 
@@ -140,6 +152,9 @@ describe('NavbarSearchService', () => {
       capturedAfter: '2026-03-01T00:00',
       capturedBefore: '2026-03-31T23:59',
       capturedBeforeYear: 2027,
+      uploadedAfter: '2026-04-01T00:00',
+      uploadedBefore: '2026-04-30T23:59',
+      uploadedBeforeYear: 2028,
     });
     expect(service.appliedParams()).toMatchObject({
       exclude_tag: ['spoiler'],
@@ -149,6 +164,9 @@ describe('NavbarSearchService', () => {
       captured_after: '2026-03-01T00:00',
       captured_before: '2026-03-31T23:59',
       captured_before_year: 2027,
+      uploaded_after: '2026-04-01T00:00',
+      uploaded_before: '2026-04-30T23:59',
+      uploaded_before_year: 2028,
     });
   });
 
@@ -214,6 +232,12 @@ describe('NavbarSearchService', () => {
         capturedAfter: null,
         capturedBefore: null,
         capturedBeforeYear: null,
+        uploadedYear: null,
+        uploadedMonth: null,
+        uploadedDay: null,
+        uploadedAfter: null,
+        uploadedBefore: null,
+        uploadedBeforeYear: null,
       },
     });
   });

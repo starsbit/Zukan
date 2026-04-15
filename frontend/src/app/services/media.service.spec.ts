@@ -23,7 +23,7 @@ function makeMedia(id: string, overrides: Record<string, unknown> = {}) {
       mime_type: 'image/jpeg', captured_at: '2026-01-01T00:00:00Z',
     },
     version: 1,
-    created_at: '2026-01-01T00:00:00Z',
+    uploaded_at: '2026-01-01T00:00:00Z',
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

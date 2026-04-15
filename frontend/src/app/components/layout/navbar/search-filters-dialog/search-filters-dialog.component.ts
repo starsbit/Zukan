@@ -84,7 +84,7 @@ export class SearchFiltersDialogComponent {
   readonly sortByOptions: Array<{ value: AdvancedSearchFilters['sortBy']; label: string }> = [
     { value: null, label: 'Default' },
     { value: 'captured_at', label: 'Captured date' },
-    { value: 'created_at', label: 'Created date' },
+    { value: 'uploaded_at', label: 'Uploaded date' },
     { value: 'filename', label: 'Filename' },
     { value: 'file_size', label: 'File size' },
   ];
@@ -119,6 +119,12 @@ export class SearchFiltersDialogComponent {
     capturedAfter: [this.data.filters.capturedAfter ?? ''],
     capturedBefore: [this.data.filters.capturedBefore ?? ''],
     capturedBeforeYear: [this.data.filters.capturedBeforeYear?.toString() ?? ''],
+    uploadedYear: [this.data.filters.uploadedYear?.toString() ?? ''],
+    uploadedMonth: [this.data.filters.uploadedMonth?.toString() ?? ''],
+    uploadedDay: [this.data.filters.uploadedDay?.toString() ?? ''],
+    uploadedAfter: [this.data.filters.uploadedAfter ?? ''],
+    uploadedBefore: [this.data.filters.uploadedBefore ?? ''],
+    uploadedBeforeYear: [this.data.filters.uploadedBeforeYear?.toString() ?? ''],
   });
 
   constructor() {
@@ -191,6 +197,12 @@ export class SearchFiltersDialogComponent {
       capturedAfter: (value.capturedAfter ?? '').trim() || null,
       capturedBefore: (value.capturedBefore ?? '').trim() || null,
       capturedBeforeYear: this.parseInteger(value.capturedBeforeYear ?? ''),
+      uploadedYear: this.parseInteger(value.uploadedYear ?? ''),
+      uploadedMonth: this.parseInteger(value.uploadedMonth ?? ''),
+      uploadedDay: this.parseInteger(value.uploadedDay ?? ''),
+      uploadedAfter: (value.uploadedAfter ?? '').trim() || null,
+      uploadedBefore: (value.uploadedBefore ?? '').trim() || null,
+      uploadedBeforeYear: this.parseInteger(value.uploadedBeforeYear ?? ''),
     } satisfies AdvancedSearchFilters);
   }
 
@@ -214,6 +226,12 @@ export class SearchFiltersDialogComponent {
       capturedAfter: null,
       capturedBefore: null,
       capturedBeforeYear: null,
+      uploadedYear: null,
+      uploadedMonth: null,
+      uploadedDay: null,
+      uploadedAfter: null,
+      uploadedBefore: null,
+      uploadedBeforeYear: null,
     } satisfies AdvancedSearchFilters);
   }
 

@@ -25,6 +25,12 @@ describe('SearchFiltersDialogComponent', () => {
     capturedAfter: '2026-03-01T00:00',
     capturedBefore: '2026-03-31T23:59',
     capturedBeforeYear: 2027,
+    uploadedYear: 2026,
+    uploadedMonth: 4,
+    uploadedDay: 1,
+    uploadedAfter: '2026-04-01T00:00',
+    uploadedBefore: '2026-04-30T23:59',
+    uploadedBeforeYear: 2027,
   };
 
   async function setup(data = { filters }, close = vi.fn()) {
@@ -58,6 +64,7 @@ describe('SearchFiltersDialogComponent', () => {
       sortBy: 'captured_at',
       sortOrder: 'desc',
       capturedYear: '2026',
+      uploadedYear: '2026',
     });
     expect(fixture.componentInstance.excludeTagChips()).toEqual(['spoiler']);
   });
@@ -91,6 +98,12 @@ describe('SearchFiltersDialogComponent', () => {
       capturedAfter: '2026-03-01T00:00',
       capturedBefore: '2026-03-31T23:59',
       capturedBeforeYear: 2027,
+      uploadedYear: 2026,
+      uploadedMonth: 4,
+      uploadedDay: 1,
+      uploadedAfter: '2026-04-01T00:00',
+      uploadedBefore: '2026-04-30T23:59',
+      uploadedBeforeYear: 2027,
     });
   });
 
@@ -111,6 +124,10 @@ describe('SearchFiltersDialogComponent', () => {
       capturedMonth: 12,
       capturedDay: 31,
       capturedBeforeYear: 2025,
+      uploadedYear: 2026,
+      uploadedMonth: 4,
+      uploadedDay: 1,
+      uploadedBeforeYear: 2027,
     }));
   });
 
@@ -136,6 +153,12 @@ describe('SearchFiltersDialogComponent', () => {
       capturedAfter: null,
       capturedBefore: null,
       capturedBeforeYear: null,
+      uploadedYear: null,
+      uploadedMonth: null,
+      uploadedDay: null,
+      uploadedAfter: null,
+      uploadedBefore: null,
+      uploadedBeforeYear: null,
     });
   });
 
@@ -157,6 +180,8 @@ describe('SearchFiltersDialogComponent', () => {
       favorited: null,
       capturedAfter: '2026-03-01T00:00',
       capturedBefore: '2026-03-31T23:59',
+      uploadedAfter: '2026-04-01T00:00',
+      uploadedBefore: '2026-04-30T23:59',
       mediaTypes: [],
     }));
   });

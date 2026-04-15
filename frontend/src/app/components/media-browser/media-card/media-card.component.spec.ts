@@ -42,7 +42,7 @@ function makeMedia(overrides: Partial<MediaRead> = {}): MediaRead {
       captured_at: '2026-03-28T12:00:00Z',
     },
     version: 1,
-    created_at: '2026-03-28T12:00:00Z',
+    uploaded_at: '2026-03-28T12:00:00Z',
     deleted_at: null,
     tags: [],
     ocr_text_override: null,

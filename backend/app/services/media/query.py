@@ -50,7 +50,7 @@ from backend.app.utils.pagination import (
 class MediaQueryService:
     SORT_FIELDS: dict[str, Any] = {
         "captured_at": captured_timestamp_expr(),
-        "created_at": Media.created_at,
+        "uploaded_at": Media.uploaded_at,
         "filename": Media.filename,
         "file_size": Media.file_size,
     }
@@ -262,6 +262,7 @@ class MediaQueryService:
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
         stmt = media_filters.apply_media_type_filters(stmt, media_type)
         stmt = media_filters.apply_captured_at_filters(stmt, metadata)
+        stmt = media_filters.apply_uploaded_at_filters(stmt, metadata)
         stmt = media_filters.apply_ocr_text_filter(stmt, ocr_text)
 
         total = await self._count_total(stmt, include_total)
@@ -602,7 +603,7 @@ class MediaQueryService:
 
         last = rows[-1]
         sort_value = (
-            last.captured_at or last.created_at
+            last.captured_at or last.uploaded_at
             if sort_by == "captured_at"
             else getattr(last, sort_by)
         )

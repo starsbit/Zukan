@@ -71,7 +71,7 @@ class MediaMetadataService:
                 source="manual",
             )
         if "metadata" in payload.model_fields_set and "captured_at" in metadata_fields:
-            media.captured_at = payload.metadata.captured_at or media.created_at
+            media.captured_at = payload.metadata.captured_at or media.uploaded_at
         if "deleted" in payload.model_fields_set:
             media.deleted_at = datetime.now(timezone.utc) if payload.deleted else None
         if "ocr_text_override" in payload.model_fields_set:

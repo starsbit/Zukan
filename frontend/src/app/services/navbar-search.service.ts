@@ -34,6 +34,12 @@ export interface AdvancedSearchFilters {
   capturedAfter: string | null;
   capturedBefore: string | null;
   capturedBeforeYear: number | null;
+  uploadedYear: number | null;
+  uploadedMonth: number | null;
+  uploadedDay: number | null;
+  uploadedAfter: string | null;
+  uploadedBefore: string | null;
+  uploadedBeforeYear: number | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -55,6 +61,12 @@ export class NavbarSearchService {
     capturedAfter: null,
     capturedBefore: null,
     capturedBeforeYear: null,
+    uploadedYear: null,
+    uploadedMonth: null,
+    uploadedDay: null,
+    uploadedAfter: null,
+    uploadedBefore: null,
+    uploadedBeforeYear: null,
   };
   private readonly _draftChips = signal<SearchChip[]>([]);
   private readonly _draftText = signal('');
@@ -89,6 +101,12 @@ export class NavbarSearchService {
       filters.capturedAfter != null,
       filters.capturedBefore != null,
       filters.capturedBeforeYear != null,
+      filters.uploadedYear != null,
+      filters.uploadedMonth != null,
+      filters.uploadedDay != null,
+      filters.uploadedAfter != null,
+      filters.uploadedBefore != null,
+      filters.uploadedBeforeYear != null,
     ].filter(Boolean).length;
   });
   readonly appliedParams = computed<MediaSearchParams>(() => {
@@ -114,6 +132,12 @@ export class NavbarSearchService {
       captured_after: applied.advanced.capturedAfter ?? undefined,
       captured_before: applied.advanced.capturedBefore ?? undefined,
       captured_before_year: applied.advanced.capturedBeforeYear ?? undefined,
+      uploaded_year: applied.advanced.uploadedYear ?? undefined,
+      uploaded_month: applied.advanced.uploadedMonth ?? undefined,
+      uploaded_day: applied.advanced.uploadedDay ?? undefined,
+      uploaded_after: applied.advanced.uploadedAfter ?? undefined,
+      uploaded_before: applied.advanced.uploadedBefore ?? undefined,
+      uploaded_before_year: applied.advanced.uploadedBeforeYear ?? undefined,
     };
   });
 
@@ -259,6 +283,12 @@ export class NavbarSearchService {
       capturedAfter: filters.capturedAfter?.trim() || null,
       capturedBefore: filters.capturedBefore?.trim() || null,
       capturedBeforeYear: filters.capturedBeforeYear,
+      uploadedYear: filters.uploadedYear,
+      uploadedMonth: filters.uploadedMonth,
+      uploadedDay: filters.uploadedDay,
+      uploadedAfter: filters.uploadedAfter?.trim() || null,
+      uploadedBefore: filters.uploadedBefore?.trim() || null,
+      uploadedBeforeYear: filters.uploadedBeforeYear,
     };
   }
 }

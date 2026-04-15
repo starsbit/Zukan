@@ -111,7 +111,7 @@ def media(user: User) -> Media:
         poster_path=None,
         poster_status=ProcessingStatus.NOT_APPLICABLE,
         captured_at=now,
-        created_at=now,
+        uploaded_at=now,
         deleted_at=None,
         version=1,
         media_tags=[],
