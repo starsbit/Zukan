@@ -166,4 +166,5 @@ class UrlIngestRequest(BaseModel):
     url: HttpUrl
     tags: list[str] | None = None
     album_id: uuid.UUID | None = None
+    captured_at: datetime | None = None
     visibility: MediaVisibility = MediaVisibility.private

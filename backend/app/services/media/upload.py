@@ -502,6 +502,7 @@ class MediaUploadWorkflow:
         url: str,
         album_id: uuid.UUID | None,
         tags: list[str] | None,
+        captured_at_override: datetime | None = None,
         visibility: MediaVisibility,
     ) -> BatchUploadResponse:
         from backend.app.services.media.url_fetch import fetch_url_as_bytes
@@ -532,7 +533,7 @@ class MediaUploadWorkflow:
         ctx = UploadBatchContext()
 
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        captured_at = datetime.now(UTC)
+        captured_at = _normalize_utc(captured_at_override) if captured_at_override is not None else datetime.now(UTC)
 
         existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
         batch_item = self._new_batch_item(upload_batch.id, original_name)
@@ -763,6 +764,7 @@ class MediaUploadService:
         *,
         album_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
+        captured_at_override: datetime | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
@@ -776,6 +778,7 @@ class MediaUploadService:
             url=url,
             album_id=album_id,
             tags=tags,
+            captured_at_override=captured_at_override,
             visibility=visibility,
         )
 

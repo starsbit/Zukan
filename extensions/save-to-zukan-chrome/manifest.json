@@ -16,8 +16,14 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "icons": {
+    "128": "icon-128.png"
+  },
   "action": {
-    "default_title": "Save to Zukan"
+    "default_title": "Save to Zukan",
+    "default_icon": {
+      "128": "icon-128.png"
+    }
   },
   "options_page": "options.html"
 }

@@ -196,6 +196,40 @@ def test_upload_media_with_annotations_requires_at_least_one_annotation(api_clie
     assert payload["request_id"] == response.headers["x-request-id"]
 
 
+def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_ingest(self, user, url, album_id=None, tags=None, captured_at_override=None, visibility="private"):
+        captured["url"] = url
+        captured["captured_at_override"] = captured_at_override
+        return {
+            "batch_id": str(uuid.uuid4()),
+            "batch_url": "/api/v1/me/import-batches/test",
+            "batch_items_url": "/api/v1/me/import-batches/test/items",
+            "poll_after_seconds": 2,
+            "webhooks_supported": False,
+            "accepted": 1,
+            "duplicates": 0,
+            "errors": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr(MediaUploadService, "ingest_url", _fake_ingest)
+
+    response = api_client.post(
+        "/api/v1/media/ingest-url",
+        json={
+            "url": "https://pbs.twimg.com/media/test.jpg?format=jpg&name=orig",
+            "captured_at": "2024-02-03T04:05:06Z",
+            "visibility": "private",
+        },
+    )
+
+    assert response.status_code == 202
+    assert captured["url"] == "https://pbs.twimg.com/media/test.jpg?format=jpg&name=orig"
+    assert captured["captured_at_override"] == datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)
+
+
 def test_list_media_contract(api_client, monkeypatch):
     async def _fake_list(self, *args):
         return {"total": 0, "next_cursor": None, "has_more": False, "page_size": 5, "items": []}

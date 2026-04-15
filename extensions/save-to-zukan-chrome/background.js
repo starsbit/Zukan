@@ -48,7 +48,7 @@ async function ensureOriginPermission(url) {
 async function showNotification(title, message) {
   await chrome.notifications.create({
     type: 'basic',
-    iconUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WnW0fsAAAAASUVORK5CYII=',
+    iconUrl: chrome.runtime.getURL('icon-128.png'),
     title,
     message,
   });

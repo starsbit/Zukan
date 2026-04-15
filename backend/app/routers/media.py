@@ -321,6 +321,7 @@ async def ingest_url(
         str(body.url),
         album_id=body.album_id,
         tags=body.tags,
+        captured_at_override=body.captured_at,
         visibility=body.visibility,
     )
 

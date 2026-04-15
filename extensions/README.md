@@ -5,6 +5,7 @@ This directory is the shared home for browser and client extensions that integra
 ## Layout
 
 - `save-to-zukan-chrome/`: unpacked Chrome Manifest V3 extension for saving images and videos into Zukan
+- `save-liked-media-from-x-chrome/`: unpacked Chrome Manifest V3 extension for auto-saving liked X/Twitter media into Zukan
 
 ## Conventions
 
@@ -17,3 +18,7 @@ This directory is the shared home for browser and client extensions that integra
 To load the Chrome extension in developer mode, select:
 
 `extensions/save-to-zukan-chrome/`
+
+or
+
+`extensions/save-liked-media-from-x-chrome/`
