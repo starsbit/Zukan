@@ -387,43 +387,6 @@ The model is downloaded into the volume on the first run (~600 MB, takes a few m
 
 ---
 
-## Chrome extension
-
-Zukan includes a lightweight unpacked Chrome extension in [`extensions/save-to-zukan-chrome/`](/Users/stars/projects/Zukan/extensions/save-to-zukan-chrome) for one-click saves from the browser context menu.
-
-### What it does
-
-- Adds `Save to Zukan` when you right-click an image or video
-- Authenticates with a user API key from Zukan account settings
-- Tries URL ingest first, then falls back to direct multipart upload when the remote media cannot be ingested server-side
-- Saves media as `private` in this first release
-
-### Load it in Chrome
-
-1. Open `chrome://extensions`
-2. Enable **Developer mode**
-3. Click **Load unpacked**
-4. Select the `extensions/save-to-zukan-chrome/` folder from this repository
-
-### Configure it
-
-1. In Zukan, open your avatar menu and go to **Settings**
-2. Create or rotate your API key
-3. Open the extension's **Options**
-4. Enter your Zukan base URL, for example `http://localhost:4200`
-5. Paste the API key and save
-
-The options page validates the API key against `GET /api/v1/me` before storing it.
-
-### Current limitations
-
-- Only `http(s)` image and video source URLs are supported
-- `blob:` and `data:` media URLs are not supported
-- There is no album, tag, or visibility picker yet
-- The extension may ask for host access when it needs to fetch the source media directly for upload fallback
-
----
-
 ## Releasing
 
 ### CI/CD overview

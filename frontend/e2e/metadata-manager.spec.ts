@@ -50,9 +50,10 @@ function matchesQuery(value: string, query: string): boolean {
 }
 
 function ownerScopedQuerySeen(requests: URL[], expectedFragment: string): boolean {
-  const normalized = expectedFragment.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const normalize = (input: string) => input.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  const normalized = normalize(expectedFragment);
   return requests.some((request) => {
-    const q = request.searchParams.get('q') ?? '';
+    const q = normalize(request.searchParams.get('q') ?? '');
     return request.searchParams.get('scope') === 'owner' && q.includes(normalized);
   });
 }
