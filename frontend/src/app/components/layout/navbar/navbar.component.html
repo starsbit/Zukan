@@ -10,7 +10,9 @@
       <mat-icon>menu</mat-icon>
     </button>
   }
-  <zukan-navbar-brand></zukan-navbar-brand>
+  @if (!showMenuToggle()) {
+    <zukan-navbar-brand></zukan-navbar-brand>
+  }
   <zukan-navbar-search class="navbar-search"></zukan-navbar-search>
   <zukan-navbar-actions></zukan-navbar-actions>
 </mat-toolbar>
