@@ -430,6 +430,51 @@ describe('GalleryStore', () => {
       expect(store.items()[1].visibility).toBe(MediaVisibility.PUBLIC);
     });
 
+    it('batchUpdateVisibility splits large selections into API-sized chunks', () => {
+      const ids = Array.from({ length: 501 }, (_, index) => `m${index + 1}`);
+
+      store.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(ids.map((id) => makeMedia(id)), false, null, ids.length));
+      store.loadTimeline().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: ids.length }],
+      });
+
+      let result: { processed: number; skipped: number } | null = null;
+      store.batchUpdateVisibility(ids, MediaVisibility.PUBLIC).subscribe((value) => {
+        result = value;
+      });
+
+      const firstReq = http.expectOne('/api/v1/media');
+      expect(firstReq.request.method).toBe('PATCH');
+      expect(firstReq.request.body).toEqual({
+        media_ids: ids.slice(0, 500),
+        visibility: MediaVisibility.PUBLIC,
+      });
+      firstReq.flush({ processed: 500, skipped: 0 });
+
+      const secondReq = http.expectOne('/api/v1/media');
+      expect(secondReq.request.method).toBe('PATCH');
+      expect(secondReq.request.body).toEqual({
+        media_ids: ids.slice(500),
+        visibility: MediaVisibility.PUBLIC,
+      });
+      secondReq.flush({ processed: 1, skipped: 0 });
+
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(
+        ids.map((id) => ({ ...makeMedia(id), visibility: MediaVisibility.PUBLIC })),
+        false,
+        null,
+        ids.length,
+      ));
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: ids.length }],
+      });
+
+      expect(result).toEqual({ processed: 501, skipped: 0 });
+      expect(store.items().every((item) => item.visibility === MediaVisibility.PUBLIC)).toBe(true);
+    });
+
     it('batchQueueTaggingJobs refreshes the gallery list and timeline after queuing jobs', () => {
       store.load().subscribe();
       http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m1'), makeMedia('m3')]));

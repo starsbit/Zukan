@@ -15,6 +15,7 @@ import { MediaTimeline, TimelineBucket } from '../models/timeline';
 @Injectable({ providedIn: 'root' })
 export class GalleryStore {
   static readonly PAGE_SIZE = 1000;
+  static readonly BULK_MUTATION_CHUNK_SIZE = 500;
   private readonly client = inject(MediaClientService);
 
   private readonly _params = signal<MediaSearchParams>({});
@@ -212,7 +213,19 @@ export class GalleryStore {
   }
 
   batchUpdateVisibility(ids: string[], visibility: MediaVisibility): Observable<{ processed: number; skipped: number }> {
-    return this.client.batchUpdate({ media_ids: ids, visibility }).pipe(
+    if (ids.length === 0) {
+      return of({ processed: 0, skipped: 0 });
+    }
+
+    return from(this.chunkIds(ids, GalleryStore.BULK_MUTATION_CHUNK_SIZE)).pipe(
+      concatMap((chunk) => this.client.batchUpdate({ media_ids: chunk, visibility })),
+      reduce(
+        (acc, result) => ({
+          processed: acc.processed + result.processed,
+          skipped: acc.skipped + result.skipped,
+        }),
+        { processed: 0, skipped: 0 },
+      ),
       switchMap((result) =>
         this.refresh().pipe(
           map(() => result),
@@ -473,7 +486,7 @@ export class GalleryStore {
     );
   }
 
-  private chunkIds(ids: string[], size = 200): string[][] {
+  private chunkIds(ids: string[], size = GalleryStore.BULK_MUTATION_CHUNK_SIZE): string[][] {
     const chunks: string[][] = [];
     for (let index = 0; index < ids.length; index += size) {
       chunks.push(ids.slice(index, index + size));
