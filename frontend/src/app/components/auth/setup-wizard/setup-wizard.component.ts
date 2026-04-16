@@ -15,7 +15,6 @@ import { MatStepperModule } from '@angular/material/stepper';
 
 export interface SetupFormValue {
   username: string;
-  email: string;
   password: string;
 }
 
@@ -51,7 +50,6 @@ export class SetupWizardComponent {
   readonly credentialsForm = this.fb.nonNullable.group(
     {
       username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(64)]],
-      email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(8)]],
       confirmPassword: ['', Validators.required],
     },
@@ -69,7 +67,7 @@ export class SetupWizardComponent {
   onSubmit(): void {
     if (this.credentialsForm.invalid || this.loading()) return;
     this.error.set(null);
-    const { username, email, password } = this.credentialsForm.getRawValue();
-    this.submitted.emit({ username, email, password });
+    const { username, password } = this.credentialsForm.getRawValue();
+    this.submitted.emit({ username, password });
   }
 }

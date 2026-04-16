@@ -38,6 +38,10 @@ export class LoginPageComponent implements OnInit {
   readonly registerSuccess = signal<string | null>(null);
   readonly setupRequired = signal(false);
 
+  private toRegistrationEmail(username: string): string {
+    return `${username}@starsbit.space`;
+  }
+
   ngOnInit(): void {
     this.configClient.getSetupRequired().subscribe({
       next: ({ setup_required }) => this.setupRequired.set(setup_required),
@@ -61,7 +65,8 @@ export class LoginPageComponent implements OnInit {
 
   onRegister(value: RegisterFormValue): void {
     this.loading.set(true);
-    this.authService.register(value.username, value.email, value.password).subscribe({
+    const email = this.toRegistrationEmail(value.username);
+    this.authService.register(value.username, email, value.password).subscribe({
       next: () => {
         this.loading.set(false);
         this.registerSuccess.set(`Account created! Sign in as ${value.username}.`);
@@ -76,7 +81,8 @@ export class LoginPageComponent implements OnInit {
 
   onSetup(value: SetupFormValue): void {
     this.loading.set(true);
-    this.authService.setupAdmin(value.username, value.email, value.password).subscribe({
+    const email = this.toRegistrationEmail(value.username);
+    this.authService.setupAdmin(value.username, email, value.password).subscribe({
       next: () => {
         this.router.navigate(['/']);
       },

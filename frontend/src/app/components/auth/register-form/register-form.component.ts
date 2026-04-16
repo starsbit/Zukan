@@ -14,7 +14,6 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 
 export interface RegisterFormValue {
   username: string;
-  email: string;
   password: string;
 }
 
@@ -50,7 +49,6 @@ export class RegisterFormComponent {
   readonly form = this.fb.nonNullable.group(
     {
       username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(64)]],
-      email: ['', [Validators.required, Validators.email]],
       password: ['', [Validators.required, Validators.minLength(8)]],
       confirmPassword: ['', Validators.required],
     },
@@ -68,7 +66,7 @@ export class RegisterFormComponent {
   onSubmit(): void {
     if (this.form.invalid || this.loading()) return;
     this.error.set(null);
-    const { username, email, password } = this.form.getRawValue();
-    this.submitted.emit({ username, email, password });
+    const { username, password } = this.form.getRawValue();
+    this.submitted.emit({ username, password });
   }
 }

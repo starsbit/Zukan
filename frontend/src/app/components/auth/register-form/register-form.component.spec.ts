@@ -15,7 +15,6 @@ describe('RegisterFormComponent', () => {
 
     component.form.setValue({
       username: 'alice',
-      email: 'alice@example.com',
       password: 'password1',
       confirmPassword: 'password1',
     });
@@ -23,7 +22,6 @@ describe('RegisterFormComponent', () => {
 
     expect(emitSpy).toHaveBeenCalledWith({
       username: 'alice',
-      email: 'alice@example.com',
       password: 'password1',
     });
   });
@@ -39,7 +37,6 @@ describe('RegisterFormComponent', () => {
 
     component.form.setValue({
       username: 'ab',
-      email: 'invalid',
       password: 'short',
       confirmPassword: 'different',
     });

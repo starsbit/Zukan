@@ -15,7 +15,6 @@ describe('SetupWizardComponent', () => {
 
     component.credentialsForm.setValue({
       username: 'admin',
-      email: 'admin@example.com',
       password: 'password1',
       confirmPassword: 'password1',
     });
@@ -23,7 +22,6 @@ describe('SetupWizardComponent', () => {
 
     expect(emitSpy).toHaveBeenCalledWith({
       username: 'admin',
-      email: 'admin@example.com',
       password: 'password1',
     });
   });
@@ -42,7 +40,6 @@ describe('SetupWizardComponent', () => {
 
     component.credentialsForm.setValue({
       username: 'admin',
-      email: 'admin@example.com',
       password: 'password1',
       confirmPassword: 'password1',
     });

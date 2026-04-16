@@ -153,14 +153,14 @@ describe('LoginPageComponent', () => {
   describe('register', () => {
     it('calls authService.register with submitted values', async () => {
       const { component } = await createComponent();
-      component.onRegister({ username: 'bob', email: 'bob@example.com', password: 'password1' });
-      expect(authService.register).toHaveBeenCalledWith('bob', 'bob@example.com', 'password1');
+      component.onRegister({ username: 'bob', password: 'password1' });
+      expect(authService.register).toHaveBeenCalledWith('bob', 'bob@starsbit.space', 'password1');
     });
 
     it('switches to Sign In tab and shows success message on success', async () => {
       const { component, fixture } = await createComponent();
       component.selectedTab = 1;
-      component.onRegister({ username: 'bob', email: 'bob@example.com', password: 'password1' });
+      component.onRegister({ username: 'bob', password: 'password1' });
       await fixture.whenStable();
 
       expect(component.selectedTab).toBe(0);
@@ -171,7 +171,7 @@ describe('LoginPageComponent', () => {
       const { component, fixture } = await createComponent();
       authService.register.mockReturnValue(throwError(() => ({ error: { detail: 'Username taken' } })));
 
-      component.onRegister({ username: 'bob', email: 'bob@example.com', password: 'password1' });
+      component.onRegister({ username: 'bob', password: 'password1' });
       await fixture.whenStable();
 
       expect(component.loading()).toBe(false);
@@ -181,8 +181,8 @@ describe('LoginPageComponent', () => {
   describe('setup', () => {
     it('calls authService.setupAdmin with submitted values', async () => {
       const { component } = await createComponent(true);
-      component.onSetup({ username: 'admin2', email: 'admin@example.com', password: 'password1' });
-      expect(authService.setupAdmin).toHaveBeenCalledWith('admin2', 'admin@example.com', 'password1');
+      component.onSetup({ username: 'admin2', password: 'password1' });
+      expect(authService.setupAdmin).toHaveBeenCalledWith('admin2', 'admin2@starsbit.space', 'password1');
     });
 
     it('navigates to / after successful setup', async () => {
@@ -190,7 +190,7 @@ describe('LoginPageComponent', () => {
       const router = TestBed.inject(Router);
       const spy = vi.spyOn(router, 'navigate');
 
-      component.onSetup({ username: 'admin2', email: 'admin@example.com', password: 'password1' });
+      component.onSetup({ username: 'admin2', password: 'password1' });
       await fixture.whenStable();
 
       expect(spy).toHaveBeenCalledWith(['/']);
@@ -200,7 +200,7 @@ describe('LoginPageComponent', () => {
       const { component, fixture } = await createComponent(true);
       authService.setupAdmin.mockReturnValue(throwError(() => ({ error: { detail: 'Setup failed' } })));
 
-      component.onSetup({ username: 'admin2', email: 'admin@example.com', password: 'password1' });
+      component.onSetup({ username: 'admin2', password: 'password1' });
       await fixture.whenStable();
 
       expect(component.loading()).toBe(false);
