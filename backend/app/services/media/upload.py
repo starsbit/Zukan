@@ -515,7 +515,7 @@ class MediaUploadWorkflow:
             max_size = user.storage_quota_mb * 1024 * 1024 - current_storage
 
         content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=max(max_size, 0))
-        saved = await save_bytes(content, mime_type)
+        saved = await save_bytes(content, declared_mime_type=mime_type, source_name=url)
         if saved is None:
             from backend.app.errors.upload import unsupported_media_type
             raise AppError(400, unsupported_media_type, "Unsupported media type or file too large")

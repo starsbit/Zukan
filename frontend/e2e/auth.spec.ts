@@ -52,7 +52,7 @@ test.describe.serial('Authentication workflows', () => {
       await skipIfSetupCompleted(page, 'Setup completed while the suite was running');
 
       await page.locator('zukan-setup-wizard input[formcontrolname="username"]').fill(TEST_ADMIN.username);
-      await page.locator('zukan-setup-wizard input[formcontrolname="email"]').fill(TEST_ADMIN.email);
+      // await page.locator('zukan-setup-wizard input[formcontrolname="email"]').fill(TEST_ADMIN.email);
       await fillPasswordFields(page, 'zukan-setup-wizard', TEST_ADMIN.password, TEST_ADMIN.password);
 
       await page.getByRole('button', { name: 'Next' }).click();

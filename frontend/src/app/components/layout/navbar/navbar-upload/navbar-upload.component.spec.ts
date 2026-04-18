@@ -13,6 +13,7 @@ import { NavbarUploadComponent } from './navbar-upload.component';
 
 describe('NavbarUploadComponent', () => {
   const originalCrypto = globalThis.crypto;
+  const unsupportedUploadMessage = 'Only supported image, GIF, and video files can be uploaded.';
 
   afterEach(() => {
     Object.defineProperty(globalThis, 'crypto', {
@@ -143,6 +144,19 @@ describe('NavbarUploadComponent', () => {
     });
   });
 
+  it('accepts newly supported files by MIME type and extension', async () => {
+    const { component, upload } = await createComponent();
+    const bitmap = new File(['a'], 'scan.bmp', { type: 'image/bmp' });
+    const matroska = new File(['b'], 'clip.mkv', { type: '' });
+
+    component.onFileSelection(toFileList([bitmap, matroska]));
+
+    expect(upload).toHaveBeenCalledWith(
+      [bitmap, matroska],
+      expect.objectContaining({ visibility: MediaVisibility.PRIVATE }),
+    );
+  });
+
   it('splits uploads into configured max batch size chunks', async () => {
     const tracker = {
       registerPendingBatch: vi.fn().mockReturnValueOnce('request-1').mockReturnValueOnce('request-2'),
@@ -179,7 +193,7 @@ describe('NavbarUploadComponent', () => {
     expect(upload).not.toHaveBeenCalled();
     expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
       [illegal],
-      'Only supported image and video files can be uploaded.',
+      unsupportedUploadMessage,
     );
   });
 
@@ -203,7 +217,7 @@ describe('NavbarUploadComponent', () => {
     );
     expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
       [illegal],
-      'Only supported image and video files can be uploaded.',
+      unsupportedUploadMessage,
     );
   });
 

@@ -13,15 +13,11 @@ from fastapi import UploadFile
 
 from backend.app.config import settings
 from backend.app.models.media import Media, MediaType
+from backend.app.utils.media_detection import SUPPORTED_MEDIA_TYPES, resolve_supported_media_type
 
 ALLOWED_MIME_TYPES: dict[str, tuple[str, MediaType]] = {
-    "image/jpeg": (".jpg", MediaType.IMAGE),
-    "image/png": (".png", MediaType.IMAGE),
-    "image/webp": (".webp", MediaType.IMAGE),
-    "image/gif": (".gif", MediaType.GIF),
-    "video/mp4": (".mp4", MediaType.VIDEO),
-    "video/webm": (".webm", MediaType.VIDEO),
-    "video/quicktime": (".mov", MediaType.VIDEO),
+    mime_type: (supported.extension, supported.media_type)
+    for mime_type, supported in SUPPORTED_MEDIA_TYPES.items()
 }
 
 THUMB_EXT = ".webp"
@@ -57,18 +53,29 @@ def ffmpeg_available() -> bool:
 
 async def save_upload(upload: UploadFile) -> SavedUpload | None:
     content = await upload.read()
-    return await save_bytes(content, upload.content_type or "")
+    return await save_bytes(
+        content,
+        declared_mime_type=upload.content_type or "",
+        source_name=upload.filename,
+    )
 
 
-async def save_bytes(content: bytes, content_type: str) -> SavedUpload | None:
-    file_info = ALLOWED_MIME_TYPES.get(content_type)
-    if file_info is None:
+async def save_bytes(
+    content: bytes,
+    declared_mime_type: str | None = None,
+    source_name: str | None = None,
+) -> SavedUpload | None:
+    supported_type = resolve_supported_media_type(
+        content,
+        declared_mime_type=declared_mime_type,
+        source_name=source_name,
+    )
+    if supported_type is None:
         return None
 
-    ext, media_type = file_info
     sha256 = hashlib.sha256(content).hexdigest()
     file_id = uuid.uuid4()
-    path = shard_path(file_id, ext)
+    path = shard_path(file_id, supported_type.extension)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiofiles.open(path, "wb") as f:
@@ -78,8 +85,8 @@ async def save_bytes(content: bytes, content_type: str) -> SavedUpload | None:
         path=path,
         sha256=sha256,
         file_size=len(content),
-        media_type=media_type,
-        mime_type=content_type,
+        media_type=supported_type.media_type,
+        mime_type=supported_type.canonical_mime_type,
     )
 
 

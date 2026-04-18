@@ -12,6 +12,9 @@ import {
 } from '../models/media';
 import { MediaTimeline, TimelineBucket } from '../models/timeline';
 
+const GIF_EXTENSIONS = new Set(['.gif']);
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi']);
+
 @Injectable({ providedIn: 'root' })
 export class GalleryStore {
   static readonly PAGE_SIZE = 1000;
@@ -392,11 +395,15 @@ export class GalleryStore {
   }
 
   private mediaTypeFromFile(file: File): MediaType {
-    if (file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif')) {
+    const lowerName = file.name.toLowerCase();
+    const dotIndex = lowerName.lastIndexOf('.');
+    const extension = dotIndex >= 0 ? lowerName.slice(dotIndex) : '';
+
+    if (file.type === 'image/gif' || GIF_EXTENSIONS.has(extension)) {
       return MediaType.GIF;
     }
 
-    if (file.type.startsWith('video/')) {
+    if (file.type.startsWith('video/') || VIDEO_EXTENSIONS.has(extension)) {
       return MediaType.VIDEO;
     }
 

@@ -233,6 +233,57 @@ async def test_attach_album_if_needed_invokes_album_service(fake_db, stub_query,
 
 
 @pytest.mark.asyncio
+async def test_run_from_url_passes_url_through_shared_save_detector(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    saved = SimpleNamespace(
+        path=Path("/tmp/a.mkv"),
+        media_type="video",
+        sha256="x",
+        file_size=1,
+        mime_type="video/x-matroska",
+    )
+    url = "https://example.test/media/clip.mkv?download=1"
+
+    with patch(
+        "backend.app.services.media.url_fetch.fetch_url_as_bytes",
+        AsyncMock(return_value=(b"video-ish", "application/octet-stream")),
+    ), patch(
+        "backend.app.services.media.upload.save_bytes",
+        AsyncMock(return_value=saved),
+    ) as save_bytes_mock, patch(
+        "backend.app.services.media.upload.extract_media_metadata",
+        return_value=SimpleNamespace(
+            captured_at=None,
+            width=None,
+            height=None,
+            duration_seconds=None,
+            frame_count=None,
+        ),
+    ), patch.object(workflow, "_handle_new_media", AsyncMock()) as new_media:
+        stub_query.get_media_by_sha256.return_value = None
+        await workflow.run_from_url(
+            user=user,
+            url=url,
+            album_id=None,
+            tags=None,
+            captured_at_override=None,
+            visibility=MediaVisibility.private,
+        )
+
+    assert save_bytes_mock.await_args.args == (b"video-ish",)
+    assert save_bytes_mock.await_args.kwargs == {
+        "declared_mime_type": "application/octet-stream",
+        "source_name": url,
+    }
+    assert new_media.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_mark_upload_batch_item_failed_and_missing_item(fake_db, stub_query):
     service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
 

@@ -295,6 +295,17 @@ describe('GalleryStore', () => {
       expect(store.items()[0].client_preview_url).toMatch(/^blob:/);
     });
 
+    it('classifies newly supported video extensions as video even without a browser MIME type', () => {
+      const file = new File(['a'], 'clip.mkv', { type: '' });
+
+      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-video']);
+
+      expect(store.items()).toHaveLength(1);
+      expect(store.items()[0].media_type).toBe(MediaType.VIDEO);
+      expect(store.items()[0].client_preview_url).toBeNull();
+      expect(store.items()[0].poster_status).toBe(ProcessingStatus.PENDING);
+    });
+
     it('replaces optimistic uploads when the resolved media is patched in', () => {
       const file = new File(['a'], 'fresh.jpg', { type: 'image/jpeg' });
       store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-accepted']);

@@ -20,10 +20,15 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
   'image/png',
   'image/webp',
+  'image/bmp',
+  'image/tiff',
   'image/gif',
   'video/mp4',
   'video/webm',
   'video/quicktime',
+  'video/x-m4v',
+  'video/x-matroska',
+  'video/x-msvideo',
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
@@ -31,13 +36,20 @@ const ALLOWED_EXTENSIONS = new Set([
   '.jpeg',
   '.png',
   '.webp',
+  '.bmp',
+  '.tif',
+  '.tiff',
   '.gif',
   '.mp4',
   '.webm',
   '.mov',
+  '.m4v',
+  '.mkv',
+  '.avi',
 ]);
 
 const DEFAULT_MAX_BATCH_SIZE = 1000;
+const UNSUPPORTED_UPLOAD_MESSAGE = 'Only supported image, GIF, and video files can be uploaded.';
 
 @Component({
   selector: 'zukan-navbar-upload',
@@ -160,7 +172,7 @@ export class NavbarUploadComponent {
     if (unsupportedFiles.length > 0) {
       this.uploadTracker.registerRejectedFiles(
         unsupportedFiles,
-        'Only supported image and video files can be uploaded.',
+        UNSUPPORTED_UPLOAD_MESSAGE,
       );
     }
 
