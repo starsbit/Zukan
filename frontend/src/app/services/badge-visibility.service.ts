@@ -3,11 +3,12 @@ import { Injectable, signal } from '@angular/core';
 const HIDE_NSFW_KEY = 'zukan-hide-nsfw-badge';
 const HIDE_SENSITIVE_KEY = 'zukan-hide-sensitive-badge';
 
-function readBool(key: string): boolean {
+function readBool(key: string, defaultValue = false): boolean {
   try {
-    return localStorage.getItem(key) === 'true';
+    const stored = localStorage.getItem(key);
+    return stored === null ? defaultValue : stored === 'true';
   } catch {
-    return false;
+    return defaultValue;
   }
 }
 
@@ -20,7 +21,7 @@ function writeBool(key: string, value: boolean): void {
 @Injectable({ providedIn: 'root' })
 export class BadgeVisibilityService {
   private readonly _hideNsfw = signal(readBool(HIDE_NSFW_KEY));
-  private readonly _hideSensitive = signal(readBool(HIDE_SENSITIVE_KEY));
+  private readonly _hideSensitive = signal(readBool(HIDE_SENSITIVE_KEY, true));
 
   readonly hideNsfw = this._hideNsfw.asReadonly();
   readonly hideSensitive = this._hideSensitive.asReadonly();
