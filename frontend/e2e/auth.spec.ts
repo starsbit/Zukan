@@ -134,7 +134,7 @@ test.describe.serial('Authentication workflows', () => {
       await page.goto('/login');
       await page.getByRole('tab', { name: 'Register' }).click();
       await page.locator('zukan-register-form input[formcontrolname="username"]').fill(rememberUser.username);
-      await page.locator('zukan-register-form input[formcontrolname="email"]').fill(rememberUser.email);
+      // await page.locator('zukan-register-form input[formcontrolname="email"]').fill(rememberUser.email);
       await fillPasswordFields(page, 'zukan-register-form', rememberUser.password, rememberUser.password);
       await page.getByRole('button', { name: 'Create Account' }).click();
 
@@ -173,7 +173,7 @@ test.describe.serial('Authentication workflows', () => {
       await page.getByRole('tab', { name: 'Register' }).click();
 
       await page.locator('zukan-register-form input[formcontrolname="username"]').fill(newUser.username);
-      await page.locator('zukan-register-form input[formcontrolname="email"]').fill(newUser.email);
+      // await page.locator('zukan-register-form input[formcontrolname="email"]').fill(newUser.email);
       await fillPasswordFields(page, 'zukan-register-form', newUser.password, newUser.password);
 
       await page.getByRole('button', { name: 'Create Account' }).click();

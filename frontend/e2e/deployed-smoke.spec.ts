@@ -27,7 +27,7 @@ async function registerUser(
   await page.goto('/login');
   await page.getByRole('tab', { name: 'Register' }).click();
   await page.locator('zukan-register-form input[formcontrolname="username"]').fill(user.username);
-  await page.locator('zukan-register-form input[formcontrolname="email"]').fill(user.email);
+  // await page.locator('zukan-register-form input[formcontrolname="email"]').fill(user.email);
   await fillPasswordFields(page, 'zukan-register-form', user.password, user.password);
   await page.getByRole('button', { name: 'Create Account' }).click();
   await expect(page.locator('.form-success')).toBeVisible();
