@@ -30,6 +30,7 @@ import {
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
+type ReviewScope = 'batch' | 'all_pending';
 const GROUP_PREVIEW_LIMIT = 4;
 
 export interface UploadReviewDialogData {
@@ -68,6 +69,7 @@ export class UploadReviewDialogComponent {
   private readonly snackBar = inject(MatSnackBar);
   private hasAutoSelectedGroupsView = false;
 
+  readonly scope = signal<ReviewScope>(this.data.batchId ? 'batch' : 'all_pending');
   readonly filter = signal<ReviewFilter>('all');
   readonly view = signal<ReviewView>('items');
   readonly selectedIds = signal<string[]>([]);
@@ -87,26 +89,20 @@ export class UploadReviewDialogComponent {
   readonly remoteRecommendationsRefreshing = signal(false);
   readonly remoteBaselineTotal = signal(0);
 
-  readonly reviewState = computed(() => this.data.batchId ? this.tracker.getBatchReview(this.data.batchId) : null);
-  private readonly rawItems = computed(() => {
-    if (this.data.batchId) {
-      return this.reviewState()?.reviewItems ?? this.remoteItems();
-    }
-    return this.tracker.reviewBatches().flatMap((b) => b.reviewItems);
-  });
-  private readonly rawRecommendationGroups = computed(() => {
-    if (this.data.batchId) {
-      return this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups();
-    }
-    return this.tracker.reviewBatches().flatMap((b) => b.recommendationGroups);
-  });
+  readonly canMergeAllBatches = computed(() => this.scope() === 'batch' && this.data.batchId !== null);
+  readonly reviewState = computed(() =>
+    this.scope() === 'batch' && this.data.batchId
+      ? this.tracker.getBatchReview(this.data.batchId)
+      : null,
+  );
+  private readonly rawItems = computed(() => this.reviewState()?.reviewItems ?? this.remoteItems());
+  private readonly rawRecommendationGroups = computed(() =>
+    this.reviewState()?.recommendationGroups ?? this.remoteRecommendationGroups(),
+  );
   readonly items = computed(() => this.rawItems());
-  readonly recommendationsRefreshing = computed(() => {
-    if (this.data.batchId) {
-      return this.reviewState()?.recommendationsRefreshing ?? this.remoteRecommendationsRefreshing();
-    }
-    return this.tracker.reviewBatches().some((b) => b.recommendationsRefreshing);
-  });
+  readonly recommendationsRefreshing = computed(() =>
+    this.reviewState()?.recommendationsRefreshing ?? this.remoteRecommendationsRefreshing(),
+  );
   readonly recommendationGroups = computed(() => {
     const itemByMediaId = new Map(this.items().map((item) => [item.media.id, item]));
     const activeReviewIds = new Set(itemByMediaId.keys());
@@ -134,12 +130,7 @@ export class UploadReviewDialogComponent {
       })
       .filter((group) => group.media_ids.length >= 2);
   });
-  readonly baselineTotal = computed(() => {
-    if (this.data.batchId) {
-      return this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal();
-    }
-    return this.tracker.reviewBatches().reduce((sum, b) => sum + b.reviewBaselineTotal, 0);
-  });
+  readonly baselineTotal = computed(() => this.reviewState()?.reviewBaselineTotal ?? this.remoteBaselineTotal());
   readonly reviewedCount = computed(() => Math.max(this.baselineTotal() - this.items().length, 0));
   readonly visibleItems = computed(() => {
     const discardedIds = new Set(this.discardedMediaIds());
@@ -226,6 +217,11 @@ export class UploadReviewDialogComponent {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((items) => this.seriesSuggestions.set(items));
 
+    if (this.scope() === 'all_pending') {
+      this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: true });
+      return;
+    }
+
     this.refreshReview();
     this.refreshRecommendations();
   }
@@ -288,6 +284,16 @@ export class UploadReviewDialogComponent {
     this.selectedIds.set([]);
   }
 
+  mergeAllBatchesAndRegroup(): void {
+    if (!this.canMergeAllBatches()) {
+      return;
+    }
+
+    this.scope.set('all_pending');
+    this.resetTransientReviewState({ resetBaseline: true });
+    this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: true });
+  }
+
   addCharacter(value?: string): void {
     this.commitName(this.characterNames, value ?? this.characterInputControl.getRawValue());
     this.characterInputControl.setValue('', { emitEvent: false });
@@ -343,7 +349,7 @@ export class UploadReviewDialogComponent {
         this.seriesNames.set([]);
         this.discardedMediaIds.set([]);
         this.saving.set(false);
-        this.refreshReview();
+        this.refreshCurrentScope();
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
       },
       error: () => {
@@ -431,11 +437,13 @@ export class UploadReviewDialogComponent {
   }
 
   private refreshReview(): void {
+    if (this.scope() === 'all_pending') {
+      this.loadAllPendingReview({ includeRecommendations: false, showReviewRefreshing: true });
+      return;
+    }
+
     const batchId = this.data.batchId;
     if (!batchId) {
-      for (const batch of this.tracker.reviewBatches()) {
-        this.tracker.refreshBatchReview(batch.id);
-      }
       return;
     }
     if (this.reviewState()) {
@@ -459,11 +467,13 @@ export class UploadReviewDialogComponent {
   }
 
   refreshRecommendations(forceRefresh = false): void {
+    if (this.scope() === 'all_pending') {
+      this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: false });
+      return;
+    }
+
     const batchId = this.data.batchId;
     if (!batchId) {
-      for (const batch of this.tracker.reviewBatches()) {
-        this.tracker.refreshBatchRecommendations(batch.id, forceRefresh);
-      }
       return;
     }
     if (this.reviewState()) {
@@ -556,7 +566,7 @@ export class UploadReviewDialogComponent {
       .subscribe({
         next: () => {
           this.discarding.set(false);
-          this.refreshReview();
+          this.refreshCurrentScope();
           this.snackBar.open(successMessage, 'Close', { duration: 3000 });
         },
         error: () => {
@@ -565,6 +575,54 @@ export class UploadReviewDialogComponent {
           this.snackBar.open('Could not discard those items from review.', 'Close', { duration: 4000 });
         },
       });
+  }
+
+  private refreshCurrentScope(): void {
+    if (this.scope() === 'all_pending') {
+      this.refreshRecommendations();
+      return;
+    }
+
+    this.refreshReview();
+  }
+
+  private loadAllPendingReview(options: {
+    includeRecommendations: boolean;
+    showReviewRefreshing: boolean;
+  }): void {
+    if (this.remoteRefreshing() || this.remoteRecommendationsRefreshing()) {
+      return;
+    }
+
+    this.remoteRefreshing.set(options.showReviewRefreshing);
+    this.remoteRecommendationsRefreshing.set(options.includeRecommendations);
+    this.batchesClient.listAllReviewItems({ include_recommendations: options.includeRecommendations })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.remoteItems.set(response.items);
+          if (options.includeRecommendations) {
+            this.remoteRecommendationGroups.set(response.recommendation_groups);
+          }
+          this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+          this.remoteRefreshing.set(false);
+          this.remoteRecommendationsRefreshing.set(false);
+        },
+        error: () => {
+          this.remoteRefreshing.set(false);
+          this.remoteRecommendationsRefreshing.set(false);
+        },
+      });
+  }
+
+  private resetTransientReviewState(options: { resetBaseline: boolean }): void {
+    this.selectedIds.set([]);
+    this.removedGroupMediaIds.set({});
+    this.discardedMediaIds.set([]);
+    this.expandedGroupIds.set([]);
+    if (options.resetBaseline) {
+      this.remoteBaselineTotal.set(0);
+    }
   }
 }
 

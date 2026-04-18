@@ -17,6 +17,7 @@ import { UploadConfirmDialogComponent, UploadConfirmDialogData, UploadConfirmDia
 import { extractApiError } from '../../../../utils/api-error.utils';
 
 const ALLOWED_MIME_TYPES = new Set([
+  'image/avif',
   'image/jpeg',
   'image/png',
   'image/webp',
@@ -32,6 +33,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set([
+  '.avif',
   '.jpg',
   '.jpeg',
   '.png',

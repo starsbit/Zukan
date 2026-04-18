@@ -4,8 +4,15 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from backend.app.main import API_KEY_AUTH_DESCRIPTION, _augment_openapi_security, _ensure_admin_user
-from backend.app.main import OPENAPI_SERVERS
+from backend.app.main import (
+    API_KEY_AUTH_DESCRIPTION,
+    OPENAPI_SERVERS,
+    _MlStartupState,
+    _augment_openapi_security,
+    _ensure_admin_user,
+    _initialize_ml_services,
+    ml_startup_state,
+)
 from backend.app.logging_config import configure_logging
 
 
@@ -91,6 +98,72 @@ def test_augment_openapi_security_describes_api_key_on_existing_bearer_scheme():
 
 def test_openapi_servers_default_to_current_origin_first():
     assert OPENAPI_SERVERS[0]["url"] == "/"
+
+
+@pytest.mark.anyio
+async def test_ml_startup_state_wait_returns_after_ready():
+    state = _MlStartupState()
+
+    state.mark_ready()
+
+    await state.wait_until_ready()
+
+
+@pytest.mark.anyio
+async def test_ml_startup_state_wait_raises_after_failure():
+    state = _MlStartupState()
+    error = RuntimeError("tagger failed")
+
+    state.mark_failed(error)
+
+    with pytest.raises(RuntimeError, match="ML services failed to initialize") as exc_info:
+        await state.wait_until_ready()
+
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.anyio
+async def test_initialize_ml_services_marks_state_ready(monkeypatch):
+    calls: list[str] = []
+    ml_startup_state.reset()
+
+    async def fake_to_thread(func, *args, **kwargs):
+        calls.append(func.__name__)
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr("backend.app.main.tagger.load", lambda: calls.append("tagger.load"))
+    monkeypatch.setattr("backend.app.main.ocr_backend.load", lambda: calls.append("ocr_backend.load"))
+
+    await _initialize_ml_services()
+    await ml_startup_state.wait_until_ready()
+
+    assert calls == ["<lambda>", "tagger.load", "<lambda>", "ocr_backend.load"]
+    ml_startup_state.reset()
+
+
+@pytest.mark.anyio
+async def test_initialize_ml_services_marks_state_failed(monkeypatch):
+    failure = RuntimeError("download failed")
+    ml_startup_state.reset()
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
+
+    def fail_load():
+        raise failure
+
+    monkeypatch.setattr("backend.app.main.tagger.load", fail_load)
+
+    await _initialize_ml_services()
+
+    with pytest.raises(RuntimeError, match="ML services failed to initialize") as exc_info:
+        await ml_startup_state.wait_until_ready()
+
+    assert exc_info.value.__cause__ is failure
+    ml_startup_state.reset()
 
 
 def test_configure_logging_wires_backend_and_uvicorn_loggers_to_console():

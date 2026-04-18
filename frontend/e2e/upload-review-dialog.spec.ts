@@ -322,6 +322,7 @@ async function registerReviewFlowRoutes(
   page: Page,
   options: {
     state?: ReviewFixtureState;
+    allPendingState?: ReviewFixtureState;
     onEntitiesPatch?: (payload: {
       media_ids: string[];
       character_names?: string[];
@@ -331,6 +332,7 @@ async function registerReviewFlowRoutes(
   } = {},
 ): Promise<void> {
   const state = options.state ?? buildReviewFixtureState();
+  const allPendingState = options.allPendingState ?? state;
 
   await page.route('**/api/v1/media/search**', async (route: Route) => {
     await route.fulfill({
@@ -452,6 +454,10 @@ async function registerReviewFlowRoutes(
 
   await page.route('**/api/v1/me/import-batches/b-review/review-items**', async (route) => {
     await route.fulfill({ json: toReviewResponse(state) });
+  });
+
+  await page.route('**/api/v1/me/import-batches/review-items**', async (route) => {
+    await route.fulfill({ json: toReviewResponse(allPendingState) });
   });
 
   await page.route('**/api/v1/media/entities', async (route) => {
@@ -697,6 +703,87 @@ test.describe('Upload review dialog', () => {
     await expect(page.locator('.review-card')).toHaveCount(1);
     await expect(page.getByText('large-ungrouped.png')).toBeVisible();
     await expect(page.getByText('1 still need character or series names.')).toBeVisible();
+  });
+
+  test('user can merge all batches and regroup from a single-batch review dialog', async ({ page }) => {
+    let allPendingReviewCalls = 0;
+    const singleBatchState: ReviewFixtureState = {
+      items: [
+        { id: 'm-group-1', filename: 'group-one.png', state: 'both' },
+        { id: 'm-group-2', filename: 'group-two.png', state: 'both' },
+      ],
+      groups: [
+        {
+          id: 'group-1',
+          mediaIds: ['m-group-1', 'm-group-2'],
+          confidence: 0.87,
+          characterSuggestions: ['Saber Alter'],
+          seriesSuggestions: ['Fate Stay Night'],
+          sharedSignals: [{ kind: 'tag', label: 'blue dress' }],
+        },
+      ],
+    };
+    const mergedState: ReviewFixtureState = {
+      items: [
+        ...singleBatchState.items,
+        { id: 'm-merged-1', filename: 'merged-one.png', state: 'both' },
+        { id: 'm-merged-2', filename: 'merged-two.png', state: 'both' },
+      ],
+      groups: [
+        ...singleBatchState.groups,
+        {
+          id: 'group-2',
+          mediaIds: ['m-merged-1', 'm-merged-2'],
+          confidence: 0.84,
+          characterSuggestions: ['Tohsaka Rin'],
+          seriesSuggestions: ['Fate Stay Night'],
+          sharedSignals: [{ kind: 'tag', label: 'red ribbon' }],
+        },
+      ],
+    };
+
+    await ensureAdminAuthenticated(page);
+    await registerReviewFlowRoutes(page, {
+      state: singleBatchState,
+      allPendingState: mergedState,
+    });
+
+    await page.unroute(/\/api\/v1\/me\/import-batches\/review-summary(?:\?.*)?$/).catch(() => undefined);
+    await page.route(/\/api\/v1\/me\/import-batches\/review-summary(?:\?.*)?$/, async (route) => {
+      await route.fulfill({
+        json: {
+          unresolved_count: 2,
+          review_batch_ids: ['b-review'],
+          latest_batch_id: 'b-review',
+          latest_batch_created_at: '2026-03-31T12:00:00Z',
+        },
+      });
+    });
+
+    await page.unroute('**/api/v1/me/import-batches/review-items**').catch(() => undefined);
+    await page.route('**/api/v1/me/import-batches/review-items**', async (route) => {
+      allPendingReviewCalls += 1;
+      await route.fulfill({ json: toReviewResponse(mergedState) });
+    });
+
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Notifications' }).click();
+    await expect(page.getByText('Some uploaded media still need names')).toBeVisible();
+    await page.getByRole('button', { name: 'Review now' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Review Missing Names' })).toBeVisible();
+    await expect(page.getByText('2 still need character or series names.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Merge all batches & regroup' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Merge all batches & regroup' }).click();
+
+    await expect.poll(() => allPendingReviewCalls).toBe(1);
+    await expect(page.getByText('4 still need character or series names.')).toBeVisible();
+    await expect(page.locator('.review-group-card')).toHaveCount(2);
+    await expect(page.getByText('Tohsaka Rin')).toBeVisible();
+
+    await page.getByRole('button', { name: 'Refresh grouping recommendations' }).click();
+    await expect.poll(() => allPendingReviewCalls).toBe(2);
   });
 
   test('backend-backed smoke: unresolved review work is discoverable and the dialog opens', async ({ page }) => {

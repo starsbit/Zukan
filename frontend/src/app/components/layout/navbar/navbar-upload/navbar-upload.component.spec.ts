@@ -146,13 +146,14 @@ describe('NavbarUploadComponent', () => {
 
   it('accepts newly supported files by MIME type and extension', async () => {
     const { component, upload } = await createComponent();
+    const avif = new File(['avif'], 'cover.avif', { type: 'image/avif' });
     const bitmap = new File(['a'], 'scan.bmp', { type: 'image/bmp' });
     const matroska = new File(['b'], 'clip.mkv', { type: '' });
 
-    component.onFileSelection(toFileList([bitmap, matroska]));
+    component.onFileSelection(toFileList([avif, bitmap, matroska]));
 
     expect(upload).toHaveBeenCalledWith(
-      [bitmap, matroska],
+      [avif, bitmap, matroska],
       expect.objectContaining({ visibility: MediaVisibility.PRIVATE }),
     );
   });

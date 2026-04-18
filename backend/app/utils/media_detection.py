@@ -18,6 +18,7 @@ class SupportedMediaType:
 
 
 SUPPORTED_MEDIA_TYPES: dict[str, SupportedMediaType] = {
+    "image/avif": SupportedMediaType("image/avif", ".avif", MediaType.IMAGE),
     "image/jpeg": SupportedMediaType("image/jpeg", ".jpg", MediaType.IMAGE),
     "image/png": SupportedMediaType("image/png", ".png", MediaType.IMAGE),
     "image/webp": SupportedMediaType("image/webp", ".webp", MediaType.IMAGE),
@@ -49,6 +50,7 @@ MIME_TYPE_ALIASES: dict[str, str] = {
 }
 
 EXTENSION_TO_MIME_TYPE: dict[str, str] = {
+    ".avif": "image/avif",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
     ".png": "image/png",

@@ -43,6 +43,31 @@ logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 
+
+class _MlStartupState:
+    def __init__(self) -> None:
+        self.reset()
+
+    def reset(self) -> None:
+        self._ready = asyncio.Event()
+        self._error: Exception | None = None
+
+    def mark_ready(self) -> None:
+        self._error = None
+        self._ready.set()
+
+    def mark_failed(self, exc: Exception) -> None:
+        self._error = exc
+        self._ready.set()
+
+    async def wait_until_ready(self) -> None:
+        await self._ready.wait()
+        if self._error is not None:
+            raise RuntimeError("ML services failed to initialize") from self._error
+
+
+ml_startup_state = _MlStartupState()
+
 API_VERSION = settings.app_version
 OPENAPI_TAGS = [
     {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
@@ -80,6 +105,7 @@ async def tagging_worker():
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
                     continue
+                await ml_startup_state.wait_until_ready()
                 query = MediaQueryService(db)
                 processing = MediaProcessingService(db, query)
                 upload_service = MediaUploadService(db, processing, query)
@@ -199,6 +225,26 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
     return len(ordered_media_ids)
 
 
+async def _initialize_ml_services() -> None:
+    try:
+        logger.info("Startup phase: loading tagger model")
+        await asyncio.to_thread(tagger.load)
+        logger.info("Startup phase complete: loading tagger model")
+
+        logger.info("Startup phase: loading OCR model")
+        await asyncio.to_thread(ocr_backend.load)
+        logger.info("Startup phase complete: loading OCR model")
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        ml_startup_state.mark_failed(exc)
+        logger.exception("Background ML startup failed")
+        return
+
+    ml_startup_state.mark_ready()
+    logger.info("Background ML startup completed successfully")
+
+
 def _augment_openapi_security(schema: dict) -> dict:
     components = schema.setdefault("components", {})
     security_schemes = components.setdefault("securitySchemes", {})
@@ -224,6 +270,8 @@ async def lifespan(_api: FastAPI):
     worker: asyncio.Task | None = None
     purge_worker: asyncio.Task | None = None
     update_worker: asyncio.Task | None = None
+    ml_worker: asyncio.Task | None = None
+    ml_startup_state.reset()
     try:
         logger.info("Startup phase: running database migrations")
         await init_db()
@@ -233,13 +281,9 @@ async def lifespan(_api: FastAPI):
         await _ensure_admin_user()
         logger.info("Startup phase complete: ensuring admin user")
 
-        logger.info("Startup phase: loading tagger model")
-        tagger.load()
-        logger.info("Startup phase complete: loading tagger model")
-
-        logger.info("Startup phase: loading OCR model")
-        ocr_backend.load()
-        logger.info("Startup phase complete: loading OCR model")
+        logger.info("Startup phase: scheduling background ML initialization")
+        ml_worker = asyncio.create_task(_initialize_ml_services())
+        logger.info("Startup phase complete: scheduling background ML initialization")
 
         logger.info("Startup phase: wiring background services")
         set_tag_queue(tag_queue)
@@ -252,7 +296,7 @@ async def lifespan(_api: FastAPI):
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
         logger.info("Background trash purge worker started")
-        logger.info("Application startup completed successfully")
+        logger.info("Application startup completed successfully; ML initialization continues in background")
         logger.info("Application startup duration_seconds=%.2f", time.perf_counter() - startup_started_at)
 
         yield
@@ -267,6 +311,8 @@ async def lifespan(_api: FastAPI):
             purge_worker.cancel()
         if update_worker is not None:
             update_worker.cancel()
+        if ml_worker is not None:
+            ml_worker.cancel()
         await health_monitor.stop()
         if worker is not None:
             try:
@@ -283,6 +329,11 @@ async def lifespan(_api: FastAPI):
                 await update_worker
             except asyncio.CancelledError:
                 logger.info("Background update check worker stopped")
+        if ml_worker is not None:
+            try:
+                await ml_worker
+            except asyncio.CancelledError:
+                logger.info("Background ML startup task stopped")
 
 
 api = FastAPI(

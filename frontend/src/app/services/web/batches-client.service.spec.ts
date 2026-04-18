@@ -96,6 +96,22 @@ describe('BatchesClientService', () => {
     req.flush(mockReviewPage);
   });
 
+  it('listAllReviewItems sends GET /api/v1/me/import-batches/review-items', () => {
+    service.listAllReviewItems().subscribe(res => expect(res).toEqual(mockReviewPage));
+
+    const req = http.expectOne('/api/v1/me/import-batches/review-items');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockReviewPage);
+  });
+
+  it('listAllReviewItems passes include_recommendations', () => {
+    service.listAllReviewItems({ include_recommendations: true }).subscribe();
+
+    const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/review-items');
+    expect(req.request.params.get('include_recommendations')).toBe('true');
+    req.flush(mockReviewPage);
+  });
+
   it('listReviewSummary sends GET /api/v1/me/import-batches/review-summary', () => {
     service.listReviewSummary().subscribe(res => expect(res).toEqual(mockReviewSummary));
 

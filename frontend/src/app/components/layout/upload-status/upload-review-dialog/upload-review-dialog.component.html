@@ -29,6 +29,17 @@
       </mat-button-toggle-group>
     }
 
+    @if (canMergeAllBatches()) {
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="remoteRefreshing() || recommendationsRefreshing()"
+        (click)="mergeAllBatchesAndRegroup()"
+      >
+        Merge all batches &amp; regroup
+      </button>
+    }
+
     <button
       mat-icon-button
       type="button"

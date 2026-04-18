@@ -93,6 +93,25 @@ async def test_save_bytes_falls_back_to_declared_supported_mime(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_save_bytes_supports_avif_mime_and_extension(tmp_path):
+    from backend.app import config as config_module
+
+    old = config_module.settings.storage_dir
+    config_module.settings.storage_dir = tmp_path
+    try:
+        with pytest.MonkeyPatch.context() as mp:
+            mp.setattr("backend.app.utils.media_detection._detect_magika_mime_type", lambda content: None)
+            saved = await save_bytes(b"avif-ish", declared_mime_type="image/avif", source_name="cover.avif")
+
+        assert saved is not None
+        assert saved.path.suffix == ".avif"
+        assert saved.mime_type == "image/avif"
+        assert saved.media_type == MediaType.IMAGE
+    finally:
+        config_module.settings.storage_dir = old
+
+
+@pytest.mark.asyncio
 async def test_save_bytes_normalizes_supported_aliases_to_canonical_mime(tmp_path):
     from backend.app import config as config_module
 
