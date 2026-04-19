@@ -246,9 +246,6 @@ describe('NavbarNotificationsComponent', () => {
   it('refreshes notifications after closing the metadata review dialog', async () => {
     const list = vi.fn().mockReturnValue(of(notificationsResponse));
     const loadReminder = vi.fn(() => of(reviewReminder));
-    const open = vi.fn(() => ({
-      afterClosed: () => of(undefined),
-    }));
 
     await TestBed.configureTestingModule({
       imports: [NavbarNotificationsComponent, NoopAnimationsModule],
@@ -257,11 +254,13 @@ describe('NavbarNotificationsComponent', () => {
         { provide: NotificationsClientService, useValue: { list, markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() } },
         { provide: ReviewReminderService, useValue: { loadReminder, dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
-        { provide: MatDialog, useValue: { open } },
       ],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(NavbarNotificationsComponent);
+    const open = vi.spyOn((fixture.componentInstance as any).dialog, 'open').mockReturnValue({
+      afterClosed: () => of(undefined),
+    } as never);
     fixture.detectChanges();
 
     fixture.componentInstance.reviewMetadata(reviewReminder, new MouseEvent('click'));

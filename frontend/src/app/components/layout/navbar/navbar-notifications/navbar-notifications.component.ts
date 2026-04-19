@@ -116,10 +116,8 @@ export class NavbarNotificationsComponent implements OnInit {
     return notification.type === NotificationType.APP_UPDATE;
   }
 
-  isMetadataReview(notification: NotificationRead): notification is NotificationRead & { data: MetadataReviewNotificationData } {
-    return notification.type === NotificationType.METADATA_REVIEW
-      && !!notification.data
-      && 'latest_batch_id' in notification.data;
+  isMetadataReview(notification: NotificationRead): boolean {
+    return notification.type === NotificationType.METADATA_REVIEW;
   }
 
   announcementSeverityFor(notification: NotificationRead): AnnouncementSeverity | null {
@@ -218,7 +216,7 @@ export class NavbarNotificationsComponent implements OnInit {
 
   dismissMetadataReminder(notification: NotificationRead, event: Event): void {
     event.stopPropagation();
-    if (!this.isMetadataReview(notification)) {
+    if (!this.hasMetadataReviewData(notification)) {
       return;
     }
 
@@ -286,5 +284,13 @@ export class NavbarNotificationsComponent implements OnInit {
     this.actioningIds.update((ids) => active
       ? ids.includes(notificationId) ? ids : [...ids, notificationId]
       : ids.filter((id) => id !== notificationId));
+  }
+
+  private hasMetadataReviewData(
+    notification: NotificationRead,
+  ): notification is NotificationRead & { data: MetadataReviewNotificationData } {
+    return this.isMetadataReview(notification)
+      && !!notification.data
+      && 'dismiss_signature' in notification.data;
   }
 }

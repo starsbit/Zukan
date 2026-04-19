@@ -540,7 +540,7 @@ export class UploadReviewDialogComponent {
   refreshRecommendations(forceRefresh = false): void {
     if (this.scope() === 'merged_batch') {
       const batchId = this.activeBatchId();
-      if (forceRefresh || !batchId) {
+      if (!batchId) {
         this.loadMergedReview({
           includeRecommendations: true,
           forceRefresh: true,

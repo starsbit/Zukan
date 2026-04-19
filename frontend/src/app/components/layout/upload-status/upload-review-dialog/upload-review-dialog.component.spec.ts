@@ -1157,7 +1157,7 @@ describe('UploadReviewDialogComponent', () => {
     expect(component.selectedIds()).toEqual(['m1']);
     expect(component.removedGroupMediaIds()).toEqual({ 'group-1': ['m1'] });
     expect(component.discardedMediaIds()).toEqual(['m2']);
-    expect(component.expandedGroupIds()).toEqual(['group-1']);
+    expect(component.expandedGroupIds()).toEqual([]);
     expect(mergeReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: true, force_refresh: true });
 
     mergedBatch$.next(mergedBatchResponse);
