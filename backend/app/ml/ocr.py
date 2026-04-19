@@ -12,7 +12,7 @@ from backend.app.config import settings
 from backend.app.models.media import MediaType
 from backend.app.utils.frame_sampling import cleanup_sampled_frames, sample_media_frames
 
-_executor = ThreadPoolExecutor(max_workers=1)
+_executor = ThreadPoolExecutor(max_workers=settings.ocr_executor_workers)
 _whitespace_re = re.compile(r"\s+")
 logger = logging.getLogger(__name__)
 
@@ -73,11 +73,10 @@ class TesseractOCR:
         frame_paths = frames or [source_path]
 
         try:
-            extracted: list[str] = []
-            for frame_path in frame_paths:
-                text = await loop.run_in_executor(_executor, self._extract_text_sync, str(frame_path))
-                if text:
-                    extracted.append(text)
+            texts = await asyncio.gather(
+                *[loop.run_in_executor(_executor, self._extract_text_sync, str(fp)) for fp in frame_paths]
+            )
+            extracted = [t for t in texts if t]
             return _merge_ocr_chunks(extracted)
         finally:
             cleanup_sampled_frames([frame for frame in frames if frame != source_path])

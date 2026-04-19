@@ -13,7 +13,7 @@ from PIL import Image
 from backend.app.config import settings
 from backend.app.utils.tagging import NSFW_RATING_TAGS, TagPrediction, TaggingResult, tag_names_mark_nsfw
 
-_executor = ThreadPoolExecutor(max_workers=1)
+_executor = ThreadPoolExecutor(max_workers=settings.tagger_executor_workers)
 logger = logging.getLogger(__name__)
 
 

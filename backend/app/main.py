@@ -267,7 +267,7 @@ def _augment_openapi_security(schema: dict) -> dict:
 async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
     startup_started_at = time.perf_counter()
-    worker: asyncio.Task | None = None
+    workers: list[asyncio.Task] = []
     purge_worker: asyncio.Task | None = None
     update_worker: asyncio.Task | None = None
     ml_worker: asyncio.Task | None = None
@@ -289,10 +289,10 @@ async def lifespan(_api: FastAPI):
         set_tag_queue(tag_queue)
         health_monitor.start()
         recovered_count = await _recover_pending_media_jobs(tag_queue)
-        worker = asyncio.create_task(tagging_worker())
+        workers = [asyncio.create_task(tagging_worker()) for _ in range(settings.tagging_worker_count)]
         purge_worker = asyncio.create_task(trash_purge_worker())
         update_worker = asyncio.create_task(update_check_worker())
-        logger.info("Background tagging worker started")
+        logger.info("Background tagging workers started count=%s", settings.tagging_worker_count)
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
         logger.info("Background trash purge worker started")
@@ -305,8 +305,8 @@ async def lifespan(_api: FastAPI):
         raise
     finally:
         logger.info("Application shutdown initiated")
-        if worker is not None:
-            worker.cancel()
+        for w in workers:
+            w.cancel()
         if purge_worker is not None:
             purge_worker.cancel()
         if update_worker is not None:
@@ -314,11 +314,13 @@ async def lifespan(_api: FastAPI):
         if ml_worker is not None:
             ml_worker.cancel()
         await health_monitor.stop()
-        if worker is not None:
+        for w in workers:
             try:
-                await worker
+                await w
             except asyncio.CancelledError:
-                logger.info("Background tagging worker stopped")
+                pass
+        if workers:
+            logger.info("Background tagging workers stopped count=%s", len(workers))
         if purge_worker is not None:
             try:
                 await purge_worker

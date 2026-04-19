@@ -1,5 +1,5 @@
 <div class="media-browser" [class.media-browser--compact]="isCompactLayout()">
-  <div #contentPane class="media-browser__content" (scroll)="onContentScroll()">
+  <div #contentPane class="media-browser__content">
     @if (showStories() && storyParams(); as params) {
       <zukan-today-stories-rail
         class="media-browser__stories"

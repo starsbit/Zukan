@@ -312,6 +312,33 @@ describe('MediaBrowserComponent', () => {
     expect(content.scrollTo).toHaveBeenCalled();
   });
 
+  it('scrolls directly to a rendered section when jumping to a loaded month', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', [
+      { date: '2026-03-28', label: 'March 28, 2026', items: [] },
+      { date: '2026-01-10', label: 'January 10, 2026', items: [] },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', [
+      { year: 2026, month: 3, count: 3 },
+      { year: 2026, month: 2, count: 2 },
+      { year: 2026, month: 1, count: 4 },
+    ]);
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
+    Object.defineProperty(content, 'scrollTop', { value: 0, writable: true });
+    Object.defineProperty(content, 'scrollTo', { value: vi.fn(), writable: true });
+    Object.defineProperty(content, 'getBoundingClientRect', {
+      value: () => ({ top: 0, left: 0, bottom: 500, right: 500, width: 500, height: 500 }),
+    });
+
+    fixture.componentInstance.onJumpRequested('2026-03');
+
+    expect(content.scrollTo).toHaveBeenCalled();
+  });
+
   it('tracks the active month all the way to the bottom of the loaded range', async () => {
     await configureBrowserTestingModule();
 
@@ -336,11 +363,54 @@ describe('MediaBrowserComponent', () => {
       writable: true,
       configurable: true,
     });
-    fixture.componentInstance.onContentScroll();
-    (fixture.componentInstance as any).syncActiveSection();
+    fixture.componentInstance.monthMetrics.set([
+      { key: '2026-09', year: 2026, month: 9, offset: 0, height: 320 },
+      { key: '2025-09', year: 2025, month: 9, offset: 420, height: 320 },
+      { key: '2024-06', year: 2024, month: 6, offset: 1000, height: 320 },
+    ]);
+    fixture.componentInstance.maxScrollTop.set(1000);
+    content.dispatchEvent(new Event('scroll'));
 
     expect(fixture.componentInstance.activeMonthKey()).toBe('2024-06');
     expect(fixture.componentInstance.activeTimelineProgress()).toBe(100);
+  });
+
+  it('uses cached month metrics when syncing the active section', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', [
+      { date: '2026-03-28', label: 'March 28, 2026', items: [] },
+      { date: '2026-02-10', label: 'February 10, 2026', items: [] },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', [
+      { year: 2026, month: 3, count: 3 },
+      { year: 2026, month: 2, count: 2 },
+    ]);
+    fixture.detectChanges();
+
+    const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
+    Object.defineProperty(content, 'scrollTop', {
+      value: 260,
+      writable: true,
+      configurable: true,
+    });
+    fixture.componentInstance.monthMetrics.set([
+      { key: '2026-03', year: 2026, month: 3, offset: 0, height: 300 },
+      { key: '2026-02', year: 2026, month: 2, offset: 250, height: 300 },
+    ]);
+    fixture.componentInstance.maxScrollTop.set(500);
+
+    const measureOffsetSpy = vi.spyOn(
+      fixture.componentInstance as unknown as { measureOffsetWithinContent: () => number },
+      'measureOffsetWithinContent',
+    );
+
+    (fixture.componentInstance as any).syncActiveSection();
+
+    expect(measureOffsetSpy).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.activeMonthKey()).toBe('2026-02');
+    expect(fixture.componentInstance.activeYear()).toBe(2026);
   });
 
   it('positions timeline months from measured scroll offsets when available', async () => {
@@ -359,13 +429,11 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
-    fixture.componentInstance.monthOffsets.set(
-      new Map([
-        ['2026-03', 0],
-        ['2026-02', 250],
-        ['2026-01', 900],
-      ]),
-    );
+    fixture.componentInstance.monthMetrics.set([
+      { key: '2026-03', year: 2026, month: 3, offset: 0, height: 280 },
+      { key: '2026-02', year: 2026, month: 2, offset: 250, height: 240 },
+      { key: '2026-01', year: 2026, month: 1, offset: 900, height: 360 },
+    ]);
     fixture.componentInstance.maxScrollTop.set(500);
 
     const months = fixture.componentInstance.timelineEntries()[0]?.months ?? [];

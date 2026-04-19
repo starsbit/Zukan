@@ -4,6 +4,7 @@ import {
   DestroyRef,
   ElementRef,
   HostListener,
+  NgZone,
   QueryList,
   ViewChild,
   ViewChildren,
@@ -13,6 +14,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
@@ -22,7 +24,6 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
-import { fromEvent } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead, MediaVisibility } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
@@ -67,6 +68,14 @@ interface JustifiedMonthGroup {
   month: number;
   label: string;
   days: JustifiedDayGroup[];
+}
+
+interface MonthMetric {
+  key: string;
+  year: number;
+  month: number;
+  offset: number;
+  height: number;
 }
 
 const DESKTOP_GRID_GAP = 16;
@@ -126,6 +135,7 @@ export class MediaBrowserComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly zone = inject(NgZone);
   private readonly mediaService = inject(MediaService);
   private inspectorRef: MatDialogRef<MediaInspectorDialogComponent> | null = null;
 
@@ -139,8 +149,7 @@ export class MediaBrowserComponent {
   readonly activeMonthKey = signal<string | null>(null);
   readonly activeTimelineProgress = signal<number | null>(null);
   readonly contentWidth = signal(WIDTH_FALLBACK);
-  readonly monthHeights = signal<Map<string, number>>(new Map());
-  readonly monthOffsets = signal<Map<string, number>>(new Map());
+  readonly monthMetrics = signal<MonthMetric[]>([]);
   readonly maxScrollTop = signal(0);
   readonly hoveredDay = signal<string | null>(null);
   readonly selectedIds = signal<string[]>([]);
@@ -163,6 +172,7 @@ export class MediaBrowserComponent {
 
   private resizeObserver?: ResizeObserver;
   private resizeDebounceTimer?: ReturnType<typeof setTimeout>;
+  private removeContentScrollListener?: () => void;
   private metricsFrameId: number | null = null;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
@@ -176,17 +186,27 @@ export class MediaBrowserComponent {
 
   constructor() {
     effect(() => {
-      this.dayGroups();
-      this.timeline();
-      this.loading();
       if (!this.allowSelection() && this.selectedIds().length > 0) {
         this.selectedIds.set([]);
       }
+    });
 
-      this.reconcileSelection();
-      this.tryResolvePendingJump();
-      this.tryOpenPendingInspector();
-      this.scheduleLayoutSync();
+    effect(() => {
+      const dayGroups = this.dayGroups();
+      untracked(() => {
+        this.reconcileSelection(dayGroups);
+      });
+    });
+
+    effect(() => {
+      this.dayGroups();
+      this.timeline();
+      this.loading();
+      untracked(() => {
+        this.tryResolvePendingJump();
+        this.tryOpenPendingInspector();
+        this.scheduleLayoutSync();
+      });
     });
 
     this.route.queryParamMap
@@ -212,6 +232,7 @@ export class MediaBrowserComponent {
 
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
+    this.removeContentScrollListener?.();
     clearTimeout(this.resizeDebounceTimer);
     if (this.metricsFrameId != null) {
       cancelAnimationFrame(this.metricsFrameId);
@@ -219,10 +240,6 @@ export class MediaBrowserComponent {
     if (this.frameId != null) {
       cancelAnimationFrame(this.frameId);
     }
-  }
-
-  onContentScroll(): void {
-    this.scheduleActiveSectionSync();
   }
 
   sectionId(date: string): string {
@@ -551,8 +568,10 @@ export class MediaBrowserComponent {
       .filter((media) => selected.has(media.id));
   }
 
-  private reconcileSelection(): void {
-    const visibleIds = new Set(this.allMediaIds());
+  private reconcileSelection(dayGroups = this.dayGroups()): void {
+    const visibleIds = new Set(
+      dayGroups.flatMap((group) => group.items.map((item) => item.id)),
+    );
     this.selectedIds.update((ids) => {
       const nextIds = ids.filter((id) => visibleIds.has(id));
       if (nextIds.length === ids.length && nextIds.every((id, index) => id === ids[index])) {
@@ -579,7 +598,11 @@ export class MediaBrowserComponent {
       const width = entries[0]?.contentRect.width ?? this.measureContentWidth(content);
       clearTimeout(this.resizeDebounceTimer);
       this.resizeDebounceTimer = setTimeout(() => {
-        this.contentWidth.set(Math.max(Math.floor(width), 320));
+        const nextWidth = Math.max(Math.floor(width), 320);
+        if (nextWidth === this.contentWidth()) {
+          return;
+        }
+        this.contentWidth.set(nextWidth);
         this.scheduleLayoutSync();
       }, 60);
     });
@@ -600,37 +623,59 @@ export class MediaBrowserComponent {
 
   private watchContentScroll(): void {
     const content = this.contentPane?.nativeElement;
-    if (!content) {
+    if (!content || this.removeContentScrollListener) {
       return;
     }
 
-    fromEvent(content, 'scroll')
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(() => {
+    this.zone.runOutsideAngular(() => {
+      const onScroll = () => {
         this.scheduleActiveSectionSync();
-      });
+      };
+      content.addEventListener('scroll', onScroll, { passive: true });
+      this.removeContentScrollListener = () => {
+        content.removeEventListener('scroll', onScroll);
+        this.removeContentScrollListener = undefined;
+      };
+    });
   }
 
   private syncMonthMetrics(): void {
     const content = this.contentPane?.nativeElement;
     const sections = this.monthSections?.toArray() ?? [];
-    const heights = new Map<string, number>();
-    const offsets = new Map<string, number>();
+    if (!content || sections.length === 0) {
+      if (this.monthMetrics().length > 0) {
+        this.monthMetrics.set([]);
+      }
+      if (this.maxScrollTop() !== 0) {
+        this.maxScrollTop.set(0);
+      }
+      return;
+    }
+
+    const metrics: MonthMetric[] = [];
     for (const ref of sections) {
       const el = ref.nativeElement;
       const key = el.dataset['month'];
       if (key) {
-        heights.set(key, el.offsetHeight);
-        if (content) {
-          offsets.set(key, this.measureOffsetWithinContent(el, content));
-        }
+        const parts = this.parseMonthKey(key);
+        metrics.push({
+          key,
+          year: parts.year,
+          month: parts.month,
+          height: el.offsetHeight,
+          offset: this.measureMonthSectionOffset(el, content),
+        });
       }
     }
-    this.monthHeights.set(heights);
-    this.monthOffsets.set(offsets);
-    this.maxScrollTop.set(
-      content ? Math.max(content.scrollHeight - content.clientHeight, 0) : 0,
-    );
+
+    if (!this.areMonthMetricsEqual(this.monthMetrics(), metrics)) {
+      this.monthMetrics.set(metrics);
+    }
+
+    const nextMaxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
+    if (nextMaxScrollTop !== this.maxScrollTop()) {
+      this.maxScrollTop.set(nextMaxScrollTop);
+    }
   }
 
   private scheduleActiveSectionSync(): void {
@@ -658,8 +703,8 @@ export class MediaBrowserComponent {
 
   private syncActiveSection(): void {
     const content = this.contentPane?.nativeElement;
-    const sections = this.monthSections?.toArray() ?? [];
-    if (!content || sections.length === 0) {
+    const metrics = this.monthMetrics();
+    if (!content || metrics.length === 0) {
       this.activeYear.set(null);
       this.activeMonthKey.set(null);
       this.activeTimelineProgress.set(null);
@@ -667,35 +712,14 @@ export class MediaBrowserComponent {
     }
 
     const scrollTop = content.scrollTop;
-    let activeKey: string | null = null;
-
-    for (const ref of sections) {
-      const el = ref.nativeElement;
-      const offset = this.measureOffsetWithinContent(el, content);
-      if (offset <= scrollTop + 1) {
-        activeKey = el.dataset['month'] ?? null;
-      } else {
-        break;
-      }
-    }
-
-    if (!activeKey) {
-      activeKey = sections[0]?.nativeElement.dataset['month'] ?? null;
-    }
-
-    const months = this.flattenTimelineMonths();
-    const activeMonth =
-      months.find((m) => this.monthKey(m.year, m.month) === activeKey) ?? months[0];
-
-    const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
+    const activeMetric = this.findActiveMonthMetric(metrics, scrollTop);
+    const maxScrollTop = this.maxScrollTop();
     const scrollProgress =
-      maxScrollTop <= 0 ? 0 : this.clamp(content.scrollTop / maxScrollTop, 0, 1);
+      maxScrollTop <= 0 ? 0 : this.clamp(scrollTop / maxScrollTop, 0, 1);
 
     this.activeTimelineProgress.set(scrollProgress * 100);
-    this.activeYear.set(activeMonth?.year ?? null);
-    this.activeMonthKey.set(
-      activeMonth ? this.monthKey(activeMonth.year, activeMonth.month) : null,
-    );
+    this.activeYear.set(activeMetric?.year ?? null);
+    this.activeMonthKey.set(activeMetric?.key ?? null);
   }
 
   private buildTimelineEntries(): GalleryTimelineYear[] {
@@ -704,8 +728,9 @@ export class MediaBrowserComponent {
       return [];
     }
 
-    const heights = this.monthHeights();
-    const offsets = this.monthOffsets();
+    const metrics = new Map(
+      this.monthMetrics().map((metric) => [metric.key, metric] as const),
+    );
     const maxScrollTop = this.maxScrollTop();
     const monthGroups = this.justifiedMonthGroups();
 
@@ -722,7 +747,7 @@ export class MediaBrowserComponent {
 
     for (const bucket of buckets) {
       const key = this.monthKey(bucket.year, bucket.month);
-      const measured = heights.get(key);
+      const measured = metrics.get(key)?.height;
       const estimated = totalCount > 0 ? (bucket.count / totalCount) * 1000 : 1;
       const h = measured ?? estimated;
       monthHeightList.push({ key, h, bucket });
@@ -742,7 +767,7 @@ export class MediaBrowserComponent {
       }
 
       entry.count += bucket.count;
-      const offset = offsets.get(key);
+      const offset = metrics.get(key)?.offset;
       const position =
         offset !== undefined && maxScrollTop > 0
           ? this.clamp((Math.min(offset, maxScrollTop) / maxScrollTop) * 100, 0, 100)
@@ -809,7 +834,10 @@ export class MediaBrowserComponent {
       return false;
     }
 
-    const nextTop = this.measureOffsetWithinContent(target, content);
+    const cachedMonthMetric = this.monthMetrics().find(
+      (metric) => this.monthSectionId(metric.year, metric.month) === anchorId,
+    );
+    const nextTop = cachedMonthMetric?.offset ?? this.measureOffsetWithinContent(target, content);
     if (typeof content.scrollTo === 'function') {
       content.scrollTo({ top: Math.max(nextTop, 0), behavior: 'auto' });
     } else {
@@ -835,6 +863,14 @@ export class MediaBrowserComponent {
     const contentRect = content.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     return content.scrollTop + (targetRect.top - contentRect.top);
+  }
+
+  private measureMonthSectionOffset(target: HTMLElement, content: HTMLElement): number {
+    if (target.parentElement === content) {
+      return target.offsetTop;
+    }
+
+    return this.measureOffsetWithinContent(target, content);
   }
 
   private flattenTimelineMonths() {
@@ -1081,8 +1117,7 @@ export class MediaBrowserComponent {
       return;
     }
 
-    const maxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
-    content.scrollTop = progress * maxScrollTop;
+    content.scrollTop = progress * this.maxScrollTop();
     this.scheduleActiveSectionSync();
   }
 
@@ -1094,5 +1129,49 @@ export class MediaBrowserComponent {
     );
 
     return Math.max(measured, 320);
+  }
+
+  private areMonthMetricsEqual(current: MonthMetric[], next: MonthMetric[]): boolean {
+    if (current.length !== next.length) {
+      return false;
+    }
+
+    return current.every((metric, index) => {
+      const candidate = next[index];
+      return candidate != null
+        && metric.key === candidate.key
+        && metric.year === candidate.year
+        && metric.month === candidate.month
+        && metric.offset === candidate.offset
+        && metric.height === candidate.height;
+    });
+  }
+
+  private findActiveMonthMetric(metrics: MonthMetric[], scrollTop: number): MonthMetric | null {
+    let low = 0;
+    let high = metrics.length - 1;
+    let active = metrics[0] ?? null;
+    const target = scrollTop + 1;
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const metric = metrics[mid]!;
+      if (metric.offset <= target) {
+        active = metric;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    return active;
+  }
+
+  private parseMonthKey(key: string): { year: number; month: number } {
+    const [year, month] = key.split('-').map(Number);
+    return {
+      year: year || 0,
+      month: month || 0,
+    };
   }
 }

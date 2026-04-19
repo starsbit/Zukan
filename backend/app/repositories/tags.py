@@ -167,16 +167,23 @@ class TagRepository:
         if missing_names:
             existing_tags = await self.get_by_names(owner_user_id, missing_names)
 
+        new_tags_created = False
+        for name, category, confidence in desired_payloads:
+            if name in existing_by_name or name in existing_tags:
+                continue
+            tag = Tag(owner_user_id=owner_user_id, name=name, category=category, media_count=0)
+            self.db.add(tag)
+            existing_tags[name] = tag
+            new_tags_created = True
+
+        if new_tags_created:
+            await self.db.flush()
+
         for name, category, confidence in desired_payloads:
             if name in existing_by_name:
                 continue
-            tag = existing_tags.get(name)
-            if tag is None:
-                tag = Tag(owner_user_id=owner_user_id, name=name, category=category, media_count=0)
-                self.db.add(tag)
-                await self.db.flush()
-                existing_tags[name] = tag
-            elif tag.category == 0 and category != 0:
+            tag = existing_tags[name]
+            if tag.category == 0 and category != 0:
                 tag.category = category
             touched_tag_ids.add(tag.id)
             self.db.add(MediaTag(

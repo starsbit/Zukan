@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     ocr_tesseract_config: str = "--psm 6"
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
+    tagging_worker_count: int = 2
+    tagger_executor_workers: int = 2
+    ocr_executor_workers: int = 2
     anilist_enabled: bool = True
     anilist_client_id: str = ""
     anilist_client_secret: str = ""
