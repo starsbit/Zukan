@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { AlbumAccessRole } from '../models/albums';
+import { AlbumAccessListResponse, AlbumAccessRole, AlbumShareReadRole } from '../models/albums';
 import { AlbumStore } from './album.store';
 import { UserStore } from './user.store';
 import { AlbumsClientService } from './web/albums-client.service';
@@ -299,5 +299,141 @@ describe('AlbumStore', () => {
     const album = store.items()[0];
     expect(album?.media_count).toBe(4);
     expect(album?.preview_media.map((item) => item.id)).toEqual(['cover-1', 'm2', 'm3', 'm4']);
+  });
+
+  it('chunks album media additions that exceed the backend bulk limit', async () => {
+    const client = {
+      list: vi.fn(() => of({
+        total: 1,
+        next_cursor: null,
+        has_more: false,
+        page_size: 50,
+        items: [
+          {
+            id: 'album-1',
+            owner_id: 'user-1',
+            owner: { id: 'user-1', username: 'stars' },
+            access_role: AlbumAccessRole.OWNER,
+            name: 'Big album',
+            description: null,
+            cover_media_id: null,
+            preview_media: [],
+            media_count: 0,
+            version: 1,
+            created_at: '2026-03-30T05:29:51.715424Z',
+            updated_at: '2026-03-30T05:53:26.390533Z',
+          },
+        ],
+      })),
+      addMedia: vi.fn((albumId: string, body: { media_ids: string[] }) => of({
+        processed: body.media_ids.length,
+        skipped: 0,
+      })),
+    };
+
+    await TestBed.configureTestingModule({
+      providers: [
+        AlbumStore,
+        { provide: AlbumsClientService, useValue: client },
+        {
+          provide: UserStore,
+          useValue: {
+            currentUser: () => ({
+              id: 'user-1',
+              username: 'stars',
+              email: 'stars@example.com',
+              is_admin: false,
+              show_nsfw: false,
+              tag_confidence_threshold: 0.5,
+              version: 1,
+              created_at: '2026-03-01T00:00:00Z',
+            }),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    const store = TestBed.inject(AlbumStore);
+    const mediaIds = Array.from({ length: 520 }, (_, index) => `m${index + 1}`);
+
+    await new Promise<void>((resolve, reject) => {
+      store.load().subscribe({
+        next: () => resolve(),
+        error: reject,
+      });
+    });
+
+    const result = await new Promise<{ processed: number; skipped: number }>((resolve, reject) => {
+      store.addMedia('album-1', mediaIds).subscribe({
+        next: resolve,
+        error: reject,
+      });
+    });
+
+    expect(result).toEqual({ processed: 520, skipped: 0 });
+    expect(client.addMedia).toHaveBeenCalledTimes(2);
+    expect(client.addMedia).toHaveBeenNthCalledWith(1, 'album-1', { media_ids: mediaIds.slice(0, 500) });
+    expect(client.addMedia).toHaveBeenNthCalledWith(2, 'album-1', { media_ids: mediaIds.slice(500) });
+
+    const album = store.items()[0];
+    expect(album?.media_count).toBe(520);
+    expect(album?.cover_media_id).toBe('m1');
+    expect(album?.preview_media.map((item) => item.id)).toEqual(['m1', 'm2', 'm3', 'm4']);
+  });
+
+  it('proxies album access list and revoke requests', async () => {
+    const accessList: AlbumAccessListResponse = {
+      owner: { id: 'user-1', username: 'stars' },
+      entries: [
+        {
+          user_id: 'user-2',
+          username: 'viewer',
+          role: AlbumShareReadRole.VIEWER,
+          status: 'accepted' as const,
+          shared_at: '2026-04-01T00:00:00Z',
+          shared_by_user_id: 'user-1',
+          shared_by_username: 'stars',
+        },
+      ],
+    };
+    const client = {
+      listShares: vi.fn(() => of(accessList)),
+      revokeShare: vi.fn(() => of(void 0)),
+    };
+
+    await TestBed.configureTestingModule({
+      providers: [
+        AlbumStore,
+        { provide: AlbumsClientService, useValue: client },
+        {
+          provide: UserStore,
+          useValue: {
+            currentUser: () => ({
+              id: 'user-1',
+              username: 'stars',
+              email: 'stars@example.com',
+              is_admin: false,
+              show_nsfw: false,
+              tag_confidence_threshold: 0.5,
+              version: 1,
+              created_at: '2026-03-01T00:00:00Z',
+            }),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    const store = TestBed.inject(AlbumStore);
+
+    const shares = await new Promise<AlbumAccessListResponse>((resolve, reject) => {
+      store.listShares('album-1').subscribe({ next: resolve, error: reject });
+    });
+    await new Promise<void>((resolve, reject) => {
+      store.revokeShare('album-1', 'user-2').subscribe({ next: () => resolve(), error: reject });
+    });
+
+    expect(shares).toEqual(accessList);
+    expect(client.listShares).toHaveBeenCalledWith('album-1');
+    expect(client.revokeShare).toHaveBeenCalledWith('album-1', 'user-2');
   });
 });

@@ -34,6 +34,14 @@ class _ScalarOneResult:
         return self._value
 
 
+def _record_filter_value(seen: dict[str, str], key: str):
+    def _inner(stmt, value):
+        seen[key] = value
+        return stmt
+
+    return _inner
+
+
 @pytest.fixture
 def service(fake_db):
     return MediaQueryService(fake_db)
@@ -248,6 +256,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     row1 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
     row2 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
     row3 = SimpleNamespace(id=uuid.uuid4(), captured_at=datetime.now(timezone.utc), uploaded_at=datetime.now(timezone.utc))
+    seen = {}
 
     service._build_base_list_stmt = lambda: "stmt0"
     service._apply_album_filter = AsyncMock(return_value="stmt1")
@@ -265,10 +274,18 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
         "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
     ), patch(
         "backend.app.services.media.query.media_filters.apply_series_name_filter", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_owner_username_filter",
+        side_effect=_record_filter_value(seen, "owner_username"),
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_uploader_username_filter",
+        side_effect=_record_filter_value(seen, "uploader_username"),
     ), patch("backend.app.services.media.query.media_filters.apply_visibility_filter", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.media_filters.apply_media_type_filters", side_effect=lambda stmt, *a: stmt
     ), patch(
         "backend.app.services.media.query.media_filters.apply_captured_at_filters", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_uploaded_at_filters", side_effect=lambda stmt, *a: stmt
     ), patch("backend.app.services.media.query.media_filters.apply_ocr_text_filter", side_effect=lambda stmt, *a: stmt), patch(
         "backend.app.services.media.query.enrich_media", return_value=[]
     ):
@@ -278,6 +295,8 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             tags=None,
             character_name=None,
             series_name=None,
+            owner_username="owner_user",
+            uploader_username="uploader_user",
             exclude_tags=None,
             mode=TagFilterMode.AND,
             nsfw=NsfwFilter.DEFAULT,
@@ -294,6 +313,7 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     assert page.has_more is True
     assert page.next_cursor is not None
     assert page.items == []
+    assert seen == {"owner_username": "owner_user", "uploader_username": "uploader_user"}
 
 
 @pytest.mark.asyncio
@@ -310,14 +330,37 @@ async def test_get_timeline_applies_status_filter(service, user):
     service._apply_visibility_scope = lambda stmt, *_: stmt
     service._db.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: []))
 
-    await service.get_timeline(
-        user,
-        state=MediaListState.ACTIVE,
-        status_filter="reviewed",
-        series_name="Fate",
-    )
+    with patch(
+        "backend.app.services.media.query.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_series_name_filter", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_owner_username_filter",
+        side_effect=_record_filter_value(seen, "owner_username"),
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_uploader_username_filter",
+        side_effect=_record_filter_value(seen, "uploader_username"),
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_visibility_filter", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_media_type_filters", side_effect=lambda stmt, *a: stmt
+    ), patch(
+        "backend.app.services.media.query.media_filters.apply_ocr_text_filter", side_effect=lambda stmt, *a: stmt
+    ):
+        await service.get_timeline(
+            user,
+            state=MediaListState.ACTIVE,
+            status_filter="reviewed",
+            series_name="Fate",
+            owner_username="owner_user",
+            uploader_username="uploader_user",
+        )
 
     assert seen["status_filter"] == "reviewed"
+    assert seen["owner_username"] == "owner_user"
+    assert seen["uploader_username"] == "uploader_user"
 
 
 @pytest.mark.asyncio

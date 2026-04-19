@@ -100,6 +100,31 @@ async def test_media_filters_support_uploaded_at_constraints(db_session, make_us
     assert {row.id for row in rows} == {march_match.id}
 
 
+@pytest.mark.asyncio
+async def test_media_filters_support_owner_and_uploader_username_constraints(db_session, make_user, make_media):
+    uploader = await make_user()
+    owner = await make_user()
+    other_user = await make_user()
+
+    owned_match = await make_media(uploader_id=uploader.id)
+    other_media = await make_media(uploader_id=other_user.id)
+    owned_match.owner_id = owner.id
+    other_media.owner_id = other_user.id
+
+    owner.username = "OwnerUser"
+    uploader.username = "UploaderUser"
+    other_user.username = "someone_else"
+    await db_session.flush()
+
+    owner_stmt = media_filters.apply_owner_username_filter(select(type(owned_match)), " owneruser ")
+    owner_rows = (await db_session.execute(owner_stmt)).scalars().all()
+    assert {row.id for row in owner_rows} == {owned_match.id}
+
+    uploader_stmt = media_filters.apply_uploader_username_filter(select(type(owned_match)), "UPLOADERUSER")
+    uploader_rows = (await db_session.execute(uploader_stmt)).scalars().all()
+    assert {row.id for row in uploader_rows} == {owned_match.id}
+
+
 def test_fuzzy_ocr_pattern_helper():
     assert media_filters._build_fuzzy_ocr_like_pattern("abc") is None
     pattern = media_filters._build_fuzzy_ocr_like_pattern("ab cd")

@@ -14,6 +14,8 @@ from .admin import (
     UpdateCheckResponse,
 )
 from .albums import (
+    AlbumAccessEntryRead,
+    AlbumAccessListResponse,
     AlbumAccessRole,
     AlbumCreate,
     AlbumListResponse,
@@ -123,6 +125,8 @@ __all__ = [
     "UpdateCheckResponse",
     "APIKeyCreateResponse",
     "APIKeyStatusResponse",
+    "AlbumAccessEntryRead",
+    "AlbumAccessListResponse",
     "AlbumAccessRole",
     "AlbumCreate",
     "AlbumListResponse",

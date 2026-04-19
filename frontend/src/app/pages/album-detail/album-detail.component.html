@@ -2,9 +2,15 @@
   @if (album(); as album) {
     <mat-card class="album-detail__header" appearance="outlined">
       <mat-card-content class="album-detail__header-content">
-        <div class="album-detail__cover" [class.album-detail__cover--empty]="!headerPreviewUrl()">
-          @if (headerPreviewUrl(); as previewUrl) {
-            <img [src]="previewUrl" alt="" loading="lazy">
+        <div class="album-detail__cover" [class.album-detail__cover--empty]="!headerPreviewLoading() && headerPreviewUrls().length === 0">
+          @if (headerPreviewUrls().length > 0) {
+            <div class="album-detail__preview-grid" [attr.data-layout]="headerPreviewLayout()">
+              @for (url of visibleHeaderPreviewUrls(); track url; let index = $index) {
+                <div class="album-detail__preview-tile" [class.album-detail__preview-tile--hero]="headerPreviewLayout() === 'trio' && index === 0">
+                  <img [src]="url" alt="" loading="lazy">
+                </div>
+              }
+            </div>
           } @else if (headerPreviewLoading()) {
             <mat-spinner diameter="32"></mat-spinner>
           } @else {
@@ -23,10 +29,14 @@
         </div>
 
         <div class="album-detail__actions">
-          @if (canInvite()) {
+          @if (canManageShares()) {
             <button mat-stroked-button type="button" (click)="inviteToAlbum()">
               <mat-icon aria-hidden="true">person_add</mat-icon>
               Invite
+            </button>
+            <button mat-stroked-button type="button" (click)="manageAlbumAccess()">
+              <mat-icon aria-hidden="true">group</mat-icon>
+              Manage access
             </button>
           }
           @if (canEdit()) {

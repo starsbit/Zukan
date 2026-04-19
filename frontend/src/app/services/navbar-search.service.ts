@@ -25,6 +25,8 @@ export interface AdvancedSearchFilters {
   status: string | null;
   favorited: boolean | null;
   visibility: MediaVisibility | null;
+  ownerUsername: string | null;
+  uploaderUsername: string | null;
   mediaTypes: MediaType[];
   sortBy: MediaSearchParams['sort_by'] | null;
   sortOrder: MediaSearchParams['sort_order'] | null;
@@ -52,6 +54,8 @@ export class NavbarSearchService {
     status: null,
     favorited: null,
     visibility: null,
+    ownerUsername: null,
+    uploaderUsername: null,
     mediaTypes: [],
     sortBy: null,
     sortOrder: null,
@@ -92,6 +96,8 @@ export class NavbarSearchService {
       filters.status != null,
       filters.favorited != null,
       filters.visibility != null,
+      filters.ownerUsername != null,
+      filters.uploaderUsername != null,
       filters.mediaTypes.length > 0,
       filters.sortBy != null,
       filters.sortOrder != null,
@@ -123,6 +129,8 @@ export class NavbarSearchService {
       status: applied.advanced.status ?? undefined,
       favorited: applied.advanced.favorited ?? undefined,
       visibility: applied.advanced.visibility ?? undefined,
+      owner_username: applied.advanced.ownerUsername ?? undefined,
+      uploader_username: applied.advanced.uploaderUsername ?? undefined,
       media_type: applied.advanced.mediaTypes.length > 0 ? applied.advanced.mediaTypes : undefined,
       sort_by: applied.advanced.sortBy ?? undefined,
       sort_order: applied.advanced.sortOrder ?? undefined,
@@ -274,6 +282,8 @@ export class NavbarSearchService {
       status: filters.status?.trim() || null,
       favorited: filters.favorited,
       visibility: filters.visibility,
+      ownerUsername: filters.ownerUsername?.trim() || null,
+      uploaderUsername: filters.uploaderUsername?.trim() || null,
       mediaTypes: [...filters.mediaTypes],
       sortBy: filters.sortBy,
       sortOrder: filters.sortOrder,

@@ -1,12 +1,21 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { finalize, map, Observable, tap } from 'rxjs';
-import { AlbumAccessRole, AlbumCreate, AlbumRead, AlbumShareCreate, AlbumShareRead, AlbumUpdate } from '../models/albums';
+import { concatMap, finalize, from, map, Observable, of, reduce, tap } from 'rxjs';
+import {
+  AlbumAccessListResponse,
+  AlbumAccessRole,
+  AlbumCreate,
+  AlbumRead,
+  AlbumShareCreate,
+  AlbumShareRead,
+  AlbumUpdate,
+} from '../models/albums';
 import { BulkResult } from '../models/common';
 import { AlbumsClientService, AlbumListParams } from './web/albums-client.service';
 import { UserStore } from './user.store';
 
 @Injectable({ providedIn: 'root' })
 export class AlbumStore {
+  static readonly BULK_MUTATION_CHUNK_SIZE = 500;
   private readonly client = inject(AlbumsClientService);
   private readonly userStore = inject(UserStore);
 
@@ -81,14 +90,35 @@ export class AlbumStore {
     );
   }
 
+  listShares(id: string): Observable<AlbumAccessListResponse> {
+    return this.client.listShares(id);
+  }
+
+  revokeShare(albumId: string, userId: string): Observable<void> {
+    return this.client.revokeShare(albumId, userId);
+  }
+
   addMedia(id: string, mediaIds: string[]): Observable<BulkResult> {
+    if (mediaIds.length === 0) {
+      return of({ processed: 0, skipped: 0 });
+    }
+
     this._selectedAlbumLoading.set(true);
-    return this.client.addMedia(id, { media_ids: mediaIds }).pipe(
-      tap((result) => {
-        if (result.processed > 0) {
-          this.adjustAlbumAfterAdd(id, mediaIds, result.processed);
-        }
-      }),
+    return from(this.chunkIds(mediaIds)).pipe(
+      concatMap((chunk) => this.client.addMedia(id, { media_ids: chunk }).pipe(
+        tap((result) => {
+          if (result.processed > 0) {
+            this.adjustAlbumAfterAdd(id, chunk, result.processed);
+          }
+        }),
+      )),
+      reduce(
+        (acc, result) => ({
+          processed: acc.processed + result.processed,
+          skipped: acc.skipped + result.skipped,
+        }),
+        { processed: 0, skipped: 0 },
+      ),
       finalize(() => this._selectedAlbumLoading.set(false)),
     );
   }
@@ -200,5 +230,13 @@ export class AlbumStore {
       description: album.description ?? null,
       cover_media_id: album.cover_media_id ?? null,
     };
+  }
+
+  private chunkIds(ids: string[], size = AlbumStore.BULK_MUTATION_CHUNK_SIZE): string[][] {
+    const chunks: string[][] = [];
+    for (let index = 0; index < ids.length; index += size) {
+      chunks.push(ids.slice(index, index + size));
+    }
+    return chunks;
   }
 }

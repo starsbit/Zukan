@@ -102,6 +102,8 @@ describe('MediaClientService', () => {
       status: 'reviewed',
       series_name: 'Fate stay night',
       visibility: MediaVisibility.PUBLIC,
+      owner_username: 'owner_user',
+      uploader_username: 'uploader_user',
       media_type: ['video', 'gif'],
       sort_by: 'filename',
       sort_order: 'asc',
@@ -124,6 +126,8 @@ describe('MediaClientService', () => {
     expect(req.request.params.get('status')).toBe('reviewed');
     expect(req.request.params.get('series_name')).toBe('fate_stay_night');
     expect(req.request.params.get('visibility')).toBe('public');
+    expect(req.request.params.get('owner_username')).toBe('owner_user');
+    expect(req.request.params.get('uploader_username')).toBe('uploader_user');
     expect(req.request.params.getAll('media_type')).toEqual(['video', 'gif']);
     expect(req.request.params.get('sort_by')).toBe('filename');
     expect(req.request.params.get('sort_order')).toBe('asc');
@@ -155,6 +159,8 @@ describe('MediaClientService', () => {
       status: 'reviewed',
       favorited: false,
       visibility: MediaVisibility.PRIVATE,
+      owner_username: 'owner_user',
+      uploader_username: 'uploader_user',
       media_type: ['image'],
       ocr_text: 'moon',
     }).subscribe();
@@ -170,6 +176,8 @@ describe('MediaClientService', () => {
     expect(req.request.params.get('status')).toBe('reviewed');
     expect(req.request.params.get('favorited')).toBe('false');
     expect(req.request.params.get('visibility')).toBe('private');
+    expect(req.request.params.get('owner_username')).toBe('owner_user');
+    expect(req.request.params.get('uploader_username')).toBe('uploader_user');
     expect(req.request.params.getAll('media_type')).toEqual(['image']);
     expect(req.request.params.get('ocr_text')).toBe('moon');
     req.flush({ buckets: [] });

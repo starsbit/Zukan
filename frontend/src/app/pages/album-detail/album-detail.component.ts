@@ -15,6 +15,7 @@ import { MediaListState, MediaRead } from '../../models/media';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { AlbumFormDialogComponent, AlbumFormDialogValue } from '../../components/album/album-form-dialog/album-form-dialog.component';
+import { AlbumAccessDialogComponent } from '../../components/album/album-access-dialog/album-access-dialog.component';
 import { AlbumShareDialogComponent, AlbumShareDialogValue } from '../../components/album/album-share-dialog/album-share-dialog.component';
 import {
   AlbumThumbnailDialogComponent,
@@ -27,6 +28,8 @@ import { MediaService } from '../../services/media.service';
 import { NavbarSearchService } from '../../services/navbar-search.service';
 import { UserStore } from '../../services/user.store';
 import { AuthStore } from '../../services/web/auth.store';
+import { AlbumsClientService } from '../../services/web/albums-client.service';
+import { getAlbumPreviewLayout, getAlbumPreviewTargetCount, resolveAlbumPreviewUrls } from '../../utils/album-preview.utils';
 
 @Component({
   selector: 'zukan-album-detail',
@@ -51,6 +54,7 @@ export class AlbumDetailComponent {
   private readonly dialog = inject(MatDialog);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly mediaService = inject(MediaService);
+  private readonly albumsClient = inject(AlbumsClientService);
   private readonly searchService = inject(NavbarSearchService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
@@ -71,7 +75,7 @@ export class AlbumDetailComponent {
   readonly canDelete = computed(() =>
     this.album()?.access_role === AlbumAccessRole.OWNER || this.userStore.isAdmin(),
   );
-  readonly canInvite = computed(() =>
+  readonly canManageShares = computed(() =>
     this.album()?.access_role === AlbumAccessRole.OWNER || this.userStore.isAdmin(),
   );
   readonly accessLabel = computed(() => {
@@ -87,10 +91,10 @@ export class AlbumDetailComponent {
     }
   });
   readonly ownerName = computed(() => this.album()?.owner?.username ?? 'Unknown');
-  readonly headerPreviewUrl = signal<string | null>(null);
+  readonly headerPreviewUrls = signal<string[]>([]);
+  readonly visibleHeaderPreviewUrls = computed(() => this.headerPreviewUrls().slice(0, 4));
+  readonly headerPreviewLayout = computed(() => getAlbumPreviewLayout(this.visibleHeaderPreviewUrls().length));
   readonly headerPreviewLoading = signal(false);
-
-  private headerPreviewRequestId = 0;
 
   private static hasLoadContext(
     value: [boolean, string | null, ReturnType<NavbarSearchService['appliedParams']>],
@@ -140,36 +144,27 @@ export class AlbumDetailComponent {
       }
     });
 
-    effect(() => {
-      const album = this.album();
-      const previewMediaId = album?.cover_media_id ?? album?.preview_media?.[0]?.id ?? null;
-      const requestId = ++this.headerPreviewRequestId;
+    toObservable(this.album).pipe(
+      tap((album) => {
+        this.headerPreviewUrls.set([]);
+        this.headerPreviewLoading.set(!!album && getAlbumPreviewTargetCount(album) > 0);
+      }),
+      switchMap((album) => {
+        if (!album) {
+          return of<string[]>([]);
+        }
 
-      this.headerPreviewUrl.set(null);
-      this.headerPreviewLoading.set(!!previewMediaId);
-
-      if (!previewMediaId) {
-        this.headerPreviewLoading.set(false);
-        return;
-      }
-
-      this.mediaService.getThumbnailUrl(previewMediaId)
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: (url) => {
-            if (requestId !== this.headerPreviewRequestId) {
-              return;
-            }
-            this.headerPreviewUrl.set(url);
-            this.headerPreviewLoading.set(false);
-          },
-          error: () => {
-            if (requestId !== this.headerPreviewRequestId) {
-              return;
-            }
-            this.headerPreviewLoading.set(false);
-          },
-        });
+        return resolveAlbumPreviewUrls(album, {
+          albumsClient: this.albumsClient,
+          mediaService: this.mediaService,
+        }).pipe(
+          catchError(() => of<string[]>([])),
+        );
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe((urls) => {
+      this.headerPreviewUrls.set(urls);
+      this.headerPreviewLoading.set(false);
     });
   }
 
@@ -227,7 +222,7 @@ export class AlbumDetailComponent {
 
   inviteToAlbum(): void {
     const album = this.album();
-    if (!album || !this.canInvite()) {
+    if (!album || !this.canManageShares()) {
       return;
     }
 
@@ -259,6 +254,22 @@ export class AlbumDetailComponent {
           : `Updated ${value.username}'s album access.`;
         this.snackBar.open(message, 'Close', { duration: 4000 });
       });
+    });
+  }
+
+  manageAlbumAccess(): void {
+    const album = this.album();
+    if (!album || !this.canManageShares()) {
+      return;
+    }
+
+    this.dialog.open(AlbumAccessDialogComponent, {
+      data: {
+        albumId: album.id,
+        albumName: album.name,
+      },
+      maxWidth: '760px',
+      width: '100%',
     });
   }
 

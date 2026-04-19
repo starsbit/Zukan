@@ -30,6 +30,7 @@ from backend.app.repositories import media_filters
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.schemas import (
+    AlbumAccessListResponse,
     AlbumAccessRole,
     AlbumListResponse,
     AlbumOwnershipTransferRequest,
@@ -336,6 +337,73 @@ class AlbumService:
         )
         return await self.album_read(album, user)
 
+    async def list_album_access(self, album_id: uuid.UUID, user) -> AlbumAccessListResponse:
+        albums_repo = AlbumRepository(self._db)
+        album = await self.get_album_for_user(album_id, user)
+        if album.owner_id != user.id and not user.is_admin:
+            raise AppError(status_code=403, code=album_share_forbidden, detail="Only the owner can manage shares")
+
+        owner_map = await albums_repo.get_owner_summaries([album.owner_id])
+        owner = owner_map.get(album.owner_id)
+        owner_summary = {
+            "id": album.owner_id,
+            "username": owner.username if owner is not None else "Unknown",
+        }
+
+        shares = await albums_repo.get_shares_for_album(album_id)
+        pending_invites = await albums_repo.get_pending_invites_for_album(album_id)
+
+        access_user_ids = [share.user_id for share in shares] + [invite.user_id for invite in pending_invites]
+        actor_user_ids = [
+            share.shared_by_user_id for share in shares if share.shared_by_user_id is not None
+        ] + [
+            invite.invited_by_user_id for invite in pending_invites if invite.invited_by_user_id is not None
+        ]
+        user_map = await albums_repo.get_owner_summaries(access_user_ids + actor_user_ids)
+
+        accepted_entries = [
+            self._album_access_entry_response(
+                user_id=share.user_id,
+                username=user_map.get(share.user_id).username if user_map.get(share.user_id) is not None else "Unknown",
+                role=share.role.value,
+                status="accepted",
+                shared_at=share.shared_at,
+                shared_by_user_id=share.shared_by_user_id,
+                shared_by_username=(
+                    user_map.get(share.shared_by_user_id).username
+                    if share.shared_by_user_id is not None and user_map.get(share.shared_by_user_id) is not None
+                    else None
+                ),
+            )
+            for share in shares
+        ]
+        pending_entries = [
+            self._album_access_entry_response(
+                user_id=invite.user_id,
+                username=user_map.get(invite.user_id).username if user_map.get(invite.user_id) is not None else "Unknown",
+                role=invite.role.value,
+                status="pending",
+                shared_at=invite.invited_at,
+                shared_by_user_id=invite.invited_by_user_id,
+                shared_by_username=(
+                    user_map.get(invite.invited_by_user_id).username
+                    if invite.invited_by_user_id is not None and user_map.get(invite.invited_by_user_id) is not None
+                    else None
+                ),
+            )
+            for invite in pending_invites
+        ]
+
+        entries = sorted(
+            [*accepted_entries, *pending_entries],
+            key=lambda entry: (
+                0 if entry["status"] == "accepted" else 1,
+                entry["username"].lower(),
+            ),
+        )
+
+        return AlbumAccessListResponse(owner=owner_summary, entries=entries)
+
     async def share_album(self, album_id: uuid.UUID, body: AlbumShareCreate, user) -> tuple[dict, bool]:
         albums_repo = AlbumRepository(self._db)
         album = await self.get_album_for_user(album_id, user)
@@ -559,6 +627,27 @@ class AlbumService:
             "status": status,
             "shared_at": shared_at,
             "shared_by_user_id": shared_by_user_id,
+        }
+
+    def _album_access_entry_response(
+        self,
+        *,
+        user_id: uuid.UUID,
+        username: str,
+        role: str,
+        status: str,
+        shared_at,
+        shared_by_user_id: uuid.UUID | None,
+        shared_by_username: str | None,
+    ) -> dict:
+        return {
+            "user_id": user_id,
+            "username": username,
+            "role": role,
+            "status": status,
+            "shared_at": shared_at,
+            "shared_by_user_id": shared_by_user_id,
+            "shared_by_username": shared_by_username,
         }
 
     async def _count_media_for_albums(self, album_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:

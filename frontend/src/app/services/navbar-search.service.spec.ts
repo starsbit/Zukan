@@ -60,6 +60,8 @@ describe('NavbarSearchService', () => {
         status: null,
         favorited: null,
         visibility: null,
+        ownerUsername: null,
+        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,
@@ -91,6 +93,8 @@ describe('NavbarSearchService', () => {
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
       visibility: MediaVisibility.PUBLIC,
+      ownerUsername: 'owner_user',
+      uploaderUsername: 'uploader_user',
       mediaTypes: [MediaType.IMAGE],
       sortBy: 'captured_at',
       sortOrder: 'desc',
@@ -110,6 +114,8 @@ describe('NavbarSearchService', () => {
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
       visibility: MediaVisibility.PUBLIC,
+      owner_username: 'owner_user',
+      uploader_username: 'uploader_user',
       media_type: [MediaType.IMAGE],
       sort_by: 'captured_at',
       sort_order: 'desc',
@@ -122,11 +128,12 @@ describe('NavbarSearchService', () => {
     service.setAdvancedFilters({
       excludeTags: ['spoiler'],
       visibility: MediaVisibility.PUBLIC,
+      ownerUsername: 'owner_user',
       mediaTypes: [MediaType.VIDEO],
       uploadedBeforeYear: 2027,
     });
 
-    expect(service.activeAdvancedFilterCount()).toBe(4);
+    expect(service.activeAdvancedFilterCount()).toBe(5);
   });
 
   it('normalizes advanced filters and preserves false-y filter values in applied params', () => {
@@ -134,6 +141,8 @@ describe('NavbarSearchService', () => {
       excludeTags: [' spoiler ', ''],
       status: ' reviewed ',
       favorited: false,
+      ownerUsername: ' Owner_User ',
+      uploaderUsername: ' Uploader_User ',
       mediaTypes: [MediaType.GIF, MediaType.VIDEO],
       capturedAfter: ' 2026-03-01T00:00 ',
       capturedBefore: ' 2026-03-31T23:59 ',
@@ -148,6 +157,8 @@ describe('NavbarSearchService', () => {
       excludeTags: ['spoiler'],
       status: 'reviewed',
       favorited: false,
+      ownerUsername: 'Owner_User',
+      uploaderUsername: 'Uploader_User',
       mediaTypes: [MediaType.GIF, MediaType.VIDEO],
       capturedAfter: '2026-03-01T00:00',
       capturedBefore: '2026-03-31T23:59',
@@ -160,6 +171,8 @@ describe('NavbarSearchService', () => {
       exclude_tag: ['spoiler'],
       status: 'reviewed',
       favorited: false,
+      owner_username: 'Owner_User',
+      uploader_username: 'Uploader_User',
       media_type: [MediaType.GIF, MediaType.VIDEO],
       captured_after: '2026-03-01T00:00',
       captured_before: '2026-03-31T23:59',
@@ -223,6 +236,8 @@ describe('NavbarSearchService', () => {
         status: null,
         favorited: null,
         visibility: null,
+        ownerUsername: null,
+        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,

@@ -25,7 +25,43 @@
   place-items: center;
 }
 
-.album-detail__cover img {
+.album-detail__preview-grid {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  gap: 8px;
+}
+
+.album-detail__preview-grid[data-layout="single"] {
+  grid-template-columns: 1fr;
+}
+
+.album-detail__preview-grid[data-layout="duo"] {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.album-detail__preview-grid[data-layout="trio"] {
+  grid-template-columns: 1.25fr 0.75fr;
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.album-detail__preview-grid[data-layout="quad"] {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.album-detail__preview-tile {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 70%, transparent);
+}
+
+.album-detail__preview-tile--hero {
+  grid-row: 1 / span 2;
+}
+
+.album-detail__preview-tile img {
   width: 100%;
   height: 100%;
   object-fit: cover;

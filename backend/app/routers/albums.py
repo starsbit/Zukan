@@ -11,6 +11,7 @@ from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
+    AlbumAccessListResponse,
     AlbumListResponse,
     AlbumCreate,
     AlbumOwnershipTransferRequest,
@@ -213,6 +214,21 @@ async def share_album(
         payload=jsonable_encoder(share),
     )
     return share
+
+
+@router.get(
+    "/{album_id}/shares",
+    response_model=AlbumAccessListResponse,
+    summary="List Album Access",
+    description="List the owner, accepted shares, and pending invites for an album.",
+    responses=error_responses(403, 404),
+)
+async def list_album_access(
+    album_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AlbumService(db).list_album_access(album_id, user)
 
 
 @router.post(

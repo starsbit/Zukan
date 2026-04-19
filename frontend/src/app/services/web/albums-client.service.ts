@@ -3,6 +3,7 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
 import {
+  AlbumAccessListResponse,
   AlbumCreate,
   AlbumListResponse,
   AlbumOwnershipTransferRequest,
@@ -80,6 +81,10 @@ export class AlbumsClientService {
 
   share(id: string, body: AlbumShareCreate): Observable<AlbumShareRead> {
     return this.http.post<AlbumShareRead>(`${this.base}/api/v1/albums/${id}/shares`, body);
+  }
+
+  listShares(id: string): Observable<AlbumAccessListResponse> {
+    return this.http.get<AlbumAccessListResponse>(`${this.base}/api/v1/albums/${id}/shares`);
   }
 
   revokeShare(albumId: string, userId: string): Observable<void> {

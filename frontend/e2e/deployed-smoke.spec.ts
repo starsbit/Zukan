@@ -52,6 +52,31 @@ async function getMediaTotal(page: import('@playwright/test').Page, accessToken:
 }
 
 test.describe.serial('Deployed smoke workflow', () => {
+  test('serves installability assets for the production PWA shell', async ({ page, request }) => {
+    const manifestResponse = await request.get('/manifest.webmanifest');
+    expect(manifestResponse.ok()).toBeTruthy();
+    const manifest = await manifestResponse.json();
+    expect(manifest).toMatchObject({
+      name: 'Zukan',
+      display: 'standalone',
+      start_url: '/',
+    });
+
+    const serviceWorkerResponse = await request.get('/ngsw-worker.js');
+    expect(serviceWorkerResponse.ok()).toBeTruthy();
+    expect(serviceWorkerResponse.headers()['content-type'] ?? '').toContain('javascript');
+
+    const shellResponse = await page.goto('/');
+    expect(shellResponse?.ok()).toBeTruthy();
+
+    await expect.poll(async () =>
+      page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return registration?.active?.scriptURL ?? registration?.installing?.scriptURL ?? null;
+      }),
+    ).toContain('/ngsw-worker.js');
+  });
+
   test('containerized app supports setup, auth, registration, and batch upload', async ({ page }) => {
     const setupRequiredInitially = await isSetupRequired();
     if (setupRequiredInitially) {

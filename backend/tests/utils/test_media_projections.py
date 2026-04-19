@@ -67,3 +67,15 @@ def test_build_media_read_and_enrich_media():
     assert len(result) == 1
     assert result[0].is_favorited is True
     assert result[0].favorite_count == 3
+
+
+def test_build_media_read_does_not_fallback_owner_to_uploader():
+    media = _make_media()
+    media.owner_id = None
+    media.owner = None
+
+    read = build_media_read(media, False)
+
+    assert read.owner_id is None
+    assert read.owner_username is None
+    assert read.uploader_username == "uploader"

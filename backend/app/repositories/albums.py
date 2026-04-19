@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import func, select, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareInvite
+from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareInvite, AlbumShareInviteStatus
 from backend.app.models.auth import User
 from backend.app.models.media import Media
 
@@ -125,6 +125,23 @@ class AlbumRepository:
                 select(AlbumShareInvite).where(
                     AlbumShareInvite.user_id == user_id,
                     AlbumShareInvite.album_id.in_(album_ids),
+                )
+            )
+        ).scalars().all()
+
+    async def get_shares_for_album(self, album_id: uuid.UUID) -> list[AlbumShare]:
+        return (
+            await self.db.execute(
+                select(AlbumShare).where(AlbumShare.album_id == album_id)
+            )
+        ).scalars().all()
+
+    async def get_pending_invites_for_album(self, album_id: uuid.UUID) -> list[AlbumShareInvite]:
+        return (
+            await self.db.execute(
+                select(AlbumShareInvite).where(
+                    AlbumShareInvite.album_id == album_id,
+                    AlbumShareInvite.status == AlbumShareInviteStatus.pending,
                 )
             )
         ).scalars().all()

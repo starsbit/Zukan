@@ -42,4 +42,24 @@ describe('AdminUserEditDialogComponent', () => {
     fixture.detectChanges();
     expect(saveButton.disabled).toBe(false);
   });
+
+  it('marks password inputs as new-password fields', async () => {
+    await TestBed.configureTestingModule({
+      imports: [AdminUserEditDialogComponent, NoopAnimationsModule],
+      providers: [
+        { provide: MAT_DIALOG_DATA, useValue: { user, currentUserId: 'admin-user' } },
+        { provide: MatDialogRef, useValue: { close: () => undefined } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(AdminUserEditDialogComponent);
+    fixture.detectChanges();
+
+    const passwordInputs = Array.from(
+      fixture.nativeElement.querySelectorAll('input[type="password"]'),
+    ) as HTMLInputElement[];
+
+    expect(passwordInputs).toHaveLength(2);
+    expect(passwordInputs.every((input) => input.getAttribute('autocomplete') === 'new-password')).toBe(true);
+  });
 });

@@ -61,6 +61,21 @@ export interface AlbumShareRead {
   shared_by_user_id: string | null;
 }
 
+export interface AlbumAccessEntryRead {
+  user_id: string;
+  username: string;
+  role: AlbumShareReadRole;
+  status: 'pending' | 'accepted';
+  shared_at: string;
+  shared_by_user_id: string | null;
+  shared_by_username: string | null;
+}
+
+export interface AlbumAccessListResponse {
+  owner: AlbumOwnerSummary;
+  entries: AlbumAccessEntryRead[];
+}
+
 export interface AlbumShareCreate {
   username: string;
   role?: AlbumShareRole;

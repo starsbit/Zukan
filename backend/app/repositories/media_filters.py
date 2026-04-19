@@ -4,7 +4,8 @@ Its in the repository domain because it relates closely to SQL related logic.
 """
 
 import re
-from sqlalchemy import extract, func, or_, select
+
+from sqlalchemy import extract, exists, func, or_, select
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaType, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
@@ -59,6 +60,35 @@ def apply_series_name_filter(stmt, series_name: str | None):
             )
             stmt = stmt.where(Media.id.in_(subq))
     return stmt
+
+
+def apply_owner_username_filter(stmt, owner_username: str | None):
+    normalized = _normalize_exact_username(owner_username)
+    if normalized is None:
+        return stmt
+
+    owner_match = exists(
+        select(1).where(
+            User.id == Media.owner_id,
+            func.lower(User.username) == normalized,
+        )
+    )
+    return stmt.where(owner_match)
+
+
+def apply_uploader_username_filter(stmt, uploader_username: str | None):
+    normalized = _normalize_exact_username(uploader_username)
+    if normalized is None:
+        return stmt
+
+    uploader_match = exists(
+        select(1).where(
+            User.id == Media.uploader_id,
+            func.lower(User.username) == normalized,
+        )
+    )
+    return stmt.where(uploader_match)
+
 
 def apply_ocr_text_filter(stmt, ocr_text: str | None):
     if ocr_text and ocr_text.strip():
@@ -159,3 +189,11 @@ def _normalized_entity_name_expr():
         func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
         "_",
     )
+
+
+def _normalize_exact_username(username: str | None) -> str | None:
+    if username is None:
+        return None
+
+    normalized = username.strip().lower()
+    return normalized or None

@@ -210,6 +210,8 @@ describe('NavbarSearchComponent', () => {
         status: null,
         favorited: null,
         visibility: null,
+        ownerUsername: null,
+        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,

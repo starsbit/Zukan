@@ -13,6 +13,20 @@ const mockAlbum = {
   created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
 };
 const mockPage = { total: 0, next_cursor: null, has_more: false, page_size: 20, items: [] };
+const mockAccess = {
+  owner: { id: 'u1', username: 'owner' },
+  entries: [
+    {
+      user_id: 'u2',
+      username: 'viewer',
+      role: AlbumShareReadRole.VIEWER,
+      status: 'accepted',
+      shared_at: '2026-01-01T00:00:00Z',
+      shared_by_user_id: 'u1',
+      shared_by_username: 'owner',
+    },
+  ],
+};
 
 describe('AlbumsClientService', () => {
   let service: AlbumsClientService;
@@ -136,6 +150,14 @@ describe('AlbumsClientService', () => {
     const req = http.expectOne('/api/v1/albums/a1/shares');
     expect(req.request.method).toBe('POST');
     req.flush(mock);
+  });
+
+  it('listShares sends GET /api/v1/albums/{id}/shares', () => {
+    service.listShares('a1').subscribe(res => expect(res).toEqual(mockAccess));
+
+    const req = http.expectOne('/api/v1/albums/a1/shares');
+    expect(req.request.method).toBe('GET');
+    req.flush(mockAccess);
   });
 
   it('revokeShare sends DELETE /api/v1/albums/{albumId}/shares/{userId}', () => {

@@ -19,14 +19,12 @@ def build_media_metadata(media: Media) -> MediaMetadata:
 
 
 def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0, tag_names: list[str] | None = None) -> MediaRead:
-    owner_id = media.owner_id or media.uploader_id
-    owner = media.owner or media.uploader
     return MediaRead(
         id=media.id,
         uploader_id=media.uploader_id,
         uploader_username=media.uploader.username if media.uploader is not None else None,
-        owner_id=owner_id,
-        owner_username=owner.username if owner is not None else None,
+        owner_id=media.owner_id,
+        owner_username=media.owner.username if media.owner is not None else None,
         visibility=media.visibility,
         filename=media.filename,
         original_filename=media.original_filename,

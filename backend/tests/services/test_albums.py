@@ -241,6 +241,67 @@ async def test_share_album_updates_existing_share_without_invite(fake_db, user):
 
 
 @pytest.mark.asyncio
+async def test_list_album_access_combines_and_sorts_entries(fake_db, user):
+    service = AlbumService(fake_db)
+    album = Album(owner_id=user.id, name="x")
+    album.id = uuid.uuid4()
+    accepted_user_id = uuid.uuid4()
+    pending_user_id = uuid.uuid4()
+    actor_user_id = uuid.uuid4()
+
+    accepted_share = SimpleNamespace(
+        user_id=accepted_user_id,
+        role=AlbumShareRole.viewer,
+        shared_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        shared_by_user_id=actor_user_id,
+    )
+    pending_invite = SimpleNamespace(
+        user_id=pending_user_id,
+        role=AlbumShareRole.editor,
+        invited_at=datetime(2026, 4, 2, tzinfo=timezone.utc),
+        invited_by_user_id=actor_user_id,
+    )
+
+    with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)), patch(
+        "backend.app.services.albums.AlbumRepository"
+    ) as repo_cls:
+        repo = repo_cls.return_value
+        repo.get_shares_for_album = AsyncMock(return_value=[accepted_share])
+        repo.get_pending_invites_for_album = AsyncMock(return_value=[pending_invite])
+        repo.get_owner_summaries = AsyncMock(side_effect=[
+            {
+                user.id: SimpleNamespace(username="owner"),
+            },
+            {
+                accepted_user_id: SimpleNamespace(username="viewer_user"),
+                pending_user_id: SimpleNamespace(username="editor_user"),
+                actor_user_id: SimpleNamespace(username="sharer"),
+            },
+        ])
+
+        result = await service.list_album_access(album.id, user)
+
+    assert result.owner.username == "owner"
+    assert [entry.username for entry in result.entries] == ["viewer_user", "editor_user"]
+    assert [entry.status for entry in result.entries] == ["accepted", "pending"]
+    assert result.entries[0].shared_by_username == "sharer"
+    assert result.entries[1].role == "editor"
+
+
+@pytest.mark.asyncio
+async def test_list_album_access_requires_owner_or_admin(fake_db, user):
+    service = AlbumService(fake_db)
+    album = Album(owner_id=uuid.uuid4(), name="x")
+    album.id = uuid.uuid4()
+
+    with patch.object(service, "get_album_for_user", AsyncMock(return_value=album)):
+        with pytest.raises(AppError) as exc:
+            await service.list_album_access(album.id, user)
+
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_bulk_add_and_remove_from_album(fake_db, user):
     service = AlbumService(fake_db)
     album = Album(owner_id=user.id, name="x")

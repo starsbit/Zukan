@@ -154,6 +154,58 @@ class AlbumShareRead(BaseModel):
     }
 
 
+class AlbumAccessEntryRead(BaseModel):
+    user_id: uuid.UUID
+    username: str
+    role: AlbumShareReadRole
+    status: AlbumShareReadStatus
+    shared_at: datetime
+    shared_by_user_id: uuid.UUID | None = None
+    shared_by_username: str | None = None
+
+    model_config = {
+        "from_attributes": True,
+        "json_schema_extra": {
+            "example": {
+                "user_id": "f8c6e80d-d2f7-4db8-9ee1-5d0a44e0f6e7",
+                "username": "Saber",
+                "role": "editor",
+                "status": "accepted",
+                "shared_at": "2026-03-24T15:55:09Z",
+                "shared_by_user_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                "shared_by_username": "stars",
+            }
+        },
+    }
+
+
+class AlbumAccessListResponse(BaseModel):
+    owner: AlbumOwnerSummary
+    entries: list[AlbumAccessEntryRead]
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "owner": {
+                    "id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                    "username": "stars",
+                },
+                "entries": [
+                    {
+                        "user_id": "f8c6e80d-d2f7-4db8-9ee1-5d0a44e0f6e7",
+                        "username": "Saber",
+                        "role": "editor",
+                        "status": "accepted",
+                        "shared_at": "2026-03-24T15:55:09Z",
+                        "shared_by_user_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
+                        "shared_by_username": "stars",
+                    }
+                ],
+            }
+        },
+    }
+
+
 class AlbumOwnershipTransferRequest(BaseModel):
     new_owner_user_id: uuid.UUID
     keep_editor_access: bool = False

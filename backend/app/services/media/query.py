@@ -231,6 +231,8 @@ class MediaQueryService:
         tags: list[str] | None,
         character_name: str | None,
         series_name: str | None,
+        owner_username: str | None,
+        uploader_username: str | None,
         exclude_tags: list[str] | None,
         mode: TagFilterMode,
         nsfw: NsfwFilter,
@@ -259,6 +261,8 @@ class MediaQueryService:
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
         stmt = media_filters.apply_character_name_filter(stmt, character_name)
         stmt = media_filters.apply_series_name_filter(stmt, series_name)
+        stmt = media_filters.apply_owner_username_filter(stmt, owner_username)
+        stmt = media_filters.apply_uploader_username_filter(stmt, uploader_username)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
         stmt = media_filters.apply_media_type_filters(stmt, media_type)
         stmt = media_filters.apply_captured_at_filters(stmt, metadata)
@@ -294,6 +298,8 @@ class MediaQueryService:
         tags: list[str] | None = None,
         character_name: str | None = None,
         series_name: str | None = None,
+        owner_username: str | None = None,
+        uploader_username: str | None = None,
         exclude_tags: list[str] | None = None,
         mode: TagFilterMode = TagFilterMode.AND,
         nsfw: NsfwFilter = NsfwFilter.DEFAULT,
@@ -323,6 +329,8 @@ class MediaQueryService:
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
         stmt = media_filters.apply_character_name_filter(stmt, character_name)
         stmt = media_filters.apply_series_name_filter(stmt, series_name)
+        stmt = media_filters.apply_owner_username_filter(stmt, owner_username)
+        stmt = media_filters.apply_uploader_username_filter(stmt, uploader_username)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
         stmt = media_filters.apply_media_type_filters(stmt, media_type)
         stmt = media_filters.apply_ocr_text_filter(stmt, ocr_text)

@@ -182,6 +182,40 @@ def test_share_album_contract(api_client, monkeypatch):
     assert response.json()["status"] == "pending"
 
 
+def test_list_album_access_contract(api_client, monkeypatch):
+    album_id = uuid.uuid4()
+    owner_id = uuid.uuid4()
+    shared_user_id = uuid.uuid4()
+
+    async def _fake_list_access(self, requested_album_id, user):
+        now = datetime.now(timezone.utc).isoformat()
+        return {
+            "owner": {
+                "id": str(owner_id),
+                "username": "owner",
+            },
+            "entries": [
+                {
+                    "user_id": str(shared_user_id),
+                    "username": "viewer_user",
+                    "role": "viewer",
+                    "status": "accepted",
+                    "shared_at": now,
+                    "shared_by_user_id": str(owner_id),
+                    "shared_by_username": "owner",
+                },
+            ],
+        }
+
+    monkeypatch.setattr(AlbumService, "list_album_access", _fake_list_access)
+
+    response = api_client.get(f"/api/v1/albums/{album_id}/shares")
+
+    assert response.status_code == 200
+    assert response.json()["owner"]["id"] == str(owner_id)
+    assert response.json()["entries"][0]["username"] == "viewer_user"
+
+
 def test_transfer_album_owner_contract(api_client, monkeypatch):
     album_id = uuid.uuid4()
 

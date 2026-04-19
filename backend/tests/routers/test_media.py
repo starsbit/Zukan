@@ -231,7 +231,10 @@ def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
 
 
 def test_list_media_contract(api_client, monkeypatch):
-    async def _fake_list(self, *args):
+    captured = {}
+
+    async def _fake_list(self, **kwargs):
+        captured.update(kwargs)
         return {"total": 0, "next_cursor": None, "has_more": False, "page_size": 5, "items": []}
 
     monkeypatch.setattr(MediaQueryService, "list_media", _fake_list)
@@ -240,18 +243,34 @@ def test_list_media_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["page_size"] == 5
+    assert captured["owner_username"] is None
+    assert captured["uploader_username"] is None
 
 
 def test_search_media_contract(api_client, monkeypatch):
-    async def _fake_list(self, *args):
+    captured = {}
+
+    async def _fake_list(self, **kwargs):
+        captured.update(kwargs)
         return {"total": 0, "next_cursor": None, "has_more": False, "page_size": 6, "items": []}
 
     monkeypatch.setattr(MediaQueryService, "list_media", _fake_list)
 
-    response = api_client.get("/api/v1/media/search", params={"page_size": 6, "ocr_text": "fate", "series_name": "Fate"})
+    response = api_client.get(
+        "/api/v1/media/search",
+        params={
+            "page_size": 6,
+            "ocr_text": "fate",
+            "series_name": "Fate",
+            "owner_username": "owner_user",
+            "uploader_username": "Uploader_User",
+        },
+    )
 
     assert response.status_code == 200
     assert response.json()["page_size"] == 6
+    assert captured["owner_username"] == "owner_user"
+    assert captured["uploader_username"] == "Uploader_User"
 
 
 def test_media_timeline_contract(api_client, monkeypatch):
@@ -263,7 +282,17 @@ def test_media_timeline_contract(api_client, monkeypatch):
 
     monkeypatch.setattr(MediaQueryService, "get_timeline", _fake_timeline)
 
-    response = api_client.get("/api/v1/media/timeline", params={"tag": "safe", "status": "reviewed", "favorited": "false", "series_name": "Fate"})
+    response = api_client.get(
+        "/api/v1/media/timeline",
+        params={
+            "tag": "safe",
+            "status": "reviewed",
+            "favorited": "false",
+            "series_name": "Fate",
+            "owner_username": "owner_user",
+            "uploader_username": "Uploader_User",
+        },
+    )
 
     assert response.status_code == 200
     assert response.json() == {"buckets": []}
@@ -271,6 +300,8 @@ def test_media_timeline_contract(api_client, monkeypatch):
     assert captured["status_filter"] == "reviewed"
     assert captured["favorited"] is False
     assert captured["series_name"] == "Fate"
+    assert captured["owner_username"] == "owner_user"
+    assert captured["uploader_username"] == "Uploader_User"
 
 
 def test_character_suggestions_contract(api_client, monkeypatch):

@@ -44,6 +44,8 @@ export interface MediaSearchParams {
   status?: string;
   favorited?: boolean;
   visibility?: MediaVisibility;
+  owner_username?: string;
+  uploader_username?: string;
   media_type?: string[];
   sort_by?: 'captured_at' | 'uploaded_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
@@ -106,6 +108,8 @@ export class MediaClientService {
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
     if (p.visibility != null) params = params.set('visibility', p.visibility);
+    if (p.owner_username != null) params = params.set('owner_username', p.owner_username);
+    if (p.uploader_username != null) params = params.set('uploader_username', p.uploader_username);
     if (p.media_type) p.media_type.forEach(t => (params = params.append('media_type', t)));
     if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
     if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
@@ -192,6 +196,8 @@ export class MediaClientService {
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
     if (p.visibility != null) params = params.set('visibility', p.visibility);
+    if (p.owner_username != null) params = params.set('owner_username', p.owner_username);
+    if (p.uploader_username != null) params = params.set('uploader_username', p.uploader_username);
     if (p.media_type) p.media_type.forEach(t => (params = params.append('media_type', t)));
     if (p.ocr_text != null) params = params.set('ocr_text', p.ocr_text);
     return this.http.get<MediaTimeline>(`${this.base}/api/v1/media/timeline`, { params });

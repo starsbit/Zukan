@@ -209,6 +209,29 @@ describe('UserSettingsDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Active');
   });
 
+  it('marks password inputs as new-password fields', async () => {
+    await TestBed.configureTestingModule({
+      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
+        { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: GalleryStore, useValue: baseGalleryStore() },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
+    fixture.detectChanges();
+
+    const passwordInputs = Array.from(
+      fixture.nativeElement.querySelectorAll('input[type="password"]'),
+    ) as HTMLInputElement[];
+
+    expect(passwordInputs).toHaveLength(2);
+    expect(passwordInputs.every((input) => input.getAttribute('autocomplete') === 'new-password')).toBe(true);
+  });
+
   it('creates an api key and shows the raw value once', async () => {
     const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
 
