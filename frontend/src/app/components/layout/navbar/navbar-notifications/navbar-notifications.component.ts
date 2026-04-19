@@ -80,7 +80,7 @@ export class NavbarNotificationsComponent implements OnInit {
     this.loading.set(true);
     forkJoin({
       notifications: this.notificationsClient.list({ page_size: 8, is_read: false }).pipe(catchError(() => of(null))),
-      reminder: this.reviewReminderService.loadReminder().pipe(catchError(() => of(null))),
+      reminder: this.reviewReminderService.loadReminder(true).pipe(catchError(() => of(null))),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
@@ -206,12 +206,14 @@ export class NavbarNotificationsComponent implements OnInit {
     }
 
     this.dialog.open(UploadReviewDialogComponent, {
-      data: { batchId: notification.data.latest_batch_id },
+      data: { batchId: null },
       maxWidth: '96vw',
       width: '1100px',
       panelClass: 'upload-status-dialog-panel',
       autoFocus: false,
-    });
+    }).afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.loadNotifications());
   }
 
   dismissMetadataReminder(notification: NotificationRead, event: Event): void {

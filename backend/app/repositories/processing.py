@@ -49,6 +49,16 @@ class ImportBatchRepository:
             )
         ).scalars().all()
 
+    async def get_latest_for_user_by_type(self, user_id: uuid.UUID, batch_type: BatchType) -> ImportBatch | None:
+        return (
+            await self.db.execute(
+                select(ImportBatch)
+                .where(ImportBatch.user_id == user_id, ImportBatch.type == batch_type)
+                .order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
     async def list_running(self) -> list[ImportBatch]:
         return (
             await self.db.execute(
@@ -99,7 +109,12 @@ class ImportBatchItemRepository:
             )
         ).scalars().all()
 
-    async def list_all_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
+    async def list_all_review_candidates_for_user(
+        self,
+        user_id: uuid.UUID,
+        *,
+        batch_types: list[BatchType] | None = None,
+    ) -> list[ImportBatchItem]:
         stmt = (
             select(ImportBatchItem)
             .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
@@ -108,6 +123,7 @@ class ImportBatchItemRepository:
                 selectinload(ImportBatchItem.media).selectinload(Media.owner),
                 selectinload(ImportBatchItem.media).selectinload(Media.entities),
                 selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(ImportBatchItem.batch),
             )
             .where(
                 ImportBatch.user_id == user_id,
@@ -115,6 +131,8 @@ class ImportBatchItemRepository:
             )
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
         )
+        if batch_types:
+            stmt = stmt.where(ImportBatch.type.in_(batch_types))
         return (await self.db.execute(stmt)).scalars().all()
 
     async def list_review_candidates_for_batch(self, batch_id: uuid.UUID) -> list[ImportBatchItem]:

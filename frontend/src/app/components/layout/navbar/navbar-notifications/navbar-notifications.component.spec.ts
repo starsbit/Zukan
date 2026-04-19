@@ -8,6 +8,7 @@ import { AlbumStore } from '../../../../services/album.store';
 import { ReviewReminderService } from '../../../../services/review-reminder.service';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { NotificationsClientService } from '../../../../services/web/notifications-client.service';
+import { UploadReviewDialogComponent } from '../../upload-status/upload-review-dialog/upload-review-dialog.component';
 import { NavbarNotificationsComponent } from './navbar-notifications.component';
 
 describe('NavbarNotificationsComponent', () => {
@@ -86,10 +87,17 @@ describe('NavbarNotificationsComponent', () => {
 
   it('loads notifications for authenticated users and shows unread count', async () => {
     const list = vi.fn().mockReturnValue(of(notificationsResponse));
+    const loadReminder = vi.fn(() => of(reviewReminder));
 
     await TestBed.configureTestingModule({
       imports: [NavbarNotificationsComponent, NoopAnimationsModule],
-      providers: baseProviders({ list, reviewReminder }),
+      providers: [
+        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+        { provide: NotificationsClientService, useValue: { list, markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() } },
+        { provide: ReviewReminderService, useValue: { loadReminder, dismissReminder: vi.fn() } },
+        { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
     }).compileComponents();
 
     const overlayContainer = TestBed.inject(OverlayContainer);
@@ -97,6 +105,7 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(list).toHaveBeenCalledWith({ page_size: 8, is_read: false });
+    expect(loadReminder).toHaveBeenCalledWith(true);
     expect(fixture.componentInstance.unreadCount()).toBe(3);
 
     const element = fixture.nativeElement as HTMLElement;
@@ -232,6 +241,39 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(markRead).toHaveBeenCalledWith('n2');
+  });
+
+  it('refreshes notifications after closing the metadata review dialog', async () => {
+    const list = vi.fn().mockReturnValue(of(notificationsResponse));
+    const loadReminder = vi.fn(() => of(reviewReminder));
+    const open = vi.fn(() => ({
+      afterClosed: () => of(undefined),
+    }));
+
+    await TestBed.configureTestingModule({
+      imports: [NavbarNotificationsComponent, NoopAnimationsModule],
+      providers: [
+        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
+        { provide: NotificationsClientService, useValue: { list, markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() } },
+        { provide: ReviewReminderService, useValue: { loadReminder, dismissReminder: vi.fn() } },
+        { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
+        { provide: MatDialog, useValue: { open } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(NavbarNotificationsComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.reviewMetadata(reviewReminder, new MouseEvent('click'));
+    fixture.detectChanges();
+
+    expect(open).toHaveBeenCalledWith(UploadReviewDialogComponent, expect.objectContaining({
+      data: { batchId: null },
+    }));
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(loadReminder).toHaveBeenCalledTimes(2);
+    expect(loadReminder).toHaveBeenNthCalledWith(1, true);
+    expect(loadReminder).toHaveBeenNthCalledWith(2, true);
   });
 
 });

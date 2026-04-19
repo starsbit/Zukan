@@ -33,7 +33,7 @@
       <button
         mat-stroked-button
         type="button"
-        [disabled]="remoteRefreshing() || recommendationsRefreshing()"
+        [disabled]="mergingAllBatches() || remoteRefreshing() || recommendationsRefreshing()"
         (click)="mergeAllBatchesAndRegroup()"
       >
         Merge all batches &amp; regroup
@@ -59,8 +59,19 @@
   <section class="review-actions">
     <div class="review-selection">
       <button mat-stroked-button type="button" (click)="selectAllVisible()">Select visible</button>
+      <button
+        mat-stroked-button
+        type="button"
+        [disabled]="reprocessing() || visibleItems().length === 0"
+        (click)="reprocessUnresolved()"
+      >
+        Reprocess unresolved names
+      </button>
       <button mat-button type="button" (click)="clearSelection()">Clear</button>
       <span>{{ selectedCount() }} selected</span>
+      <span class="review-selection__hint">
+        Retry tagging for {{ reprocessCount() }} item{{ reprocessCount() === 1 ? '' : 's' }} and use similar images from your library when confidence is high.
+      </span>
     </div>
 
     <div class="review-inputs">

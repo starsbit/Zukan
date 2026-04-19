@@ -293,7 +293,7 @@ async def test_merge_tag_rejects_cross_owner_target(fake_db, user):
 @pytest.mark.asyncio
 async def test_tag_media_full_flow_sets_processing_and_stores(fake_db, media):
     tagger = SimpleNamespace(predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)))
-    service = TagService(fake_db, tagger=tagger)
+    service = TagService(fake_db, tagger=tagger, library_enrichment=SimpleNamespace(enrich_media=AsyncMock()))
 
     with patch("backend.app.services.tags.MediaRepository") as media_repo_cls, patch(
         "backend.app.services.tags.sample_media_frames", return_value=[]

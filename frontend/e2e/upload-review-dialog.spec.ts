@@ -329,6 +329,7 @@ async function registerReviewFlowRoutes(
       series_names?: string[];
     }) => void;
     onDismissPatch?: (payload: { media_ids: string[]; metadata_review_dismissed: boolean }) => void;
+    onRetagPatch?: (payload: { media_ids: string[] }) => void;
   } = {},
 ): Promise<void> {
   const state = options.state ?? buildReviewFixtureState();
@@ -458,6 +459,26 @@ async function registerReviewFlowRoutes(
 
   await page.route('**/api/v1/me/import-batches/review-items**', async (route) => {
     await route.fulfill({ json: toReviewResponse(allPendingState) });
+  });
+
+  await page.route('**/api/v1/media/tagging-jobs', async (route) => {
+    const payload = route.request().postDataJSON() as { media_ids: string[] };
+    options.onRetagPatch?.(payload);
+
+    const reprocessedIds = new Set(payload.media_ids);
+    state.items = state.items.filter((item) => !reprocessedIds.has(item.id));
+    state.groups = state.groups
+      .map((group) => ({ ...group, mediaIds: group.mediaIds.filter((id) => !reprocessedIds.has(id)) }))
+      .filter((group) => group.mediaIds.length > 0);
+
+    if (allPendingState !== state) {
+      allPendingState.items = allPendingState.items.filter((item) => !reprocessedIds.has(item.id));
+      allPendingState.groups = allPendingState.groups
+        .map((group) => ({ ...group, mediaIds: group.mediaIds.filter((id) => !reprocessedIds.has(id)) }))
+        .filter((group) => group.mediaIds.length > 0);
+    }
+
+    await route.fulfill({ json: { queued: payload.media_ids.length } });
   });
 
   await page.route('**/api/v1/media/entities', async (route) => {
@@ -639,6 +660,32 @@ test.describe('Upload review dialog', () => {
     await expect(page.locator('.review-group-card')).toHaveCount(0);
     await expect(page.getByText('4 still need character or series names.')).toBeVisible();
     await expect(page.getByText('group-two.png')).toBeVisible();
+  });
+
+  test('user can reprocess selected unresolved media from the review dialog', async ({ page }) => {
+    let retagPayload: { media_ids: string[] } | null = null;
+
+    await ensureAdminAuthenticated(page);
+    await registerReviewFlowRoutes(page, {
+      onRetagPatch: (payload) => {
+        retagPayload = payload;
+      },
+    });
+
+    await page.goto('/');
+    await triggerTrackedUpload(page);
+    await openReviewDialogFromIsland(page);
+
+    const groupCard = page.locator('.review-group-card').first();
+    await groupCard.getByRole('button', { name: /click to select/i }).click();
+    await page.getByRole('button', { name: 'Reprocess unresolved names' }).click();
+
+    await expect.poll(() => retagPayload).not.toBeNull();
+    expect(retagPayload).toEqual({ media_ids: ['m-group-1', 'm-group-2'] });
+
+    await expect(page.getByText('Queued tagging for 2 items.')).toBeVisible();
+    await expect(page.getByText('3 still need character or series names.')).toBeVisible();
+    await expect(page.locator('.review-group-card')).toHaveCount(0);
   });
 
   test('large recommendation groups show a capped preview grid with overflow count', async ({ page }) => {

@@ -11,6 +11,7 @@ from backend.app.schemas.relations import EntityRead
 
 class BatchType(str, Enum):
     upload = "upload"
+    review_merge = "review_merge"
     retag = "retag"
     rethumbnail = "rethumbnail"
     rescan = "rescan"
@@ -132,6 +133,10 @@ class ImportBatchReviewListResponse(BaseModel):
         default_factory=list,
         description="Recommendation groups for unresolved review items in this batch.",
     )
+
+
+class ImportBatchMergedReviewResponse(ImportBatchReviewListResponse):
+    merged_batch_id: uuid.UUID = Field(description="Persisted synthetic batch id representing the merged review scope.")
 
 
 class ImportBatchReviewSummaryResponse(BaseModel):

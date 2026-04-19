@@ -10,7 +10,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
+import { debounceTime, distinctUntilChanged, finalize, of, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   ImportBatchRecommendationGroupRead,
@@ -30,7 +30,7 @@ import {
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
-type ReviewScope = 'batch' | 'all_pending';
+type ReviewScope = 'batch' | 'merged_batch';
 const GROUP_PREVIEW_LIMIT = 4;
 
 export interface UploadReviewDialogData {
@@ -69,7 +69,8 @@ export class UploadReviewDialogComponent {
   private readonly snackBar = inject(MatSnackBar);
   private hasAutoSelectedGroupsView = false;
 
-  readonly scope = signal<ReviewScope>(this.data.batchId ? 'batch' : 'all_pending');
+  readonly scope = signal<ReviewScope>(this.data.batchId ? 'batch' : 'merged_batch');
+  readonly activeBatchId = signal<string | null>(this.data.batchId);
   readonly filter = signal<ReviewFilter>('all');
   readonly view = signal<ReviewView>('items');
   readonly selectedIds = signal<string[]>([]);
@@ -91,7 +92,7 @@ export class UploadReviewDialogComponent {
 
   readonly canMergeAllBatches = computed(() => this.scope() === 'batch' && this.data.batchId !== null);
   readonly reviewState = computed(() =>
-    this.scope() === 'batch' && this.data.batchId
+    this.scope() === 'batch' && this.data.batchId && this.activeBatchId() === this.data.batchId
       ? this.tracker.getBatchReview(this.data.batchId)
       : null,
   );
@@ -159,12 +160,15 @@ export class UploadReviewDialogComponent {
     const visibleIds = new Set(this.visibleItems().map((item) => item.media.id));
     return this.selectedIds().filter((id) => visibleIds.has(id)).length;
   });
+  readonly reprocessCount = computed(() => this.selectedCount() > 0 ? this.selectedCount() : this.visibleItems().length);
   readonly canApply = computed(() =>
     !this.saving()
     && this.selectedIds().length > 0
     && (this.characterNames().length > 0 || this.seriesNames().length > 0),
   );
   readonly discarding = signal(false);
+  readonly mergingAllBatches = signal(false);
+  readonly reprocessing = signal(false);
 
   constructor() {
     effect(() => {
@@ -217,8 +221,12 @@ export class UploadReviewDialogComponent {
       takeUntilDestroyed(this.destroyRef),
     ).subscribe((items) => this.seriesSuggestions.set(items));
 
-    if (this.scope() === 'all_pending') {
-      this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: true });
+    if (this.scope() === 'merged_batch') {
+      this.loadMergedReview({
+        includeRecommendations: true,
+        forceRefresh: true,
+        showReviewRefreshing: true,
+      });
       return;
     }
 
@@ -285,13 +293,15 @@ export class UploadReviewDialogComponent {
   }
 
   mergeAllBatchesAndRegroup(): void {
-    if (!this.canMergeAllBatches()) {
+    if (!this.canMergeAllBatches() || this.mergingAllBatches()) {
       return;
     }
 
-    this.scope.set('all_pending');
-    this.resetTransientReviewState({ resetBaseline: true });
-    this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: true });
+    this.loadMergedReview({
+      includeRecommendations: true,
+      forceRefresh: true,
+      showReviewRefreshing: true,
+    });
   }
 
   addCharacter(value?: string): void {
@@ -357,6 +367,45 @@ export class UploadReviewDialogComponent {
         this.snackBar.open('Could not apply names to selected media.', 'Close', { duration: 4000 });
       },
     });
+  }
+
+  reprocessUnresolved(): void {
+    if (this.reprocessing()) {
+      return;
+    }
+
+    const visibleById = new Map(this.visibleItems().map((item) => [item.media.id, item]));
+    const targetItems = this.selectedCount() > 0
+      ? this.selectedIds()
+          .map((id) => visibleById.get(id))
+          .filter((item): item is ImportBatchReviewItemRead => !!item)
+      : this.visibleItems();
+    if (targetItems.length === 0) {
+      return;
+    }
+
+    const mediaIds = targetItems.map((item) => item.media.id);
+    this.reprocessing.set(true);
+    this.mediaService.batchQueueTaggingJobs(mediaIds)
+      .pipe(
+        finalize(() => this.reprocessing.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (result) => {
+          this.tracker.registerRetagging(targetItems.map((item) => item.media));
+          this.clearSelection();
+          this.refreshCurrentScope();
+          this.snackBar.open(
+            `Queued tagging for ${result.queued} item${result.queued === 1 ? '' : 's'}.`,
+            'Close',
+            { duration: 4000 },
+          );
+        },
+        error: () => {
+          this.snackBar.open('Could not queue tagging for unresolved media.', 'Close', { duration: 4000 });
+        },
+      });
   }
 
   openInspector(item: ImportBatchReviewItemRead): void {
@@ -437,12 +486,34 @@ export class UploadReviewDialogComponent {
   }
 
   private refreshReview(): void {
-    if (this.scope() === 'all_pending') {
-      this.loadAllPendingReview({ includeRecommendations: false, showReviewRefreshing: true });
+    if (this.scope() === 'merged_batch') {
+      const batchId = this.activeBatchId();
+      if (!batchId) {
+        this.loadMergedReview({
+          includeRecommendations: false,
+          forceRefresh: true,
+          showReviewRefreshing: true,
+        });
+        return;
+      }
+
+      this.remoteRefreshing.set(true);
+      this.batchesClient.listReviewItems(batchId).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+        next: (response) => {
+          this.remoteItems.set(response.items);
+          this.removedGroupMediaIds.set({});
+          this.discardedMediaIds.set([]);
+          this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+          this.remoteRefreshing.set(false);
+        },
+        error: () => {
+          this.remoteRefreshing.set(false);
+        },
+      });
       return;
     }
 
-    const batchId = this.data.batchId;
+    const batchId = this.activeBatchId();
     if (!batchId) {
       return;
     }
@@ -467,12 +538,34 @@ export class UploadReviewDialogComponent {
   }
 
   refreshRecommendations(forceRefresh = false): void {
-    if (this.scope() === 'all_pending') {
-      this.loadAllPendingReview({ includeRecommendations: true, showReviewRefreshing: false });
+    if (this.scope() === 'merged_batch') {
+      const batchId = this.activeBatchId();
+      if (forceRefresh || !batchId) {
+        this.loadMergedReview({
+          includeRecommendations: true,
+          forceRefresh: true,
+          showReviewRefreshing: false,
+        });
+        return;
+      }
+
+      this.remoteRecommendationsRefreshing.set(true);
+      this.batchesClient.listReviewItems(batchId, { include_recommendations: true, force_refresh: false })
+        .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+          next: (response) => {
+            this.remoteItems.set(response.items);
+            this.remoteRecommendationGroups.set(response.recommendation_groups);
+            this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+            this.remoteRecommendationsRefreshing.set(false);
+          },
+          error: () => {
+            this.remoteRecommendationsRefreshing.set(false);
+          },
+        });
       return;
     }
 
-    const batchId = this.data.batchId;
+    const batchId = this.activeBatchId();
     if (!batchId) {
       return;
     }
@@ -578,7 +671,7 @@ export class UploadReviewDialogComponent {
   }
 
   private refreshCurrentScope(): void {
-    if (this.scope() === 'all_pending') {
+    if (this.scope() === 'merged_batch') {
       this.refreshRecommendations();
       return;
     }
@@ -586,31 +679,41 @@ export class UploadReviewDialogComponent {
     this.refreshReview();
   }
 
-  private loadAllPendingReview(options: {
+  private loadMergedReview(options: {
     includeRecommendations: boolean;
+    forceRefresh: boolean;
     showReviewRefreshing: boolean;
   }): void {
     if (this.remoteRefreshing() || this.remoteRecommendationsRefreshing()) {
       return;
     }
 
+    this.mergingAllBatches.set(true);
     this.remoteRefreshing.set(options.showReviewRefreshing);
     this.remoteRecommendationsRefreshing.set(options.includeRecommendations);
-    this.batchesClient.listAllReviewItems({ include_recommendations: options.includeRecommendations })
-      .pipe(takeUntilDestroyed(this.destroyRef))
+    this.batchesClient.mergeReviewItems({
+      include_recommendations: options.includeRecommendations,
+      force_refresh: options.forceRefresh,
+    })
+      .pipe(
+        finalize(() => this.mergingAllBatches.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
       .subscribe({
         next: (response) => {
+          this.scope.set('merged_batch');
+          this.activeBatchId.set(response.merged_batch_id);
+          this.resetTransientReviewState({ resetBaseline: true });
           this.remoteItems.set(response.items);
-          if (options.includeRecommendations) {
-            this.remoteRecommendationGroups.set(response.recommendation_groups);
-          }
-          this.remoteBaselineTotal.update((current) => Math.max(current, response.total));
+          this.remoteRecommendationGroups.set(response.recommendation_groups);
+          this.remoteBaselineTotal.set(response.total);
           this.remoteRefreshing.set(false);
           this.remoteRecommendationsRefreshing.set(false);
         },
         error: () => {
           this.remoteRefreshing.set(false);
           this.remoteRecommendationsRefreshing.set(false);
+          this.snackBar.open('Could not merge unresolved review batches.', 'Close', { duration: 4000 });
         },
       });
   }

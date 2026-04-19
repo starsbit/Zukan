@@ -10,6 +10,7 @@ from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
     ImportBatchItemListResponse,
     ImportBatchListResponse,
+    ImportBatchMergedReviewResponse,
     ImportBatchRead,
     ImportBatchReviewListResponse,
     ImportBatchReviewSummaryResponse,
@@ -38,6 +39,20 @@ async def get_review_summary(
     db: AsyncSession = Depends(get_db),
 ):
     return await ProcessingService(db).get_review_summary(user.id)
+
+
+@router.post("/review-merge", response_model=ImportBatchMergedReviewResponse)
+async def merge_review_batches(
+    include_recommendations: bool = Query(default=False),
+    force_refresh: bool = Query(default=False),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await ProcessingService(db).merge_review_batches(
+        user.id,
+        include_recommendations=include_recommendations,
+        force_refresh=force_refresh,
+    )
 
 
 @router.get("", response_model=ImportBatchListResponse)

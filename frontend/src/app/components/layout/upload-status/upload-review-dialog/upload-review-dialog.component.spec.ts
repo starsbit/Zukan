@@ -2,14 +2,60 @@ import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { Subject, of } from 'rxjs';
+import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../../models/media';
-import { ImportBatchReviewListResponse } from '../../../../models/processing';
+import { ImportBatchReviewItemRead, ImportBatchReviewListResponse } from '../../../../models/processing';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { MediaService } from '../../../../services/media.service';
 import { BatchesClientService } from '../../../../services/web/batches-client.service';
 import { UploadReviewDialogComponent } from './upload-review-dialog.component';
+
+function makeReviewItem(
+  id: string,
+  state: 'character' | 'series' | 'both' = 'both',
+): ImportBatchReviewItemRead {
+  return {
+    batch_item_id: `i-${id}`,
+    source_filename: `${id}.jpg`,
+    missing_character: state === 'character' || state === 'both',
+    missing_series: state === 'series' || state === 'both',
+    entities: [],
+    media: {
+      id,
+      uploader_id: 'u1',
+      uploader_username: 'uploader',
+      owner_id: 'u1',
+      owner_username: 'owner',
+      visibility: MediaVisibility.PRIVATE,
+      filename: `${id}.jpg`,
+      original_filename: `${id}.jpg`,
+      media_type: MediaType.IMAGE,
+      metadata: {
+        file_size: 1,
+        width: 10,
+        height: 10,
+        duration_seconds: null,
+        frame_count: null,
+        mime_type: 'image/jpeg',
+        captured_at: '2026-03-29T10:00:00Z',
+      },
+      version: 1,
+      uploaded_at: '2026-03-29T10:00:00Z',
+      deleted_at: null,
+      tags: [],
+      ocr_text_override: null,
+      is_nsfw: false,
+      tagging_status: TaggingStatus.DONE,
+      tagging_error: null,
+      thumbnail_status: ProcessingStatus.DONE,
+      poster_status: ProcessingStatus.NOT_APPLICABLE,
+      ocr_text: null,
+      is_favorited: false,
+      favorite_count: 0,
+    },
+  };
+}
 
 describe('UploadReviewDialogComponent', () => {
   it('applies names to the selected media and refreshes the review queue', async () => {
@@ -269,6 +315,175 @@ describe('UploadReviewDialogComponent', () => {
 
     component.toggleGroupSelection(component.recommendationGroups()[0]);
     expect(component.selectedIds()).toEqual([]);
+  });
+
+  it('reprocesses only selected unresolved media and refreshes the current batch review', async () => {
+    const refreshBatchReview = vi.fn();
+    const registerRetagging = vi.fn();
+    const batchQueueTaggingJobs = vi.fn(() => of({ queued: 1 }));
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: () => ({
+              id: 'b1',
+              recommendationGroups: [],
+              reviewItems: [makeReviewItem('m1'), makeReviewItem('m2')],
+              reviewBaselineTotal: 2,
+              reviewRefreshing: false,
+              recommendationsRefreshing: false,
+            }),
+            refreshBatchReview,
+            refreshBatchRecommendations: vi.fn(),
+            registerRetagging,
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchQueueTaggingJobs,
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    component.toggleSelected('m1');
+    component.reprocessUnresolved();
+
+    expect(batchQueueTaggingJobs).toHaveBeenCalledWith(['m1']);
+    expect(registerRetagging).toHaveBeenCalledWith([makeReviewItem('m1').media]);
+    expect(refreshBatchReview).toHaveBeenCalledWith('b1');
+    expect(component.selectedIds()).toEqual([]);
+  });
+
+  it('reprocesses all visible unresolved media when nothing is selected', async () => {
+    const batchQueueTaggingJobs = vi.fn(() => of({ queued: 1 }));
+    const registerRetagging = vi.fn();
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: () => ({
+              id: 'b1',
+              recommendationGroups: [],
+              reviewItems: [
+                makeReviewItem('m-character', 'character'),
+                makeReviewItem('m-series', 'series'),
+                makeReviewItem('m-both', 'both'),
+              ],
+              reviewBaselineTotal: 3,
+              reviewRefreshing: false,
+              recommendationsRefreshing: false,
+            }),
+            refreshBatchReview: vi.fn(),
+            refreshBatchRecommendations: vi.fn(),
+            registerRetagging,
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchQueueTaggingJobs,
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    component.filter.set('missing_series');
+    component.reprocessUnresolved();
+
+    expect(batchQueueTaggingJobs).toHaveBeenCalledWith(['m-series']);
+    expect(registerRetagging).toHaveBeenCalledWith([makeReviewItem('m-series', 'series').media]);
+  });
+
+  it('excludes locally discarded items from unresolved reprocessing and keeps selection on error', async () => {
+    const batchQueueTaggingJobs = vi.fn(() => throwError(() => new Error('boom')));
+    const registerRetagging = vi.fn();
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: () => ({
+              id: 'b1',
+              recommendationGroups: [],
+              reviewItems: [makeReviewItem('m1'), makeReviewItem('m2')],
+              reviewBaselineTotal: 2,
+              reviewRefreshing: false,
+              recommendationsRefreshing: false,
+            }),
+            refreshBatchReview: vi.fn(),
+            refreshBatchRecommendations: vi.fn(),
+            registerRetagging,
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchQueueTaggingJobs,
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    component.discardedMediaIds.set(['m1']);
+    component.toggleSelected('m2');
+    component.reprocessUnresolved();
+
+    expect(batchQueueTaggingJobs).toHaveBeenCalledWith(['m2']);
+    expect(registerRetagging).not.toHaveBeenCalled();
+    expect(component.selectedIds()).toEqual(['m2']);
+    expect(component.reprocessing()).toBe(false);
   });
 
   it('allows removing items from a recommendation group', async () => {
@@ -720,7 +935,7 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems, listAllReviewItems: vi.fn() } },
+        { provide: BatchesClientService, useValue: { listReviewItems, mergeReviewItems: vi.fn() } },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -733,8 +948,13 @@ describe('UploadReviewDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Merge all batches & regroup');
   });
 
-  it('hides the merge-all button for all-pending dialogs', async () => {
-    const listAllReviewItems = vi.fn().mockReturnValue(of({ total: 0, items: [], recommendation_groups: [] }));
+  it('hides the merge-all button for merged-batch dialogs', async () => {
+    const mergeReviewItems = vi.fn().mockReturnValue(of({
+      merged_batch_id: 'merged-1',
+      total: 0,
+      items: [],
+      recommendation_groups: [],
+    }));
 
     await TestBed.configureTestingModule({
       imports: [UploadReviewDialogComponent, NoopAnimationsModule],
@@ -758,7 +978,7 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(), listAllReviewItems } },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(), mergeReviewItems } },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: null } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -768,11 +988,11 @@ describe('UploadReviewDialogComponent', () => {
     const fixture = TestBed.createComponent(UploadReviewDialogComponent);
     fixture.detectChanges();
 
-    expect(listAllReviewItems).toHaveBeenCalledWith({ include_recommendations: true });
+    expect(mergeReviewItems).toHaveBeenCalledWith({ include_recommendations: true, force_refresh: true });
     expect(fixture.nativeElement.textContent).not.toContain('Merge all batches & regroup');
   });
 
-  it('switches to all-pending scope and keeps refreshing through listAllReviewItems', async () => {
+  it('switches to merged-batch scope and refreshes through the persisted merged batch', async () => {
     const baseMedia = {
       uploader_id: 'u1',
       uploader_username: 'uploader',
@@ -816,7 +1036,8 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const allPendingResponse = {
+    const mergedBatchResponse = {
+      merged_batch_id: 'merged-1',
       total: 4,
       items: ['m1', 'm2', 'm3', 'm4'].map((id, index) => ({
         batch_item_id: `all-${index + 1}`,
@@ -855,7 +1076,7 @@ describe('UploadReviewDialogComponent', () => {
           confidence: 0.87,
         },
       ],
-    } satisfies ImportBatchReviewListResponse;
+    };
     const listReviewItems = vi.fn()
       .mockReturnValueOnce(of({ total: 2, items: batchItems, recommendation_groups: [] }))
       .mockReturnValueOnce(of({
@@ -870,13 +1091,18 @@ describe('UploadReviewDialogComponent', () => {
           suggested_characters: [{ name: 'Saber', confidence: 0.9 }],
           suggested_series: [],
           shared_signals: [],
-          confidence: 0.91,
-        }],
+            confidence: 0.91,
+          }],
+      }))
+      .mockReturnValueOnce(of({
+        total: 4,
+        items: mergedBatchResponse.items,
+        recommendation_groups: mergedBatchResponse.recommendation_groups,
       }));
-    const allPending$ = new Subject<ImportBatchReviewListResponse>();
-    const listAllReviewItems = vi.fn()
-      .mockReturnValueOnce(allPending$)
-      .mockReturnValueOnce(of(allPendingResponse));
+    const mergedBatch$ = new Subject<typeof mergedBatchResponse>();
+    const mergeReviewItems = vi.fn()
+      .mockReturnValueOnce(mergedBatch$)
+      .mockReturnValueOnce(of(mergedBatchResponse));
     const refreshBatchRecommendations = vi.fn();
 
     await TestBed.configureTestingModule({
@@ -901,7 +1127,7 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems, listAllReviewItems } },
+        { provide: BatchesClientService, useValue: { listReviewItems, mergeReviewItems } },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -925,17 +1151,25 @@ describe('UploadReviewDialogComponent', () => {
     mergeButton?.click();
     fixture.detectChanges();
 
-    expect(component.scope()).toBe('all_pending');
+    expect(component.scope()).toBe('batch');
+    expect(component.remoteRefreshing()).toBe(true);
+    expect(component.remoteRecommendationsRefreshing()).toBe(true);
+    expect(component.selectedIds()).toEqual(['m1']);
+    expect(component.removedGroupMediaIds()).toEqual({ 'group-1': ['m1'] });
+    expect(component.discardedMediaIds()).toEqual(['m2']);
+    expect(component.expandedGroupIds()).toEqual(['group-1']);
+    expect(mergeReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: true, force_refresh: true });
+
+    mergedBatch$.next(mergedBatchResponse);
+    mergedBatch$.complete();
+    fixture.detectChanges();
+
+    expect(component.scope()).toBe('merged_batch');
+    expect(component.activeBatchId()).toBe('merged-1');
     expect(component.selectedIds()).toEqual([]);
     expect(component.removedGroupMediaIds()).toEqual({});
     expect(component.discardedMediaIds()).toEqual([]);
     expect(component.expandedGroupIds()).toEqual([]);
-    expect(listAllReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: true });
-
-    allPending$.next(allPendingResponse);
-    allPending$.complete();
-    fixture.detectChanges();
-
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-1', 'group-2']);
     expect(fixture.nativeElement.textContent).toContain('4 still need character or series names.');
 
@@ -943,9 +1177,9 @@ describe('UploadReviewDialogComponent', () => {
     refreshButton.click();
     fixture.detectChanges();
 
-    expect(listAllReviewItems).toHaveBeenNthCalledWith(2, { include_recommendations: true });
+    expect(listReviewItems).toHaveBeenLastCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
     expect(refreshBatchRecommendations).not.toHaveBeenCalled();
-    expect(listReviewItems).toHaveBeenCalledTimes(2);
+    expect(listReviewItems).toHaveBeenCalledTimes(3);
   });
 
   it('refresh button triggers force-refresh and shows a spinner while refreshing', async () => {
@@ -1013,7 +1247,7 @@ describe('UploadReviewDialogComponent', () => {
     expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
   });
 
-  it('re-fetches all-pending groups after applying names in all-pending mode', async () => {
+  it('re-fetches merged-batch groups after applying names in merged-batch mode', async () => {
     const baseMedia = {
       uploader_id: 'u1',
       uploader_username: 'uploader',
@@ -1057,8 +1291,9 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const listAllReviewItems = vi.fn()
+    const mergeReviewItems = vi.fn()
       .mockReturnValueOnce(of({
+        merged_batch_id: 'merged-1',
         total: 4,
         items: allItems,
         recommendation_groups: [
@@ -1085,8 +1320,8 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }))
-      .mockReturnValueOnce(of({
+      }));
+    const listReviewItems = vi.fn().mockReturnValueOnce(of({
         total: 2,
         items: allItems.slice(2),
         recommendation_groups: [
@@ -1127,7 +1362,7 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(), listAllReviewItems } },
+        { provide: BatchesClientService, useValue: { listReviewItems, mergeReviewItems } },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: null } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -1150,11 +1385,11 @@ describe('UploadReviewDialogComponent', () => {
       character_names: ['ryuuguu_rena'],
       series_names: undefined,
     });
-    expect(listAllReviewItems).toHaveBeenNthCalledWith(2, { include_recommendations: true });
+    expect(listReviewItems).toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 
-  it('re-fetches all-pending groups after discarding in all-pending mode', async () => {
+  it('re-fetches merged-batch groups after discarding in merged-batch mode', async () => {
     const baseMedia = {
       uploader_id: 'u1',
       uploader_username: 'uploader',
@@ -1198,8 +1433,9 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const listAllReviewItems = vi.fn()
+    const mergeReviewItems = vi.fn()
       .mockReturnValueOnce(of({
+        merged_batch_id: 'merged-1',
         total: 4,
         items: allItems,
         recommendation_groups: [
@@ -1226,8 +1462,8 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }))
-      .mockReturnValueOnce(of({
+      }));
+    const listReviewItems = vi.fn().mockReturnValueOnce(of({
         total: 2,
         items: allItems.slice(2),
         recommendation_groups: [
@@ -1268,7 +1504,7 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(), listAllReviewItems } },
+        { provide: BatchesClientService, useValue: { listReviewItems, mergeReviewItems } },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: null } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -1283,7 +1519,7 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     expect(batchDismissMetadataReview).toHaveBeenCalledWith(['m1', 'm2'], true);
-    expect(listAllReviewItems).toHaveBeenNthCalledWith(2, { include_recommendations: true });
+    expect(listReviewItems).toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 

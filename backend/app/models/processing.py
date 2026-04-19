@@ -11,6 +11,7 @@ from backend.app.database import Base
 
 class BatchType(str, enum.Enum):
     upload = "upload"
+    review_merge = "review_merge"
     retag = "retag"
     rethumbnail = "rethumbnail"
     rescan = "rescan"

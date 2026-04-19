@@ -242,6 +242,101 @@ async def test_list_batch_review_items_builds_recommendations_when_requested(fak
 
 
 @pytest.mark.asyncio
+async def test_list_all_review_items_returns_unresolved_across_batches(fake_db, user):
+    service = ProcessingService(fake_db)
+    now = datetime.now(timezone.utc)
+
+    def make_media(name: str, *, entities: list[MediaEntity]):
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            uploaded_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.entities = entities
+        media.media_tags = []
+        return media
+
+    batch_one = uuid.uuid4()
+    batch_two = uuid.uuid4()
+
+    media_one = make_media(
+        "one.webp",
+        entities=[
+            MediaEntity(
+                id=uuid.uuid4(),
+                media_id=uuid.uuid4(),
+                entity_type=MediaEntityType.character,
+                name="Saber",
+                role="primary",
+                source="tagger",
+            ),
+        ],
+    )
+    media_one.entities[0].media_id = media_one.id
+
+    media_two = make_media("two.webp", entities=[])
+    media_three = make_media(
+        "three.webp",
+        entities=[
+            MediaEntity(
+                id=uuid.uuid4(),
+                media_id=uuid.uuid4(),
+                entity_type=MediaEntityType.character,
+                name="Rin",
+                role="primary",
+                source="tagger",
+            ),
+            MediaEntity(
+                id=uuid.uuid4(),
+                media_id=uuid.uuid4(),
+                entity_type=MediaEntityType.series,
+                name="Fate",
+                role="primary",
+                source="tagger",
+            ),
+        ],
+    )
+    for entity in media_three.entities:
+        entity.media_id = media_three.id
+
+    item_one = ImportBatchItem(batch_id=batch_one, media_id=media_one.id, source_filename="one.webp", status=ItemStatus.done)
+    item_one.id = uuid.uuid4()
+    item_one.media = media_one
+    item_two = ImportBatchItem(batch_id=batch_two, media_id=media_two.id, source_filename="two.webp", status=ItemStatus.done)
+    item_two.id = uuid.uuid4()
+    item_two.media = media_two
+    item_three = ImportBatchItem(batch_id=batch_two, media_id=media_three.id, source_filename="three.webp", status=ItemStatus.done)
+    item_three.id = uuid.uuid4()
+    item_three.media = media_three
+
+    with patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_all_review_candidates_for_user = AsyncMock(return_value=[item_one, item_two, item_three])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_all_review_items(user.id)
+
+    assert result.total == 2
+    assert {item.batch_item_id for item in result.items} == {item_one.id, item_two.id}
+    assert {item.media.id for item in result.items} == {media_one.id, media_two.id}
+    assert result.recommendation_groups == []
+
+
+@pytest.mark.asyncio
 async def test_list_batch_review_items_skips_dismissed_review_media(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()

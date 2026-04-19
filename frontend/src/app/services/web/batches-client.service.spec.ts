@@ -14,6 +14,7 @@ const mockBatch = {
 };
 const mockItemPage = { total: 0, next_cursor: null, has_more: false, page_size: 50, items: [] };
 const mockReviewPage = { total: 1, items: [], recommendation_groups: [] };
+const mockMergedReviewPage = { merged_batch_id: 'merged-1', total: 1, items: [], recommendation_groups: [] };
 const mockReviewSummary = {
   unresolved_count: 2,
   review_batch_ids: ['b1'],
@@ -110,6 +111,23 @@ describe('BatchesClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/review-items');
     expect(req.request.params.get('include_recommendations')).toBe('true');
     req.flush(mockReviewPage);
+  });
+
+  it('mergeReviewItems sends POST /api/v1/me/import-batches/review-merge', () => {
+    service.mergeReviewItems().subscribe(res => expect(res).toEqual(mockMergedReviewPage));
+
+    const req = http.expectOne('/api/v1/me/import-batches/review-merge');
+    expect(req.request.method).toBe('POST');
+    req.flush(mockMergedReviewPage);
+  });
+
+  it('mergeReviewItems passes include_recommendations and force_refresh', () => {
+    service.mergeReviewItems({ include_recommendations: true, force_refresh: true }).subscribe();
+
+    const req = http.expectOne(r => r.url === '/api/v1/me/import-batches/review-merge');
+    expect(req.request.params.get('include_recommendations')).toBe('true');
+    expect(req.request.params.get('force_refresh')).toBe('true');
+    req.flush(mockMergedReviewPage);
   });
 
   it('listReviewSummary sends GET /api/v1/me/import-batches/review-summary', () => {

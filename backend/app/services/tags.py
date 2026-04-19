@@ -21,6 +21,7 @@ from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import CATEGORY_NAMES, MetadataListScope, TagListResponse, TagManagementResult, TagRead
+from backend.app.services.library_matching import MediaLibraryEnrichmentService
 from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 from backend.app.utils.tagging import (
     TaggerBackend,
@@ -36,9 +37,15 @@ logger = logging.getLogger(__name__)
 
 
 class TagService:
-    def __init__(self, db: AsyncSession, tagger: TaggerBackend | None = None) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        tagger: TaggerBackend | None = None,
+        library_enrichment: MediaLibraryEnrichmentService | None = None,
+    ) -> None:
         self._db = db
         self._tagger = tagger
+        self._library_enrichment = library_enrichment or MediaLibraryEnrichmentService(db)
 
     async def get_tag_by_id(self, tag_id: int) -> Tag:
         tag = await TagRepository(self._db).get_by_id(tag_id)
@@ -257,6 +264,8 @@ class TagService:
                 results.append(await self._predict_with_retries(str(frame_path)))
             aggregated = aggregate_tagging_results(results)
             await self._store_tagging_result(media, aggregated)
+            if media.uploader_id is not None:
+                await self._library_enrichment.enrich_media(media.id, user_id=media.uploader_id)
         finally:
             cleanup_sampled_frames([frame for frame in frames if frame != Path(media.filepath)])
 

@@ -4,6 +4,7 @@ import { EntityRead } from './relations';
 
 export enum BatchType {
   UPLOAD = 'upload',
+  REVIEW_MERGE = 'review_merge',
   RETAG = 'retag',
   RETHUMBNAIL = 'rethumbnail',
   RESCAN = 'rescan',
@@ -104,6 +105,10 @@ export interface ImportBatchReviewListResponse {
   total: number;
   items: ImportBatchReviewItemRead[];
   recommendation_groups: ImportBatchRecommendationGroupRead[];
+}
+
+export interface ImportBatchMergedReviewResponse extends ImportBatchReviewListResponse {
+  merged_batch_id: string;
 }
 
 export interface ImportBatchReviewSummaryResponse {

@@ -23,6 +23,11 @@
   align-items: center;
 }
 
+.review-selection__hint {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+}
+
 .review-inputs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

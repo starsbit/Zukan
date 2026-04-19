@@ -22,8 +22,8 @@ def _batch_payload(batch_id: str, user_id: str) -> dict:
         "started_at": now,
         "finished_at": None,
         "last_heartbeat_at": now,
-        "app_version": "0.1.0",
-        "worker_version": "0.1.0",
+        "app_version": "0.1.1",
+        "worker_version": "0.1.1",
         "error_summary": None,
     }
 
@@ -155,7 +155,17 @@ def test_list_batch_review_items_contract(api_client, monkeypatch):
                         "is_favorited": False,
                         "favorite_count": 0,
                     },
-                    "entities": [],
+                    "entities": [
+                        {
+                            "id": str(uuid.uuid4()),
+                            "entity_type": "series",
+                            "entity_id": None,
+                            "name": "Fate/stay night",
+                            "role": "primary",
+                            "source": "library_match",
+                            "confidence": 0.91,
+                        }
+                    ],
                     "source_filename": "a.webp",
                     "missing_character": True,
                     "missing_series": True,
@@ -192,6 +202,92 @@ def test_list_batch_review_items_with_recommendations_contract(api_client, monke
     )
 
     assert response.status_code == 200
+
+
+def test_list_all_review_items_contract(api_client, monkeypatch):
+    async def _fake_review(self, user_id, include_recommendations=False):
+        assert include_recommendations is True
+        now = datetime.now(timezone.utc).isoformat()
+        media_id = str(uuid.uuid4())
+        return {
+            "total": 2,
+            "recommendation_groups": [],
+            "items": [
+                {
+                    "batch_item_id": str(uuid.uuid4()),
+                    "media": {
+                        "id": media_id,
+                        "uploader_id": str(user_id),
+                        "uploader_username": "demo",
+                        "owner_id": str(user_id),
+                        "owner_username": "demo",
+                        "visibility": "private",
+                        "filename": "a.webp",
+                        "original_filename": "a.webp",
+                        "media_type": "image",
+                        "metadata": {
+                            "file_size": 1,
+                            "width": 10,
+                            "height": 10,
+                            "duration_seconds": None,
+                            "frame_count": 1,
+                            "mime_type": "image/webp",
+                            "captured_at": now,
+                        },
+                        "version": 1,
+                        "uploaded_at": now,
+                        "deleted_at": None,
+                        "tags": [],
+                        "ocr_text_override": None,
+                        "is_nsfw": False,
+                        "tagging_status": "done",
+                        "tagging_error": None,
+                        "thumbnail_status": "done",
+                        "poster_status": "not_applicable",
+                        "ocr_text": None,
+                        "is_favorited": False,
+                        "favorite_count": 0,
+                    },
+                    "entities": [],
+                    "source_filename": "a.webp",
+                    "missing_character": True,
+                    "missing_series": True,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(ProcessingService, "list_all_review_items", _fake_review)
+
+    response = api_client.get(
+        "/api/v1/me/import-batches/review-items",
+        params={"include_recommendations": "true"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+
+
+def test_merge_review_batches_contract(api_client, monkeypatch):
+    async def _fake_merge(self, user_id, include_recommendations=False, force_refresh=False):
+        assert include_recommendations is True
+        assert force_refresh is True
+        return {
+            "merged_batch_id": str(uuid.uuid4()),
+            "total": 2,
+            "recommendation_groups": [],
+            "items": [],
+        }
+
+    monkeypatch.setattr(ProcessingService, "merge_review_batches", _fake_merge)
+
+    response = api_client.post(
+        "/api/v1/me/import-batches/review-merge",
+        params={"include_recommendations": "true", "force_refresh": "true"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 2
+    assert "merged_batch_id" in response.json()
 
 
 def test_get_review_summary_contract(api_client, monkeypatch):
