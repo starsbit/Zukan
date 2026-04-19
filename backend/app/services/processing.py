@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from collections import Counter, defaultdict
 from collections.abc import Coroutine
 from datetime import datetime, timezone
@@ -44,6 +43,7 @@ MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
 ANILIST_EXPANSION_PAIR_THRESHOLD = PAIR_SCORE_THRESHOLD
+MAX_ANILIST_CHARACTER_BUCKETS_PER_REQUEST = 1
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +205,9 @@ class ProcessingService:
             await self._db.flush()
             force_refresh = True
 
+        if not force_refresh and await self._merged_review_batch_needs_refresh(merged_batch, user_id):
+            force_refresh = True
+
         if force_refresh:
             await self._refresh_merged_review_batch(merged_batch, user_id)
 
@@ -334,7 +337,7 @@ class ProcessingService:
 
         return items, review_candidates
 
-    async def _refresh_merged_review_batch(self, merged_batch: ImportBatch, user_id: uuid.UUID) -> None:
+    async def _load_deduped_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
         candidates = await ImportBatchItemRepository(self._db).list_all_review_candidates_for_user(
             user_id,
             batch_types=[BatchType.upload],
@@ -349,6 +352,27 @@ class ProcessingService:
                 continue
             seen_media_ids.add(media.id)
             deduped_candidates.append(candidate)
+
+        return deduped_candidates
+
+    async def _merged_review_batch_needs_refresh(self, merged_batch: ImportBatch, user_id: uuid.UUID) -> bool:
+        deduped_candidates = await self._load_deduped_review_candidates_for_user(user_id)
+        current_media_ids = {candidate.media.id for candidate in deduped_candidates if candidate.media is not None}
+        existing_media_ids = [
+            media_id
+            for media_id in (
+                await self._db.execute(
+                    select(ImportBatchItem.media_id)
+                    .where(ImportBatchItem.batch_id == merged_batch.id, ImportBatchItem.media_id.is_not(None))
+                    .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
+                )
+            ).scalars().all()
+            if media_id is not None
+        ]
+        return set(existing_media_ids) != current_media_ids
+
+    async def _refresh_merged_review_batch(self, merged_batch: ImportBatch, user_id: uuid.UUID) -> None:
+        deduped_candidates = await self._load_deduped_review_candidates_for_user(user_id)
 
         await self._db.execute(
             delete(ImportBatchItem).where(ImportBatchItem.batch_id == merged_batch.id)
@@ -461,20 +485,28 @@ class ProcessingService:
             groups.append(group)
             grouped_ids.update(c.media.id for c in bucket_candidates)
 
-        first_character_bucket = True
-        for bucket_candidates in character_buckets.values():
+        for bucket_index, bucket_candidates in enumerate(
+            sorted(character_buckets.values(), key=len, reverse=True)
+        ):
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if not ungrouped:
                 continue
-            if not first_character_bucket:
-                await asyncio.sleep(0.7)
-            first_character_bucket = False
-            expanded_candidates, extra_series_suggestions = await self._expand_character_bucket_with_anilist(
-                ungrouped,
-                candidates,
-                grouped_ids,
-                review_item_by_media_id,
-            )
+
+            expanded_candidates = ungrouped
+            extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] = []
+            if bucket_index < MAX_ANILIST_CHARACTER_BUCKETS_PER_REQUEST:
+                expanded_candidates, extra_series_suggestions = await self._expand_character_bucket_with_anilist(
+                    ungrouped,
+                    candidates,
+                    grouped_ids,
+                    review_item_by_media_id,
+                )
+            else:
+                logger.info(
+                    "Skipping AniList expansion for character bucket index=%d size=%d due to per-request budget",
+                    bucket_index + 1,
+                    len(ungrouped),
+                )
             if len(expanded_candidates) < 2:
                 continue
             group = await self._build_recommendation_group(

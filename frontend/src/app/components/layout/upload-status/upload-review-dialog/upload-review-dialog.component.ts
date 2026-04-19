@@ -223,9 +223,10 @@ export class UploadReviewDialogComponent {
 
     if (this.scope() === 'merged_batch') {
       this.loadMergedReview({
-        includeRecommendations: true,
-        forceRefresh: true,
+        includeRecommendations: false,
+        forceRefresh: false,
         showReviewRefreshing: true,
+        refreshRecommendationsAfterLoad: true,
       });
       return;
     }
@@ -298,9 +299,10 @@ export class UploadReviewDialogComponent {
     }
 
     this.loadMergedReview({
-      includeRecommendations: true,
+      includeRecommendations: false,
       forceRefresh: true,
       showReviewRefreshing: true,
+      refreshRecommendationsAfterLoad: true,
     });
   }
 
@@ -491,8 +493,9 @@ export class UploadReviewDialogComponent {
       if (!batchId) {
         this.loadMergedReview({
           includeRecommendations: false,
-          forceRefresh: true,
+          forceRefresh: false,
           showReviewRefreshing: true,
+          refreshRecommendationsAfterLoad: false,
         });
         return;
       }
@@ -542,9 +545,10 @@ export class UploadReviewDialogComponent {
       const batchId = this.activeBatchId();
       if (!batchId) {
         this.loadMergedReview({
-          includeRecommendations: true,
-          forceRefresh: true,
+          includeRecommendations: false,
+          forceRefresh: false,
           showReviewRefreshing: false,
+          refreshRecommendationsAfterLoad: true,
         });
         return;
       }
@@ -683,6 +687,7 @@ export class UploadReviewDialogComponent {
     includeRecommendations: boolean;
     forceRefresh: boolean;
     showReviewRefreshing: boolean;
+    refreshRecommendationsAfterLoad: boolean;
   }): void {
     if (this.remoteRefreshing() || this.remoteRecommendationsRefreshing()) {
       return;
@@ -709,6 +714,14 @@ export class UploadReviewDialogComponent {
           this.remoteBaselineTotal.set(response.total);
           this.remoteRefreshing.set(false);
           this.remoteRecommendationsRefreshing.set(false);
+
+          if (
+            options.refreshRecommendationsAfterLoad
+            && response.total > 1
+            && response.recommendation_groups.length === 0
+          ) {
+            this.refreshRecommendations();
+          }
         },
         error: () => {
           this.remoteRefreshing.set(false);

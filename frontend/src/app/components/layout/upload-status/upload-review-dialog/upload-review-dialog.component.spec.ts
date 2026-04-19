@@ -988,7 +988,7 @@ describe('UploadReviewDialogComponent', () => {
     const fixture = TestBed.createComponent(UploadReviewDialogComponent);
     fixture.detectChanges();
 
-    expect(mergeReviewItems).toHaveBeenCalledWith({ include_recommendations: true, force_refresh: true });
+    expect(mergeReviewItems).toHaveBeenCalledWith({ include_recommendations: false, force_refresh: false });
     expect(fixture.nativeElement.textContent).not.toContain('Merge all batches & regroup');
   });
 
@@ -1153,12 +1153,12 @@ describe('UploadReviewDialogComponent', () => {
 
     expect(component.scope()).toBe('batch');
     expect(component.remoteRefreshing()).toBe(true);
-    expect(component.remoteRecommendationsRefreshing()).toBe(true);
+    expect(component.remoteRecommendationsRefreshing()).toBe(false);
     expect(component.selectedIds()).toEqual(['m1']);
     expect(component.removedGroupMediaIds()).toEqual({ 'group-1': ['m1'] });
     expect(component.discardedMediaIds()).toEqual(['m2']);
     expect(component.expandedGroupIds()).toEqual([]);
-    expect(mergeReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: true, force_refresh: true });
+    expect(mergeReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: false, force_refresh: true });
 
     mergedBatch$.next(mergedBatchResponse);
     mergedBatch$.complete();

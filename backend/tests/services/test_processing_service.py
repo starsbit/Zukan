@@ -13,7 +13,7 @@ from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus
-from backend.app.schemas import ImportBatchRecommendationGroupRead
+from backend.app.schemas import ImportBatchMergedReviewResponse, ImportBatchRecommendationGroupRead, ImportBatchReviewListResponse
 from backend.app.services.processing import ProcessingService
 from backend.tests.services.conftest import RowResult, ScalarResult
 
@@ -1011,6 +1011,72 @@ async def test_character_name_groups_do_not_merge_different_characters_with_same
 
 
 @pytest.mark.asyncio
+async def test_character_name_groups_only_expand_one_bucket_with_anilist_per_request(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    def make_item(name: str, char_name: str) -> ImportBatchItem:
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            uploaded_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.media_tags = []
+        media.entities = [
+            MediaEntity(
+                id=uuid.uuid4(),
+                media_id=media.id,
+                entity_type=MediaEntityType.character,
+                name=char_name,
+                role="primary",
+                source="tagger",
+                confidence=0.9,
+            ),
+        ]
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=name, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        return item
+
+    items = [
+        make_item("saber-1.webp", "Saber"),
+        make_item("saber-2.webp", "Saber"),
+        make_item("rin-1.webp", "Rin"),
+        make_item("rin-2.webp", "Rin"),
+    ]
+
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[])] * 6 + [None])
+    fetch_anilist = AsyncMock(return_value=["Fate/stay night"])
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_fetch_anilist_series_candidates", fetch_anilist), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=items)
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert len(result.recommendation_groups) == 2
+    assert fetch_anilist.await_count == 1
+
+
+@pytest.mark.asyncio
 async def test_list_batch_review_items_uses_cached_recommendation_groups(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
@@ -1071,3 +1137,85 @@ async def test_list_batch_review_items_uses_cached_recommendation_groups(fake_db
 
     build_groups.assert_not_awaited()
     assert result.recommendation_groups[0].suggested_series[0].name == "Fate/stay night"
+
+
+@pytest.mark.asyncio
+async def test_merge_review_batches_reuses_persisted_merged_batch_when_contents_match(fake_db, user):
+    service = ProcessingService(fake_db)
+    merged_batch = ImportBatch(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        type=BatchType.review_merge,
+        status=BatchStatus.done,
+        total_items=2,
+        queued_items=0,
+        processing_items=0,
+        done_items=2,
+        failed_items=0,
+    )
+
+    expected_review = ImportBatchMergedReviewResponse(
+        merged_batch_id=merged_batch.id,
+        total=2,
+        items=[],
+        recommendation_groups=[],
+    )
+
+    with patch("backend.app.services.processing.ImportBatchRepository") as repo_cls, \
+         patch.object(service, "_merged_review_batch_needs_refresh", AsyncMock(return_value=False)) as needs_refresh, \
+         patch.object(service, "_refresh_merged_review_batch", AsyncMock()) as refresh_merged, \
+         patch.object(
+             service,
+             "list_batch_review_items",
+             AsyncMock(return_value=ImportBatchReviewListResponse(total=2, items=[], recommendation_groups=[])),
+         ) as list_review:
+        repo_cls.return_value.get_latest_for_user_by_type = AsyncMock(return_value=merged_batch)
+
+        result = await service.merge_review_batches(user.id, include_recommendations=True)
+
+    needs_refresh.assert_awaited_once_with(merged_batch, user.id)
+    refresh_merged.assert_not_awaited()
+    list_review.assert_awaited_once_with(
+        merged_batch.id,
+        user.id,
+        include_recommendations=True,
+        force_refresh=False,
+    )
+    assert result == expected_review
+
+
+@pytest.mark.asyncio
+async def test_merge_review_batches_refreshes_persisted_merged_batch_when_contents_change(fake_db, user):
+    service = ProcessingService(fake_db)
+    merged_batch = ImportBatch(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        type=BatchType.review_merge,
+        status=BatchStatus.done,
+        total_items=2,
+        queued_items=0,
+        processing_items=0,
+        done_items=2,
+        failed_items=0,
+    )
+
+    with patch("backend.app.services.processing.ImportBatchRepository") as repo_cls, \
+         patch.object(service, "_merged_review_batch_needs_refresh", AsyncMock(return_value=True)) as needs_refresh, \
+         patch.object(service, "_refresh_merged_review_batch", AsyncMock()) as refresh_merged, \
+         patch.object(
+             service,
+             "list_batch_review_items",
+             AsyncMock(return_value=ImportBatchReviewListResponse(total=3, items=[], recommendation_groups=[])),
+         ) as list_review:
+        repo_cls.return_value.get_latest_for_user_by_type = AsyncMock(return_value=merged_batch)
+
+        await service.merge_review_batches(user.id, include_recommendations=True)
+
+    needs_refresh.assert_awaited_once_with(merged_batch, user.id)
+    refresh_merged.assert_awaited_once_with(merged_batch, user.id)
+    list_review.assert_awaited_once_with(
+        merged_batch.id,
+        user.id,
+        include_recommendations=True,
+        force_refresh=True,
+    )
