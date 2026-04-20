@@ -1,11 +1,23 @@
-<mat-dialog-content class="inspector-content">
-  <div class="inspector-layout">
+<mat-dialog-content
+  class="inspector-content"
+  (pointerdown)="onViewerPointerDown($event)"
+  (pointermove)="onViewerPointerMove($event)"
+  (click)="onViewerSurfaceClick($event)"
+>
+  <div
+    class="inspector-layout"
+    [class.inspector-layout--mobile]="isMobile()"
+    [class.inspector-layout--chrome-hidden]="!chromeVisible()"
+  >
     <section
       #zoomStage
       class="inspector-media-pane"
+      [class.inspector-media-pane--mobile]="isMobile()"
       [class.inspector-media-pane--draggable]="isImage() && zoom() > 1"
       [class.inspector-media-pane--dragging]="dragging()"
+      [class.inspector-media-pane--touch-enabled]="isImage()"
       (wheel)="onWheelZoom($event)"
+      (pointerdown)="onStagePointerDown($event)"
     >
       <div class="inspector-overlay inspector-overlay--top-left">
         <button
@@ -29,6 +41,19 @@
             (click)="resetZoom()"
           >
             <mat-icon aria-hidden="true">center_focus_strong</mat-icon>
+          </button>
+        }
+        @if (!isMobile()) {
+          <button
+            class="toolbar-button"
+            mat-icon-button
+            type="button"
+            [disabled]="favoritePending()"
+            [attr.aria-label]="isFavorited() ? 'Remove from favorites' : 'Add to favorites'"
+            [attr.aria-pressed]="isFavorited()"
+            (click)="toggleFavorite()"
+          >
+            <mat-icon aria-hidden="true">{{ isFavorited() ? 'favorite' : 'favorite_border' }}</mat-icon>
           </button>
         }
         @if (!editing()) {
@@ -100,11 +125,26 @@
               [alt]="title()"
               draggable="false"
               [style.transform]="imageTransform()"
-              (pointerdown)="startPan($event)"
             />
           }
         }
       </div>
+
+      @if (favoriteFeedback(); as feedback) {
+        <div
+          class="inspector-favorite-feedback"
+          [class.inspector-favorite-feedback--active]="feedback.id > 0"
+          [class.inspector-favorite-feedback--favorited]="feedback.favorited"
+          [style.left.px]="feedback.x"
+          [style.top.px]="feedback.y"
+          aria-hidden="true"
+        >
+          <div class="inspector-favorite-feedback__ring"></div>
+          <mat-icon class="inspector-favorite-feedback__icon" aria-hidden="true">
+            {{ feedback.favorited ? 'favorite' : 'heart_broken' }}
+          </mat-icon>
+        </div>
+      }
 
       <button
         class="inspector-nav inspector-nav--next"
@@ -118,324 +158,351 @@
       </button>
     </section>
 
-    <aside class="inspector-sidebar">
-      @if (detailError()) {
-        <mat-card appearance="outlined">
-          <mat-card-content class="inspector-banner">
-            <mat-icon aria-hidden="true">warning</mat-icon>
-            <p>{{ detailError() }}</p>
-          </mat-card-content>
-        </mat-card>
+    <aside
+      class="inspector-sidebar"
+      [class.inspector-sidebar--mobile]="isMobile()"
+      [class.inspector-sidebar--open]="detailsVisible()"
+      [class.inspector-sidebar--chrome-hidden]="isMobile() && !chromeVisible() && !mobileDetailsOpen()"
+    >
+      @if (isMobile()) {
+        <button
+          class="inspector-sheet-toggle"
+          type="button"
+          [attr.aria-expanded]="mobileDetailsOpen()"
+          (click)="onSheetToggleClick($event)"
+          (pointerdown)="onSheetHandlePointerDown($event)"
+        >
+          <span class="inspector-sheet-toggle__handle" aria-hidden="true"></span>
+          <span class="inspector-sheet-toggle__label">{{ mobileDetailsLabel() }} & edit</span>
+          <mat-icon aria-hidden="true">{{
+            mobileDetailsOpen() ? 'expand_more' : 'expand_less'
+          }}</mat-icon>
+        </button>
       }
 
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>Summary</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-fields">
-          @for (field of metadataFields(); track trackByLabel($index, field)) {
-            <div class="inspector-field">
-              <span>{{ field.label }}</span>
-              <strong>{{ field.value }}</strong>
-            </div>
-          }
-        </mat-card-content>
-      </mat-card>
+      <div class="inspector-sidebar-content">
+        @if (detailError()) {
+          <mat-card appearance="outlined">
+            <mat-card-content class="inspector-banner">
+              <mat-icon aria-hidden="true">warning</mat-icon>
+              <p>{{ detailError() }}</p>
+            </mat-card-content>
+          </mat-card>
+        }
 
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>Upload</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-fields">
-          @for (field of uploadFields(); track trackByLabel($index, field)) {
-            <div class="inspector-field">
-              <span>{{ field.label }}</span>
-              <strong>{{ field.value }}</strong>
-            </div>
-          }
-        </mat-card-content>
-      </mat-card>
-
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>Characters</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-section-content">
-          @if (editing()) {
-            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Add character</mat-label>
-              <input
-                matInput
-                type="text"
-                [formControl]="characterInputControl"
-                [matAutocomplete]="characterAutocomplete"
-                placeholder="Type or choose a character"
-                (keydown.enter)="addTypedCharacterFromEvent($event)"
-              />
-              <button
-                mat-icon-button
-                matSuffix
-                type="button"
-                aria-label="Add current character"
-                (click)="addTypedCharacter()"
-              >
-                <mat-icon aria-hidden="true">add</mat-icon>
-              </button>
-            </mat-form-field>
-
-            <mat-autocomplete
-              #characterAutocomplete="matAutocomplete"
-              autoActiveFirstOption
-              (optionSelected)="selectCharacter($event.option.value)"
-            >
-              @for (suggestion of characterSuggestions(); track suggestion.name) {
-                <mat-option [value]="suggestion.name">
-                  <span>{{ displayMetadataName(suggestion.name) }}</span>
-                  <span class="inspector-option-secondary"
-                    >{{ suggestion.media_count }} matches</span
-                  >
-                </mat-option>
-              }
-            </mat-autocomplete>
-
-            @if (editableCharacters().length > 0) {
-              <mat-chip-set class="inspector-chips" aria-label="Selected characters">
-                @for (character of editableCharacters(); track character) {
-                  <mat-chip-row [removable]="true" (removed)="removeCharacter(character)">
-                    {{ displayMetadataName(character) }}
-                    <button
-                      matChipRemove
-                      type="button"
-                      aria-label="Remove character {{ displayMetadataName(character) }}"
-                    >
-                      <mat-icon aria-hidden="true">cancel</mat-icon>
-                    </button>
-                  </mat-chip-row>
-                }
-              </mat-chip-set>
-            } @else {
-              <p class="inspector-empty">No character names added yet.</p>
-            }
-          } @else if (characters().length > 0) {
-            <div class="inspector-characters">
-              @for (character of characters(); track character.name + ':' + character.details) {
-                <div class="inspector-character">
-                  <strong>{{ character.name }}</strong>
-                  @if (character.details) {
-                    <span>{{ character.details }}</span>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <p class="inspector-empty">No character names detected for this item.</p>
-          }
-        </mat-card-content>
-      </mat-card>
-
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>Series</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-section-content">
-          @if (editing()) {
-            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Add series</mat-label>
-              <input
-                matInput
-                type="text"
-                [formControl]="seriesInputControl"
-                [matAutocomplete]="seriesAutocomplete"
-                placeholder="Type or choose a series"
-                (keydown.enter)="addTypedSeriesFromEvent($event)"
-              />
-              <button
-                mat-icon-button
-                matSuffix
-                type="button"
-                aria-label="Add current series"
-                (click)="addTypedSeries()"
-              >
-                <mat-icon aria-hidden="true">add</mat-icon>
-              </button>
-            </mat-form-field>
-
-            <mat-autocomplete
-              #seriesAutocomplete="matAutocomplete"
-              autoActiveFirstOption
-              (optionSelected)="selectSeries($event.option.value)"
-            >
-              @for (suggestion of seriesSuggestions(); track suggestion.name) {
-                <mat-option [value]="suggestion.name">
-                  <span>{{ displayMetadataName(suggestion.name) }}</span>
-                  <span class="inspector-option-secondary"
-                    >{{ suggestion.media_count }} matches</span
-                  >
-                </mat-option>
-              }
-            </mat-autocomplete>
-
-            @if (editableSeries().length > 0) {
-              <mat-chip-set class="inspector-chips" aria-label="Selected series">
-                @for (seriesName of editableSeries(); track seriesName) {
-                  <mat-chip-row [removable]="true" (removed)="removeSeries(seriesName)">
-                    {{ displayMetadataName(seriesName) }}
-                    <button
-                      matChipRemove
-                      type="button"
-                      aria-label="Remove series {{ displayMetadataName(seriesName) }}"
-                    >
-                      <mat-icon aria-hidden="true">cancel</mat-icon>
-                    </button>
-                  </mat-chip-row>
-                }
-              </mat-chip-set>
-            } @else {
-              <p class="inspector-empty">No series names added yet.</p>
-            }
-          } @else if (series().length > 0) {
-            <div class="inspector-characters">
-              @for (seriesItem of series(); track seriesItem.name + ':' + seriesItem.details) {
-                <div class="inspector-character">
-                  <strong>{{ seriesItem.name }}</strong>
-                  @if (seriesItem.details) {
-                    <span>{{ seriesItem.details }}</span>
-                  }
-                </div>
-              }
-            </div>
-          } @else {
-            <p class="inspector-empty">No series names detected for this item.</p>
-          }
-        </mat-card-content>
-      </mat-card>
-
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>OCR</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-section-content">
-          @if (editing()) {
-            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
-              <mat-label>OCR override</mat-label>
-              <textarea
-                matInput
-                rows="5"
-                [value]="editableOcrValue()"
-                placeholder="Leave empty to clear the override"
-                (input)="updateOcrOverride($any($event.target).value)"
-              ></textarea>
-            </mat-form-field>
-          } @else if (media().ocr_text_override) {
-            <div class="inspector-text-block">
-              <span class="inspector-text-label">Override</span>
-              <p class="inspector-text">{{ media().ocr_text_override }}</p>
-            </div>
-          } @else {
-            <p class="inspector-empty">No OCR override saved.</p>
-          }
-
-          @if (detectedOcrText()) {
-            <div class="inspector-text-block">
-              <span class="inspector-text-label">Detected text</span>
-              <p class="inspector-text">{{ detectedOcrText() }}</p>
-            </div>
-          }
-        </mat-card-content>
-      </mat-card>
-
-      <mat-card appearance="outlined">
-        <mat-card-header>
-          <mat-card-title>Tags</mat-card-title>
-        </mat-card-header>
-        <mat-card-content class="inspector-section-content">
-          @if (editing()) {
-            <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
-              <mat-label>Add tag</mat-label>
-              <input
-                matInput
-                type="text"
-                [formControl]="tagInputControl"
-                [matAutocomplete]="tagAutocomplete"
-                placeholder="Type or choose a tag"
-                (keydown.enter)="addTypedTagFromEvent($event)"
-              />
-              <button
-                mat-icon-button
-                matSuffix
-                type="button"
-                aria-label="Add current tag"
-                (click)="addTypedTag()"
-              >
-                <mat-icon aria-hidden="true">add</mat-icon>
-              </button>
-            </mat-form-field>
-
-            <mat-autocomplete
-              #tagAutocomplete="matAutocomplete"
-              autoActiveFirstOption
-              (optionSelected)="selectTag($event.option.value)"
-            >
-              @for (tag of tagSuggestions(); track tag.id) {
-                <mat-option [value]="tag.name">
-                  <span>{{ displayMetadataName(tag.name) }}</span>
-                  <span class="inspector-option-secondary">{{ tag.category_name }}</span>
-                </mat-option>
-              }
-            </mat-autocomplete>
-
-            @if (editableTags().length > 0) {
-              <mat-chip-set aria-label="Selected tags" class="inspector-chips">
-                @for (tag of editableTags(); track tag) {
-                  <mat-chip-row [removable]="true" (removed)="removeTag(tag)">
-                    {{ displayMetadataName(tag) }}
-                    <button matChipRemove type="button" aria-label="Remove tag {{ displayMetadataName(tag) }}">
-                      <mat-icon aria-hidden="true">cancel</mat-icon>
-                    </button>
-                  </mat-chip-row>
-                }
-              </mat-chip-set>
-            } @else {
-              <p class="inspector-empty">No tags selected yet.</p>
-            }
-          } @else if (tags().length > 0) {
-            <mat-chip-set aria-label="Media tags" class="inspector-chips">
-              @for (tag of tags(); track tag) {
-                <mat-chip>{{ displayMetadataName(tag) }}</mat-chip>
-              }
-            </mat-chip-set>
-          } @else {
-            <p class="inspector-empty">No tags available for this item yet.</p>
-          }
-        </mat-card-content>
-      </mat-card>
-
-      @if (authorFields().length > 0 || externalRefs().length > 0) {
         <mat-card appearance="outlined">
           <mat-card-header>
-            <mat-card-title>Source</mat-card-title>
+            <mat-card-title>Summary</mat-card-title>
           </mat-card-header>
           <mat-card-content class="inspector-fields">
-            @for (field of authorFields(); track trackByLabel($index, field)) {
+            @for (field of metadataFields(); track trackByLabel($index, field)) {
               <div class="inspector-field">
                 <span>{{ field.label }}</span>
                 <strong>{{ field.value }}</strong>
               </div>
             }
+          </mat-card-content>
+        </mat-card>
 
-            @for (ref of externalRefs(); track ref.label + ':' + ref.value) {
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>Upload</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-fields">
+            @for (field of uploadFields(); track trackByLabel($index, field)) {
               <div class="inspector-field">
-                <span>{{ ref.label }}</span>
-                @if (ref.url) {
-                  <a [href]="ref.url" target="_blank" rel="noreferrer">{{ ref.value }}</a>
-                } @else {
-                  <strong>{{ ref.value }}</strong>
-                }
+                <span>{{ field.label }}</span>
+                <strong>{{ field.value }}</strong>
               </div>
             }
           </mat-card-content>
         </mat-card>
-      }
+
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>Characters</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-section-content">
+            @if (editing()) {
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Add character</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  [formControl]="characterInputControl"
+                  [matAutocomplete]="characterAutocomplete"
+                  placeholder="Type or choose a character"
+                  (keydown.enter)="addTypedCharacterFromEvent($event)"
+                />
+                <button
+                  mat-icon-button
+                  matSuffix
+                  type="button"
+                  aria-label="Add current character"
+                  (click)="addTypedCharacter()"
+                >
+                  <mat-icon aria-hidden="true">add</mat-icon>
+                </button>
+              </mat-form-field>
+
+              <mat-autocomplete
+                #characterAutocomplete="matAutocomplete"
+                autoActiveFirstOption
+                (optionSelected)="selectCharacter($event.option.value)"
+              >
+                @for (suggestion of characterSuggestions(); track suggestion.name) {
+                  <mat-option [value]="suggestion.name">
+                    <span>{{ displayMetadataName(suggestion.name) }}</span>
+                    <span class="inspector-option-secondary"
+                      >{{ suggestion.media_count }} matches</span
+                    >
+                  </mat-option>
+                }
+              </mat-autocomplete>
+
+              @if (editableCharacters().length > 0) {
+                <mat-chip-set class="inspector-chips" aria-label="Selected characters">
+                  @for (character of editableCharacters(); track character) {
+                    <mat-chip-row [removable]="true" (removed)="removeCharacter(character)">
+                      {{ displayMetadataName(character) }}
+                      <button
+                        matChipRemove
+                        type="button"
+                        aria-label="Remove character {{ displayMetadataName(character) }}"
+                      >
+                        <mat-icon aria-hidden="true">cancel</mat-icon>
+                      </button>
+                    </mat-chip-row>
+                  }
+                </mat-chip-set>
+              } @else {
+                <p class="inspector-empty">No character names added yet.</p>
+              }
+            } @else if (characters().length > 0) {
+              <div class="inspector-characters">
+                @for (character of characters(); track character.name + ':' + character.details) {
+                  <div class="inspector-character">
+                    <strong>{{ character.name }}</strong>
+                    @if (character.details) {
+                      <span>{{ character.details }}</span>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <p class="inspector-empty">No character names detected for this item.</p>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>Series</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-section-content">
+            @if (editing()) {
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Add series</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  [formControl]="seriesInputControl"
+                  [matAutocomplete]="seriesAutocomplete"
+                  placeholder="Type or choose a series"
+                  (keydown.enter)="addTypedSeriesFromEvent($event)"
+                />
+                <button
+                  mat-icon-button
+                  matSuffix
+                  type="button"
+                  aria-label="Add current series"
+                  (click)="addTypedSeries()"
+                >
+                  <mat-icon aria-hidden="true">add</mat-icon>
+                </button>
+              </mat-form-field>
+
+              <mat-autocomplete
+                #seriesAutocomplete="matAutocomplete"
+                autoActiveFirstOption
+                (optionSelected)="selectSeries($event.option.value)"
+              >
+                @for (suggestion of seriesSuggestions(); track suggestion.name) {
+                  <mat-option [value]="suggestion.name">
+                    <span>{{ displayMetadataName(suggestion.name) }}</span>
+                    <span class="inspector-option-secondary"
+                      >{{ suggestion.media_count }} matches</span
+                    >
+                  </mat-option>
+                }
+              </mat-autocomplete>
+
+              @if (editableSeries().length > 0) {
+                <mat-chip-set class="inspector-chips" aria-label="Selected series">
+                  @for (seriesName of editableSeries(); track seriesName) {
+                    <mat-chip-row [removable]="true" (removed)="removeSeries(seriesName)">
+                      {{ displayMetadataName(seriesName) }}
+                      <button
+                        matChipRemove
+                        type="button"
+                        aria-label="Remove series {{ displayMetadataName(seriesName) }}"
+                      >
+                        <mat-icon aria-hidden="true">cancel</mat-icon>
+                      </button>
+                    </mat-chip-row>
+                  }
+                </mat-chip-set>
+              } @else {
+                <p class="inspector-empty">No series names added yet.</p>
+              }
+            } @else if (series().length > 0) {
+              <div class="inspector-characters">
+                @for (seriesItem of series(); track seriesItem.name + ':' + seriesItem.details) {
+                  <div class="inspector-character">
+                    <strong>{{ seriesItem.name }}</strong>
+                    @if (seriesItem.details) {
+                      <span>{{ seriesItem.details }}</span>
+                    }
+                  </div>
+                }
+              </div>
+            } @else {
+              <p class="inspector-empty">No series names detected for this item.</p>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>OCR</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-section-content">
+            @if (editing()) {
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>OCR override</mat-label>
+                <textarea
+                  matInput
+                  rows="5"
+                  [value]="editableOcrValue()"
+                  placeholder="Leave empty to clear the override"
+                  (input)="updateOcrOverride($any($event.target).value)"
+                ></textarea>
+              </mat-form-field>
+            } @else if (media().ocr_text_override) {
+              <div class="inspector-text-block">
+                <span class="inspector-text-label">Override</span>
+                <p class="inspector-text">{{ media().ocr_text_override }}</p>
+              </div>
+            } @else {
+              <p class="inspector-empty">No OCR override saved.</p>
+            }
+
+            @if (detectedOcrText()) {
+              <div class="inspector-text-block">
+                <span class="inspector-text-label">Detected text</span>
+                <p class="inspector-text">{{ detectedOcrText() }}</p>
+              </div>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        <mat-card appearance="outlined">
+          <mat-card-header>
+            <mat-card-title>Tags</mat-card-title>
+          </mat-card-header>
+          <mat-card-content class="inspector-section-content">
+            @if (editing()) {
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Add tag</mat-label>
+                <input
+                  matInput
+                  type="text"
+                  [formControl]="tagInputControl"
+                  [matAutocomplete]="tagAutocomplete"
+                  placeholder="Type or choose a tag"
+                  (keydown.enter)="addTypedTagFromEvent($event)"
+                />
+                <button
+                  mat-icon-button
+                  matSuffix
+                  type="button"
+                  aria-label="Add current tag"
+                  (click)="addTypedTag()"
+                >
+                  <mat-icon aria-hidden="true">add</mat-icon>
+                </button>
+              </mat-form-field>
+
+              <mat-autocomplete
+                #tagAutocomplete="matAutocomplete"
+                autoActiveFirstOption
+                (optionSelected)="selectTag($event.option.value)"
+              >
+                @for (tag of tagSuggestions(); track tag.id) {
+                  <mat-option [value]="tag.name">
+                    <span>{{ displayMetadataName(tag.name) }}</span>
+                    <span class="inspector-option-secondary">{{ tag.category_name }}</span>
+                  </mat-option>
+                }
+              </mat-autocomplete>
+
+              @if (editableTags().length > 0) {
+                <mat-chip-set aria-label="Selected tags" class="inspector-chips">
+                  @for (tag of editableTags(); track tag) {
+                    <mat-chip-row [removable]="true" (removed)="removeTag(tag)">
+                      {{ displayMetadataName(tag) }}
+                      <button
+                        matChipRemove
+                        type="button"
+                        aria-label="Remove tag {{ displayMetadataName(tag) }}"
+                      >
+                        <mat-icon aria-hidden="true">cancel</mat-icon>
+                      </button>
+                    </mat-chip-row>
+                  }
+                </mat-chip-set>
+              } @else {
+                <p class="inspector-empty">No tags selected yet.</p>
+              }
+            } @else if (tags().length > 0) {
+              <mat-chip-set aria-label="Media tags" class="inspector-chips">
+                @for (tag of tags(); track tag) {
+                  <mat-chip>{{ displayMetadataName(tag) }}</mat-chip>
+                }
+              </mat-chip-set>
+            } @else {
+              <p class="inspector-empty">No tags available for this item yet.</p>
+            }
+          </mat-card-content>
+        </mat-card>
+
+        @if (authorFields().length > 0 || externalRefs().length > 0) {
+          <mat-card appearance="outlined">
+            <mat-card-header>
+              <mat-card-title>Source</mat-card-title>
+            </mat-card-header>
+            <mat-card-content class="inspector-fields">
+              @for (field of authorFields(); track trackByLabel($index, field)) {
+                <div class="inspector-field">
+                  <span>{{ field.label }}</span>
+                  <strong>{{ field.value }}</strong>
+                </div>
+              }
+
+              @for (ref of externalRefs(); track ref.label + ':' + ref.value) {
+                <div class="inspector-field">
+                  <span>{{ ref.label }}</span>
+                  @if (ref.url) {
+                    <a [href]="ref.url" target="_blank" rel="noreferrer">{{ ref.value }}</a>
+                  } @else {
+                    <strong>{{ ref.value }}</strong>
+                  }
+                </div>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+      </div>
     </aside>
   </div>
 </mat-dialog-content>
