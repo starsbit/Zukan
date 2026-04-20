@@ -16,22 +16,28 @@ describe('NavbarSearchService', () => {
     expect(service.applied().tags).toEqual(['Saber']);
   });
 
-  it('replaces the character chip', () => {
-    service.setCharacter('Rin');
-    service.setCharacter('Saber');
+  it('accumulates character chips and deduplicates them case-insensitively', () => {
+    service.addCharacter('Rin');
+    service.addCharacter('Saber');
+    service.addCharacter('saber');
 
-    expect(service.draftChips()).toContainEqual({ type: 'character', value: 'Saber' });
-    expect(service.draftChips().filter((chip) => chip.type === 'character')).toHaveLength(1);
-    expect(service.applied().characterName).toBe('Saber');
+    expect(service.draftChips().filter((chip) => chip.type === 'character')).toEqual([
+      { type: 'character', value: 'Rin' },
+      { type: 'character', value: 'Saber' },
+    ]);
+    expect(service.applied().characterNames).toEqual(['Rin', 'Saber']);
   });
 
-  it('replaces the series chip', () => {
-    service.setSeries('Fate/zero');
-    service.setSeries('Fate/stay night');
+  it('accumulates series chips and deduplicates them case-insensitively', () => {
+    service.addSeries('Fate/zero');
+    service.addSeries('Fate/stay night');
+    service.addSeries('FATE/STAY NIGHT');
 
-    expect(service.draftChips()).toContainEqual({ type: 'series', value: 'Fate/stay night' });
-    expect(service.draftChips().filter((chip) => chip.type === 'series')).toHaveLength(1);
-    expect(service.applied().seriesName).toBe('Fate/stay night');
+    expect(service.draftChips().filter((chip) => chip.type === 'series')).toEqual([
+      { type: 'series', value: 'Fate/zero' },
+      { type: 'series', value: 'Fate/stay night' },
+    ]);
+    expect(service.applied().seriesNames).toEqual(['Fate/zero', 'Fate/stay night']);
   });
 
   it('replaces the ocr chip', () => {
@@ -49,12 +55,14 @@ describe('NavbarSearchService', () => {
 
     expect(service.applied()).toEqual({
       tags: [],
-      characterName: null,
-      seriesName: null,
+      characterNames: [],
+      seriesNames: [],
       ocrText: 'fate stay night',
       advanced: {
         excludeTags: [],
         mode: null,
+        characterMode: null,
+        seriesMode: null,
         nsfw: null,
         sensitive: null,
         status: null,
@@ -83,12 +91,16 @@ describe('NavbarSearchService', () => {
 
   it('maps applied chips to media search params', () => {
     service.addTag('Saber');
-    service.setCharacter('Rin');
-    service.setSeries('Fate');
+    service.addCharacter('Rin');
+    service.addCharacter('Saber');
+    service.addSeries('Fate');
+    service.addSeries('Tsukihime');
     service.setOcr('text');
     service.setAdvancedFilters({
       excludeTags: ['spoiler'],
       mode: TagFilterMode.AND,
+      characterMode: TagFilterMode.OR,
+      seriesMode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
@@ -105,11 +117,13 @@ describe('NavbarSearchService', () => {
 
     expect(service.appliedParams()).toEqual({
       tag: ['Saber'],
-      character_name: 'Rin',
-      series_name: 'Fate',
+      character_name: ['Rin', 'Saber'],
+      series_name: ['Fate', 'Tsukihime'],
       ocr_text: 'text',
       exclude_tag: ['spoiler'],
       mode: TagFilterMode.AND,
+      character_mode: TagFilterMode.OR,
+      series_mode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
@@ -127,18 +141,21 @@ describe('NavbarSearchService', () => {
   it('counts active advanced filters', () => {
     service.setAdvancedFilters({
       excludeTags: ['spoiler'],
+      characterMode: TagFilterMode.OR,
       visibility: MediaVisibility.PUBLIC,
       ownerUsername: 'owner_user',
       mediaTypes: [MediaType.VIDEO],
       uploadedBeforeYear: 2027,
     });
 
-    expect(service.activeAdvancedFilterCount()).toBe(5);
+    expect(service.activeAdvancedFilterCount()).toBe(6);
   });
 
   it('normalizes advanced filters and preserves false-y filter values in applied params', () => {
     service.setAdvancedFilters({
       excludeTags: [' spoiler ', ''],
+      characterMode: TagFilterMode.OR,
+      seriesMode: TagFilterMode.AND,
       status: ' reviewed ',
       favorited: false,
       ownerUsername: ' Owner_User ',
@@ -155,6 +172,8 @@ describe('NavbarSearchService', () => {
 
     expect(service.applied().advanced).toMatchObject({
       excludeTags: ['spoiler'],
+      characterMode: TagFilterMode.OR,
+      seriesMode: TagFilterMode.AND,
       status: 'reviewed',
       favorited: false,
       ownerUsername: 'Owner_User',
@@ -169,6 +188,8 @@ describe('NavbarSearchService', () => {
     });
     expect(service.appliedParams()).toMatchObject({
       exclude_tag: ['spoiler'],
+      character_mode: TagFilterMode.OR,
+      series_mode: TagFilterMode.AND,
       status: 'reviewed',
       favorited: false,
       owner_username: 'Owner_User',
@@ -202,15 +223,16 @@ describe('NavbarSearchService', () => {
 
   it('removing chips updates the applied search immediately', () => {
     service.addTag('Saber');
-    service.setCharacter('Rin');
-    service.setSeries('Fate/stay night');
+    service.addCharacter('Rin');
+    service.addCharacter('Saber');
+    service.addSeries('Fate/stay night');
     service.removeChip({ type: 'tag', value: 'Saber' });
     service.removeLastChip();
 
     expect(service.applied()).toMatchObject({
       tags: [],
-      characterName: 'Rin',
-      seriesName: null,
+      characterNames: ['Rin', 'Saber'],
+      seriesNames: [],
     });
   });
 
@@ -225,12 +247,14 @@ describe('NavbarSearchService', () => {
     expect(service.draftText()).toBe('');
     expect(service.applied()).toEqual({
       tags: [],
-      characterName: null,
-      seriesName: null,
+      characterNames: [],
+      seriesNames: [],
       ocrText: null,
       advanced: {
         excludeTags: [],
         mode: null,
+        characterMode: null,
+        seriesMode: null,
         nsfw: null,
         sensitive: null,
         status: null,

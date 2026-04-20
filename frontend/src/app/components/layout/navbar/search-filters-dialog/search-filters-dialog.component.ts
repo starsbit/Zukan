@@ -59,6 +59,11 @@ export class SearchFiltersDialogComponent {
     { value: TagFilterMode.AND, label: 'Match all tags' },
     { value: TagFilterMode.OR, label: 'Match any tag' },
   ];
+  readonly entityModeOptions = [
+    { value: null, label: 'Default' },
+    { value: TagFilterMode.AND, label: 'Match all' },
+    { value: TagFilterMode.OR, label: 'Match any' },
+  ];
   readonly nsfwOptions = [
     { value: null, label: 'Default' },
     { value: NsfwFilter.DEFAULT, label: 'Respect user setting' },
@@ -105,6 +110,8 @@ export class SearchFiltersDialogComponent {
 
   readonly form = this.fb.group({
     mode: [this.data.filters.mode],
+    characterMode: [this.data.filters.characterMode],
+    seriesMode: [this.data.filters.seriesMode],
     nsfw: [this.data.filters.nsfw],
     sensitive: [this.data.filters.sensitive],
     status: [this.data.filters.status ?? null],
@@ -185,6 +192,8 @@ export class SearchFiltersDialogComponent {
     this.dialogRef.close({
       excludeTags: this.excludeTagChips(),
       mode: value.mode ?? null,
+      characterMode: value.characterMode ?? null,
+      seriesMode: value.seriesMode ?? null,
       nsfw: value.nsfw ?? null,
       sensitive: value.sensitive ?? null,
       status: value.status ?? null,
@@ -216,6 +225,8 @@ export class SearchFiltersDialogComponent {
     this.dialogRef.close({
       excludeTags: [],
       mode: null,
+      characterMode: null,
+      seriesMode: null,
       nsfw: null,
       sensitive: null,
       status: null,

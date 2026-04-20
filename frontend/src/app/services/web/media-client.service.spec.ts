@@ -100,7 +100,10 @@ describe('MediaClientService', () => {
   it('search passes advanced filter and sort params', () => {
     service.search({
       status: 'reviewed',
-      series_name: 'Fate stay night',
+      character_name: ['Rin Tohsaka', 'Saber Alter'],
+      series_name: ['Fate stay night', 'Tsukihime'],
+      character_mode: TagFilterMode.OR,
+      series_mode: TagFilterMode.AND,
       visibility: MediaVisibility.PUBLIC,
       owner_username: 'owner_user',
       uploader_username: 'uploader_user',
@@ -124,7 +127,10 @@ describe('MediaClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/media/search');
     expect(req.request.params.get('status')).toBe('reviewed');
-    expect(req.request.params.get('series_name')).toBe('fate_stay_night');
+    expect(req.request.params.getAll('character_name')).toEqual(['rin_tohsaka', 'saber_alter']);
+    expect(req.request.params.getAll('series_name')).toEqual(['fate_stay_night', 'tsukihime']);
+    expect(req.request.params.get('character_mode')).toBe('or');
+    expect(req.request.params.get('series_mode')).toBe('and');
     expect(req.request.params.get('visibility')).toBe('public');
     expect(req.request.params.get('owner_username')).toBe('owner_user');
     expect(req.request.params.get('uploader_username')).toBe('uploader_user');
@@ -150,10 +156,12 @@ describe('MediaClientService', () => {
   it('getTimeline forwards active non-date filters', () => {
     service.getTimeline({
       tag: ['cat'],
-      character_name: 'Rin Tohsaka',
-      series_name: 'Fate stay night',
+      character_name: ['Rin Tohsaka', 'Saber Alter'],
+      series_name: ['Fate stay night'],
       exclude_tag: ['Big Spoiler'],
       mode: TagFilterMode.OR,
+      character_mode: TagFilterMode.OR,
+      series_mode: TagFilterMode.AND,
       nsfw: NsfwFilter.ONLY,
       sensitive: SensitiveFilter.INCLUDE,
       status: 'reviewed',
@@ -167,10 +175,12 @@ describe('MediaClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
     expect(req.request.params.getAll('tag')).toEqual(['cat']);
-    expect(req.request.params.get('character_name')).toBe('rin_tohsaka');
-    expect(req.request.params.get('series_name')).toBe('fate_stay_night');
+    expect(req.request.params.getAll('character_name')).toEqual(['rin_tohsaka', 'saber_alter']);
+    expect(req.request.params.getAll('series_name')).toEqual(['fate_stay_night']);
     expect(req.request.params.getAll('exclude_tag')).toEqual(['big_spoiler']);
     expect(req.request.params.get('mode')).toBe('or');
+    expect(req.request.params.get('character_mode')).toBe('or');
+    expect(req.request.params.get('series_mode')).toBe('and');
     expect(req.request.params.get('nsfw')).toBe('only');
     expect(req.request.params.get('sensitive')).toBe('include');
     expect(req.request.params.get('status')).toBe('reviewed');

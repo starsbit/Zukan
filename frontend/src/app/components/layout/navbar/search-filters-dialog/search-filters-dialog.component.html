@@ -37,6 +37,24 @@
       </mat-form-field>
 
       <mat-form-field>
+        <mat-label>Character Matching</mat-label>
+        <mat-select formControlName="characterMode">
+          @for (option of entityModeOptions; track option.label) {
+            <mat-option [value]="option.value">{{ option.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field>
+        <mat-label>Series Matching</mat-label>
+        <mat-select formControlName="seriesMode">
+          @for (option of entityModeOptions; track option.label) {
+            <mat-option [value]="option.value">{{ option.label }}</mat-option>
+          }
+        </mat-select>
+      </mat-form-field>
+
+      <mat-form-field>
         <mat-label>NSFW</mat-label>
         <mat-select formControlName="nsfw">
           @for (option of nsfwOptions; track option.label) {

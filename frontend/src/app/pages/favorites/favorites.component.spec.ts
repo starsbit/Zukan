@@ -8,10 +8,10 @@ describe('buildFavoritesParams', () => {
       tag: ['Saber'],
       visibility: MediaVisibility.PRIVATE,
       favorited: false,
-      character_name: 'Rin Tohsaka',
+      character_name: ['Rin Tohsaka'],
     })).toEqual({
       tag: ['Saber'],
-      character_name: 'Rin Tohsaka',
+      character_name: ['Rin Tohsaka'],
       favorited: true,
       state: 'active',
     });

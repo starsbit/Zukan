@@ -39,11 +39,14 @@ describe('GalleryComponent', () => {
       draftChips: () => [],
       applied: () => ({
         tags: [],
-        characterName: 'Rin Tohsaka',
+        characterNames: ['Rin Tohsaka'],
+        seriesNames: [],
         ocrText: null,
         advanced: {
           excludeTags: [],
           mode: null,
+          characterMode: null,
+          seriesMode: null,
           nsfw: null,
           sensitive: null,
           status: null,
@@ -71,6 +74,8 @@ describe('GalleryComponent', () => {
       advancedFilters: () => ({
         excludeTags: [],
         mode: null,
+        characterMode: null,
+        seriesMode: null,
         nsfw: null,
         sensitive: null,
         status: null,
@@ -95,10 +100,11 @@ describe('GalleryComponent', () => {
         uploadedBeforeYear: null,
       }),
       activeAdvancedFilterCount: () => 0,
-      appliedParams: () => ({ character_name: 'Rin Tohsaka' }),
+      appliedParams: () => ({ character_name: ['Rin Tohsaka'] }),
       setText: vi.fn(),
       addTag: vi.fn(),
-      setCharacter: vi.fn(),
+      addCharacter: vi.fn(),
+      addSeries: vi.fn(),
       setOcr: vi.fn(),
       setAdvancedFilters: vi.fn(),
       removeChip: vi.fn(),
@@ -138,7 +144,7 @@ describe('GalleryComponent', () => {
     expect(element.querySelector('zukan-layout')).not.toBeNull();
     expect(element.querySelector('zukan-media-browser')).not.toBeNull();
     expect(galleryStore.setParams).toHaveBeenCalledWith({
-      character_name: 'Rin Tohsaka',
+      character_name: ['Rin Tohsaka'],
       state: MediaListState.ACTIVE,
     });
 

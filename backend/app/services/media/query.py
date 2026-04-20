@@ -229,12 +229,14 @@ class MediaQueryService:
         user: User,
         state: MediaListState,
         tags: list[str] | None,
-        character_name: str | None,
-        series_name: str | None,
+        character_names: list[str] | None,
+        series_names: list[str] | None,
         owner_username: str | None,
         uploader_username: str | None,
         exclude_tags: list[str] | None,
         mode: TagFilterMode,
+        character_mode: TagFilterMode,
+        series_mode: TagFilterMode,
         nsfw: NsfwFilter,
         sensitive: SensitiveFilter,
         status_filter: str | None,
@@ -259,8 +261,8 @@ class MediaQueryService:
         stmt = self._apply_visibility_scope(stmt, user, state, visibility, album_id is not None, favorited)
 
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
-        stmt = media_filters.apply_character_name_filter(stmt, character_name)
-        stmt = media_filters.apply_series_name_filter(stmt, series_name)
+        stmt = media_filters.apply_character_name_filter(stmt, character_names, character_mode)
+        stmt = media_filters.apply_series_name_filter(stmt, series_names, series_mode)
         stmt = media_filters.apply_owner_username_filter(stmt, owner_username)
         stmt = media_filters.apply_uploader_username_filter(stmt, uploader_username)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)
@@ -296,12 +298,14 @@ class MediaQueryService:
         *,
         state: MediaListState = MediaListState.ACTIVE,
         tags: list[str] | None = None,
-        character_name: str | None = None,
-        series_name: str | None = None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         owner_username: str | None = None,
         uploader_username: str | None = None,
         exclude_tags: list[str] | None = None,
         mode: TagFilterMode = TagFilterMode.AND,
+        character_mode: TagFilterMode = TagFilterMode.AND,
+        series_mode: TagFilterMode = TagFilterMode.AND,
         nsfw: NsfwFilter = NsfwFilter.DEFAULT,
         sensitive: SensitiveFilter = SensitiveFilter.DEFAULT,
         status_filter: str | None = None,
@@ -327,8 +331,8 @@ class MediaQueryService:
         stmt = self._apply_visibility_scope(stmt, user, state, visibility, album_id is not None, favorited)
 
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
-        stmt = media_filters.apply_character_name_filter(stmt, character_name)
-        stmt = media_filters.apply_series_name_filter(stmt, series_name)
+        stmt = media_filters.apply_character_name_filter(stmt, character_names, character_mode)
+        stmt = media_filters.apply_series_name_filter(stmt, series_names, series_mode)
         stmt = media_filters.apply_owner_username_filter(stmt, owner_username)
         stmt = media_filters.apply_uploader_username_filter(stmt, uploader_username)
         stmt = media_filters.apply_visibility_filter(stmt, visibility)

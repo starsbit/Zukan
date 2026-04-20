@@ -151,6 +151,7 @@
   top: auto;
   bottom: 10px;
   left: 10px;
+  align-items: flex-start;
 }
 
 
@@ -184,6 +185,10 @@
 }
 
 .media-card__badge--public {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  align-self: flex-start;
   background: color-mix(in srgb, var(--mat-sys-secondary-container) 86%, transparent);
   color: var(--mat-sys-on-secondary-container);
 }
@@ -303,11 +308,14 @@
   }
 
   .media-card__badge-stack--bottom-left {
+    top: auto;
+    right: auto;
     bottom: 8px;
     left: 8px;
+    max-width: none;
+    justify-content: flex-start;
+    align-items: flex-start;
   }
-
-
 
   .media-card__selection-button {
     top: 8px;
@@ -322,5 +330,10 @@
     min-width: 28px;
     min-height: 28px;
     padding: 0;
+  }
+
+  .media-card__badge--public {
+    width: 28px;
+    height: 28px;
   }
 }

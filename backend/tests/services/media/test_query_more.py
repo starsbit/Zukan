@@ -42,6 +42,14 @@ def _record_filter_value(seen: dict[str, str], key: str):
     return _inner
 
 
+def _record_entity_filter_value(seen: dict[str, object], key: str):
+    def _inner(stmt, values, mode):
+        seen[key] = (values, mode)
+        return stmt
+
+    return _inner
+
+
 @pytest.fixture
 def service(fake_db):
     return MediaQueryService(fake_db)
@@ -269,11 +277,12 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     service._fetch_page_rows = AsyncMock(return_value=[row1, row2, row3])
     service._favorite_repo.get_favorited_ids = AsyncMock(return_value={row1.id})
     service._favorite_repo.get_favorite_counts = AsyncMock(return_value={})
-
     with patch("backend.app.services.media.query.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt), patch(
-        "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
+        "backend.app.services.media.query.media_filters.apply_character_name_filter",
+        side_effect=_record_entity_filter_value(seen, "character_filter_args"),
     ), patch(
-        "backend.app.services.media.query.media_filters.apply_series_name_filter", side_effect=lambda stmt, *a: stmt
+        "backend.app.services.media.query.media_filters.apply_series_name_filter",
+        side_effect=_record_entity_filter_value(seen, "series_filter_args"),
     ), patch(
         "backend.app.services.media.query.media_filters.apply_owner_username_filter",
         side_effect=_record_filter_value(seen, "owner_username"),
@@ -293,12 +302,14 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
             user=user,
             state=MediaListState.ACTIVE,
             tags=None,
-            character_name=None,
-            series_name=None,
+            character_names=["Rin", "Saber"],
+            series_names=["Fate"],
             owner_username="owner_user",
             uploader_username="uploader_user",
             exclude_tags=None,
             mode=TagFilterMode.AND,
+            character_mode=TagFilterMode.OR,
+            series_mode=TagFilterMode.AND,
             nsfw=NsfwFilter.DEFAULT,
             sensitive=SensitiveFilter.DEFAULT,
             status_filter=None,
@@ -313,7 +324,12 @@ async def test_list_media_orchestrates_filter_pipeline(service, user):
     assert page.has_more is True
     assert page.next_cursor is not None
     assert page.items == []
-    assert seen == {"owner_username": "owner_user", "uploader_username": "uploader_user"}
+    assert seen == {
+        "character_filter_args": (["Rin", "Saber"], TagFilterMode.OR),
+        "series_filter_args": (["Fate"], TagFilterMode.AND),
+        "owner_username": "owner_user",
+        "uploader_username": "uploader_user",
+    }
 
 
 @pytest.mark.asyncio
@@ -329,13 +345,14 @@ async def test_get_timeline_applies_status_filter(service, user):
     service._apply_favorited_filter_for_count = lambda stmt, *_: stmt
     service._apply_visibility_scope = lambda stmt, *_: stmt
     service._db.execute = AsyncMock(return_value=SimpleNamespace(all=lambda: []))
-
     with patch(
         "backend.app.services.media.query.media_filters.apply_tag_filters", side_effect=lambda stmt, *a: stmt
     ), patch(
-        "backend.app.services.media.query.media_filters.apply_character_name_filter", side_effect=lambda stmt, *a: stmt
+        "backend.app.services.media.query.media_filters.apply_character_name_filter",
+        side_effect=_record_entity_filter_value(seen, "character_filter_args"),
     ), patch(
-        "backend.app.services.media.query.media_filters.apply_series_name_filter", side_effect=lambda stmt, *a: stmt
+        "backend.app.services.media.query.media_filters.apply_series_name_filter",
+        side_effect=_record_entity_filter_value(seen, "series_filter_args"),
     ), patch(
         "backend.app.services.media.query.media_filters.apply_owner_username_filter",
         side_effect=_record_filter_value(seen, "owner_username"),
@@ -353,12 +370,17 @@ async def test_get_timeline_applies_status_filter(service, user):
             user,
             state=MediaListState.ACTIVE,
             status_filter="reviewed",
-            series_name="Fate",
+            character_names=["Rin"],
+            series_names=["Fate"],
+            character_mode=TagFilterMode.OR,
+            series_mode=TagFilterMode.AND,
             owner_username="owner_user",
             uploader_username="uploader_user",
         )
 
     assert seen["status_filter"] == "reviewed"
+    assert seen["character_filter_args"] == (["Rin"], TagFilterMode.OR)
+    assert seen["series_filter_args"] == (["Fate"], TagFilterMode.AND)
     assert seen["owner_username"] == "owner_user"
     assert seen["uploader_username"] == "uploader_user"
 

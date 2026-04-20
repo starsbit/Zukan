@@ -12,7 +12,12 @@
   (focusin)="onFocusIn()"
   (focusout)="onFocusOut($event)"
   (mouseenter)="onHover(true)"
-  (mouseleave)="onHover(false)">
+  (mouseleave)="onHover(false)"
+  (pointerdown)="onPointerDown($event)"
+  (pointermove)="onPointerMove($event)"
+  (pointerup)="onPointerRelease($event)"
+  (pointercancel)="onPointerRelease($event)"
+  (pointerleave)="onPointerRelease($event)">
   <div class="media-card__surface">
     @if (showSelectionControl()) {
       <button

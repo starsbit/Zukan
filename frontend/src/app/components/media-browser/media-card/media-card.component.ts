@@ -15,6 +15,9 @@ import { MediaService } from '../../../services/media.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MediaCardComponent {
+  private static readonly LONG_PRESS_DELAY_MS = 1000;
+  private static readonly LONG_PRESS_MOVE_TOLERANCE_PX = 12;
+
   readonly media = input.required<MediaRead>();
   readonly selectable = input(false);
   readonly selectedState = input(false, { alias: 'selected' });
@@ -103,6 +106,11 @@ export class MediaCardComponent {
   private hasRequestedPreview = false;
   private hasRequestedAnimatedPreview = false;
   private lastMediaId: string | null = null;
+  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private pressedPointerId: number | null = null;
+  private pressStartX = 0;
+  private pressStartY = 0;
+  private suppressNextClick = false;
 
   constructor() {
     effect(() => {
@@ -160,9 +168,15 @@ export class MediaCardComponent {
 
   ngOnDestroy(): void {
     this.previewObserver?.disconnect();
+    this.clearLongPress();
   }
 
   onSelect(): void {
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
+
     if (this.interactionDisabled()) {
       return;
     }
@@ -194,10 +208,51 @@ export class MediaCardComponent {
 
   onFavoriteToggle(event: Event): void {
     event.stopPropagation();
+    this.clearLongPress();
     if (this.interactionDisabled()) {
       return;
     }
     this.favoriteToggled.emit(this.media());
+  }
+
+  onPointerDown(event: PointerEvent): void {
+    if (!this.shouldHandleLongPress(event)) {
+      return;
+    }
+
+    this.clearLongPress();
+    this.pressedPointerId = event.pointerId;
+    this.pressStartX = event.clientX;
+    this.pressStartY = event.clientY;
+    this.longPressTimer = setTimeout(() => {
+      this.longPressTimer = null;
+      this.pressedPointerId = null;
+      this.suppressNextClick = true;
+      this.selectionToggled.emit(this.media());
+    }, MediaCardComponent.LONG_PRESS_DELAY_MS);
+  }
+
+  onPointerMove(event: PointerEvent): void {
+    if (this.pressedPointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = Math.abs(event.clientX - this.pressStartX);
+    const deltaY = Math.abs(event.clientY - this.pressStartY);
+    if (
+      deltaX > MediaCardComponent.LONG_PRESS_MOVE_TOLERANCE_PX ||
+      deltaY > MediaCardComponent.LONG_PRESS_MOVE_TOLERANCE_PX
+    ) {
+      this.clearLongPress();
+    }
+  }
+
+  onPointerRelease(event: PointerEvent): void {
+    if (this.pressedPointerId !== event.pointerId) {
+      return;
+    }
+
+    this.clearLongPress();
   }
 
   onHover(active: boolean): void {
@@ -218,6 +273,27 @@ export class MediaCardComponent {
     }
 
     this.focused.set(false);
+  }
+
+  private shouldHandleLongPress(event: PointerEvent): boolean {
+    if (!this.selectable() || this.selectionMode() || this.interactionDisabled()) {
+      return false;
+    }
+
+    if (event.pointerType !== 'touch' && event.pointerType !== 'pen') {
+      return false;
+    }
+
+    const target = event.target;
+    return !(target instanceof HTMLElement) || target.closest('button, a, input, textarea, select') == null;
+  }
+
+  private clearLongPress(): void {
+    if (this.longPressTimer != null) {
+      clearTimeout(this.longPressTimer);
+      this.longPressTimer = null;
+    }
+    this.pressedPointerId = null;
   }
 
   private loadPrimaryPreview(): void {

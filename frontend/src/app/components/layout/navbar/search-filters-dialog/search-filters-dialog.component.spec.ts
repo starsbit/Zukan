@@ -11,6 +11,8 @@ describe('SearchFiltersDialogComponent', () => {
   const filters = {
     excludeTags: ['spoiler'],
     mode: TagFilterMode.AND,
+    characterMode: TagFilterMode.OR,
+    seriesMode: TagFilterMode.AND,
     nsfw: NsfwFilter.INCLUDE,
     sensitive: SensitiveFilter.ONLY,
     status: TaggingStatus.DONE,
@@ -57,6 +59,8 @@ describe('SearchFiltersDialogComponent', () => {
 
     expect(fixture.componentInstance.form.getRawValue()).toMatchObject({
       mode: TagFilterMode.AND,
+      characterMode: TagFilterMode.OR,
+      seriesMode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
@@ -88,6 +92,8 @@ describe('SearchFiltersDialogComponent', () => {
     expect(close).toHaveBeenCalledWith({
       excludeTags: ['spoiler', 'duplicate'],
       mode: TagFilterMode.AND,
+      characterMode: TagFilterMode.OR,
+      seriesMode: TagFilterMode.AND,
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
@@ -145,6 +151,8 @@ describe('SearchFiltersDialogComponent', () => {
     expect(close).toHaveBeenCalledWith({
       excludeTags: [],
       mode: null,
+      characterMode: null,
+      seriesMode: null,
       nsfw: null,
       sensitive: null,
       status: null,

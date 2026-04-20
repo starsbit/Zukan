@@ -43,11 +43,11 @@ async def test_media_filters_tag_character_ocr_and_nsfw(db_session, make_user, m
     rows2 = (await db_session.execute(stmt2)).scalars().all()
     assert {r.id for r in rows2} == {m1.id}
 
-    stmt3 = media_filters.apply_character_name_filter(select(type(m1)), "saber alter")
+    stmt3 = media_filters.apply_character_name_filter(select(type(m1)), ["saber alter"])
     rows3 = (await db_session.execute(stmt3)).scalars().all()
     assert {r.id for r in rows3} == {m1.id}
 
-    stmt_series = media_filters.apply_series_name_filter(select(type(m1)), "fate stay night")
+    stmt_series = media_filters.apply_series_name_filter(select(type(m1)), ["fate stay night"])
     rows_series = (await db_session.execute(stmt_series)).scalars().all()
     assert {r.id for r in rows_series} == {m1.id}
 
@@ -129,6 +129,52 @@ def test_fuzzy_ocr_pattern_helper():
     assert media_filters._build_fuzzy_ocr_like_pattern("abc") is None
     pattern = media_filters._build_fuzzy_ocr_like_pattern("ab cd")
     assert pattern == "%a%b%c%d%"
+
+
+@pytest.mark.asyncio
+async def test_media_filters_support_entity_and_or_modes(db_session, make_user, make_media):
+    user = await make_user()
+    matching_both = await make_media(uploader_id=user.id)
+    matching_one = await make_media(uploader_id=user.id)
+    series_match = await make_media(uploader_id=user.id)
+
+    db_session.add_all(
+        [
+            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name="Rin Tohsaka", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name="Saber Alter", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name="Fate Stay Night", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name="Tsukihime", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.character, name="Rin Tohsaka", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.series, name="Fate Stay Night", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.character, name="Arcueid Brunestud", role="primary", source="manual", confidence=0.9),
+            MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.series, name="Tsukihime", role="primary", source="manual", confidence=0.9),
+        ]
+    )
+    await db_session.flush()
+
+    character_and_stmt = media_filters.apply_character_name_filter(
+        select(type(matching_both)),
+        ["rin tohsaka", "saber alter"],
+        TagFilterMode.AND,
+    )
+    character_and_rows = (await db_session.execute(character_and_stmt)).scalars().all()
+    assert {row.id for row in character_and_rows} == {matching_both.id}
+
+    character_or_stmt = media_filters.apply_character_name_filter(
+        select(type(matching_both)),
+        ["rin tohsaka", "saber alter"],
+        TagFilterMode.OR,
+    )
+    character_or_rows = (await db_session.execute(character_or_stmt)).scalars().all()
+    assert {row.id for row in character_or_rows} == {matching_both.id, matching_one.id}
+
+    series_or_stmt = media_filters.apply_series_name_filter(
+        select(type(matching_both)),
+        ["fate stay night", "tsukihime"],
+        TagFilterMode.OR,
+    )
+    series_or_rows = (await db_session.execute(series_or_stmt)).scalars().all()
+    assert {row.id for row in series_or_rows} == {matching_both.id, matching_one.id, series_match.id}
 
 
 @pytest.mark.asyncio

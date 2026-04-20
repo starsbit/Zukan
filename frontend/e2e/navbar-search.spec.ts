@@ -133,7 +133,15 @@ async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<
   });
 
   await page.route('**/api/v1/media/series-suggestions**', async (route) => {
-    await route.fulfill({ json: [] });
+    const url = new URL(route.request().url());
+    const query = url.searchParams.get('q') ?? '';
+
+    const items = [
+      { name: 'Fate/stay night', media_count: 9 },
+      { name: 'Tsukihime', media_count: 4 },
+    ].filter((series) => matchesQuery(series.name, query));
+
+    await route.fulfill({ json: items });
   });
 }
 
@@ -557,7 +565,7 @@ test.describe.serial('Navbar search', () => {
     });
   });
 
-  test('shows tag and character suggestions and keeps only one character chip', async ({ page }) => {
+  test('shows tag, character, and series suggestions and keeps multiple entity chips', async ({ page }) => {
     const searchRequests: URL[] = [];
     await seedAuthenticatedSession(page);
     await registerSearchRoutes(page, searchRequests);
@@ -582,7 +590,26 @@ test.describe.serial('Navbar search', () => {
     await expect(page.getByRole('option', { name: /Saber Alter/i })).toBeVisible();
     await page.getByRole('option', { name: /Saber Alter/i }).click();
     await expect(chipRow(page, 'Saber Alter')).toBeVisible();
-    await expect(chipRow(page, 'Rin Tohsaka')).toHaveCount(0);
+    await expect(chipRow(page, 'Rin Tohsaka')).toBeVisible();
+
+    await typeSearch(page, 'fate');
+    await expect(page.getByRole('option', { name: /Fate\/stay night/i })).toBeVisible();
+    await page.getByRole('option', { name: /Fate\/stay night/i }).click();
+    await expect(chipRow(page, 'Fate/stay night')).toBeVisible();
+
+    await typeSearch(page, 'tsukihime');
+    await expect(page.getByRole('option', { name: /Tsukihime/i })).toBeVisible();
+    await page.getByRole('option', { name: /Tsukihime/i }).click();
+    await expect(chipRow(page, 'Tsukihime')).toBeVisible();
+
+    const request = await waitForMatchingSearchRequest(
+      searchRequests,
+      (candidate) =>
+        candidate.searchParams.getAll('character_name').join(',') === 'rin_tohsaka,saber_alter'
+        && candidate.searchParams.getAll('series_name').join(',') === 'fate_stay_night,tsukihime',
+    );
+    expect(request.searchParams.getAll('character_name')).toEqual(['rin_tohsaka', 'saber_alter']);
+    expect(request.searchParams.getAll('series_name')).toEqual(['fate_stay_night', 'tsukihime']);
   });
 
   test('applies OCR search on enter, persists across routes, and escape clears it', async ({ page }) => {
@@ -642,7 +669,7 @@ test.describe.serial('Navbar search', () => {
       (candidate) =>
         candidate.searchParams.get('state') === 'trashed'
         && candidate.searchParams.getAll('tag').length === 0
-        && !candidate.searchParams.get('character_name')
+        && candidate.searchParams.getAll('character_name').length === 0
         && !candidate.searchParams.get('ocr_text'),
     );
     expect(request.searchParams.getAll('tag')).toEqual([]);
@@ -713,6 +740,55 @@ test.describe.serial('Navbar search', () => {
     await expect.poll(() => searchRequests.length).toBeGreaterThan(requestCountBeforeApply);
     await expect.poll(() => timelineRequests.length).toBeGreaterThan(0);
     await expect(page.locator('.media-card')).toHaveCount(1);
+  });
+
+  test('applies separate character and series matching modes from the dialog', async ({ page }) => {
+    const searchRequests: URL[] = [];
+    const timelineRequests: URL[] = [];
+    await seedAuthenticatedSession(page);
+    await registerSearchRoutes(page, searchRequests);
+    await page.route('**/api/v1/media/timeline**', async (route) => {
+      timelineRequests.push(new URL(route.request().url()));
+      await route.fulfill({ json: { buckets: [] } });
+    });
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
+    await waitForMatchingSearchRequest(
+      searchRequests,
+      (request) => request.searchParams.get('state') === 'active',
+    );
+
+    await typeSearch(page, 'rin');
+    await page.getByRole('option', { name: /Rin Tohsaka/i }).click();
+    await typeSearch(page, 'saber alter');
+    await page.getByRole('option', { name: /Saber Alter/i }).click();
+    await typeSearch(page, 'fate');
+    await page.getByRole('option', { name: /Fate\/stay night/i }).click();
+
+    await openFiltersDialog(page);
+    await selectDialogOption(page, 'Character Matching', 'Match any');
+    await selectDialogOption(page, 'Series Matching', 'Match all');
+    const requestCountBeforeApply = searchRequests.length;
+    await page.getByRole('dialog').getByRole('button', { name: 'Apply' }).click();
+
+    await expect.poll(() => searchRequests.length).toBeGreaterThan(requestCountBeforeApply);
+    const searchRequest = await waitForMatchingSearchRequest(
+      searchRequests,
+      (candidate) =>
+        candidate.searchParams.get('character_mode') === 'or'
+        && candidate.searchParams.get('series_mode') === 'and',
+    );
+    expect(searchRequest.searchParams.getAll('character_name')).toEqual(['rin_tohsaka', 'saber_alter']);
+    expect(searchRequest.searchParams.getAll('series_name')).toEqual(['fate_stay_night']);
+
+    await expect.poll(() => timelineRequests.length).toBeGreaterThan(0);
+    const timelineRequest = [...timelineRequests].reverse().find(
+      (candidate) =>
+        candidate.searchParams.get('character_mode') === 'or'
+        && candidate.searchParams.get('series_mode') === 'and',
+    );
+    expect(timelineRequest?.searchParams.getAll('character_name')).toEqual(['rin_tohsaka', 'saber_alter']);
+    expect(timelineRequest?.searchParams.getAll('series_name')).toEqual(['fate_stay_night']);
   });
 
   test('preserves applied filters across gallery, favorites, trash, and album routes', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { MediaService } from '../../../services/media.service';
 import { MediaCardComponent } from './media-card.component';
@@ -67,6 +67,10 @@ describe('MediaCardComponent', () => {
   beforeEach(() => {
     FakeIntersectionObserver.instances = [];
     vi.stubGlobal('IntersectionObserver', FakeIntersectionObserver);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('waits for viewport entry before fetching the preview', async () => {
@@ -381,6 +385,63 @@ describe('MediaCardComponent', () => {
     (fixture.nativeElement.querySelector('.media-card__selection-button') as HTMLButtonElement).click();
 
     expect((toggled as MediaRead | null)?.id).toBe('m1');
+  });
+
+  it('long-presses on touch to enter selection without activating the card', async () => {
+    vi.useFakeTimers();
+    const mediaService = {
+      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+      getPosterUrl: vi.fn(() => of('blob:poster')),
+      getFileUrl: vi.fn(() => of('blob:file')),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [MediaCardComponent],
+      providers: [{ provide: MediaService, useValue: mediaService }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MediaCardComponent);
+    fixture.componentRef.setInput('media', makeMedia());
+    fixture.componentRef.setInput('selectable', true);
+    fixture.detectChanges();
+
+    let toggled: MediaRead | null = null;
+    let activated: MediaRead | null = null;
+    fixture.componentInstance.selectionToggled.subscribe((media) => {
+      toggled = media;
+    });
+    fixture.componentInstance.activated.subscribe((media) => {
+      activated = media;
+    });
+
+    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
+    card.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: 120,
+        clientY: 160,
+        bubbles: true,
+      }),
+    );
+
+    await vi.advanceTimersByTimeAsync(1000);
+    fixture.detectChanges();
+
+    expect((toggled as MediaRead | null)?.id).toBe('m1');
+
+    card.dispatchEvent(
+      new PointerEvent('pointerup', {
+        pointerId: 1,
+        pointerType: 'touch',
+        clientX: 120,
+        clientY: 160,
+        bubbles: true,
+      }),
+    );
+    card.click();
+
+    expect(activated).toBeNull();
   });
 
   it('emits favoriteToggled when the favorite button is clicked', async () => {

@@ -231,9 +231,9 @@ export class NavbarSearchComponent {
     if (suggestion.type === 'tag') {
       this.searchService.addTag(suggestion.value);
     } else if (suggestion.type === 'character') {
-      this.searchService.setCharacter(suggestion.value);
+      this.searchService.addCharacter(suggestion.value);
     } else {
-      this.searchService.setSeries(suggestion.value);
+      this.searchService.addSeries(suggestion.value);
     }
 
     this.resetInput(true);

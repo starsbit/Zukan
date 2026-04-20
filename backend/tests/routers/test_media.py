@@ -258,17 +258,26 @@ def test_search_media_contract(api_client, monkeypatch):
 
     response = api_client.get(
         "/api/v1/media/search",
-        params={
-            "page_size": 6,
-            "ocr_text": "fate",
-            "series_name": "Fate",
-            "owner_username": "owner_user",
-            "uploader_username": "Uploader_User",
-        },
+        params=[
+            ("page_size", "6"),
+            ("ocr_text", "fate"),
+            ("character_name", "Rin"),
+            ("character_name", "Saber"),
+            ("series_name", "Fate"),
+            ("series_name", "Tsukihime"),
+            ("character_mode", "or"),
+            ("series_mode", "and"),
+            ("owner_username", "owner_user"),
+            ("uploader_username", "Uploader_User"),
+        ],
     )
 
     assert response.status_code == 200
     assert response.json()["page_size"] == 6
+    assert captured["character_names"] == ["Rin", "Saber"]
+    assert captured["series_names"] == ["Fate", "Tsukihime"]
+    assert captured["character_mode"] == "or"
+    assert captured["series_mode"] == "and"
     assert captured["owner_username"] == "owner_user"
     assert captured["uploader_username"] == "Uploader_User"
 
@@ -284,14 +293,18 @@ def test_media_timeline_contract(api_client, monkeypatch):
 
     response = api_client.get(
         "/api/v1/media/timeline",
-        params={
-            "tag": "safe",
-            "status": "reviewed",
-            "favorited": "false",
-            "series_name": "Fate",
-            "owner_username": "owner_user",
-            "uploader_username": "Uploader_User",
-        },
+        params=[
+            ("tag", "safe"),
+            ("status", "reviewed"),
+            ("favorited", "false"),
+            ("character_name", "Rin"),
+            ("character_name", "Saber"),
+            ("series_name", "Fate"),
+            ("character_mode", "or"),
+            ("series_mode", "and"),
+            ("owner_username", "owner_user"),
+            ("uploader_username", "Uploader_User"),
+        ],
     )
 
     assert response.status_code == 200
@@ -299,7 +312,10 @@ def test_media_timeline_contract(api_client, monkeypatch):
     assert captured["tags"] == ["safe"]
     assert captured["status_filter"] == "reviewed"
     assert captured["favorited"] is False
-    assert captured["series_name"] == "Fate"
+    assert captured["character_names"] == ["Rin", "Saber"]
+    assert captured["series_names"] == ["Fate"]
+    assert captured["character_mode"] == "or"
+    assert captured["series_mode"] == "and"
     assert captured["owner_username"] == "owner_user"
     assert captured["uploader_username"] == "Uploader_User"
 

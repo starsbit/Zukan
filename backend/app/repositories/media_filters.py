@@ -36,30 +36,12 @@ def apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | No
         stmt = stmt.where(~Media.id.in_(subq))
     return stmt
 
-def apply_character_name_filter(stmt, character_name: str | None):
-    if character_name and character_name.strip():
-        normalized_query = normalize_character_name_search(character_name)
-        if normalized_query:
-            normalized_entity_name = _normalized_entity_name_expr()
-            subq = select(MediaEntity.media_id).where(
-                MediaEntity.entity_type == MediaEntityType.character,
-                normalized_entity_name.contains(normalized_query),
-            )
-            stmt = stmt.where(Media.id.in_(subq))
-    return stmt
+def apply_character_name_filter(stmt, character_names: list[str] | None, mode: TagFilterMode = TagFilterMode.AND):
+    return _apply_entity_name_filter(stmt, MediaEntityType.character, character_names, mode)
 
 
-def apply_series_name_filter(stmt, series_name: str | None):
-    if series_name and series_name.strip():
-        normalized_query = normalize_character_name_search(series_name)
-        if normalized_query:
-            normalized_entity_name = _normalized_entity_name_expr()
-            subq = select(MediaEntity.media_id).where(
-                MediaEntity.entity_type == MediaEntityType.series,
-                normalized_entity_name.contains(normalized_query),
-            )
-            stmt = stmt.where(Media.id.in_(subq))
-    return stmt
+def apply_series_name_filter(stmt, series_names: list[str] | None, mode: TagFilterMode = TagFilterMode.AND):
+    return _apply_entity_name_filter(stmt, MediaEntityType.series, series_names, mode)
 
 
 def apply_owner_username_filter(stmt, owner_username: str | None):
@@ -189,6 +171,36 @@ def _normalized_entity_name_expr():
         func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
         "_",
     )
+
+
+def _apply_entity_name_filter(stmt, entity_type: MediaEntityType, names: list[str] | None, mode: TagFilterMode):
+    normalized_queries = [
+        normalized
+        for normalized in (
+            normalize_character_name_search(name)
+            for name in (names or [])
+            if name is not None
+        )
+        if normalized
+    ]
+    if not normalized_queries:
+        return stmt
+
+    normalized_entity_name = _normalized_entity_name_expr()
+    if mode == TagFilterMode.OR:
+        subq = select(MediaEntity.media_id).where(
+            MediaEntity.entity_type == entity_type,
+            or_(*[normalized_entity_name.contains(query) for query in normalized_queries]),
+        )
+        return stmt.where(Media.id.in_(subq))
+
+    for query in normalized_queries:
+        subq = select(MediaEntity.media_id).where(
+            MediaEntity.entity_type == entity_type,
+            normalized_entity_name.contains(query),
+        )
+        stmt = stmt.where(Media.id.in_(subq))
+    return stmt
 
 
 def _normalize_exact_username(username: str | None) -> str | None:

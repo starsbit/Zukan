@@ -146,7 +146,7 @@ describe('NavbarSearchComponent', () => {
     expect(searchService.applied().tags).toEqual(['Saber']);
   });
 
-  it('creates and replaces the character chip from suggestions', async () => {
+  it('creates and accumulates character chips from suggestions', async () => {
     const { fixture, component, searchService } = await createComponent();
 
     component.onSuggestionSelected({ option: { value: { type: 'character', value: 'Rin Tohsaka' } } } as never);
@@ -154,11 +154,12 @@ describe('NavbarSearchComponent', () => {
     fixture.detectChanges();
 
     expect(searchService.draftChips().filter((chip) => chip.type === 'character')).toEqual([
+      { type: 'character', value: 'Rin Tohsaka' },
       { type: 'character', value: 'Saber Alter' },
     ]);
   });
 
-  it('creates and replaces the series chip from suggestions', async () => {
+  it('creates and accumulates series chips from suggestions', async () => {
     const { fixture, component, searchService } = await createComponent();
 
     component.onSuggestionSelected({ option: { value: { type: 'series', value: 'Fate/zero' } } } as never);
@@ -166,6 +167,7 @@ describe('NavbarSearchComponent', () => {
     fixture.detectChanges();
 
     expect(searchService.draftChips().filter((chip) => chip.type === 'series')).toEqual([
+      { type: 'series', value: 'Fate/zero' },
       { type: 'series', value: 'Fate/stay night' },
     ]);
   });
@@ -199,12 +201,14 @@ describe('NavbarSearchComponent', () => {
     expect(searchService.draftChips()).toEqual([]);
     expect(searchService.applied()).toEqual({
       tags: [],
-      characterName: null,
-      seriesName: null,
+      characterNames: [],
+      seriesNames: [],
       ocrText: null,
       advanced: {
         excludeTags: [],
         mode: null,
+        characterMode: null,
+        seriesMode: null,
         nsfw: null,
         sensitive: null,
         status: null,
@@ -259,8 +263,8 @@ describe('NavbarSearchComponent', () => {
     const { fixture, element, component, searchService } = await createComponent();
 
     searchService.addTag('Saber');
-    searchService.setCharacter('Rin Tohsaka');
-    searchService.setSeries('Fate/stay night');
+    searchService.addCharacter('Rin Tohsaka');
+    searchService.addSeries('Fate/stay night');
     fixture.detectChanges();
 
     await setInputValue(fixture, element, 'sa');

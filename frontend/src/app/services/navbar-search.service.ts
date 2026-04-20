@@ -11,8 +11,8 @@ export interface SearchChip {
 
 export interface AppliedSearchState {
   tags: string[];
-  characterName: string | null;
-  seriesName: string | null;
+  characterNames: string[];
+  seriesNames: string[];
   ocrText: string | null;
   advanced: AdvancedSearchFilters;
 }
@@ -20,6 +20,8 @@ export interface AppliedSearchState {
 export interface AdvancedSearchFilters {
   excludeTags: string[];
   mode: TagFilterMode | null;
+  characterMode: TagFilterMode | null;
+  seriesMode: TagFilterMode | null;
   nsfw: NsfwFilter | null;
   sensitive: SensitiveFilter | null;
   status: string | null;
@@ -49,6 +51,8 @@ export class NavbarSearchService {
   private readonly emptyAdvancedFilters: AdvancedSearchFilters = {
     excludeTags: [],
     mode: null,
+    characterMode: null,
+    seriesMode: null,
     nsfw: null,
     sensitive: null,
     status: null,
@@ -76,8 +80,8 @@ export class NavbarSearchService {
   private readonly _draftText = signal('');
   private readonly _applied = signal<AppliedSearchState>({
     tags: [],
-    characterName: null,
-    seriesName: null,
+    characterNames: [],
+    seriesNames: [],
     ocrText: null,
     advanced: this.emptyAdvancedFilters,
   });
@@ -91,6 +95,8 @@ export class NavbarSearchService {
     return [
       filters.excludeTags.length > 0,
       filters.mode != null,
+      filters.characterMode != null,
+      filters.seriesMode != null,
       filters.nsfw != null,
       filters.sensitive != null,
       filters.status != null,
@@ -119,11 +125,13 @@ export class NavbarSearchService {
     const applied = this._applied();
     return {
       tag: applied.tags.length > 0 ? applied.tags : undefined,
-      character_name: applied.characterName ?? undefined,
-      series_name: applied.seriesName ?? undefined,
+      character_name: applied.characterNames.length > 0 ? applied.characterNames : undefined,
+      series_name: applied.seriesNames.length > 0 ? applied.seriesNames : undefined,
       ocr_text: applied.ocrText ?? undefined,
       exclude_tag: applied.advanced.excludeTags.length > 0 ? applied.advanced.excludeTags : undefined,
       mode: applied.advanced.mode ?? undefined,
+      character_mode: applied.advanced.characterMode ?? undefined,
+      series_mode: applied.advanced.seriesMode ?? undefined,
       nsfw: applied.advanced.nsfw ?? undefined,
       sensitive: applied.advanced.sensitive ?? undefined,
       status: applied.advanced.status ?? undefined,
@@ -168,29 +176,33 @@ export class NavbarSearchService {
     this._draftText.set('');
   }
 
-  setCharacter(value: string): void {
+  addCharacter(value: string): void {
     const normalized = value.trim();
     if (!normalized) {
       return;
     }
 
-    this.updateDraftChips((chips) => [
-      ...chips.filter((chip) => chip.type !== 'character'),
-      { type: 'character', value: normalized },
-    ]);
+    const lowerValue = normalized.toLowerCase();
+    this.updateDraftChips((chips) =>
+      chips.some((chip) => chip.type === 'character' && chip.value.toLowerCase() === lowerValue)
+        ? chips
+        : [...chips, { type: 'character', value: normalized }],
+    );
     this._draftText.set('');
   }
 
-  setSeries(value: string): void {
+  addSeries(value: string): void {
     const normalized = value.trim();
     if (!normalized) {
       return;
     }
 
-    this.updateDraftChips((chips) => [
-      ...chips.filter((chip) => chip.type !== 'series'),
-      { type: 'series', value: normalized },
-    ]);
+    const lowerValue = normalized.toLowerCase();
+    this.updateDraftChips((chips) =>
+      chips.some((chip) => chip.type === 'series' && chip.value.toLowerCase() === lowerValue)
+        ? chips
+        : [...chips, { type: 'series', value: normalized }],
+    );
     this._draftText.set('');
   }
 
@@ -232,8 +244,8 @@ export class NavbarSearchService {
     const chips = this._draftChips();
     this._applied.set({
       tags: chips.filter((chip) => chip.type === 'tag').map((chip) => chip.value),
-      characterName: chips.find((chip) => chip.type === 'character')?.value ?? null,
-      seriesName: chips.find((chip) => chip.type === 'series')?.value ?? null,
+      characterNames: chips.filter((chip) => chip.type === 'character').map((chip) => chip.value),
+      seriesNames: chips.filter((chip) => chip.type === 'series').map((chip) => chip.value),
       ocrText: chips.find((chip) => chip.type === 'ocr')?.value ?? null,
       advanced: this._applied().advanced,
     });
@@ -244,8 +256,8 @@ export class NavbarSearchService {
     this._draftText.set('');
     this._applied.set({
       tags: [],
-      characterName: null,
-      seriesName: null,
+      characterNames: [],
+      seriesNames: [],
       ocrText: null,
       advanced: this.emptyAdvancedFilters,
     });
@@ -267,8 +279,8 @@ export class NavbarSearchService {
     this._applied.update((current) => ({
       ...current,
       tags: chips.filter((chip) => chip.type === 'tag').map((chip) => chip.value),
-      characterName: chips.find((chip) => chip.type === 'character')?.value ?? null,
-      seriesName: chips.find((chip) => chip.type === 'series')?.value ?? null,
+      characterNames: chips.filter((chip) => chip.type === 'character').map((chip) => chip.value),
+      seriesNames: chips.filter((chip) => chip.type === 'series').map((chip) => chip.value),
       ocrText: chips.find((chip) => chip.type === 'ocr')?.value ?? null,
     }));
   }
@@ -277,6 +289,8 @@ export class NavbarSearchService {
     return {
       excludeTags: filters.excludeTags.map((tag) => tag.trim()).filter(Boolean),
       mode: filters.mode,
+      characterMode: filters.characterMode,
+      seriesMode: filters.seriesMode,
       nsfw: filters.nsfw,
       sensitive: filters.sensitive,
       status: filters.status?.trim() || null,
