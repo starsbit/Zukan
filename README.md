@@ -120,7 +120,7 @@ The command above is the default install command. By default, the script:
 - Assigns 4 GB RAM, 2 GB swap, and 4 CPU cores
 - Attaches the container to `vmbr0`
 - Uses DHCP networking
-- Deploys Zukan version `0.1.4`
+- Deploys Zukan version `0.1.5`
 
 **4. Customize the install if needed**
 
@@ -138,7 +138,7 @@ CORES=6 \
 BRIDGE=vmbr0 \
 IP=192.168.178.50/24 \
 GATEWAY=192.168.178.1 \
-APP_VERSION=0.1.4 \
+APP_VERSION=0.1.5 \
 GPU_REQUIRED=1 \
 bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
 ```
@@ -158,7 +158,7 @@ Common options:
 | `BRIDGE` | `vmbr0` | Proxmox network bridge |
 | `IP` | `dhcp` | Static IP in CIDR format, or `dhcp` |
 | `GATEWAY` | empty | Gateway for static IP setups |
-| `APP_VERSION` | `0.1.4` | Zukan image tag to deploy |
+| `APP_VERSION` | `0.1.5` | Zukan image tag to deploy |
 | `GPU_REQUIRED` | `0` | Fail if no NVIDIA GPU is available |
 
 **5. What the installer does**
