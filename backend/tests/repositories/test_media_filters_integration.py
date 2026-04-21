@@ -232,26 +232,17 @@ async def test_media_filters_support_entity_and_or_modes(db_session, make_user, 
 
 
 @pytest.mark.asyncio
-async def test_media_filters_match_legacy_apostrophe_entity_names(db_session, make_user, make_media):
+async def test_media_filters_match_apostrophe_entity_names(db_session, make_user, make_media):
     user = await make_user()
-    legacy = await make_media(uploader_id=user.id)
-    current = await make_media(uploader_id=user.id)
+    match = await make_media(uploader_id=user.id)
     other = await make_media(uploader_id=user.id)
 
     db_session.add_all(
         [
             MediaEntity(
-                media_id=legacy.id,
+                media_id=match.id,
                 entity_type=MediaEntityType.character,
                 name="jeanne_d'arc_(fate)",
-                role="primary",
-                source="manual",
-                confidence=0.9,
-            ),
-            MediaEntity(
-                media_id=current.id,
-                entity_type=MediaEntityType.character,
-                name="jeanne_darc_(fate)",
                 role="primary",
                 source="manual",
                 confidence=0.9,
@@ -269,12 +260,12 @@ async def test_media_filters_match_legacy_apostrophe_entity_names(db_session, ma
     await db_session.flush()
 
     stmt = media_filters.apply_character_name_filter(
-        select(type(legacy)),
-        ["jeanne_darc_(fate)"],
+        select(type(match)),
+        ["Jeanne D'Arc (Fate)"],
     )
     rows = (await db_session.execute(stmt)).scalars().all()
 
-    assert {row.id for row in rows} == {legacy.id, current.id}
+    assert {row.id for row in rows} == {match.id}
 
 
 @pytest.mark.asyncio

@@ -146,14 +146,14 @@ describe('UploadReviewDialogComponent', () => {
 
     const component = fixture.componentInstance;
     component.toggleSelected('m1');
-    component.addCharacter('Saber Alter');
+    component.addCharacter("Jeanne D'Arc (Fate)");
     component.addSeries('Little Busters');
     component.applySelected();
 
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1'],
-      character_names: ['saber_alter'],
-      series_names: ['little_busters'],
+      character_names: ["Jeanne D'Arc (Fate)"],
+      series_names: ['Little Busters'],
     });
     expect(refreshBatchReview).toHaveBeenCalledWith('b1');
     expect(refreshBatchRecommendations).toHaveBeenNthCalledWith(1, 'b1', false);
@@ -1382,7 +1382,7 @@ describe('UploadReviewDialogComponent', () => {
 
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1', 'm2'],
-      character_names: ['ryuuguu_rena'],
+      character_names: ['Ryuuguu Rena'],
       series_names: undefined,
     });
     expect(listReviewItems).toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
@@ -1646,7 +1646,7 @@ describe('UploadReviewDialogComponent', () => {
 
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1', 'm2'],
-      character_names: ['ryuuguu_rena'],
+      character_names: ['Ryuuguu Rena'],
       series_names: undefined,
     });
     expect(listReviewItems).toHaveBeenNthCalledWith(3, 'b1');

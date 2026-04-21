@@ -40,7 +40,7 @@ export function formatMetadataName(value: string | null | undefined): string {
     .replace(/\s+/g, ' ')
     .trim();
 
-  return normalized.replace(/(^|[\s(/-])([a-z])/g, (_match, prefix: string, char: string) =>
+  return normalized.replace(/(^|[\s(/'-])([a-z])/g, (_match, prefix: string, char: string) =>
     `${prefix}${char.toUpperCase()}`,
   );
 }

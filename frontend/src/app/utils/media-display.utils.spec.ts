@@ -31,6 +31,7 @@ describe('media-display utils', () => {
     expect(humanizeBackendLabel('tagging_failed')).toBe('Tagging Failed');
     expect(humanizeBackendLabel('fate/stay night')).toBe('Fate/Stay Night');
     expect(formatMetadataName('aru_(blue_archive)')).toBe('Aru (Blue Archive)');
+    expect(formatMetadataName("jeanne_d'arc_(fate)")).toBe("Jeanne D'Arc (Fate)");
     expect(formatMetadataName('fate_stay_night')).toBe('Fate Stay Night');
     expect(formatMediaType(MediaType.GIF)).toBe('GIF');
     expect(formatVisibility(MediaVisibility.PUBLIC)).toBe('Public');

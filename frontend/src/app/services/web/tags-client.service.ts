@@ -71,38 +71,36 @@ export class TagsClientService {
   }
 
   removeCharacterFromMedia(characterName: string): Observable<TagManagementResult> {
-    const normalized = normalizeMetadataNameForSubmission(characterName);
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/character-names/${encodeURIComponent(normalized)}/actions/remove-from-media`,
+      `${this.base}/api/v1/character-names/${encodeMetadataPathSegment(characterName)}/actions/remove-from-media`,
       null,
     );
   }
 
   mergeCharacterName(characterName: string, targetName: string): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/character-names/${encodeURIComponent(characterName)}/actions/merge`,
+      `${this.base}/api/v1/character-names/${encodeMetadataPathSegment(characterName)}/actions/merge`,
       { target_name: targetName.trim() },
     );
   }
 
   trashMediaByCharacter(characterName: string): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/character-names/${encodeURIComponent(characterName)}/actions/trash-media`,
+      `${this.base}/api/v1/character-names/${encodeMetadataPathSegment(characterName)}/actions/trash-media`,
       null,
     );
   }
 
   removeSeriesFromMedia(seriesName: string): Observable<TagManagementResult> {
-    const normalized = normalizeMetadataNameForSubmission(seriesName);
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/series-names/${encodeURIComponent(normalized)}/actions/remove-from-media`,
+      `${this.base}/api/v1/series-names/${encodeMetadataPathSegment(seriesName)}/actions/remove-from-media`,
       null,
     );
   }
 
   mergeSeriesName(seriesName: string, targetName: string): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
-      `${this.base}/api/v1/series-names/${encodeURIComponent(seriesName)}/actions/merge`,
+      `${this.base}/api/v1/series-names/${encodeMetadataPathSegment(seriesName)}/actions/merge`,
       { target_name: targetName.trim() },
     );
   }
@@ -111,7 +109,7 @@ export class TagsClientService {
     let params = new HttpParams();
     if (p.after != null) params = params.set('after', p.after);
     if (p.page_size != null) params = params.set('page_size', p.page_size);
-    if (p.q != null) params = params.set('q', normalizeMetadataQuery(p.q));
+    if (p.q != null) params = params.set('q', p.q.trim());
     if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
     if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
     if (p.scope != null) params = params.set('scope', p.scope);
@@ -121,4 +119,8 @@ export class TagsClientService {
 
 function normalizeMetadataQuery(value: string): string {
   return normalizeMetadataNameForSubmission(value) || value.trim();
+}
+
+function encodeMetadataPathSegment(value: string): string {
+  return encodeURIComponent(value.trim()).replace(/'/g, '%27');
 }

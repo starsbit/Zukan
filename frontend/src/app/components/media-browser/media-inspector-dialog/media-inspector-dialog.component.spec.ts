@@ -616,6 +616,49 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.componentInstance.editing()).toBe(false);
   });
 
+  it('preserves apostrophes when manually adding a missing character name', async () => {
+    const update = vi.fn(() =>
+      of(
+        makeDetail('m1', {
+          entities: [
+            {
+              id: 'entity-3',
+              entity_type: MediaEntityType.CHARACTER,
+              entity_id: null,
+              name: "Jeanne D'Arc (Fate)",
+              role: 'primary',
+              source: 'manual',
+              confidence: null,
+            },
+          ],
+        }),
+      ),
+    );
+    const { fixture, mediaService } = await createComponent({
+      get: vi.fn(() =>
+        of(
+          makeDetail('m1', {
+            entities: [],
+          }),
+        ),
+      ),
+      update,
+    });
+
+    fixture.componentInstance.beginEdit();
+    fixture.componentInstance.characterInputControl.setValue("  Jeanne D'Arc (Fate)  ");
+    fixture.componentInstance.addTypedCharacter();
+    fixture.componentInstance.save();
+    await fixture.whenStable();
+
+    expect(mediaService.update).toHaveBeenCalledWith(
+      'm1',
+      expect.objectContaining({
+        entities: [{ entity_type: MediaEntityType.CHARACTER, name: "Jeanne D'Arc (Fate)" }],
+      }),
+    );
+  });
+
   it('renders content safety controls in edit mode and saves manual overrides', async () => {
     const updated = makeDetail('m1', {
       is_nsfw: true,

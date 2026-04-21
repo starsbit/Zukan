@@ -101,8 +101,8 @@ export class MediaClientService {
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
     if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
-    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeMetadataValue(t))));
-    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeMetadataValue(t))));
+    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeEntityValue(t))));
+    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeEntityValue(t))));
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.character_mode != null) params = params.set('character_mode', p.character_mode);
@@ -163,8 +163,8 @@ export class MediaClientService {
   batchUpdateEntities(body: MediaEntityBatchUpdate): Observable<BulkResult> {
     return this.http.patch<BulkResult>(`${this.base}/api/v1/media/entities`, {
       ...body,
-      character_names: body.character_names?.map((name) => normalizeMetadataValue(name)),
-      series_names: body.series_names?.map((name) => normalizeMetadataValue(name)),
+      character_names: body.character_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name),
+      series_names: body.series_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name),
     });
   }
 
@@ -191,8 +191,8 @@ export class MediaClientService {
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
     if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
-    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeMetadataValue(t))));
-    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeMetadataValue(t))));
+    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeEntityValue(t))));
+    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeEntityValue(t))));
     if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.character_mode != null) params = params.set('character_mode', p.character_mode);
@@ -210,7 +210,7 @@ export class MediaClientService {
   }
 
   getCharacterSuggestions(q: string, limit = 20, scope?: MetadataListScope): Observable<CharacterSuggestion[]> {
-    let params = new HttpParams().set('q', normalizeMetadataQuery(q)).set('limit', limit);
+    let params = new HttpParams().set('q', normalizeEntityValue(q)).set('limit', limit);
     if (scope != null) params = params.set('scope', scope);
     return this.http.get<CharacterSuggestion[]>(
       `${this.base}/api/v1/media/character-suggestions`,
@@ -219,7 +219,7 @@ export class MediaClientService {
   }
 
   getSeriesSuggestions(q: string, limit = 20, scope?: MetadataListScope): Observable<SeriesSuggestion[]> {
-    let params = new HttpParams().set('q', normalizeMetadataQuery(q)).set('limit', limit);
+    let params = new HttpParams().set('q', normalizeEntityValue(q)).set('limit', limit);
     if (scope != null) params = params.set('scope', scope);
     return this.http.get<SeriesSuggestion[]>(
       `${this.base}/api/v1/media/series-suggestions`,
@@ -278,8 +278,8 @@ function normalizeMetadataValue(value: string): string {
   return normalizeMetadataNameForSubmission(value) || value.trim();
 }
 
-function normalizeMetadataQuery(value: string): string {
-  return normalizeMetadataValue(value);
+function normalizeEntityValue(value: string): string {
+  return value.trim();
 }
 
 function normalizeMediaUpdate(body: MediaUpdate): MediaUpdate {
@@ -288,7 +288,7 @@ function normalizeMediaUpdate(body: MediaUpdate): MediaUpdate {
     tags: body.tags?.map((tag) => normalizeMetadataValue(tag)),
     entities: body.entities?.map((entity) => ({
       ...entity,
-      name: normalizeMetadataValue(entity.name),
+      name: normalizeEntityValue(entity.name),
     })),
   };
 }

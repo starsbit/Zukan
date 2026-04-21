@@ -9,7 +9,7 @@ from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
 from backend.app.schemas import MetadataListScope
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import compact_metadata_search, normalize_metadata_search
+from backend.app.utils.search import normalize_metadata_search
 
 
 @dataclass
@@ -376,7 +376,8 @@ class OwnedEntityRepository:
         entity_type: MediaEntityType,
         name: str,
     ) -> OwnedEntity | None:
-        normalized_name = normalize_metadata_search(name) or name.strip().casefold()
+        cleaned_name = name.strip()
+        normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
         stmt = select(OwnedEntity).where(
             OwnedEntity.owner_user_id == owner_user_id,
             OwnedEntity.entity_type == entity_type,
@@ -482,16 +483,9 @@ def _normalized_media_entity_name_expr():
     )
 
 
-def _compact_metadata_name_expr(name_expr):
-    return func.regexp_replace(func.lower(func.coalesce(name_expr, "")), r"[^a-z0-9]+", "", "g")
-
-
 def _metadata_name_query_conditions(name_expr, normalized_name_expr, query: str):
     normalized_query = normalize_metadata_search(query)
-    compact_query = compact_metadata_search(query)
     conditions = [name_expr.ilike(f"%{query}%")]
     if normalized_query:
         conditions.append(normalized_name_expr.contains(normalized_query))
-    if compact_query:
-        conditions.append(_compact_metadata_name_expr(name_expr).contains(compact_query))
     return conditions

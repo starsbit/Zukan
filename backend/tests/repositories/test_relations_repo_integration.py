@@ -4,7 +4,7 @@ import pytest
 
 from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntityType, MediaExternalRef
-from backend.app.repositories.relations import MediaEntityRepository, MediaExternalRefRepository
+from backend.app.repositories.relations import MediaEntityRepository, MediaExternalRefRepository, OwnedEntityRepository
 from backend.app.schemas import MetadataListScope
 
 
@@ -125,35 +125,17 @@ async def test_media_entity_queries_support_fuzzy_matching(db_session, make_user
 
 
 @pytest.mark.asyncio
-async def test_media_entity_suggestions_match_legacy_apostrophe_names(db_session, make_user, make_media):
+async def test_owned_entity_preserves_tagger_slug_apostrophe(db_session, make_user):
     viewer = await make_user()
-    legacy = await make_media(uploader_id=viewer.id)
-    current = await make_media(uploader_id=viewer.id)
+    repo = OwnedEntityRepository(db_session)
 
-    repo = MediaEntityRepository(db_session)
-    await repo.add_media_entities(
-        legacy,
+    entity = await repo.get_or_create(
+        owner_user_id=viewer.id,
         entity_type=MediaEntityType.character,
-        names=["jeanne_d'arc_(fate)"],
-        source="manual",
+        name="jeanne_d'arc_(fate)",
     )
-    await repo.add_media_entities(
-        current,
-        entity_type=MediaEntityType.character,
-        names=["jeanne_darc_(fate)"],
-        source="manual",
-    )
-
-    suggestions = await repo.list_character_suggestions(user=viewer, query="jeanne_darc_(fate)", limit=10)
-    rows = await repo.list_entity_names(
-        user=viewer,
-        entity_type=MediaEntityType.character,
-        query="jeanne_darc_(fate)",
-        scope=MetadataListScope.OWNER,
-    )
-
-    assert {item["name"] for item in suggestions} == {"jeanne_d'arc_(fate)", "jeanne_darc_(fate)"}
-    assert {row.name for row in rows} == {"jeanne_d'arc_(fate)", "jeanne_darc_(fate)"}
+    assert entity.name == "jeanne_d'arc_(fate)"
+    assert entity.normalized_name == "jeanne_d_arc_fate"
 
 
 @pytest.mark.asyncio

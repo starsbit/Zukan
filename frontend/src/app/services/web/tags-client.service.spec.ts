@@ -53,11 +53,11 @@ describe('TagsClientService', () => {
   });
 
   it('listCharacterNames sends GET to character name list endpoint', () => {
-    service.listCharacterNames({ q: 'Saber Alter', scope: 'owner' }).subscribe(res => expect(res).toEqual(mockNamePage));
+    service.listCharacterNames({ q: "Jeanne D'Arc (Fate)", scope: 'owner' }).subscribe(res => expect(res).toEqual(mockNamePage));
 
     const req = http.expectOne(r => r.url === '/api/v1/character-names');
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('q')).toBe('saber_alter');
+    expect(req.request.params.get('q')).toBe("Jeanne D'Arc (Fate)");
     expect(req.request.params.get('scope')).toBe('owner');
     req.flush(mockNamePage);
   });
@@ -67,7 +67,7 @@ describe('TagsClientService', () => {
 
     const req = http.expectOne(r => r.url === '/api/v1/series-names');
     expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('q')).toBe('fate_stay_night');
+    expect(req.request.params.get('q')).toBe('Fate Stay Night');
     expect(req.request.params.get('scope')).toBe('owner');
     req.flush(mockNamePage);
   });
@@ -98,9 +98,9 @@ describe('TagsClientService', () => {
   });
 
   it('removeCharacterFromMedia encodes character name in URL', () => {
-    service.removeCharacterFromMedia('Saber Alter').subscribe(res => expect(res).toEqual(mockResult));
+    service.removeCharacterFromMedia("Jeanne D'Arc (Fate)").subscribe(res => expect(res).toEqual(mockResult));
 
-    const req = http.expectOne('/api/v1/character-names/saber_alter/actions/remove-from-media');
+    const req = http.expectOne('/api/v1/character-names/Jeanne%20D%27Arc%20(Fate)/actions/remove-from-media');
     expect(req.request.method).toBe('POST');
     req.flush(mockResult);
   });
@@ -125,7 +125,7 @@ describe('TagsClientService', () => {
   it('removeSeriesFromMedia encodes series name in URL', () => {
     service.removeSeriesFromMedia('Fate stay night').subscribe(res => expect(res).toEqual(mockResult));
 
-    const req = http.expectOne('/api/v1/series-names/fate_stay_night/actions/remove-from-media');
+    const req = http.expectOne('/api/v1/series-names/Fate%20stay%20night/actions/remove-from-media');
     expect(req.request.method).toBe('POST');
     req.flush(mockResult);
   });

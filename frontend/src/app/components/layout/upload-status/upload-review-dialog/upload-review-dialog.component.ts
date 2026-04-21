@@ -25,7 +25,6 @@ import { MediaInspectorDialogComponent } from '../../../media-browser/media-insp
 import {
   formatMetadataName,
   humanizeBackendLabel,
-  normalizeMetadataNameForSubmission,
 } from '../../../../utils/media-display.utils';
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
@@ -344,14 +343,10 @@ export class UploadReviewDialogComponent {
     this.mediaService.batchUpdateEntities({
       media_ids: appliedMediaIds,
       character_names: this.characterNames().length > 0
-        ? this.characterNames()
-            .map((name) => normalizeMetadataNameForSubmission(name))
-            .filter((name) => !!name)
+        ? this.characterNames().map((name) => name.trim()).filter((name) => !!name)
         : undefined,
       series_names: this.seriesNames().length > 0
-        ? this.seriesNames()
-            .map((name) => normalizeMetadataNameForSubmission(name))
-            .filter((name) => !!name)
+        ? this.seriesNames().map((name) => name.trim()).filter((name) => !!name)
         : undefined,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
