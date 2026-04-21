@@ -11,6 +11,7 @@ import {
   formatProcessingStatus,
   formatVisibility,
   humanizeBackendLabel,
+  normalizeMetadataNameForSubmission,
 } from './media-display.utils';
 
 describe('media-display utils', () => {
@@ -34,6 +35,11 @@ describe('media-display utils', () => {
     expect(formatMediaType(MediaType.GIF)).toBe('GIF');
     expect(formatVisibility(MediaVisibility.PUBLIC)).toBe('Public');
     expect(formatProcessingStatus(ProcessingStatus.NOT_APPLICABLE)).toBe('Not Applicable');
+  });
+
+  it('normalizes punctuation as metadata word boundaries', () => {
+    expect(normalizeMetadataNameForSubmission("Jeanne D'arc (Fate)")).toBe('jeanne_d_arc_(fate)');
+    expect(normalizeMetadataNameForSubmission('Dr. Stone')).toBe('dr_stone');
   });
 
   it('formats dimensions, timestamps, and confidence values', () => {

@@ -53,7 +53,7 @@ export function normalizeMetadataNameForSubmission(value: string | null | undefi
   return value
     .trim()
     .normalize('NFKC')
-    .replace(/['".,!?]+/g, '')
+    .replace(/['".,!?]+/g, '_')
     .replace(/&/g, ' and ')
     .replace(/[^a-zA-Z0-9()]+/g, '_')
     .replace(/_+/g, '_')

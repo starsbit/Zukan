@@ -232,6 +232,52 @@ async def test_media_filters_support_entity_and_or_modes(db_session, make_user, 
 
 
 @pytest.mark.asyncio
+async def test_media_filters_match_legacy_apostrophe_entity_names(db_session, make_user, make_media):
+    user = await make_user()
+    legacy = await make_media(uploader_id=user.id)
+    current = await make_media(uploader_id=user.id)
+    other = await make_media(uploader_id=user.id)
+
+    db_session.add_all(
+        [
+            MediaEntity(
+                media_id=legacy.id,
+                entity_type=MediaEntityType.character,
+                name="jeanne_d'arc_(fate)",
+                role="primary",
+                source="manual",
+                confidence=0.9,
+            ),
+            MediaEntity(
+                media_id=current.id,
+                entity_type=MediaEntityType.character,
+                name="jeanne_darc_(fate)",
+                role="primary",
+                source="manual",
+                confidence=0.9,
+            ),
+            MediaEntity(
+                media_id=other.id,
+                entity_type=MediaEntityType.character,
+                name="jeanne_alter_(fate)",
+                role="primary",
+                source="manual",
+                confidence=0.9,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    stmt = media_filters.apply_character_name_filter(
+        select(type(legacy)),
+        ["jeanne_darc_(fate)"],
+    )
+    rows = (await db_session.execute(stmt)).scalars().all()
+
+    assert {row.id for row in rows} == {legacy.id, current.id}
+
+
+@pytest.mark.asyncio
 async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_session, make_user, make_media):
     user = await make_user()
     m1 = await make_media(uploader_id=user.id)

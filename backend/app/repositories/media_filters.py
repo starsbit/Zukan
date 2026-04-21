@@ -12,7 +12,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_character_name_search
+from backend.app.utils.search import compact_metadata_search, normalize_character_name_search
 
 
 
@@ -176,31 +176,49 @@ def _normalized_entity_name_expr():
     )
 
 
+def _compact_entity_name_expr():
+    return func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "", "g")
+
+
+def _entity_name_match_condition(normalized_entity_name, compact_entity_name, query: str):
+    normalized_query = normalize_character_name_search(query)
+    compact_query = compact_metadata_search(query)
+    conditions = []
+    if normalized_query:
+        conditions.append(normalized_entity_name.contains(normalized_query))
+    if compact_query:
+        conditions.append(compact_entity_name.contains(compact_query))
+    if not conditions:
+        return None
+    return or_(*conditions) if len(conditions) > 1 else conditions[0]
+
+
 def _apply_entity_name_filter(stmt, entity_type: MediaEntityType, names: list[str] | None, mode: TagFilterMode):
-    normalized_queries = [
-        normalized
-        for normalized in (
-            normalize_character_name_search(name)
+    normalized_entity_name = _normalized_entity_name_expr()
+    compact_entity_name = _compact_entity_name_expr()
+    match_conditions = [
+        condition
+        for condition in (
+            _entity_name_match_condition(normalized_entity_name, compact_entity_name, name)
             for name in (names or [])
             if name is not None
         )
-        if normalized
+        if condition is not None
     ]
-    if not normalized_queries:
+    if not match_conditions:
         return stmt
 
-    normalized_entity_name = _normalized_entity_name_expr()
     if mode == TagFilterMode.OR:
         subq = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == entity_type,
-            or_(*[normalized_entity_name.contains(query) for query in normalized_queries]),
+            or_(*match_conditions),
         )
         return stmt.where(Media.id.in_(subq))
 
-    for query in normalized_queries:
+    for condition in match_conditions:
         subq = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == entity_type,
-            normalized_entity_name.contains(query),
+            condition,
         )
         stmt = stmt.where(Media.id.in_(subq))
     return stmt

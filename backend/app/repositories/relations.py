@@ -9,7 +9,7 @@ from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
 from backend.app.schemas import MetadataListScope
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_metadata_search
+from backend.app.utils.search import compact_metadata_search, normalize_metadata_search
 
 
 @dataclass
@@ -245,10 +245,7 @@ class MediaEntityRepository:
         entity_type_expr = func.coalesce(OwnedEntity.entity_type, MediaEntity.entity_type)
         name_expr = func.coalesce(OwnedEntity.name, MediaEntity.name)
         normalized_name_expr = func.coalesce(OwnedEntity.normalized_name, _normalized_media_entity_name_expr())
-        normalized_query = normalize_metadata_search(query)
-        conditions = [name_expr.ilike(f"%{query}%")]
-        if normalized_query:
-            conditions.append(normalized_name_expr.contains(normalized_query))
+        conditions = _metadata_name_query_conditions(name_expr, normalized_name_expr, query)
         stmt = (
             select(
                 name_expr.label("name"),
@@ -302,10 +299,7 @@ class MediaEntityRepository:
                 OwnedEntity.entity_type == entity_type,
             )
             if query:
-                normalized_query = normalize_metadata_search(query)
-                conditions = [OwnedEntity.name.ilike(f"%{query}%")]
-                if normalized_query:
-                    conditions.append(OwnedEntity.normalized_name.contains(normalized_query))
+                conditions = _metadata_name_query_conditions(OwnedEntity.name, OwnedEntity.normalized_name, query)
                 stmt = stmt.where(or_(*conditions))
             return stmt
 
@@ -328,10 +322,7 @@ class MediaEntityRepository:
             .group_by(name_expr)
         )
         if query:
-            normalized_query = normalize_metadata_search(query)
-            conditions = [name_expr.ilike(f"%{query}%")]
-            if normalized_query:
-                conditions.append(normalized_name_expr.contains(normalized_query))
+            conditions = _metadata_name_query_conditions(name_expr, normalized_name_expr, query)
             stmt = stmt.where(or_(*conditions))
         if not user.is_admin:
             nsfw_expr = effective_nsfw_expr()
@@ -489,3 +480,18 @@ def _normalized_media_entity_name_expr():
         func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
         "_",
     )
+
+
+def _compact_metadata_name_expr(name_expr):
+    return func.regexp_replace(func.lower(func.coalesce(name_expr, "")), r"[^a-z0-9]+", "", "g")
+
+
+def _metadata_name_query_conditions(name_expr, normalized_name_expr, query: str):
+    normalized_query = normalize_metadata_search(query)
+    compact_query = compact_metadata_search(query)
+    conditions = [name_expr.ilike(f"%{query}%")]
+    if normalized_query:
+        conditions.append(normalized_name_expr.contains(normalized_query))
+    if compact_query:
+        conditions.append(_compact_metadata_name_expr(name_expr).contains(compact_query))
+    return conditions

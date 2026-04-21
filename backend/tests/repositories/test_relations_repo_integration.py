@@ -125,6 +125,38 @@ async def test_media_entity_queries_support_fuzzy_matching(db_session, make_user
 
 
 @pytest.mark.asyncio
+async def test_media_entity_suggestions_match_legacy_apostrophe_names(db_session, make_user, make_media):
+    viewer = await make_user()
+    legacy = await make_media(uploader_id=viewer.id)
+    current = await make_media(uploader_id=viewer.id)
+
+    repo = MediaEntityRepository(db_session)
+    await repo.add_media_entities(
+        legacy,
+        entity_type=MediaEntityType.character,
+        names=["jeanne_d'arc_(fate)"],
+        source="manual",
+    )
+    await repo.add_media_entities(
+        current,
+        entity_type=MediaEntityType.character,
+        names=["jeanne_darc_(fate)"],
+        source="manual",
+    )
+
+    suggestions = await repo.list_character_suggestions(user=viewer, query="jeanne_darc_(fate)", limit=10)
+    rows = await repo.list_entity_names(
+        user=viewer,
+        entity_type=MediaEntityType.character,
+        query="jeanne_darc_(fate)",
+        scope=MetadataListScope.OWNER,
+    )
+
+    assert {item["name"] for item in suggestions} == {"jeanne_d'arc_(fate)", "jeanne_darc_(fate)"}
+    assert {row.name for row in rows} == {"jeanne_d'arc_(fate)", "jeanne_darc_(fate)"}
+
+
+@pytest.mark.asyncio
 async def test_media_external_ref_repository_query(db_session, make_user, make_media):
     user = await make_user()
     media = await make_media(uploader_id=user.id)
