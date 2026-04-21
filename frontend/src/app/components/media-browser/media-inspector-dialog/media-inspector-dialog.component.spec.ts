@@ -37,6 +37,9 @@ function makeMedia(id = 'm1', overrides: Partial<MediaRead> = {}): MediaRead {
     tags: ['Saber', 'white hair'],
     ocr_text_override: null,
     is_nsfw: false,
+    is_sensitive: false,
+    is_nsfw_override: null,
+    is_sensitive_override: null,
     tagging_status: TaggingStatus.DONE,
     tagging_error: null,
     thumbnail_status: ProcessingStatus.DONE,
@@ -436,6 +439,17 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.componentInstance.activeItem()?.id).toBe('m2');
   });
 
+  it('emits the active media id when navigating between items', async () => {
+    const { fixture } = await createComponent();
+    const changedIds: string[] = [];
+    fixture.componentInstance.activeMediaChanged.subscribe((id) => changedIds.push(id));
+
+    fixture.componentInstance.next();
+    fixture.detectChanges();
+
+    expect(changedIds).toEqual(['m2']);
+  });
+
   it('supports keyboard navigation and escape close', async () => {
     const { fixture, dialogRef } = await createComponent();
 
@@ -546,6 +560,8 @@ describe('MediaInspectorDialogComponent', () => {
   it('builds the combined save payload, clears empty values, and patches gallery state', async () => {
     const updated = makeDetail('m1', {
       tags: ['hero'],
+      is_nsfw_override: null,
+      is_sensitive_override: null,
       entities: [
         {
           id: 'entity-3',
@@ -592,10 +608,87 @@ describe('MediaInspectorDialogComponent', () => {
         { entity_type: MediaEntityType.SERIES, name: 'Fate/zero' },
       ],
       ocr_text_override: null,
+      is_nsfw_override: null,
+      is_sensitive_override: null,
       version: 1,
     });
     expect(galleryStore.patchItem).toHaveBeenCalledWith(updated);
     expect(fixture.componentInstance.editing()).toBe(false);
+  });
+
+  it('renders content safety controls in edit mode and saves manual overrides', async () => {
+    const updated = makeDetail('m1', {
+      is_nsfw: true,
+      is_sensitive: false,
+      is_nsfw_override: true,
+      is_sensitive_override: false,
+      version: 2,
+    });
+    const update = vi.fn(() => of(updated));
+    const { fixture, mediaService, galleryStore } = await createComponent({
+      get: vi.fn(() =>
+        of(
+          makeDetail('m1', {
+            is_nsfw: false,
+            is_sensitive: true,
+            is_nsfw_override: null,
+            is_sensitive_override: true,
+          }),
+        ),
+      ),
+      update,
+    });
+
+    fixture.componentInstance.beginEdit();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Content Safety');
+    expect(fixture.nativeElement.textContent).toContain('NSFW classification');
+    expect(fixture.nativeElement.textContent).toContain('Sensitive classification');
+    expect(fixture.componentInstance['draft']().nsfwOverride).toBeNull();
+    expect(fixture.componentInstance['draft']().sensitiveOverride).toBe(true);
+
+    fixture.componentInstance.updateNsfwOverride(true);
+    fixture.componentInstance.updateSensitiveOverride(false);
+    fixture.componentInstance.save();
+    await fixture.whenStable();
+
+    expect(mediaService.update).toHaveBeenCalledWith(
+      'm1',
+      expect.objectContaining({
+        is_nsfw_override: true,
+        is_sensitive_override: false,
+        version: 1,
+      }),
+    );
+    expect(galleryStore.patchItem).toHaveBeenCalledWith(updated);
+  });
+
+  it('clears manual classification overrides when automatic is selected', async () => {
+    const { fixture, mediaService } = await createComponent({
+      get: vi.fn(() =>
+        of(
+          makeDetail('m1', {
+            is_nsfw_override: true,
+            is_sensitive_override: false,
+          }),
+        ),
+      ),
+    });
+
+    fixture.componentInstance.beginEdit();
+    fixture.componentInstance.updateNsfwOverride(null);
+    fixture.componentInstance.updateSensitiveOverride(null);
+    fixture.componentInstance.save();
+    await fixture.whenStable();
+
+    expect(mediaService.update).toHaveBeenCalledWith(
+      'm1',
+      expect.objectContaining({
+        is_nsfw_override: null,
+        is_sensitive_override: null,
+      }),
+    );
   });
 
   it('shows save errors and load failures without crashing', async () => {

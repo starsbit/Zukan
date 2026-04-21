@@ -100,8 +100,21 @@ class MediaRead(BaseModel):
         default=False,
         description="Whether this media has been explicitly dismissed from missing metadata review flows.",
     )
-    is_nsfw: bool = Field(description="Whether the media is classified as NSFW by the active tagging backend.")
-    is_sensitive: bool = Field(default=False, description="Whether the media is classified as sensitive by the active tagging backend.")
+    is_nsfw: bool = Field(
+        description="Effective NSFW classification for this media after applying any manual override.",
+    )
+    is_sensitive: bool = Field(
+        default=False,
+        description="Effective sensitive classification for this media after applying any manual override.",
+    )
+    is_nsfw_override: bool | None = Field(
+        default=None,
+        description="Manual NSFW override. Null means automatic classification is in effect.",
+    )
+    is_sensitive_override: bool | None = Field(
+        default=None,
+        description="Manual sensitive override. Null means automatic classification is in effect.",
+    )
     tagging_status: TaggingStatus = Field(description="Current AI tagging lifecycle state. One of: pending, processing, done, failed.")
     tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
     thumbnail_status: ProcessingStatus = Field(description="Current thumbnail generation lifecycle state. One of: pending, processing, done, failed, not_applicable.")
@@ -153,6 +166,8 @@ class MediaDetail(MediaRead):
                 "ocr_text_override": None,
                 "is_nsfw": False,
                 "is_sensitive": False,
+                "is_nsfw_override": None,
+                "is_sensitive_override": None,
                 "tagging_status": "done",
                 "tagging_error": None,
                 "thumbnail_status": "done",
@@ -238,6 +253,14 @@ class MediaUpdate(BaseModel):
         default=None,
         description="Visibility to apply to this media item. Omit to keep the current visibility unchanged.",
     )
+    is_nsfw_override: bool | None = Field(
+        default=None,
+        description="Manual NSFW override. Send true/false to force a value, or null to clear the override.",
+    )
+    is_sensitive_override: bool | None = Field(
+        default=None,
+        description="Manual sensitive override. Send true/false to force a value, or null to clear the override.",
+    )
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
     model_config = {
@@ -263,6 +286,8 @@ class MediaUpdate(BaseModel):
                 "metadata": {"captured_at": "2026-03-24T15:07:11Z"},
                 "favorited": True,
                 "ocr_text_override": "Other text because I did not like the one in the image",
+                "is_nsfw_override": True,
+                "is_sensitive_override": None,
                 "version": 5,
             }
         }

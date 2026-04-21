@@ -9,7 +9,7 @@ from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.repositories import media_filters
-from backend.app.schemas import MediaMetadataFilter, NsfwFilter, TagFilterMode
+from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 
 
 @pytest.mark.asyncio
@@ -58,6 +58,60 @@ async def test_media_filters_tag_character_ocr_and_nsfw(db_session, make_user, m
     stmt5 = media_filters.apply_nsfw_list_filter(select(type(m1)), user, NsfwFilter.DEFAULT)
     rows5 = (await db_session.execute(stmt5)).scalars().all()
     assert {r.id for r in rows5} == {m1.id}
+
+
+@pytest.mark.asyncio
+async def test_media_filters_use_effective_classification_overrides(db_session, make_user, make_media):
+    user = await make_user(show_nsfw=False, show_sensitive=False)
+    auto_safe = await make_media(uploader_id=user.id, is_nsfw=False, is_sensitive=False)
+    manual_nsfw = await make_media(
+        uploader_id=user.id,
+        is_nsfw=False,
+        is_sensitive=False,
+        is_nsfw_override=True,
+    )
+    manual_safe = await make_media(
+        uploader_id=user.id,
+        is_nsfw=True,
+        is_sensitive=True,
+        is_nsfw_override=False,
+        is_sensitive_override=False,
+    )
+    manual_sensitive = await make_media(
+        uploader_id=user.id,
+        is_nsfw=False,
+        is_sensitive=False,
+        is_sensitive_override=True,
+    )
+    await db_session.flush()
+
+    default_nsfw_rows = (
+        await db_session.execute(
+            media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.DEFAULT)
+        )
+    ).scalars().all()
+    assert {row.id for row in default_nsfw_rows} == {auto_safe.id, manual_safe.id, manual_sensitive.id}
+
+    only_nsfw_rows = (
+        await db_session.execute(
+            media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.ONLY)
+        )
+    ).scalars().all()
+    assert {row.id for row in only_nsfw_rows} == {manual_nsfw.id}
+
+    default_sensitive_rows = (
+        await db_session.execute(
+            media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.DEFAULT)
+        )
+    ).scalars().all()
+    assert {row.id for row in default_sensitive_rows} == {auto_safe.id, manual_nsfw.id, manual_safe.id}
+
+    only_sensitive_rows = (
+        await db_session.execute(
+            media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.ONLY)
+        )
+    ).scalars().all()
+    assert {row.id for row in only_sensitive_rows} == {manual_sensitive.id}
 
 
 @pytest.mark.asyncio

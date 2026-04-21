@@ -121,6 +121,7 @@ async def test_handle_new_media_with_manual_tags_marks_done(fake_db, stub_query,
     assert tags_repo.set_media_tag_links.await_count == 1
     created_media = next(item for item in fake_db.added if isinstance(item, Media))
     assert created_media is not None
+    assert created_media.owner_id == user.id
 
 
 @pytest.mark.asyncio
@@ -166,6 +167,40 @@ async def test_handle_new_media_with_manual_entities_marks_done_and_creates_manu
     assert ("character", "Saber") in entity_names
     assert ("character", "Rin") in entity_names
     assert ("series", "Fate/stay night") in entity_names
+    created_media = next(item for item in fake_db.added if isinstance(item, Media))
+    assert created_media.owner_id == user.id
+
+
+@pytest.mark.asyncio
+async def test_create_media_from_saved_upload_sets_owner(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    saved = SimpleNamespace(
+        path=Path("/tmp/new.webp"),
+        file_size=10,
+        sha256="d" * 64,
+        mime_type="image/webp",
+        media_type="image",
+    )
+
+    with patch(
+        "backend.app.services.media.upload.extract_media_metadata",
+        return_value=SimpleNamespace(width=100, height=100, duration_seconds=None, frame_count=None),
+    ), patch("backend.app.services.media.upload.generate_poster_and_thumbnail", return_value=(None, None)):
+        media = await workflow.create_media_from_saved_upload(
+            user=user,
+            original_name="f",
+            saved=saved,
+            captured_at=datetime.now(timezone.utc),
+            visibility=MediaVisibility.private,
+            tags=None,
+        )
+
+    assert media.owner_id == user.id
 
 
 @pytest.mark.asyncio

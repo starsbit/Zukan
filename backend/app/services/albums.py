@@ -43,6 +43,7 @@ from backend.app.schemas import (
     MediaCursorPage,
     TagFilterMode,
 )
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 from backend.app.utils.media_projections import enrich_media
 from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
 
@@ -209,7 +210,9 @@ class AlbumService:
                 )
             )
         if not user.show_nsfw:
-            stmt = stmt.where(Media.is_nsfw == False)
+            stmt = stmt.where(effective_nsfw_expr().is_(False))
+        if not user.show_sensitive:
+            stmt = stmt.where(effective_sensitive_expr().is_(False))
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
 
         if after:

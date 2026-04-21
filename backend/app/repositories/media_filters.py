@@ -11,6 +11,7 @@ from backend.app.models.media import Media, MediaTag, MediaType, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 from backend.app.utils.search import normalize_character_name_search
 
 
@@ -140,22 +141,24 @@ def apply_uploaded_at_filters(stmt, metadata: MediaMetadataFilter):
     return stmt
 
 def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
+    nsfw_expr = effective_nsfw_expr()
     if nsfw == NsfwFilter.DEFAULT:
         if not user.show_nsfw:
-            stmt = stmt.where(Media.is_nsfw == False)
+            stmt = stmt.where(nsfw_expr.is_(False))
         return stmt
     if nsfw == NsfwFilter.ONLY:
-        return stmt.where(Media.is_nsfw == True)
+        return stmt.where(nsfw_expr.is_(True))
     return stmt
 
 
 def apply_sensitive_list_filter(stmt, user: User, sensitive: SensitiveFilter):
+    sensitive_expr = effective_sensitive_expr()
     if sensitive == SensitiveFilter.DEFAULT:
         if not user.show_sensitive:
-            stmt = stmt.where(Media.is_sensitive == False)
+            stmt = stmt.where(sensitive_expr.is_(False))
         return stmt
     if sensitive == SensitiveFilter.ONLY:
-        return stmt.where(Media.is_sensitive == True)
+        return stmt.where(sensitive_expr.is_(True))
     return stmt
 
 def _build_fuzzy_ocr_like_pattern(term: str) -> str | None:

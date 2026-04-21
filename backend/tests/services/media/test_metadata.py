@@ -47,6 +47,8 @@ async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_
         metadata=MediaMetadataUpdate(captured_at=captured),
         deleted=True,
         ocr_text_override="  corrected text  ",
+        is_nsfw_override=True,
+        is_sensitive_override=False,
         external_refs=[ExternalRefCreate(provider="pixiv", external_id="123", url="https://x")],
         visibility=MediaVisibility.public,
         favorited=True,
@@ -70,6 +72,8 @@ async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_
     assert media.ocr_text_override == "  corrected text  "
     assert media.is_nsfw is True
     assert media.is_sensitive is False
+    assert media.is_nsfw_override is True
+    assert media.is_sensitive_override is False
     assert media.visibility == MediaVisibility.public
     assert old_ref in fake_db.deleted
     assert interactions._set_favorite_state.await_count == 1
@@ -124,6 +128,32 @@ async def test_update_media_metadata_resets_captured_at_to_uploaded_at(fake_db, 
 
     assert detail is expected_detail
     assert media.captured_at == media.uploaded_at
+
+
+@pytest.mark.asyncio
+async def test_update_media_metadata_allows_clearing_manual_classification_overrides(fake_db, stub_query, media, user):
+    expected_detail = SimpleNamespace(id=media.id)
+    media.is_nsfw_override = True
+    media.is_sensitive_override = False
+
+    stub_query.get_owned_or_admin_media.return_value = media
+    stub_query.get_media_with_relations.return_value = media
+    stub_query.build_media_detail.return_value = expected_detail
+
+    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
+    detail = await service.update_media_metadata(
+        media.id,
+        user,
+        MediaUpdate(
+            is_nsfw_override=None,
+            is_sensitive_override=None,
+            version=media.version,
+        ),
+    )
+
+    assert detail is expected_detail
+    assert media.is_nsfw_override is None
+    assert media.is_sensitive_override is None
 
 
 @pytest.mark.asyncio

@@ -65,6 +65,7 @@ async def test_get_owned_or_admin_media_not_found_or_forbidden(service, user, me
 
     media.deleted_at = None
     media.uploader_id = uuid.uuid4()
+    media.owner_id = uuid.uuid4()
     with pytest.raises(AppError) as forbidden:
         await service.get_owned_or_admin_media(media.id, user, trashed=False)
     assert forbidden.value.status_code == 403

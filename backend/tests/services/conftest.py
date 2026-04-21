@@ -126,6 +126,7 @@ def media(user: User) -> Media:
     return Media(
         id=uuid.uuid4(),
         uploader_id=user.id,
+        owner_id=user.id,
         filename="image.webp",
         original_filename="image.webp",
         filepath="/tmp/image.webp",
@@ -138,6 +139,9 @@ def media(user: User) -> Media:
         duration_seconds=None,
         frame_count=None,
         is_nsfw=False,
+        is_sensitive=False,
+        is_nsfw_override=None,
+        is_sensitive_override=None,
         tagging_status=TaggingStatus.PENDING,
         tagging_error=None,
         thumbnail_path=None,

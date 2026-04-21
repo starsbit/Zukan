@@ -6,6 +6,7 @@ import {
   HostListener,
   computed,
   inject,
+  output,
   signal,
   viewChild,
 } from '@angular/core';
@@ -21,6 +22,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { MediaDetail, MediaRead, MediaType } from '../../../models/media';
@@ -57,6 +59,8 @@ interface MetadataDraft {
   characterNames: string[];
   seriesNames: string[];
   ocrTextOverride: string;
+  nsfwOverride: boolean | null;
+  sensitiveOverride: boolean | null;
 }
 
 interface PointerTracker {
@@ -79,6 +83,15 @@ interface FavoriteFeedback {
 
 type GestureMode = 'idle' | 'swipe' | 'pan' | 'pinch';
 
+const CLASSIFICATION_OVERRIDE_OPTIONS: ReadonlyArray<{
+  label: string;
+  value: boolean | null;
+}> = [
+  { label: 'Automatic', value: null },
+  { label: 'Yes', value: true },
+  { label: 'No', value: false },
+];
+
 @Component({
   selector: 'zukan-media-inspector-dialog',
   standalone: true,
@@ -92,6 +105,7 @@ type GestureMode = 'idle' | 'swipe' | 'pan' | 'pinch';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatSelectModule,
     MatSnackBarModule,
     ReactiveFormsModule,
   ],
@@ -114,6 +128,7 @@ export class MediaInspectorDialogComponent {
   private readonly snackBar = inject(MatSnackBar);
   private readonly tagsClient = inject(TagsClientService);
   private readonly zoomStage = viewChild<ElementRef<HTMLElement>>('zoomStage');
+  readonly activeMediaChanged = output<string>();
 
   readonly items = signal<MediaRead[]>([]);
   readonly activeIndex = signal(0);
@@ -142,6 +157,8 @@ export class MediaInspectorDialogComponent {
     characterNames: [],
     seriesNames: [],
     ocrTextOverride: '',
+    nsfwOverride: null,
+    sensitiveOverride: null,
   });
 
   readonly tagInputControl = new FormControl('', { nonNullable: true });
@@ -149,6 +166,7 @@ export class MediaInspectorDialogComponent {
   readonly seriesInputControl = new FormControl('', { nonNullable: true });
 
   readonly activeItem = computed(() => this.items()[this.activeIndex()] ?? this.items()[0] ?? null);
+  readonly classificationOverrideOptions = CLASSIFICATION_OVERRIDE_OPTIONS;
   readonly media = computed<MediaRead | MediaDetail>(() => this.detail() ?? this.activeItem()!);
   readonly title = computed(() => this.media().original_filename ?? this.media().filename);
   readonly isVideo = computed(() => this.media().media_type === MediaType.VIDEO);
@@ -502,6 +520,20 @@ export class MediaInspectorDialogComponent {
     }));
   }
 
+  updateNsfwOverride(value: boolean | null): void {
+    this.draft.update((draft) => ({
+      ...draft,
+      nsfwOverride: value,
+    }));
+  }
+
+  updateSensitiveOverride(value: boolean | null): void {
+    this.draft.update((draft) => ({
+      ...draft,
+      sensitiveOverride: value,
+    }));
+  }
+
   save(): void {
     const media = this.media();
     if (this.saving() || !media) {
@@ -527,6 +559,8 @@ export class MediaInspectorDialogComponent {
           })),
         ],
         ocr_text_override: ocrTextOverride ? ocrTextOverride : null,
+        is_nsfw_override: draft.nsfwOverride,
+        is_sensitive_override: draft.sensitiveOverride,
         version: media.version,
       })
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -714,8 +748,14 @@ export class MediaInspectorDialogComponent {
       return;
     }
 
+    const item = this.items()[index];
+    if (!item) {
+      return;
+    }
+
     this.revealChrome();
     this.activeIndex.set(index);
+    this.activeMediaChanged.emit(item.id);
     this.editing.set(false);
     this.resetViewport();
     this.beginLoadForActiveItem();
@@ -870,6 +910,8 @@ export class MediaInspectorDialogComponent {
       characterNames,
       seriesNames,
       ocrTextOverride: media.ocr_text_override ?? '',
+      nsfwOverride: media.is_nsfw_override ?? null,
+      sensitiveOverride: media.is_sensitive_override ?? null,
     });
     this.tagInputControl.setValue('', { emitEvent: false });
     this.characterInputControl.setValue('', { emitEvent: false });

@@ -27,6 +27,8 @@ def _make_media() -> Media:
         frame_count=1,
         is_nsfw=False,
         is_sensitive=False,
+        is_nsfw_override=None,
+        is_sensitive_override=None,
         tagging_status=TaggingStatus.DONE,
         tagging_error=None,
         thumbnail_status=ProcessingStatus.DONE,
@@ -62,6 +64,8 @@ def test_build_media_read_and_enrich_media():
     assert read.uploader_username == "uploader"
     assert read.owner_username == "owner"
     assert read.uploaded_at == media.uploaded_at
+    assert read.is_nsfw_override is None
+    assert read.is_sensitive_override is None
 
     result = enrich_media([media], {media.id}, {media.id: 3})
     assert len(result) == 1
@@ -79,3 +83,18 @@ def test_build_media_read_does_not_fallback_owner_to_uploader():
     assert read.owner_id is None
     assert read.owner_username is None
     assert read.uploader_username == "uploader"
+
+
+def test_build_media_read_prefers_manual_overrides():
+    media = _make_media()
+    media.is_nsfw = False
+    media.is_sensitive = True
+    media.is_nsfw_override = True
+    media.is_sensitive_override = False
+
+    read = build_media_read(media, False)
+
+    assert read.is_nsfw is True
+    assert read.is_sensitive is False
+    assert read.is_nsfw_override is True
+    assert read.is_sensitive_override is False

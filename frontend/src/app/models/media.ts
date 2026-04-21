@@ -86,6 +86,8 @@ export interface MediaRead {
   metadata_review_dismissed?: boolean;
   is_nsfw: boolean;
   is_sensitive?: boolean;
+  is_nsfw_override?: boolean | null;
+  is_sensitive_override?: boolean | null;
   tagging_status: TaggingStatus;
   tagging_error: string | null;
   thumbnail_status: ProcessingStatus;
@@ -118,6 +120,8 @@ export interface MediaUpdate {
   visibility?: MediaVisibility | null;
   metadata_review_dismissed?: boolean | null;
   ocr_text_override?: string | null;
+  is_nsfw_override?: boolean | null;
+  is_sensitive_override?: boolean | null;
   external_refs?: ExternalRefCreate[] | null;
   version?: number | null;
 }

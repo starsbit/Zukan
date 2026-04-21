@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.app.errors.albums import album_not_found
 from backend.app.errors.error import AppError
-from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden, sensitive_disabled
+from backend.app.errors.media import media_not_found, nsfw_disabled, nsfw_hidden, sensitive_disabled, sensitive_hidden
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaVisibility
@@ -38,6 +38,7 @@ from backend.app.schemas import (
     TimelineBucket,
 )
 from backend.app.utils.media_common import parse_csv_values
+from backend.app.utils.media_classification import effective_nsfw_value, effective_sensitive_value
 from backend.app.utils.media_projections import build_media_read, enrich_media
 from backend.app.utils.pagination import (
     apply_cursor_where,
@@ -90,6 +91,7 @@ class MediaQueryService:
         media = await self.get_active_media(media_id)
         if not await self._media_repo.is_accessible(media.id, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
+        self._assert_media_classification_visible(media, user)
         return media
 
     async def get_media_by_id(self, media_id: uuid.UUID) -> Media | None:
@@ -653,11 +655,19 @@ class MediaQueryService:
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
         if media.deleted_at is None and not await self._media_repo.is_accessible(media.id, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
+        self._assert_media_classification_visible(media, user)
+
+    def _assert_media_classification_visible(self, media: Media, user: User) -> None:
         self._assert_nsfw_visible(media, user)
+        self._assert_sensitive_visible(media, user)
 
     def _assert_nsfw_visible(self, media: Media, user: User) -> None:
-        if media.is_nsfw and not user.show_nsfw and not user.is_admin:
+        if effective_nsfw_value(media) and not user.show_nsfw and not user.is_admin:
             raise AppError(status_code=403, code=nsfw_hidden, detail="NSFW content hidden")
+
+    def _assert_sensitive_visible(self, media: Media, user: User) -> None:
+        if effective_sensitive_value(media) and not user.show_sensitive and not user.is_admin:
+            raise AppError(status_code=403, code=sensitive_hidden, detail="Sensitive content hidden")
 
     def _is_media_visible_to_user(self, media: Media, user: User) -> bool:
         return self._can_manage_media(media, user) or (

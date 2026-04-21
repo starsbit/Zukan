@@ -62,7 +62,14 @@ async def db_session(db_engine) -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def make_user(db_session: AsyncSession):
-    async def _make_user(*, is_admin: bool = False, username: str | None = None, email: str | None = None) -> User:
+    async def _make_user(
+        *,
+        is_admin: bool = False,
+        username: str | None = None,
+        email: str | None = None,
+        show_nsfw: bool = False,
+        show_sensitive: bool = False,
+    ) -> User:
         uid = uuid.uuid4()
         user = User(
             id=uid,
@@ -70,7 +77,8 @@ async def make_user(db_session: AsyncSession):
             email=email or f"{str(uid)[:8]}@example.com",
             hashed_password="hash",
             is_admin=is_admin,
-            show_nsfw=False,
+            show_nsfw=show_nsfw,
+            show_sensitive=show_sensitive,
             tag_confidence_threshold=0.35,
             version=1,
         )
@@ -89,6 +97,9 @@ async def make_media(db_session: AsyncSession):
         media_type: MediaType = MediaType.IMAGE,
         deleted: bool = False,
         is_nsfw: bool = False,
+        is_sensitive: bool = False,
+        is_nsfw_override: bool | None = None,
+        is_sensitive_override: bool | None = None,
         sha256: str | None = None,
         phash: str | None = None,
         tagging_status: TaggingStatus = TaggingStatus.PENDING,
@@ -113,6 +124,9 @@ async def make_media(db_session: AsyncSession):
             duration_seconds=None,
             frame_count=1,
             is_nsfw=is_nsfw,
+            is_sensitive=is_sensitive,
+            is_nsfw_override=is_nsfw_override,
+            is_sensitive_override=is_sensitive_override,
             tagging_status=tagging_status,
             tagging_error=None,
             thumbnail_status=ProcessingStatus.DONE,

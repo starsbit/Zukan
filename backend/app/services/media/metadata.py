@@ -35,7 +35,21 @@ class MediaMetadataService:
 
     async def update_media_metadata(self, media_id: uuid.UUID, user: User, payload: MediaUpdate) -> MediaDetail:
         metadata_fields = payload.metadata.model_fields_set if payload.metadata is not None else set()
-        needs_owner_access = any(field in payload.model_fields_set for field in {"tags", "entities", "metadata", "deleted", "ocr_text_override", "external_refs", "visibility", "metadata_review_dismissed"})
+        needs_owner_access = any(
+            field in payload.model_fields_set
+            for field in {
+                "tags",
+                "entities",
+                "metadata",
+                "deleted",
+                "ocr_text_override",
+                "external_refs",
+                "visibility",
+                "metadata_review_dismissed",
+                "is_nsfw_override",
+                "is_sensitive_override",
+            }
+        )
         if needs_owner_access:
             media = await self._query.get_owned_or_admin_media(media_id, user, trashed=None)
         else:
@@ -86,6 +100,10 @@ class MediaMetadataService:
                 self._db.add(MediaExternalRef(media_id=media.id, provider=ref_create.provider, external_id=ref_create.external_id, url=ref_create.url))
         if "visibility" in payload.model_fields_set and payload.visibility is not None:
             media.visibility = payload.visibility
+        if "is_nsfw_override" in payload.model_fields_set:
+            media.is_nsfw_override = payload.is_nsfw_override
+        if "is_sensitive_override" in payload.model_fields_set:
+            media.is_sensitive_override = payload.is_sensitive_override
         if "favorited" in payload.model_fields_set:
             await self._interactions._set_favorite_state(media.id, user, payload.favorited)
 

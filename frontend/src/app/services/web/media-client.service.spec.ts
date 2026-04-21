@@ -12,7 +12,8 @@ const mockMedia = {
   filename: 'test.webp', original_filename: 'test.webp', media_type: 'image' as const,
   metadata: { captured_at: '2026-01-01T00:00:00Z', file_size: 1000, width: 800, height: 600, duration_seconds: null, frame_count: null, mime_type: 'image/webp' },
   version: 1, uploaded_at: '2026-01-01T00:00:00Z', deleted_at: null, tags: [],
-  ocr_text_override: null, is_nsfw: false, is_sensitive: false, tagging_status: 'done' as const,
+  ocr_text_override: null, is_nsfw: false, is_sensitive: false,
+  is_nsfw_override: null, is_sensitive_override: null, tagging_status: 'done' as const,
   tagging_error: null, thumbnail_status: 'done' as const, poster_status: 'pending' as const,
   ocr_text: null, is_favorited: false,
   tag_details: [], external_refs: [], entities: [],
@@ -263,7 +264,13 @@ describe('MediaClientService', () => {
   });
 
   it('update sends PATCH /api/v1/media/{id} with body', () => {
-    const body = { tags: ['Saber Alter'], entities: [{ entity_type: 'character', name: 'Rin Tohsaka' }], version: 1 } as any;
+    const body = {
+      tags: ['Saber Alter'],
+      entities: [{ entity_type: 'character', name: 'Rin Tohsaka' }],
+      is_nsfw_override: true,
+      is_sensitive_override: null,
+      version: 1,
+    } as any;
 
     service.update('m1', body).subscribe(res => expect(res).toEqual(mockMedia));
 
@@ -272,6 +279,8 @@ describe('MediaClientService', () => {
     expect(req.request.body).toEqual({
       tags: ['saber_alter'],
       entities: [{ entity_type: 'character', name: 'rin_tohsaka' }],
+      is_nsfw_override: true,
+      is_sensitive_override: null,
       version: 1,
     });
     req.flush(mockMedia);

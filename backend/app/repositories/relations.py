@@ -8,6 +8,7 @@ from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
 from backend.app.schemas import MetadataListScope
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 from backend.app.utils.search import normalize_metadata_search
 
 
@@ -268,13 +269,15 @@ class MediaEntityRepository:
         if scope == MetadataListScope.OWNER:
             stmt = stmt.where(Media.uploader_id == user.id)
         elif not user.is_admin:
+            nsfw_expr = effective_nsfw_expr()
+            sensitive_expr = effective_sensitive_expr()
             stmt = stmt.where(
                 or_(
                     Media.uploader_id == user.id,
                     and_(
                         Media.visibility == MediaVisibility.public,
-                        Media.is_nsfw.is_(False) if not user.show_nsfw else True,
-                        Media.is_sensitive.is_(False) if not user.show_sensitive else True,
+                        nsfw_expr.is_(False) if not user.show_nsfw else True,
+                        sensitive_expr.is_(False) if not user.show_sensitive else True,
                     ),
                 )
             )
@@ -331,13 +334,15 @@ class MediaEntityRepository:
                 conditions.append(normalized_name_expr.contains(normalized_query))
             stmt = stmt.where(or_(*conditions))
         if not user.is_admin:
+            nsfw_expr = effective_nsfw_expr()
+            sensitive_expr = effective_sensitive_expr()
             stmt = stmt.where(
                 or_(
                     func.coalesce(OwnedEntity.owner_user_id, Media.owner_id, Media.uploader_id) == user.id,
                     and_(
                         Media.visibility == MediaVisibility.public,
-                        Media.is_nsfw.is_(False) if not user.show_nsfw else True,
-                        Media.is_sensitive.is_(False) if not user.show_sensitive else True,
+                        nsfw_expr.is_(False) if not user.show_nsfw else True,
+                        sensitive_expr.is_(False) if not user.show_sensitive else True,
                     ),
                 )
             )

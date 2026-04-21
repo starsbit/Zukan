@@ -370,6 +370,7 @@ class MediaUploadWorkflow:
 
         media = Media(
             uploader_id=user.id,
+            owner_id=user.id,
             filename=saved.path.name,
             original_filename=original_name,
             filepath=str(saved.path),
@@ -595,6 +596,7 @@ class MediaUploadWorkflow:
 
         media = Media(
             uploader_id=user.id,
+            owner_id=user.id,
             filename=saved.path.name,
             original_filename=original_name,
             filepath=str(saved.path),

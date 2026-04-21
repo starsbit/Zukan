@@ -75,6 +75,8 @@ class Media(Base):
     frame_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
     is_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    is_nsfw_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_sensitive_override: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Analysis / processing state
     tagging_status: Mapped[TaggingStatus] = mapped_column(
         Enum(TaggingStatus, name="tagging_status_enum"), nullable=False, default=TaggingStatus.PENDING, index=True

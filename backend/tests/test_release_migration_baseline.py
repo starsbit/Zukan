@@ -20,6 +20,8 @@ def test_release_baseline_metadata_matches_live_schema_surface():
     assert "recommendations_computed_at" in import_batches
     assert "metadata_review_dismissed" in media
     assert "is_sensitive" in media
+    assert "is_nsfw_override" in media
+    assert "is_sensitive_override" in media
     assert "show_sensitive" in users
 
 

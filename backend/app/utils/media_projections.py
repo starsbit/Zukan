@@ -4,6 +4,7 @@ import uuid
 
 from backend.app.models.media import Media
 from backend.app.schemas import MediaMetadata, MediaRead
+from backend.app.utils.media_classification import effective_nsfw_value, effective_sensitive_value
 
 
 def build_media_metadata(media: Media) -> MediaMetadata:
@@ -35,8 +36,10 @@ def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0, 
         ocr_text=media.ocr_text,
         ocr_text_override=media.ocr_text_override,
         metadata_review_dismissed=bool(media.metadata_review_dismissed),
-        is_nsfw=bool(media.is_nsfw),
-        is_sensitive=bool(getattr(media, "is_sensitive", False)),
+        is_nsfw=effective_nsfw_value(media),
+        is_sensitive=effective_sensitive_value(media),
+        is_nsfw_override=getattr(media, "is_nsfw_override", None),
+        is_sensitive_override=getattr(media, "is_sensitive_override", None),
         tagging_status=media.tagging_status,
         tagging_error=media.tagging_error,
         thumbnail_status=media.thumbnail_status,

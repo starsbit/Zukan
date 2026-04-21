@@ -73,6 +73,31 @@ async def test_remove_tag_from_media_updates_links_and_nsfw(fake_db, user, media
 
 
 @pytest.mark.asyncio
+async def test_remove_tag_from_media_preserves_manual_classification_overrides(fake_db, user, media):
+    safe_tag = Tag(id=1, owner_user_id=user.id, name="safe", category=0, media_count=1)
+    nsfw_tag = Tag(id=2, owner_user_id=user.id, name="nsfw", category=9, media_count=1)
+    media.media_tags = [
+        MediaTag(tag_id=1, tag=safe_tag, confidence=0.9),
+        MediaTag(tag_id=2, tag=nsfw_tag, confidence=0.8),
+    ]
+    media.is_nsfw_override = False
+    media.is_sensitive_override = True
+    fake_db.execute = AsyncMock(return_value=ScalarResult(rows=[media]))
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls:
+        repo = repo_cls.return_value
+        repo.get_by_id = AsyncMock(return_value=None)
+        repo.set_media_tag_links = AsyncMock()
+
+        await TagService(fake_db).remove_tag_from_media(user, source_tag=nsfw_tag)
+
+    assert media.is_nsfw is False
+    assert media.is_sensitive is False
+    assert media.is_nsfw_override is False
+    assert media.is_sensitive_override is True
+
+
+@pytest.mark.asyncio
 async def test_merge_tag_updates_only_accessible_media_and_deduplicates(fake_db, user, media):
     source_tag = Tag(id=1, owner_user_id=user.id, name="old", category=1, media_count=1)
     target_tag = Tag(id=2, owner_user_id=user.id, name="new", category=0, media_count=1)
@@ -238,6 +263,36 @@ async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, u
 
     assert media.is_nsfw is False
     assert media.is_sensitive is True
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_preserves_manual_classification_overrides(fake_db, user, media):
+    media.uploader_id = user.id
+    media.is_nsfw_override = False
+    media.is_sensitive_override = True
+    result = TaggingResult(
+        predictions=[
+            TagPrediction("nsfw", 0, 0.9),
+            TagPrediction("sensitive", 0, 0.8),
+        ],
+        is_nsfw=True,
+        is_sensitive=True,
+    )
+
+    with patch("backend.app.services.tags.TagRepository") as tag_repo_cls, patch(
+        "backend.app.services.tags.MediaEntityRepository"
+    ) as entity_repo_cls:
+        tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+        entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=[])
+        fake_db.get = AsyncMock(return_value=user)
+
+        await TagService(fake_db)._store_tagging_result(media, result)
+
+    assert media.is_nsfw is True
+    assert media.is_sensitive is True
+    assert media.is_nsfw_override is False
+    assert media.is_sensitive_override is True
 
 
 @pytest.mark.asyncio

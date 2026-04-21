@@ -218,6 +218,43 @@
           </mat-card-content>
         </mat-card>
 
+        @if (editing()) {
+          <mat-card appearance="outlined">
+            <mat-card-header>
+              <mat-card-title>Content Safety</mat-card-title>
+            </mat-card-header>
+            <mat-card-content class="inspector-section-content">
+              <p class="inspector-empty">
+                Automatic uses the derived classification from tags and tagging.
+              </p>
+
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>NSFW classification</mat-label>
+                <mat-select
+                  [value]="draft().nsfwOverride"
+                  (valueChange)="updateNsfwOverride($event)"
+                >
+                  @for (option of classificationOverrideOptions; track option.label) {
+                    <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+
+              <mat-form-field class="inspector-input" appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Sensitive classification</mat-label>
+                <mat-select
+                  [value]="draft().sensitiveOverride"
+                  (valueChange)="updateSensitiveOverride($event)"
+                >
+                  @for (option of classificationOverrideOptions; track option.label) {
+                    <mat-option [value]="option.value">{{ option.label }}</mat-option>
+                  }
+                </mat-select>
+              </mat-form-field>
+            </mat-card-content>
+          </mat-card>
+        }
+
         <mat-card appearance="outlined">
           <mat-card-header>
             <mat-card-title>Characters</mat-card-title>

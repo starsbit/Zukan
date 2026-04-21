@@ -283,6 +283,13 @@ export class MediaBrowserComponent {
       autoFocus: false,
       panelClass: 'media-inspector-dialog-panel',
     });
+    this.inspectorRef.componentInstance?.activeMediaChanged.subscribe((mediaId) => {
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { inspect: mediaId },
+        queryParamsHandling: 'merge',
+      });
+    });
     this.inspectorRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.inspectorRef = null;
       this.router.navigate([], {
