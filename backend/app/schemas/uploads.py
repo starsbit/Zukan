@@ -1,12 +1,71 @@
 import uuid
+import json
 from datetime import datetime
 from typing import Literal
 
 from fastapi.exceptions import RequestValidationError
 from fastapi import File, Form, Request, UploadFile
-from pydantic import BaseModel, HttpUrl, ValidationError, model_validator
+from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError, model_validator
 
 from backend.app.models.media import MediaVisibility
+from backend.app.schemas.relations import ExternalRefCreate
+
+
+_external_ref_list_adapter = TypeAdapter(list[ExternalRefCreate])
+
+
+def _request_validation_error(*, msg: str, input_value: object, loc: tuple[object, ...]) -> RequestValidationError:
+    return RequestValidationError(
+        [
+            {
+                "type": "value_error",
+                "loc": loc,
+                "msg": f"Value error, {msg}",
+                "input": input_value,
+                "ctx": {"error": msg},
+            }
+        ]
+    )
+
+
+def parse_external_refs_values(
+    raw_values: list[str] | None,
+    *,
+    expected_count: int | None = None,
+) -> list[list[ExternalRefCreate]] | None:
+    if not raw_values:
+        return None
+    if expected_count is not None and len(raw_values) != expected_count:
+        raise _request_validation_error(
+            msg="external_refs_values must include exactly one JSON array per uploaded file",
+            input_value=raw_values,
+            loc=("body", "external_refs_values"),
+        )
+
+    parsed_values: list[list[ExternalRefCreate]] = []
+    for index, raw_value in enumerate(raw_values):
+        try:
+            decoded = json.loads(raw_value)
+        except json.JSONDecodeError as exc:
+            raise _request_validation_error(
+                msg=f"external_refs_values[{index}] must be valid JSON",
+                input_value=raw_value,
+                loc=("body", "external_refs_values", index),
+            ) from exc
+
+        try:
+            parsed_values.append(_external_ref_list_adapter.validate_python(decoded))
+        except ValidationError as exc:
+            errors = []
+            for error in exc.errors():
+                errors.append(
+                    {
+                        **error,
+                        "loc": ("body", "external_refs_values", index, *error["loc"]),
+                    }
+                )
+            raise RequestValidationError(errors) from exc
+    return parsed_values
 
 
 class UploadResult(BaseModel):
@@ -43,6 +102,7 @@ class MediaUploadRequest(BaseModel):
     tags: list[str] | None = None
     captured_at: datetime | None = None
     captured_at_values: list[datetime] | None = None
+    external_refs_values: list[list[ExternalRefCreate]] | None = None
     visibility: MediaVisibility = MediaVisibility.private
 
     model_config = {
@@ -58,6 +118,7 @@ class MediaUploadRequest(BaseModel):
         tags: list[str] | None = Form(default=None),
         captured_at: datetime | None = Form(default=None),
         captured_at_values: list[datetime] | None = Form(default=None),
+        external_refs_values: list[str] | None = Form(default=None),
         visibility: MediaVisibility = Form(default=MediaVisibility.private),
     ) -> "MediaUploadRequest":
         return cls(
@@ -66,6 +127,7 @@ class MediaUploadRequest(BaseModel):
             tags=tags,
             captured_at=captured_at,
             captured_at_values=captured_at_values,
+            external_refs_values=parse_external_refs_values(external_refs_values, expected_count=len(files)),
             visibility=visibility,
         )
 
@@ -85,6 +147,10 @@ class MediaUploadRequest(BaseModel):
                 tags=form.getlist("tags") or None,
                 captured_at=form.get("captured_at"),
                 captured_at_values=form.getlist("captured_at_values") or None,
+                external_refs_values=parse_external_refs_values(
+                    form.getlist("external_refs_values") or None,
+                    expected_count=len(files),
+                ),
                 visibility=form.get("visibility") or MediaVisibility.private,
             )
         except ValidationError as exc:
@@ -99,6 +165,7 @@ class MediaAnnotatedUploadRequest(BaseModel):
     series_names: list[str] | None = None
     captured_at: datetime | None = None
     captured_at_values: list[datetime] | None = None
+    external_refs_values: list[list[ExternalRefCreate]] | None = None
     visibility: MediaVisibility = MediaVisibility.private
 
     model_config = {
@@ -122,6 +189,7 @@ class MediaAnnotatedUploadRequest(BaseModel):
         series_names: list[str] | None = Form(default=None),
         captured_at: datetime | None = Form(default=None),
         captured_at_values: list[datetime] | None = Form(default=None),
+        external_refs_values: list[str] | None = Form(default=None),
         visibility: MediaVisibility = Form(default=MediaVisibility.private),
     ) -> "MediaAnnotatedUploadRequest":
         try:
@@ -133,6 +201,7 @@ class MediaAnnotatedUploadRequest(BaseModel):
                 series_names=series_names,
                 captured_at=captured_at,
                 captured_at_values=captured_at_values,
+                external_refs_values=parse_external_refs_values(external_refs_values, expected_count=len(files)),
                 visibility=visibility,
             )
         except ValidationError as exc:
@@ -156,6 +225,10 @@ class MediaAnnotatedUploadRequest(BaseModel):
                 series_names=form.getlist("series_names") or None,
                 captured_at=form.get("captured_at"),
                 captured_at_values=form.getlist("captured_at_values") or None,
+                external_refs_values=parse_external_refs_values(
+                    form.getlist("external_refs_values") or None,
+                    expected_count=len(files),
+                ),
                 visibility=form.get("visibility") or MediaVisibility.private,
             )
         except ValidationError as exc:
@@ -167,4 +240,5 @@ class UrlIngestRequest(BaseModel):
     tags: list[str] | None = None
     album_id: uuid.UUID | None = None
     captured_at: datetime | None = None
+    external_refs: list[ExternalRefCreate] | None = None
     visibility: MediaVisibility = MediaVisibility.private

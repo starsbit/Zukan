@@ -214,6 +214,48 @@ async def test_run_applies_per_file_captured_at_values(fake_db, stub_query, user
 
 
 @pytest.mark.asyncio
+async def test_run_applies_per_file_external_refs(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    workflow._create_upload_batch = AsyncMock(
+        return_value=ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.running, total_items=2)
+    )
+
+    observed_refs: list[list[str] | None] = []
+
+    async def fake_process(**kwargs):
+        refs = kwargs["external_refs"]
+        observed_refs.append(None if refs is None else [ref.provider for ref in refs])
+
+    workflow._process_single_upload = AsyncMock(side_effect=fake_process)
+    workflow._finalize_upload_batch = lambda upload_batch, ctx: None
+    workflow._build_response = lambda upload_batch, ctx: SimpleNamespace(accepted=0, batch_id=uuid.uuid4())
+
+    files = [
+        UploadFile(filename="a.webp", file=io.BytesIO(b"x")),
+        UploadFile(filename="b.webp", file=io.BytesIO(b"y")),
+    ]
+
+    await workflow.run(
+        user=user,
+        files=files,
+        album_id=None,
+        tags=None,
+        captured_at_override=None,
+        external_refs_values=[
+            [SimpleNamespace(provider="twitter")],
+            [SimpleNamespace(provider="pixiv")],
+        ],
+    )
+
+    assert observed_refs == [["twitter"], ["pixiv"]]
+
+
+@pytest.mark.asyncio
 async def test_attach_album_if_needed_invokes_album_service(fake_db, stub_query, user):
     workflow = MediaUploadWorkflow(
         db=fake_db,
@@ -271,6 +313,7 @@ async def test_run_from_url_passes_url_through_shared_save_detector(fake_db, stu
             url=url,
             album_id=None,
             tags=None,
+            external_refs=[SimpleNamespace(provider="twitter", url="https://x.com/example/status/1")],
             captured_at_override=None,
             visibility=MediaVisibility.private,
         )
@@ -281,6 +324,7 @@ async def test_run_from_url_passes_url_through_shared_save_detector(fake_db, stu
         "source_name": url,
     }
     assert new_media.await_count == 1
+    assert new_media.await_args.kwargs["external_refs"][0].provider == "twitter"
 
 
 @pytest.mark.asyncio

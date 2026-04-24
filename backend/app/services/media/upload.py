@@ -18,11 +18,12 @@ from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, I
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
-from backend.app.schemas import BatchUploadResponse, UploadResult
+from backend.app.schemas import BatchUploadResponse, ExternalRefCreate, UploadResult
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
+from backend.app.services.relations import RelationService
 from backend.app.utils.media_metadata import extract_media_metadata
 from backend.app.utils.storage import SavedUpload, delete_media_files, save_bytes, save_upload
 from backend.app.utils.tagging import tag_names_mark_nsfw, tag_names_mark_sensitive
@@ -99,6 +100,7 @@ class MediaUploadWorkflow:
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
         captured_at_values: list[datetime] | None = None,
+        external_refs_values: list[list[ExternalRefCreate]] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         upload_batch = await self._create_upload_batch(user, len(files))
@@ -120,6 +122,9 @@ class MediaUploadWorkflow:
             per_file_override = captured_at_override
             if captured_at_values and index < len(captured_at_values):
                 per_file_override = captured_at_values[index]
+            per_file_external_refs = None
+            if external_refs_values and index < len(external_refs_values):
+                per_file_external_refs = external_refs_values[index]
             await self._process_single_upload(
                 upload_batch=upload_batch,
                 upload=upload,
@@ -128,6 +133,7 @@ class MediaUploadWorkflow:
                 character_names=character_names,
                 series_names=series_names,
                 captured_at_override=per_file_override,
+                external_refs=per_file_external_refs,
                 visibility=visibility,
                 ctx=ctx,
             )
@@ -170,6 +176,7 @@ class MediaUploadWorkflow:
         captured_at_override: datetime | None,
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
+        external_refs: list[ExternalRefCreate] | None = None,
         visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
@@ -210,6 +217,7 @@ class MediaUploadWorkflow:
                 tags=tags,
                 character_names=character_names,
                 series_names=series_names,
+                external_refs=external_refs,
                 ctx=ctx,
             )
             return
@@ -225,6 +233,7 @@ class MediaUploadWorkflow:
             tags=tags,
             character_names=character_names,
             series_names=series_names,
+            external_refs=external_refs,
             captured_at=captured_at_override or captured_at,
             visibility=visibility,
             ctx=ctx,
@@ -277,6 +286,7 @@ class MediaUploadWorkflow:
         tags: list[str] | None = None,
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
+        external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
         delete_media_files(saved_path)
@@ -320,6 +330,8 @@ class MediaUploadWorkflow:
                 normalized_characters=normalized_characters,
                 normalized_series=normalized_series,
             )
+        if external_refs is not None:
+            await self._replace_external_refs(existing, external_refs)
 
         batch_item.media_id = existing.id
         batch_item.status = ItemStatus.done if has_manual_annotations else ItemStatus.pending
@@ -358,6 +370,7 @@ class MediaUploadWorkflow:
         captured_at: datetime,
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
+        external_refs: list[ExternalRefCreate] | None = None,
         visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
@@ -401,6 +414,8 @@ class MediaUploadWorkflow:
                 normalized_characters=normalized_characters,
                 normalized_series=normalized_series,
             )
+        if external_refs is not None:
+            await self._replace_external_refs(media, external_refs)
         logger.info(
             "Created new media from upload media_id=%s user_id=%s original_name=%s media_type=%s visibility=%s",
             media.id,
@@ -496,6 +511,9 @@ class MediaUploadWorkflow:
                 replace_existing_type=False,
             )
 
+    async def _replace_external_refs(self, media: Media, external_refs: list[ExternalRefCreate]) -> None:
+        await RelationService(self._db).replace_external_refs(media, external_refs)
+
     async def run_from_url(
         self,
         *,
@@ -504,6 +522,7 @@ class MediaUploadWorkflow:
         album_id: uuid.UUID | None,
         tags: list[str] | None,
         captured_at_override: datetime | None = None,
+        external_refs: list[ExternalRefCreate] | None = None,
         visibility: MediaVisibility,
     ) -> BatchUploadResponse:
         from backend.app.services.media.url_fetch import fetch_url_as_bytes
@@ -549,6 +568,7 @@ class MediaUploadWorkflow:
                 tags=tags,
                 character_names=None,
                 series_names=None,
+                external_refs=external_refs,
                 ctx=ctx,
             )
         else:
@@ -561,6 +581,7 @@ class MediaUploadWorkflow:
                 tags=tags,
                 character_names=None,
                 series_names=None,
+                external_refs=external_refs,
                 captured_at=captured_at,
                 visibility=visibility,
                 ctx=ctx,
@@ -687,6 +708,7 @@ class MediaUploadService:
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
+        external_refs_values: list[list[ExternalRefCreate]] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
@@ -704,6 +726,7 @@ class MediaUploadService:
             series_names=None,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            external_refs_values=external_refs_values,
             visibility=visibility,
         )
 
@@ -716,6 +739,7 @@ class MediaUploadService:
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
+        external_refs_values: list[list[ExternalRefCreate]] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         return await self.upload_files(
@@ -725,6 +749,7 @@ class MediaUploadService:
             tags=tags,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            external_refs_values=external_refs_values,
             visibility=visibility,
         )
 
@@ -739,6 +764,7 @@ class MediaUploadService:
         series_names: list[str] | None = None,
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
+        external_refs_values: list[list[ExternalRefCreate]] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
@@ -756,6 +782,7 @@ class MediaUploadService:
             series_names=series_names,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
+            external_refs_values=external_refs_values,
             visibility=visibility,
         )
 
@@ -767,6 +794,7 @@ class MediaUploadService:
         album_id: uuid.UUID | None = None,
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
+        external_refs: list[ExternalRefCreate] | None = None,
         visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
@@ -781,6 +809,7 @@ class MediaUploadService:
             album_id=album_id,
             tags=tags,
             captured_at_override=captured_at_override,
+            external_refs=external_refs,
             visibility=visibility,
         )
 

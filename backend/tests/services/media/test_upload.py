@@ -11,7 +11,9 @@ import pytest
 from fastapi import UploadFile
 
 from backend.app.models.media import Media, MediaVisibility
+from backend.app.models.relations import MediaExternalRef
 from backend.app.models.processing import BatchStatus, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.schemas import ExternalRefCreate
 from backend.app.services.media.upload import (
     MediaPostProcessor,
     MediaUploadService,
@@ -67,19 +69,21 @@ async def test_handle_existing_media_duplicate_sets_skipped(fake_db, stub_query)
     ctx = UploadBatchContext()
 
     with patch("backend.app.services.media.upload.delete_media_files") as delete_files:
-        await workflow._handle_existing_media(
-            batch_item=batch_item,
-            existing=existing,
-            original_name="f",
-            captured_at=datetime.now(timezone.utc),
-            saved_path="/tmp/new.webp",
-            ctx=ctx,
-        )
+        with patch.object(workflow, "_replace_external_refs", AsyncMock()) as replace_external_refs:
+            await workflow._handle_existing_media(
+                batch_item=batch_item,
+                existing=existing,
+                original_name="f",
+                captured_at=datetime.now(timezone.utc),
+                saved_path="/tmp/new.webp",
+                ctx=ctx,
+            )
 
     assert batch_item.status == ItemStatus.skipped
     assert ctx.duplicates == 1
     assert ctx.done_items == 1
     delete_files.assert_called_once_with("/tmp/new.webp")
+    replace_external_refs.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -172,6 +176,122 @@ async def test_handle_new_media_with_manual_entities_marks_done_and_creates_manu
 
 
 @pytest.mark.asyncio
+async def test_handle_new_media_persists_external_refs(fake_db, stub_query, user):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    batch_item = ImportBatchItem(batch_id=uuid.uuid4(), source_filename="f")
+    saved = SimpleNamespace(
+        path=Path("/tmp/new.webp"),
+        file_size=10,
+        sha256="e" * 64,
+        mime_type="image/webp",
+        media_type="image",
+    )
+    file_metadata = SimpleNamespace(width=100, height=100, duration_seconds=None, frame_count=None)
+    ctx = UploadBatchContext()
+
+    with patch("backend.app.services.media.upload.generate_poster_and_thumbnail", return_value=(None, None)):
+        await workflow._handle_new_media(
+            batch_item=batch_item,
+            user=user,
+            original_name="f",
+            saved=saved,
+            file_metadata=file_metadata,
+            tags=None,
+            external_refs=[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")],
+            captured_at=datetime.now(timezone.utc),
+            visibility=MediaVisibility.private,
+            ctx=ctx,
+        )
+
+    external_refs = [item for item in fake_db.added if isinstance(item, MediaExternalRef)]
+    assert len(external_refs) == 1
+    assert external_refs[0].provider == "twitter"
+    assert external_refs[0].url == "https://x.com/example/status/1"
+
+
+@pytest.mark.asyncio
+async def test_handle_existing_media_restored_replaces_external_refs_when_supplied(fake_db, stub_query):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    batch_item = ImportBatchItem(batch_id=uuid.uuid4(), source_filename="f")
+    existing = SimpleNamespace(
+        id=uuid.uuid4(),
+        deleted_at=datetime.now(timezone.utc),
+        original_filename="old.webp",
+        tagging_status="pending",
+        tagging_error="bad",
+        captured_at=datetime.now(timezone.utc),
+    )
+    ctx = UploadBatchContext()
+    old_ref = SimpleNamespace(id=uuid.uuid4())
+
+    with patch("backend.app.services.media.upload.delete_media_files") as delete_files, patch(
+        "backend.app.repositories.relations.MediaExternalRefRepository"
+    ) as ref_repo_cls:
+        ref_repo_cls.return_value.get_by_media = AsyncMock(return_value=[old_ref])
+        await workflow._handle_existing_media(
+            batch_item=batch_item,
+            existing=existing,
+            original_name="f",
+            captured_at=datetime.now(timezone.utc),
+            saved_path="/tmp/new.webp",
+            external_refs=[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")],
+            ctx=ctx,
+        )
+
+    delete_files.assert_called_once_with("/tmp/new.webp")
+    assert old_ref in fake_db.deleted
+    external_refs = [item for item in fake_db.added if isinstance(item, MediaExternalRef)]
+    assert len(external_refs) == 1
+    assert external_refs[0].provider == "twitter"
+    assert existing.deleted_at is None
+
+
+@pytest.mark.asyncio
+async def test_handle_existing_media_restored_preserves_external_refs_when_omitted(fake_db, stub_query):
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    batch_item = ImportBatchItem(batch_id=uuid.uuid4(), source_filename="f")
+    existing = SimpleNamespace(
+        id=uuid.uuid4(),
+        deleted_at=datetime.now(timezone.utc),
+        original_filename="old.webp",
+        tagging_status="pending",
+        tagging_error="bad",
+        captured_at=datetime.now(timezone.utc),
+    )
+    ctx = UploadBatchContext()
+
+    with patch("backend.app.services.media.upload.delete_media_files"), patch.object(
+        workflow, "_replace_external_refs", AsyncMock()
+    ) as replace_external_refs:
+        await workflow._handle_existing_media(
+            batch_item=batch_item,
+            existing=existing,
+            original_name="f",
+            captured_at=datetime.now(timezone.utc),
+            saved_path="/tmp/new.webp",
+            external_refs=None,
+            ctx=ctx,
+        )
+
+    replace_external_refs.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_create_media_from_saved_upload_sets_owner(fake_db, stub_query, user):
     workflow = MediaUploadWorkflow(
         db=fake_db,
@@ -259,3 +379,54 @@ async def test_upload_service_upload_files_with_annotations_passes_annotation_fi
     assert kwargs["tags"] == ["safe"]
     assert kwargs["character_names"] == ["Saber"]
     assert kwargs["series_names"] == ["Fate/stay night"]
+
+
+@pytest.mark.asyncio
+async def test_upload_service_upload_files_passes_external_refs(fake_db, stub_query):
+    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
+    expected = SimpleNamespace(batch_id=uuid.uuid4())
+
+    with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
+        response = await service.upload_files(
+            SimpleNamespace(id=uuid.uuid4()),
+            [],
+            external_refs_values=[[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")]],
+        )
+
+    assert response is expected
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["external_refs_values"][0][0].provider == "twitter"
+
+
+@pytest.mark.asyncio
+async def test_upload_service_upload_files_with_annotations_passes_external_refs(fake_db, stub_query):
+    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
+    expected = SimpleNamespace(batch_id=uuid.uuid4())
+
+    with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
+        response = await service.upload_files_with_annotations(
+            SimpleNamespace(id=uuid.uuid4()),
+            [],
+            external_refs_values=[[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")]],
+        )
+
+    assert response is expected
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["external_refs_values"][0][0].provider == "twitter"
+
+
+@pytest.mark.asyncio
+async def test_upload_service_ingest_url_passes_external_refs(fake_db, stub_query):
+    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
+    expected = SimpleNamespace(batch_id=uuid.uuid4())
+
+    with patch.object(MediaUploadWorkflow, "run_from_url", AsyncMock(return_value=expected)) as run:
+        response = await service.ingest_url(
+            SimpleNamespace(id=uuid.uuid4()),
+            "https://example.test/image.webp",
+            external_refs=[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")],
+        )
+
+    assert response is expected
+    run.assert_awaited_once()
+    assert run.await_args.kwargs["external_refs"][0].provider == "twitter"

@@ -177,6 +177,10 @@ async def upload(
         "tags": body.tags or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
         "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "external_refs_values": [
+            [ref.model_dump(mode="json") for ref in refs]
+            for refs in (body.external_refs_values or [])
+        ],
         "visibility": body.visibility.value,
     }
     body_hash = idempotency_body_hash(upload_signature)
@@ -193,6 +197,7 @@ async def upload(
         tags=body.tags,
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
+        external_refs_values=body.external_refs_values,
         visibility=body.visibility,
     )
     await idempotency_store.remember(
@@ -271,6 +276,10 @@ async def upload_with_annotations(
         "series_names": body.series_names or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
         "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "external_refs_values": [
+            [ref.model_dump(mode="json") for ref in refs]
+            for refs in (body.external_refs_values or [])
+        ],
         "visibility": body.visibility.value,
     }
     body_hash = idempotency_body_hash(upload_signature)
@@ -289,6 +298,7 @@ async def upload_with_annotations(
         series_names=body.series_names,
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
+        external_refs_values=body.external_refs_values,
         visibility=body.visibility,
     )
     await idempotency_store.remember(
@@ -334,6 +344,7 @@ async def ingest_url(
         album_id=body.album_id,
         tags=body.tags,
         captured_at_override=body.captured_at,
+        external_refs=body.external_refs,
         visibility=body.visibility,
     )
 

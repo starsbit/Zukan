@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 import io
 from types import SimpleNamespace
@@ -55,8 +56,19 @@ def _media_read_payload(media_id: str) -> dict:
 def test_upload_media_contract(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None, visibility="private"):
+    async def _fake_upload(
+        self,
+        user,
+        files,
+        album_id,
+        tags,
+        captured_at_override,
+        captured_at_values=None,
+        external_refs_values=None,
+        visibility="private",
+    ):
         captured["captured_at_values"] = captured_at_values
+        captured["external_refs_values"] = external_refs_values
         batch_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
         media_id = str(uuid.uuid4())
@@ -87,18 +99,33 @@ def test_upload_media_contract(api_client, monkeypatch):
         files=[
             ("files", ("a.webp", b"abc", "image/webp")),
             ("captured_at_values", (None, "2024-02-03T04:05:06Z")),
+            ("external_refs_values", (None, json.dumps([{"provider": "twitter", "url": "https://x.com/example/status/1"}]))),
         ],
     )
 
     assert response.status_code == 202
     assert response.json()["accepted"] == 1
     assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
+    assert len(captured["external_refs_values"]) == 1
+    assert captured["external_refs_values"][0][0].provider == "twitter"
+    assert captured["external_refs_values"][0][0].url == "https://x.com/example/status/1"
+    assert captured["external_refs_values"][0][0].external_id is None
 
 
 def test_upload_media_uses_configured_multipart_max_files(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_upload(self, user, files, album_id, tags, captured_at_override, captured_at_values=None, visibility="private"):
+    async def _fake_upload(
+        self,
+        user,
+        files,
+        album_id,
+        tags,
+        captured_at_override,
+        captured_at_values=None,
+        external_refs_values=None,
+        visibility="private",
+    ):
         return {
             "batch_id": str(uuid.uuid4()),
             "batch_url": "/api/v1/me/import-batches/test",
@@ -135,11 +162,24 @@ def test_upload_media_uses_configured_multipart_max_files(api_client, monkeypatc
 def test_upload_media_with_annotations_contract(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_upload(self, user, files, album_id, tags, character_names, series_names, captured_at_override, captured_at_values=None, visibility="private"):
+    async def _fake_upload(
+        self,
+        user,
+        files,
+        album_id,
+        tags,
+        character_names,
+        series_names,
+        captured_at_override,
+        captured_at_values=None,
+        external_refs_values=None,
+        visibility="private",
+    ):
         captured["tags"] = tags
         captured["character_names"] = character_names
         captured["series_names"] = series_names
         captured["captured_at_values"] = captured_at_values
+        captured["external_refs_values"] = external_refs_values
         batch_id = str(uuid.uuid4())
         item_id = str(uuid.uuid4())
         media_id = str(uuid.uuid4())
@@ -173,6 +213,7 @@ def test_upload_media_with_annotations_contract(api_client, monkeypatch):
             ("character_names", (None, "Saber")),
             ("series_names", (None, "Fate/stay night")),
             ("captured_at_values", (None, "2024-02-03T04:05:06Z")),
+            ("external_refs_values", (None, json.dumps([{"provider": "twitter", "url": "https://x.com/example/status/1"}]))),
         ],
     )
 
@@ -182,6 +223,9 @@ def test_upload_media_with_annotations_contract(api_client, monkeypatch):
     assert captured["character_names"] == ["Saber"]
     assert captured["series_names"] == ["Fate/stay night"]
     assert captured["captured_at_values"] == [datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)]
+    assert len(captured["external_refs_values"]) == 1
+    assert captured["external_refs_values"][0][0].provider == "twitter"
+    assert captured["external_refs_values"][0][0].url == "https://x.com/example/status/1"
 
 
 def test_upload_media_with_annotations_requires_at_least_one_annotation(api_client):
@@ -196,12 +240,53 @@ def test_upload_media_with_annotations_requires_at_least_one_annotation(api_clie
     assert payload["request_id"] == response.headers["x-request-id"]
 
 
+def test_upload_media_rejects_invalid_external_refs_json(api_client):
+    response = api_client.post(
+        "/api/v1/media",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("external_refs_values", (None, "{not-json")),
+        ],
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["code"] == "validation_error"
+    assert payload["request_id"] == response.headers["x-request-id"]
+
+
+def test_upload_media_rejects_external_ref_count_mismatch(api_client):
+    response = api_client.post(
+        "/api/v1/media",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("files", ("b.webp", b"def", "image/webp")),
+            ("external_refs_values", (None, json.dumps([{"provider": "twitter", "url": "https://x.com/example/status/1"}]))),
+        ],
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["code"] == "validation_error"
+    assert payload["request_id"] == response.headers["x-request-id"]
+
+
 def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_ingest(self, user, url, album_id=None, tags=None, captured_at_override=None, visibility="private"):
+    async def _fake_ingest(
+        self,
+        user,
+        url,
+        album_id=None,
+        tags=None,
+        captured_at_override=None,
+        external_refs=None,
+        visibility="private",
+    ):
         captured["url"] = url
         captured["captured_at_override"] = captured_at_override
+        captured["external_refs"] = external_refs
         return {
             "batch_id": str(uuid.uuid4()),
             "batch_url": "/api/v1/me/import-batches/test",
@@ -221,6 +306,7 @@ def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
         json={
             "url": "https://pbs.twimg.com/media/test.jpg?format=jpg&name=orig",
             "captured_at": "2024-02-03T04:05:06Z",
+            "external_refs": [{"provider": "twitter", "url": "https://x.com/example/status/1"}],
             "visibility": "private",
         },
     )
@@ -228,6 +314,9 @@ def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
     assert response.status_code == 202
     assert captured["url"] == "https://pbs.twimg.com/media/test.jpg?format=jpg&name=orig"
     assert captured["captured_at_override"] == datetime(2024, 2, 3, 4, 5, 6, tzinfo=timezone.utc)
+    assert len(captured["external_refs"]) == 1
+    assert captured["external_refs"][0].provider == "twitter"
+    assert captured["external_refs"][0].url == "https://x.com/example/status/1"
 
 
 def test_list_media_contract(api_client, monkeypatch):
@@ -501,6 +590,63 @@ def test_batch_update_rejects_idempotency_key_reuse_with_different_payload(api_c
 
     assert first.status_code == 200
     assert second.status_code == 409
+    payload = second.json()
+    assert payload["code"] == "idempotency_key_conflict"
+    assert payload["request_id"] == second.headers["x-request-id"]
+
+
+def test_upload_rejects_idempotency_key_reuse_when_external_refs_change(api_client, monkeypatch):
+    calls = {"count": 0}
+
+    async def _fake_upload(
+        self,
+        user,
+        files,
+        album_id,
+        tags,
+        captured_at_override,
+        captured_at_values=None,
+        external_refs_values=None,
+        visibility="private",
+    ):
+        calls["count"] += 1
+        batch_id = str(uuid.uuid4())
+        return {
+            "batch_id": batch_id,
+            "batch_url": f"/api/v1/me/import-batches/{batch_id}",
+            "batch_items_url": f"/api/v1/me/import-batches/{batch_id}/items",
+            "poll_after_seconds": 2,
+            "webhooks_supported": False,
+            "accepted": 1,
+            "duplicates": 0,
+            "errors": 0,
+            "results": [],
+        }
+
+    monkeypatch.setattr("backend.app.routers.media.idempotency_store", IdempotencyStore())
+    monkeypatch.setattr(MediaUploadService, "upload_files", _fake_upload)
+
+    headers = {"Idempotency-Key": "media-upload-conflict"}
+    first = api_client.post(
+        "/api/v1/media",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("external_refs_values", (None, json.dumps([{"provider": "twitter", "url": "https://x.com/example/status/1"}]))),
+        ],
+        headers=headers,
+    )
+    second = api_client.post(
+        "/api/v1/media",
+        files=[
+            ("files", ("a.webp", b"abc", "image/webp")),
+            ("external_refs_values", (None, json.dumps([{"provider": "pixiv", "url": "https://www.pixiv.net/en/artworks/1"}]))),
+        ],
+        headers=headers,
+    )
+
+    assert first.status_code == 202
+    assert second.status_code == 409
+    assert calls["count"] == 1
     payload = second.json()
     assert payload["code"] == "idempotency_key_conflict"
     assert payload["request_id"] == second.headers["x-request-id"]

@@ -746,4 +746,29 @@ describe('MediaInspectorDialogComponent', () => {
     fixture.componentInstance.save();
     expect(mediaService.update).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a clickable source link when an external ref only has a url', async () => {
+    const url = 'https://x.com/example/status/1';
+    const { fixture } = await createComponent({
+      get: vi.fn(() =>
+        of(
+          makeDetail('m1', {
+            external_refs: [
+              {
+                id: 'ref-1',
+                provider: 'twitter',
+                external_id: null,
+                url,
+              },
+            ],
+          }),
+        ),
+      ),
+    });
+
+    const sourceLink = fixture.nativeElement.querySelector('.inspector-field a') as HTMLAnchorElement | null;
+
+    expect(sourceLink?.getAttribute('href')).toBe(url);
+    expect(sourceLink?.textContent?.trim()).toBe(url);
+  });
 });
