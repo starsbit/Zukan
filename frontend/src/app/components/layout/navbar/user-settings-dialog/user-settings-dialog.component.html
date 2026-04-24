@@ -34,6 +34,13 @@
       />
     </mat-form-field>
 
+    <mat-checkbox formControlName="libraryClassificationEnabled">
+      Use my labeled library as fallback recognition for characters and series
+    </mat-checkbox>
+    <p>
+      This can make tagging slower. It works best after you have already labeled a few matching pictures in your own library.
+    </p>
+
     <mat-form-field>
       <mat-label>New Password</mat-label>
       <input matInput type="password" formControlName="password" autocomplete="new-password" />

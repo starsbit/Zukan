@@ -195,8 +195,12 @@
                       <span>{{ isGroupSelected(group) ? 'Selected' : 'Click to select' }}</span>
                     </button>
 
+                    <button mat-button type="button" (click)="treatGroupAsSoloPictures(group)">
+                      Treat as solo pictures
+                    </button>
+
                     <button mat-button type="button" [disabled]="discarding()" (click)="discardGroup(group)">
-                      Discard group
+                      Discard from review
                     </button>
 
                     @if (group.item_count > 4) {
@@ -316,6 +320,32 @@
                   <span>Series: {{ seriesLabel(item) }}</span>
                 </div>
 
+                @if ((item.suggested_characters ?? []).length > 0) {
+                  <div class="review-group-card__suggestions">
+                    <strong>Character suggestions</strong>
+                    <mat-chip-set aria-label="Character suggestions">
+                      @for (suggestion of (item.suggested_characters ?? []); track suggestion.name) {
+                        <mat-chip-row (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
+                          {{ displayMetadataName(suggestion.name) }}
+                        </mat-chip-row>
+                      }
+                    </mat-chip-set>
+                  </div>
+                }
+
+                @if ((item.suggested_series ?? []).length > 0) {
+                  <div class="review-group-card__suggestions">
+                    <strong>Series suggestions</strong>
+                    <mat-chip-set aria-label="Series suggestions">
+                      @for (suggestion of (item.suggested_series ?? []); track suggestion.name) {
+                        <mat-chip-row (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
+                          {{ displayMetadataName(suggestion.name) }}
+                        </mat-chip-row>
+                      }
+                    </mat-chip-set>
+                  </div>
+                }
+
                 <div class="review-card__actions">
                   <button
                     mat-button
@@ -371,6 +401,32 @@
                 <span>Characters: {{ characterLabel(item) }}</span>
                 <span>Series: {{ seriesLabel(item) }}</span>
               </div>
+
+              @if ((item.suggested_characters ?? []).length > 0) {
+                <div class="review-group-card__suggestions">
+                  <strong>Character suggestions</strong>
+                  <mat-chip-set aria-label="Character suggestions">
+                    @for (suggestion of (item.suggested_characters ?? []); track suggestion.name) {
+                      <mat-chip-row (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
+                        {{ displayMetadataName(suggestion.name) }}
+                      </mat-chip-row>
+                    }
+                  </mat-chip-set>
+                </div>
+              }
+
+              @if ((item.suggested_series ?? []).length > 0) {
+                <div class="review-group-card__suggestions">
+                  <strong>Series suggestions</strong>
+                  <mat-chip-set aria-label="Series suggestions">
+                    @for (suggestion of (item.suggested_series ?? []); track suggestion.name) {
+                      <mat-chip-row (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
+                        {{ displayMetadataName(suggestion.name) }}
+                      </mat-chip-row>
+                    }
+                  </mat-chip-set>
+                </div>
+              }
 
               <div class="review-card__actions">
                 <button

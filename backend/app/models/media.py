@@ -140,3 +140,12 @@ class Media(Base):
         back_populates="media",
         cascade="all, delete-orphan",
     )
+    embedding = relationship(
+        "MediaEmbedding",
+        back_populates="media",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+
+
+from backend.app.models import embeddings as _embeddings  # noqa: E402,F401

@@ -37,18 +37,18 @@ class Settings(BaseSettings):
     ocr_tesseract_config: str = "--psm 6"
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
+    embedding_backend: str = "color_histogram_v1"
+    embedding_executor_workers: int = 2
     tagging_worker_count: int = 2
     tagger_executor_workers: int = 2
     ocr_executor_workers: int = 2
-    anilist_enabled: bool = True
-    anilist_client_id: str = ""
-    anilist_client_secret: str = ""
-    anilist_oauth_redirect_uri: str = ""
-    anilist_timeout_seconds: float = 5.0
-    anilist_base_url: str = "https://graphql.anilist.co"
-    anilist_rate_limit_retry_attempts: int = 6
-    anilist_rate_limit_default_wait_seconds: float = 2.0
-    anilist_rate_limit_max_wait_seconds: float = 30.0
+    library_classification_neighbor_count: int = 12
+    library_classification_backfill_limit: int = 64
+    library_classification_suggestion_min_similarity: float = 0.55
+    library_classification_auto_min_similarity: float = 0.72
+    library_classification_auto_high_similarity: float = 0.90
+    library_classification_auto_min_margin: float = 0.18
+    library_classification_auto_min_support: int = 2
 
     thumbnail_size: int = 512
 
@@ -101,10 +101,6 @@ RUNTIME_CONFIG_FIELDS = {
     "auth_refresh_rate_limit_window_seconds",
     "upload_rate_limit_requests",
     "upload_rate_limit_window_seconds",
-    "anilist_enabled",
-    "anilist_client_id",
-    "anilist_client_secret",
-    "anilist_oauth_redirect_uri",
     "access_token_expire_minutes",
     "refresh_token_expire_days",
     "remember_me_refresh_token_expire_days",

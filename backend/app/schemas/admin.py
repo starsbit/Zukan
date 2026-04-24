@@ -73,10 +73,6 @@ class AdminAppConfigRead(BaseModel):
     auth_register_rate_limit_window_seconds: int = Field(ge=0)
     upload_rate_limit_requests: int = Field(ge=0)
     upload_rate_limit_window_seconds: int = Field(ge=0)
-    anilist_enabled: bool
-    anilist_client_id: str
-    anilist_client_secret: str
-    anilist_oauth_redirect_uri: str
     access_token_expire_minutes: int = Field(ge=1)
     refresh_token_expire_days: int = Field(ge=1)
     remember_me_refresh_token_expire_days: int = Field(ge=1)
@@ -98,10 +94,6 @@ class AdminAppConfigUpdate(BaseModel):
     auth_register_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
     upload_rate_limit_requests: int | None = Field(default=None, ge=0)
     upload_rate_limit_window_seconds: int | None = Field(default=None, ge=0)
-    anilist_enabled: bool | None = None
-    anilist_client_id: str | None = None
-    anilist_client_secret: str | None = None
-    anilist_oauth_redirect_uri: str | None = None
     access_token_expire_minutes: int | None = Field(default=None, ge=1)
     refresh_token_expire_days: int | None = Field(default=None, ge=1)
     remember_me_refresh_token_expire_days: int | None = Field(default=None, ge=1)

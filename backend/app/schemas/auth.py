@@ -33,6 +33,7 @@ class UserSelfReadLite(BaseModel):
     show_nsfw: bool
     show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
+    library_classification_enabled: bool
     version: int
     created_at: datetime
 
@@ -46,6 +47,7 @@ class UserSelfReadLite(BaseModel):
                 "show_nsfw": False,
                 "show_sensitive": False,
                 "tag_confidence_threshold": 0.85,
+                "library_classification_enabled": False,
                 "version": 1,
                 "created_at": "2026-03-24T12:34:56Z",
             }
@@ -61,6 +63,7 @@ class UserRead(BaseModel):
     show_nsfw: bool
     show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
+    library_classification_enabled: bool
     version: int
     created_at: datetime
     storage_quota_mb: int
@@ -77,6 +80,7 @@ class UserRead(BaseModel):
                 "show_nsfw": False,
                 "show_sensitive": False,
                 "tag_confidence_threshold": 0.85,
+                "library_classification_enabled": False,
                 "version": 3,
                 "created_at": "2026-03-24T12:34:56Z",
             }
@@ -88,6 +92,7 @@ class UserUpdate(BaseModel):
     show_nsfw: bool | None = None
     show_sensitive: bool | None = None
     tag_confidence_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    library_classification_enabled: bool | None = None
     password: str | None = Field(default=None, min_length=8)
     version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
 
@@ -97,6 +102,7 @@ class UserUpdate(BaseModel):
                 "show_nsfw": True,
                 "show_sensitive": True,
                 "tag_confidence_threshold": 0.7,
+                "library_classification_enabled": True,
                 "version": 3,
             }
         }

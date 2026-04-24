@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
 from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.models.tags import MediaTag, Tag
-from backend.app.services.library_matching import MediaLibraryEnrichmentService
+from backend.app.repositories.embeddings import MediaNeighbor
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.services.tags import TagService
 from backend.app.utils.tagging import TagPrediction, TaggingResult
-from backend.tests.services.conftest import ScalarResult
 
 
 def make_media(
@@ -22,10 +22,8 @@ def make_media(
     name: str,
     *,
     phash: str | None = None,
-    ocr_text: str | None = None,
-    character_names: list[str] | None = None,
-    series_names: list[str] | None = None,
-    tags: list[tuple[int, str, int, float]] | None = None,
+    character_names: list[tuple[str, str]] | None = None,
+    series_names: list[tuple[str, str]] | None = None,
 ) -> Media:
     now = datetime.now(timezone.utc)
     media = Media(
@@ -45,7 +43,6 @@ def make_media(
         thumbnail_status=ProcessingStatus.DONE,
         poster_status=ProcessingStatus.NOT_APPLICABLE,
         phash=phash,
-        ocr_text=ocr_text,
         deleted_at=None,
     )
     media.entities = [
@@ -54,61 +51,54 @@ def make_media(
                 id=uuid.uuid4(),
                 media_id=media.id,
                 entity_type=MediaEntityType.character,
-                name=name,
+                name=entity_name,
                 role="primary",
-                source="tagger",
+                source=source,
                 confidence=0.95,
             )
-            for name in (character_names or [])
+            for entity_name, source in (character_names or [])
         ],
         *[
             MediaEntity(
                 id=uuid.uuid4(),
                 media_id=media.id,
                 entity_type=MediaEntityType.series,
-                name=name,
+                name=entity_name,
                 role="primary",
-                source="tagger",
+                source=source,
                 confidence=0.95,
             )
-            for name in (series_names or [])
+            for entity_name, source in (series_names or [])
         ],
-    ]
-    media.media_tags = [
-        MediaTag(
-            media_id=media.id,
-            tag_id=tag_id,
-            confidence=confidence,
-            tag=Tag(id=tag_id, name=tag_name, category=category, media_count=4),
-        )
-        for tag_id, tag_name, category, confidence in (tags or [])
     ]
     return media
 
 
 @pytest.mark.asyncio
 async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake_db, user):
-    target = make_media(user.id, "target.webp", phash="samehash", character_names=["Saber"])
+    target = make_media(user.id, "target.webp", phash="samehash", character_names=[("Saber", "tagger")])
     candidate = make_media(
         user.id,
         "candidate.webp",
         phash="samehash",
-        character_names=["Saber"],
-        series_names=["Fate/stay night"],
+        character_names=[("Saber", "tagger")],
+        series_names=[("Fate/stay night", "manual")],
     )
-    fake_db.execute = AsyncMock(side_effect=[
-        ScalarResult(one=target),
-        ScalarResult(rows=[candidate]),
-    ])
 
     service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[candidate])
+    service._load_media_by_ids = AsyncMock(return_value=[])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=None)
 
-    with patch("backend.app.services.library_matching.MediaEntityRepository") as entity_repo_cls:
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
         entity_repo_cls.return_value.add_media_entities = AsyncMock()
 
-        applied = await service.enrich_media(target.id, user_id=user.id)
+        result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert applied == {MediaEntityType.series: ["Fate/stay night"]}
+    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
     entity_repo_cls.return_value.add_media_entities.assert_awaited_once_with(
         target,
         entity_type=MediaEntityType.series,
@@ -121,132 +111,255 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
 
 
 @pytest.mark.asyncio
-async def test_library_enrichment_uses_strong_similarity_for_missing_character(fake_db, user):
-    shared_tags = [
-        (1, "blue dress", 0, 0.94),
-        (2, "fate/stay night", 3, 0.92),
-    ]
-    target = make_media(user.id, "target.webp", tags=shared_tags, series_names=["Fate/stay night"], ocr_text="fuyuki")
-    candidate = make_media(
-        user.id,
-        "candidate.webp",
-        tags=shared_tags,
-        character_names=["Saber"],
-        series_names=["Fate/stay night"],
-        ocr_text="fuyuki",
-    )
-    weak_candidate = make_media(
-        user.id,
-        "weak.webp",
-        tags=[(3, "outdoor", 0, 0.85)],
-        character_names=["Rin"],
-        series_names=["Fate/stay night"],
-        ocr_text="park",
-    )
-    fake_db.execute = AsyncMock(side_effect=[
-        ScalarResult(one=target),
-        ScalarResult(rows=[candidate, weak_candidate]),
-    ])
-
-    service = MediaLibraryEnrichmentService(fake_db)
-
-    with patch("backend.app.services.library_matching.MediaEntityRepository") as entity_repo_cls:
-        entity_repo_cls.return_value.add_media_entities = AsyncMock()
-
-        applied = await service.enrich_media(target.id, user_id=user.id)
-
-    assert applied == {MediaEntityType.character: ["Saber"]}
-    add_call = entity_repo_cls.return_value.add_media_entities.await_args
-    assert add_call.kwargs["source"] == "library_match"
-    assert add_call.kwargs["replace_existing_type"] is True
-    assert add_call.kwargs["names"] == ["Saber"]
-    assert add_call.kwargs["confidence"] >= 0.72
-
-
-@pytest.mark.asyncio
-async def test_library_enrichment_skips_ambiguous_top_matches(fake_db, user):
-    shared_tags = [
-        (1, "blue dress", 0, 0.94),
-        (2, "fate/stay night", 3, 0.92),
-    ]
-    target = make_media(user.id, "target.webp", tags=shared_tags, ocr_text="fuyuki")
-    saber_candidate = make_media(
+async def test_library_enrichment_returns_suggestions_for_ambiguous_neighbors(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    saber = make_media(
         user.id,
         "saber.webp",
-        tags=shared_tags,
-        character_names=["Saber"],
-        series_names=["Fate/stay night"],
-        ocr_text="fuyuki",
+        character_names=[("Saber", "manual")],
+        series_names=[("Fate/stay night", "manual")],
     )
-    rin_candidate = make_media(
+    rin = make_media(
         user.id,
         "rin.webp",
-        tags=shared_tags,
-        character_names=["Rin"],
-        series_names=["Fate/stay night"],
-        ocr_text="fuyuki",
+        character_names=[("Rin", "manual")],
+        series_names=[("Fate/stay night", "manual")],
     )
-    fake_db.execute = AsyncMock(side_effect=[
-        ScalarResult(one=target),
-        ScalarResult(rows=[saber_candidate, rin_candidate]),
-    ])
 
     service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[saber, rin])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(side_effect=[
+        SimpleNamespace(embedding=[0.1, 0.2]),
+    ])
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=saber.id, similarity=0.81),
+        MediaNeighbor(media_id=rin.id, similarity=0.79),
+    ])
 
-    with patch("backend.app.services.library_matching.MediaEntityRepository") as entity_repo_cls:
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
         entity_repo_cls.return_value.add_media_entities = AsyncMock()
 
-        applied = await service.enrich_media(target.id, user_id=user.id)
+        result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert applied == {}
-    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
-    fake_db.commit.assert_not_awaited()
+    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.character]] == ["Saber", "Rin"]
+    entity_repo_cls.return_value.add_media_entities.assert_awaited_once()
+    fake_db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_library_enrichment_only_fills_missing_types(fake_db, user):
-    shared_tags = [
-        (1, "blue dress", 0, 0.94),
-        (2, "fate/stay night", 3, 0.92),
-    ]
-    target = make_media(user.id, "target.webp", tags=shared_tags, character_names=["Saber"], series_names=["Fate/stay night"])
+async def test_library_enrichment_excludes_library_match_candidates(fake_db, user):
+    target = make_media(user.id, "target.webp")
     candidate = make_media(
         user.id,
         "candidate.webp",
-        tags=shared_tags,
-        character_names=["Saber Alter"],
-        series_names=["Fate/Zero"],
-        ocr_text="fuyuki",
+        character_names=[("Saber", "library_match")],
+        series_names=[("Fate/stay night", "library_match")],
     )
-    fake_db.execute = AsyncMock(side_effect=[
-        ScalarResult(one=target),
-    ])
 
     service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[candidate])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(side_effect=[
+        SimpleNamespace(embedding=[0.1, 0.2]),
+    ])
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=candidate.id, similarity=0.96),
+    ])
 
-    with patch("backend.app.services.library_matching.MediaEntityRepository") as entity_repo_cls:
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
         entity_repo_cls.return_value.add_media_entities = AsyncMock()
 
-        applied = await service.enrich_media(target.id, user_id=user.id)
+        result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert applied == {}
+    assert result.applied == {}
+    assert result.suggestions[MediaEntityType.character] == []
+    assert result.suggestions[MediaEntityType.series] == []
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_auto_applies_strong_neighbor_consensus(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    saber_manual = make_media(
+        user.id,
+        "saber-manual.webp",
+        character_names=[("Saber", "manual")],
+        series_names=[("Fate/stay night", "manual")],
+    )
+    saber_tagger = make_media(
+        user.id,
+        "saber-tagger.webp",
+        character_names=[("Saber", "tagger")],
+        series_names=[("Fate/stay night", "tagger")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[saber_manual, saber_tagger])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=saber_manual.id, similarity=0.93),
+        MediaNeighbor(media_id=saber_tagger.id, similarity=0.91),
+    ])
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {
+        MediaEntityType.character: ["Saber"],
+        MediaEntityType.series: ["Fate/stay night"],
+    }
+    assert [call.kwargs["entity_type"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
+        MediaEntityType.character,
+        MediaEntityType.series,
+    ]
+    assert [call.kwargs["names"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
+        ["Saber"],
+        ["Fate/stay night"],
+    ]
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_apply_false_keeps_suggestions_read_only(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    candidate = make_media(
+        user.id,
+        "candidate.webp",
+        character_names=[("Saber", "manual")],
+        series_names=[("Fate/stay night", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[candidate])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=candidate.id, similarity=0.97),
+    ])
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id, apply=False)
+
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.character]] == ["Saber"]
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
     entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
     fake_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_tag_media_runs_library_enrichment_after_storing_results(fake_db, media):
+async def test_library_enrichment_does_not_override_existing_entities(fake_db, user):
+    target = make_media(
+        user.id,
+        "target.webp",
+        character_names=[("Existing Character", "manual")],
+        series_names=[("Existing Series", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock()
+    service._load_media_by_ids = AsyncMock()
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock()
+    service._embedding_repo.get_by_media_id = AsyncMock()
+    service._embedding_repo.nearest_neighbors = AsyncMock()
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {}
+    assert result.metadata["reason"] == "no_missing_entities"
+    service._load_exact_matches.assert_not_awaited()
+    service._embedding_repo.nearest_neighbors.assert_not_awaited()
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    fake_db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_tag_media_runs_library_enrichment_only_when_enabled(fake_db, media):
     tagger = SimpleNamespace(
         predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)),
     )
     enrichment = SimpleNamespace(enrich_media=AsyncMock())
     service = TagService(fake_db, tagger=tagger, library_enrichment=enrichment)
 
+    enabled_user = User(
+        id=media.uploader_id,
+        username="enabled",
+        email="enabled@example.com",
+        hashed_password="x",
+        is_admin=False,
+        show_nsfw=False,
+        show_sensitive=False,
+        tag_confidence_threshold=0.35,
+        library_classification_enabled=True,
+        version=1,
+        storage_quota_mb=10240,
+        created_at=datetime.now(timezone.utc),
+    )
+
     with patch("backend.app.services.tags.MediaRepository") as media_repo_cls, patch(
         "backend.app.services.tags.sample_media_frames", return_value=[]
     ), patch.object(service, "_store_tagging_result", AsyncMock()) as store_fn:
         media_repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        fake_db.get = AsyncMock(return_value=enabled_user)
         await service.tag_media(media.id)
 
     store_fn.assert_awaited_once()
     enrichment.enrich_media.assert_awaited_once_with(media.id, user_id=media.uploader_id)
+
+
+@pytest.mark.asyncio
+async def test_tag_media_skips_library_enrichment_when_disabled(fake_db, media):
+    tagger = SimpleNamespace(
+        predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)),
+    )
+    enrichment = SimpleNamespace(enrich_media=AsyncMock())
+    service = TagService(fake_db, tagger=tagger, library_enrichment=enrichment)
+
+    disabled_user = User(
+        id=media.uploader_id,
+        username="disabled",
+        email="disabled@example.com",
+        hashed_password="x",
+        is_admin=False,
+        show_nsfw=False,
+        show_sensitive=False,
+        tag_confidence_threshold=0.35,
+        library_classification_enabled=False,
+        version=1,
+        storage_quota_mb=10240,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    with patch("backend.app.services.tags.MediaRepository") as media_repo_cls, patch(
+        "backend.app.services.tags.sample_media_frames", return_value=[]
+    ), patch.object(service, "_store_tagging_result", AsyncMock()) as store_fn:
+        media_repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        fake_db.get = AsyncMock(return_value=disabled_user)
+        await service.tag_media(media.id)
+
+    store_fn.assert_awaited_once()
+    enrichment.enrich_media.assert_not_awaited()

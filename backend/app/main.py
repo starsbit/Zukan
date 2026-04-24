@@ -19,6 +19,7 @@ from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
+from backend.app.models import embeddings as _embedding_models  # noqa: F401
 from backend.app.models.media import Media
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.models import notifications as _notifications_models  # noqa: F401
@@ -35,7 +36,9 @@ from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.services.update_check import update_check_worker
 from backend.app.ml.tagger import tagger
+from backend.app.ml.embedding import embedding_backend
 from backend.app.ml.ocr import ocr_backend
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 
 
 configure_logging(settings.log_level)
@@ -112,6 +115,7 @@ async def tagging_worker():
                 if media_item.tagging_status in ("pending", "processing"):
                     await TagService(db, tagger).tag_media(media_id)
                 await processing.run_ocr_for_media(media_id, ocr_backend)
+                await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
                 await upload_service.mark_upload_batch_item_done(media_id)
 
             except Exception as exc:
@@ -234,6 +238,10 @@ async def _initialize_ml_services() -> None:
         logger.info("Startup phase: loading OCR model")
         await asyncio.to_thread(ocr_backend.load)
         logger.info("Startup phase complete: loading OCR model")
+
+        logger.info("Startup phase: loading embedding backend")
+        await asyncio.to_thread(embedding_backend.load)
+        logger.info("Startup phase complete: loading embedding backend")
     except asyncio.CancelledError:
         raise
     except Exception as exc:

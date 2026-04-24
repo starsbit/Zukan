@@ -25,13 +25,11 @@ from backend.app.schemas import (
     ImportBatchRecommendationSuggestionRead,
     ImportBatchReviewItemRead,
 )
-from backend.app.services.anilist import AniListService
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
-ANILIST_EXPANSION_PAIR_THRESHOLD = PAIR_SCORE_THRESHOLD
 LIBRARY_MATCH_SCORE_THRESHOLD = 0.72
 LIBRARY_MATCH_SCORE_MARGIN = 0.10
 EXACT_MATCH_CONFIDENCE = 0.99
@@ -144,15 +142,6 @@ class MediaSimilarityMatcher:
         sorted_shared = sorted(shared.items(), key=lambda item: (-item[1], item[0]))[:6]
         return dict(sorted_shared)
 
-    def matches_anilist_series(self, candidate: Any, matched_series_tokens: set[str]) -> bool:
-        for _, media_tag, _ in self.iter_groupable_tags(candidate, include_common=True):
-            tag = media_tag.tag
-            if tag.category != 3:
-                continue
-            if self.normalize_token(tag.name) in matched_series_tokens:
-                return True
-        return False
-
     def entity_tokens(self, media_or_candidate: Any) -> set[str]:
         media = self._media(media_or_candidate)
         tokens: set[str] = set()
@@ -192,11 +181,9 @@ class MediaLibraryMatcher:
         self,
         db: AsyncSession,
         *,
-        anilist: AniListService | None = None,
         similarity: MediaSimilarityMatcher | None = None,
     ) -> None:
         self._db = db
-        self._anilist = anilist or AniListService()
         self._similarity = similarity or MediaSimilarityMatcher()
 
     async def build_recommendation_groups(
@@ -280,124 +267,24 @@ class MediaLibraryMatcher:
             groups.append(group)
             grouped_ids.update(c.media.id for c in bucket_candidates)
 
-        first_character_bucket = True
         for bucket_candidates in character_buckets.values():
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if not ungrouped:
                 continue
-            if not first_character_bucket:
-                await asyncio.sleep(0.7)
-            first_character_bucket = False
-            expanded_candidates, extra_series_suggestions = await self._expand_character_bucket_with_anilist(
-                ungrouped,
-                candidates,
-                grouped_ids,
-                review_item_by_media_id,
-            )
-            if len(expanded_candidates) < 2:
+            if len(ungrouped) < 2:
                 continue
             group = await self._build_recommendation_group(
-                expanded_candidates,
+                ungrouped,
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
                 user_id,
-                extra_series_suggestions=extra_series_suggestions,
                 confidence_override=0.80,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in expanded_candidates)
+            grouped_ids.update(c.media.id for c in ungrouped)
 
         return groups, grouped_ids
-
-    async def _expand_character_bucket_with_anilist(
-        self,
-        seed_candidates: list[ImportBatchItem],
-        all_candidates: list[ImportBatchItem],
-        grouped_ids: set[uuid.UUID],
-        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
-    ) -> tuple[list[ImportBatchItem], list[ImportBatchRecommendationSuggestionRead]]:
-        if not seed_candidates:
-            return seed_candidates, []
-
-        character_name = next(
-            (
-                entity.name.strip()
-                for entity in seed_candidates[0].media.entities
-                if entity.entity_type == MediaEntityType.character and entity.name.strip()
-            ),
-            "",
-        )
-        if not character_name:
-            return seed_candidates, []
-
-        character_name = character_name.replace("_", " ").strip()
-        series_names = await self._fetch_anilist_series_candidates(character_name)
-        if not series_names:
-            logger.debug("AniList expansion skipped: no series titles returned character=%s", character_name)
-            return seed_candidates, []
-
-        extra_suggestions = self._build_named_suggestions(series_names)
-        matched_series_tokens = {self._similarity.normalize_token(name) for name in series_names if self._similarity.normalize_token(name)}
-        logger.debug(
-            "AniList expansion tokens character=%s tokens=%s",
-            character_name,
-            sorted(matched_series_tokens),
-        )
-        if not matched_series_tokens:
-            return seed_candidates, extra_suggestions
-
-        expanded = list(seed_candidates)
-        selected_ids = {candidate.media.id for candidate in expanded}
-        batch_tag_counts = self._similarity.build_batch_tag_counts(all_candidates)
-
-        batch_size = len(all_candidates)
-        for candidate in all_candidates:
-            media_id = candidate.media.id
-            if media_id in grouped_ids or media_id in selected_ids:
-                continue
-
-            review_item = review_item_by_media_id.get(media_id)
-            if review_item is None or not review_item.missing_character or not review_item.missing_series:
-                continue
-            if any(
-                entity.entity_type == MediaEntityType.character and entity.name.strip()
-                for entity in candidate.media.entities
-            ):
-                continue
-
-            if not self._similarity.matches_anilist_series(candidate, matched_series_tokens):
-                continue
-
-            strongest_similarity = max(
-                self._similarity.pair_similarity(seed, candidate, batch_tag_counts, batch_size)
-                for seed in seed_candidates
-            )
-            if strongest_similarity < ANILIST_EXPANSION_PAIR_THRESHOLD:
-                logger.debug(
-                    "AniList expansion candidate rejected: similarity too low media_id=%s similarity=%.3f threshold=%.3f",
-                    media_id,
-                    strongest_similarity,
-                    ANILIST_EXPANSION_PAIR_THRESHOLD,
-                )
-                continue
-
-            logger.debug(
-                "AniList expansion added candidate media_id=%s similarity=%.3f character=%s",
-                media_id,
-                strongest_similarity,
-                character_name,
-            )
-            expanded.append(candidate)
-            selected_ids.add(media_id)
-
-        logger.info(
-            "AniList expansion finished character=%s seed_count=%d expanded_count=%d",
-            character_name,
-            len(seed_candidates),
-            len(expanded),
-        )
-        return expanded, extra_suggestions
 
     async def _build_similarity_groups(
         self,
@@ -508,13 +395,6 @@ class MediaLibraryMatcher:
             shared_signals=shared_signals,
             confidence=min(confidence, 0.999),
         )
-
-    async def _fetch_anilist_series_candidates(self, character_name: str) -> list[str]:
-        try:
-            return await self._anilist.find_series_titles_for_character(character_name)
-        except Exception as exc:
-            logger.warning("AniList enrichment failed for character=%s error=%s", character_name, exc)
-            return []
 
     async def _collect_suggestions(
         self,

@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
@@ -20,6 +20,7 @@ from backend.app.errors.error import AppError
 from backend.app.main import app_error_handler, http_exception_handler, request_validation_error_handler, v1_router
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.auth import RefreshToken, User
+from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.media import Media
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.notifications import AppAnnouncement, Notification
@@ -40,7 +41,7 @@ def _to_async_url(url: str) -> str:
 @pytest.fixture(scope="session")
 def postgres_async_url() -> str:
     try:
-        container = PostgresContainer("postgres:16-alpine")
+        container = PostgresContainer("pgvector/pgvector:pg16")
         container.start()
     except Exception as exc:  # pragma: no cover
         pytest.skip(f"Docker/Testcontainers unavailable: {exc}")
@@ -54,6 +55,7 @@ def postgres_async_url() -> str:
 async def db_engine(postgres_async_url: str):
     engine = create_async_engine(postgres_async_url)
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     try:
         yield engine
@@ -74,6 +76,7 @@ async def db_sessionmaker(db_engine):
             ImportBatch,
             MediaExternalRef,
             MediaEntity,
+            MediaEmbedding,
             MediaTag,
             Tag,
             AlbumMedia,

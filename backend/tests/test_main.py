@@ -134,11 +134,19 @@ async def test_initialize_ml_services_marks_state_ready(monkeypatch):
     monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
     monkeypatch.setattr("backend.app.main.tagger.load", lambda: calls.append("tagger.load"))
     monkeypatch.setattr("backend.app.main.ocr_backend.load", lambda: calls.append("ocr_backend.load"))
+    monkeypatch.setattr("backend.app.main.embedding_backend.load", lambda: calls.append("embedding_backend.load"))
 
     await _initialize_ml_services()
     await ml_startup_state.wait_until_ready()
 
-    assert calls == ["<lambda>", "tagger.load", "<lambda>", "ocr_backend.load"]
+    assert calls == [
+        "<lambda>",
+        "tagger.load",
+        "<lambda>",
+        "ocr_backend.load",
+        "<lambda>",
+        "embedding_backend.load",
+    ]
     ml_startup_state.reset()
 
 

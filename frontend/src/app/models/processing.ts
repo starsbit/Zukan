@@ -76,6 +76,8 @@ export interface ImportBatchReviewItemRead {
   source_filename: string;
   missing_character: boolean;
   missing_series: boolean;
+  suggested_characters?: ImportBatchRecommendationSuggestionRead[];
+  suggested_series?: ImportBatchRecommendationSuggestionRead[];
 }
 
 export interface ImportBatchRecommendationSuggestionRead {

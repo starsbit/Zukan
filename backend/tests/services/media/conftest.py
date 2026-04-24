@@ -70,6 +70,7 @@ def user() -> User:
         is_admin=False,
         show_nsfw=False,
         show_sensitive=False,
+        library_classification_enabled=False,
         storage_quota_mb=10240,
     )
 
@@ -84,6 +85,7 @@ def admin_user() -> User:
         is_admin=True,
         show_nsfw=False,
         show_sensitive=False,
+        library_classification_enabled=False,
         storage_quota_mb=10240,
     )
 

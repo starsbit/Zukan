@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 
 from backend.app.database.base import Base
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareRole
 from backend.app.models.auth import RefreshToken, User
+from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.notifications import AppAnnouncement, Notification, NotificationType
@@ -30,7 +32,7 @@ def _to_async_url(url: str) -> str:
 @pytest.fixture(scope="session")
 def postgres_async_url() -> str:
     try:
-        container = PostgresContainer("postgres:16-alpine")
+        container = PostgresContainer("pgvector/pgvector:pg16")
         container.start()
     except Exception as exc:  # pragma: no cover
         pytest.skip(f"Docker/Testcontainers unavailable: {exc}")
@@ -44,6 +46,7 @@ def postgres_async_url() -> str:
 async def db_engine(postgres_async_url: str):
     engine = create_async_engine(postgres_async_url)
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
     try:
         yield engine

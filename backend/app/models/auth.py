@@ -22,6 +22,7 @@ class User(Base):
     show_nsfw: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     show_sensitive: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     tag_confidence_threshold: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
+    library_classification_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text("false"))
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     storage_quota_mb: Mapped[int] = mapped_column(Integer, nullable=False, default=10240, server_default=text("10240"))
@@ -79,4 +80,3 @@ class APIKey(Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="api_key")
-

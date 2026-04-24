@@ -98,6 +98,8 @@ class ImportBatchReviewItemRead(BaseModel):
     source_filename: str
     missing_character: bool
     missing_series: bool
+    suggested_characters: list["ImportBatchRecommendationSuggestionRead"] = Field(default_factory=list)
+    suggested_series: list["ImportBatchRecommendationSuggestionRead"] = Field(default_factory=list)
 
 
 class ImportBatchRecommendationSuggestionRead(BaseModel):

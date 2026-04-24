@@ -21,7 +21,7 @@ from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import CATEGORY_NAMES, MetadataListScope, TagListResponse, TagManagementResult, TagRead
-from backend.app.services.library_matching import MediaLibraryEnrichmentService
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 from backend.app.utils.tagging import (
     TaggerBackend,
@@ -264,7 +264,8 @@ class TagService:
                 results.append(await self._predict_with_retries(str(frame_path)))
             aggregated = aggregate_tagging_results(results)
             await self._store_tagging_result(media, aggregated)
-            if media.uploader_id is not None:
+            uploader = await self._db.get(User, media.uploader_id) if media.uploader_id is not None else None
+            if uploader is not None and uploader.library_classification_enabled:
                 await self._library_enrichment.enrich_media(media.id, user_id=media.uploader_id)
         finally:
             cleanup_sampled_frames([frame for frame in frames if frame != Path(media.filepath)])

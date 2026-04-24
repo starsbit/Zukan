@@ -15,13 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from backend.app.errors.error import AppError
+from backend.app.models.auth import User
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.models.tags import MediaTag
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
-from backend.app.services.anilist import AniListService
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.services.library_matching import MediaSimilarityMatcher
 from backend.app.schemas import (
     ImportBatchItemListResponse,
@@ -42,8 +43,6 @@ TOKEN_RE = re.compile(r"[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
-ANILIST_EXPANSION_PAIR_THRESHOLD = PAIR_SCORE_THRESHOLD
-MAX_ANILIST_CHARACTER_BUCKETS_PER_REQUEST = 1
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,7 @@ async def _resolved(value: list[ImportBatchRecommendationSuggestionRead]) -> lis
 class ProcessingService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
-        self._anilist = AniListService()
+        self._library_enrichment = MediaLibraryEnrichmentService(db)
         self._similarity = MediaSimilarityMatcher()
 
     async def list_batches(
@@ -163,7 +162,11 @@ class ProcessingService:
             user_id,
             batch_types=[BatchType.upload],
         )
-        items, review_candidates = await self._build_review_items_from_candidates(candidates, user_id)
+        items, review_candidates = await self._build_review_items_from_candidates(
+            candidates,
+            user_id,
+            include_suggestions=include_recommendations,
+        )
 
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
@@ -249,7 +252,11 @@ class ProcessingService:
     ) -> ImportBatchReviewListResponse:
         batch = await self.get_batch_for_user(batch_id, user_id)
         candidates = await ImportBatchItemRepository(self._db).list_review_candidates_for_batch(batch_id)
-        items, review_candidates = await self._build_review_items_from_candidates(candidates, user_id)
+        items, review_candidates = await self._build_review_items_from_candidates(
+            candidates,
+            user_id,
+            include_suggestions=include_recommendations,
+        )
 
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
@@ -292,11 +299,14 @@ class ProcessingService:
         self,
         candidates: list[ImportBatchItem],
         user_id: uuid.UUID,
+        *,
+        include_suggestions: bool = False,
     ) -> tuple[list[ImportBatchReviewItemRead], list[ImportBatchItem]]:
         media_ids = [item.media.id for item in candidates if item.media is not None]
         favorite_repo = UserFavoriteRepository(self._db)
         favorited = await favorite_repo.get_favorited_ids(user_id, media_ids)
         favorite_counts = await favorite_repo.get_favorite_counts(media_ids)
+        library_suggestions_enabled = include_suggestions and await self._is_library_classification_enabled(user_id)
 
         items: list[ImportBatchReviewItemRead] = []
         review_candidates: list[ImportBatchItem] = []
@@ -311,6 +321,18 @@ class ProcessingService:
             has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
             if has_character and has_series:
                 continue
+
+            suggested_characters: list[ImportBatchRecommendationSuggestionRead] = []
+            suggested_series: list[ImportBatchRecommendationSuggestionRead] = []
+            if library_suggestions_enabled and media.uploader_id == user_id:
+                result = await self._library_enrichment.enrich_media(
+                    media.id,
+                    user_id=user_id,
+                    apply=False,
+                    target_media=media,
+                )
+                suggested_characters = result.suggestions.get(MediaEntityType.character, [])
+                suggested_series = result.suggestions.get(MediaEntityType.series, [])
 
             items.append(
                 ImportBatchReviewItemRead(
@@ -331,11 +353,20 @@ class ProcessingService:
                     source_filename=item.source_filename,
                     missing_character=not has_character,
                     missing_series=not has_series,
+                    suggested_characters=suggested_characters,
+                    suggested_series=suggested_series,
                 )
             )
             review_candidates.append(item)
 
+        if include_suggestions:
+            await self._db.commit()
+
         return items, review_candidates
+
+    async def _is_library_classification_enabled(self, user_id: uuid.UUID) -> bool:
+        user = await self._db.get(User, user_id)
+        return isinstance(user, User) and bool(user.library_classification_enabled)
 
     async def _load_deduped_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
         candidates = await ImportBatchItemRepository(self._db).list_all_review_candidates_for_user(
@@ -485,135 +516,24 @@ class ProcessingService:
             groups.append(group)
             grouped_ids.update(c.media.id for c in bucket_candidates)
 
-        for bucket_index, bucket_candidates in enumerate(
-            sorted(character_buckets.values(), key=len, reverse=True)
-        ):
+        for bucket_candidates in sorted(character_buckets.values(), key=len, reverse=True):
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if not ungrouped:
                 continue
-
-            expanded_candidates = ungrouped
-            extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] = []
-            if bucket_index < MAX_ANILIST_CHARACTER_BUCKETS_PER_REQUEST:
-                expanded_candidates, extra_series_suggestions = await self._expand_character_bucket_with_anilist(
-                    ungrouped,
-                    candidates,
-                    grouped_ids,
-                    review_item_by_media_id,
-                )
-            else:
-                logger.info(
-                    "Skipping AniList expansion for character bucket index=%d size=%d due to per-request budget",
-                    bucket_index + 1,
-                    len(ungrouped),
-                )
-            if len(expanded_candidates) < 2:
+            if len(ungrouped) < 2:
                 continue
             group = await self._build_recommendation_group(
-                expanded_candidates,
+                ungrouped,
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
                 user_id,
-                extra_series_suggestions=extra_series_suggestions,
                 confidence_override=0.80,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in expanded_candidates)
+            grouped_ids.update(c.media.id for c in ungrouped)
 
         return groups, grouped_ids
-
-    async def _expand_character_bucket_with_anilist(
-        self,
-        seed_candidates: list[ImportBatchItem],
-        all_candidates: list[ImportBatchItem],
-        grouped_ids: set[uuid.UUID],
-        review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
-    ) -> tuple[list[ImportBatchItem], list[ImportBatchRecommendationSuggestionRead]]:
-        if not seed_candidates:
-            return seed_candidates, []
-
-        character_name = next(
-            (
-                entity.name.strip()
-                for entity in seed_candidates[0].media.entities
-                if entity.entity_type == MediaEntityType.character and entity.name.strip()
-            ),
-            "",
-        )
-        if not character_name:
-            return seed_candidates, []
-
-        character_name = character_name.replace("_", " ").strip()
-        series_names = await self._fetch_anilist_series_candidates(character_name)
-        if not series_names:
-            logger.debug("AniList expansion skipped: no series titles returned character=%s", character_name)
-            return seed_candidates, []
-
-        extra_suggestions = self._build_named_suggestions(series_names)
-        matched_series_tokens = {self._normalize_token(name) for name in series_names if self._normalize_token(name)}
-        logger.debug(
-            "AniList expansion tokens character=%s tokens=%s",
-            character_name,
-            sorted(matched_series_tokens),
-        )
-        if not matched_series_tokens:
-            return seed_candidates, extra_suggestions
-
-        expanded = list(seed_candidates)
-        selected_ids = {candidate.media.id for candidate in expanded}
-        batch_tag_counts = Counter()
-        for candidate in all_candidates:
-            for tag_name, _, _ in self._iter_groupable_tags(candidate):
-                batch_tag_counts[tag_name] += 1
-
-        batch_size = len(all_candidates)
-        for candidate in all_candidates:
-            media_id = candidate.media.id
-            if media_id in grouped_ids or media_id in selected_ids:
-                continue
-
-            review_item = review_item_by_media_id.get(media_id)
-            if review_item is None or not review_item.missing_character or not review_item.missing_series:
-                continue
-            if any(
-                entity.entity_type == MediaEntityType.character and entity.name.strip()
-                for entity in candidate.media.entities
-            ):
-                continue
-
-            if not self._matches_anilist_series(candidate, matched_series_tokens):
-                continue
-
-            strongest_similarity = max(
-                self._pair_similarity(seed, candidate, batch_tag_counts, batch_size)
-                for seed in seed_candidates
-            )
-            if strongest_similarity < ANILIST_EXPANSION_PAIR_THRESHOLD:
-                logger.debug(
-                    "AniList expansion candidate rejected: similarity too low media_id=%s similarity=%.3f threshold=%.3f",
-                    media_id,
-                    strongest_similarity,
-                    ANILIST_EXPANSION_PAIR_THRESHOLD,
-                )
-                continue
-
-            logger.debug(
-                "AniList expansion added candidate media_id=%s similarity=%.3f character=%s",
-                media_id,
-                strongest_similarity,
-                character_name,
-            )
-            expanded.append(candidate)
-            selected_ids.add(media_id)
-
-        logger.info(
-            "AniList expansion finished character=%s seed_count=%d expanded_count=%d",
-            character_name,
-            len(seed_candidates),
-            len(expanded),
-        )
-        return expanded, extra_suggestions
 
     async def _build_similarity_groups(
         self,
@@ -726,13 +646,6 @@ class ProcessingService:
             confidence=min(confidence, 0.999),
         )
 
-    async def _fetch_anilist_series_candidates(self, character_name: str) -> list[str]:
-        try:
-            return await self._anilist.find_series_titles_for_character(character_name)
-        except Exception as exc:
-            logger.warning("AniList enrichment failed for character=%s error=%s", character_name, exc)
-            return []
-
     async def _collect_suggestions(
         self,
         sources: list[SuggestionSource],
@@ -774,7 +687,7 @@ class ProcessingService:
             )
             .group_by(MediaEntity.name, MediaTag.tag_id)
         )
-        rows = (await self._db.execute(stmt)).all()
+        rows = self._result_rows(await self._db.execute(stmt))
         if not rows:
             return []
 
@@ -832,7 +745,7 @@ class ProcessingService:
             .order_by(count_expr.desc(), series_model.name.asc())
             .limit(MAX_GROUP_SUGGESTIONS)
         )
-        rows = (await self._db.execute(stmt)).all()
+        rows = self._result_rows(await self._db.execute(stmt))
         if not rows:
             return []
 
@@ -986,9 +899,6 @@ class ProcessingService:
     def _shared_tag_weights(self, candidates: list[ImportBatchItem]) -> dict[int, float]:
         return self._similarity.shared_tag_weights(candidates)
 
-    def _matches_anilist_series(self, candidate: ImportBatchItem, matched_series_tokens: set[str]) -> bool:
-        return self._similarity.matches_anilist_series(candidate, matched_series_tokens)
-
     def _entity_tokens(self, media) -> set[str]:
         return self._similarity.entity_tokens(media)
 
@@ -1001,5 +911,10 @@ class ProcessingService:
     def _token_jaccard(self, left: set[str], right: set[str]) -> float:
         return self._similarity.token_jaccard(left, right)
 
-    def _normalize_token(self, value: str | None) -> str:
-        return self._similarity.normalize_token(value)
+    def _result_rows(self, result: Any) -> list[Any]:
+        if result is None:
+            return []
+        all_rows = getattr(result, "all", None)
+        if callable(all_rows):
+            return list(all_rows())
+        return []

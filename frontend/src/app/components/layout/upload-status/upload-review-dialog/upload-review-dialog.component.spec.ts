@@ -634,6 +634,76 @@ describe('UploadReviewDialogComponent', () => {
     expect(component.ungroupedVisibleItems().map((item) => item.media.id)).toEqual(['m2']);
   });
 
+  it('can treat an entire recommendation group as solo pictures without dismissing media', async () => {
+    const refreshBatchReview = vi.fn();
+    const refreshBatchRecommendations = vi.fn();
+    const batchDismissMetadataReview = vi.fn(() => of({ processed: 2, skipped: 0 }));
+    const tracker = {
+      getBatchReview: signal({
+        id: 'b1',
+        recommendationGroups: [{
+          id: 'group-1',
+          media_ids: ['m1', 'm2'],
+          item_count: 2,
+          missing_character_count: 2,
+          missing_series_count: 2,
+          suggested_characters: [],
+          suggested_series: [],
+          shared_signals: [],
+          confidence: 0.82,
+        }],
+        reviewItems: [makeReviewItem('m1'), makeReviewItem('m2')],
+        reviewBaselineTotal: 2,
+        reviewRefreshing: false,
+        recommendationsRefreshing: false,
+      }),
+      refreshBatchReview,
+      refreshBatchRecommendations,
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [UploadReviewDialogComponent, NoopAnimationsModule],
+      providers: [
+        {
+          provide: UploadTrackerService,
+          useValue: {
+            getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
+            refreshBatchReview,
+            refreshBatchRecommendations,
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview,
+            getCharacterSuggestions: vi.fn(() => of([])),
+            getSeriesSuggestions: vi.fn(() => of([])),
+            getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+            getPosterUrl: vi.fn(() => of('blob:poster')),
+          },
+        },
+        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
+        { provide: MatDialogRef, useValue: { close: vi.fn() } },
+        { provide: MatDialog, useValue: { open: vi.fn() } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(UploadReviewDialogComponent);
+    fixture.detectChanges();
+
+    const component = fixture.componentInstance;
+    batchDismissMetadataReview.mockClear();
+    refreshBatchReview.mockClear();
+    component.treatGroupAsSoloPictures(component.recommendationGroups()[0]);
+
+    expect(batchDismissMetadataReview).not.toHaveBeenCalled();
+    expect(refreshBatchReview).not.toHaveBeenCalled();
+    expect(component.recommendationGroups()).toHaveLength(0);
+    expect(component.ungroupedVisibleItems().map((item) => item.media.id)).toEqual(['m1', 'm2']);
+  });
+
   it('discards an entire group from review', async () => {
     const refreshBatchReview = vi.fn();
     const refreshBatchRecommendations = vi.fn();

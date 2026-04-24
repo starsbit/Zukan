@@ -5,6 +5,7 @@ export interface UserSelfRead {
   show_nsfw: boolean;
   show_sensitive?: boolean;
   tag_confidence_threshold: number;
+  library_classification_enabled?: boolean;
   version: number;
   created_at: string;
 }
@@ -17,6 +18,7 @@ export interface UserRead {
   show_nsfw: boolean;
   show_sensitive?: boolean;
   tag_confidence_threshold: number;
+  library_classification_enabled?: boolean;
   version: number;
   created_at: string;
   storage_quota_mb: number;
@@ -39,6 +41,7 @@ export interface UserUpdate {
   show_nsfw?: boolean | null;
   show_sensitive?: boolean | null;
   tag_confidence_threshold?: number | null;
+  library_classification_enabled?: boolean | null;
   password?: string | null;
   version?: number | null;
 }

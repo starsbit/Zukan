@@ -280,6 +280,20 @@ export class UploadReviewDialogComponent {
     this.discardReviewItems(group.media_ids, 'Group discarded from missing-name review.');
   }
 
+  treatGroupAsSoloPictures(group: ImportBatchRecommendationGroupRead): void {
+    if (group.media_ids.length === 0) {
+      return;
+    }
+
+    this.expandedGroupIds.update((ids) => ids.filter((id) => id !== group.id));
+    this.removeMediaFromRecommendationGroups(group.media_ids);
+    this.snackBar.open(
+      `Group moved to solo picture review for ${group.item_count} item${group.item_count === 1 ? '' : 's'}.`,
+      'Close',
+      { duration: 3000 },
+    );
+  }
+
   discardItemFromGroup(group: ImportBatchRecommendationGroupRead, mediaId: string): void {
     const item = this.items().find((entry) => entry.media.id === mediaId);
     if (!item) {

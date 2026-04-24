@@ -65,6 +65,7 @@ export class UserSettingsDialogComponent implements OnInit {
       this.currentUser?.tag_confidence_threshold ?? 0.5,
       [Validators.required, Validators.min(0), Validators.max(1)],
     ],
+    libraryClassificationEnabled: [this.currentUser?.library_classification_enabled ?? false],
     password: [''],
     confirmPassword: [''],
   });
@@ -79,7 +80,16 @@ export class UserSettingsDialogComponent implements OnInit {
       return;
     }
 
-    const { showNsfw, showSensitive, hideNsfwBadge, hideSensitiveBadge, tagConfidenceThreshold, password, confirmPassword } = this.form.getRawValue();
+    const {
+      showNsfw,
+      showSensitive,
+      hideNsfwBadge,
+      hideSensitiveBadge,
+      tagConfidenceThreshold,
+      libraryClassificationEnabled,
+      password,
+      confirmPassword,
+    } = this.form.getRawValue();
 
     if (password && password !== confirmPassword) {
       this.error.set('Passwords do not match.');
@@ -96,6 +106,7 @@ export class UserSettingsDialogComponent implements OnInit {
       show_nsfw: showNsfw,
       show_sensitive: showSensitive,
       tag_confidence_threshold: Number(tagConfidenceThreshold),
+      library_classification_enabled: libraryClassificationEnabled,
       version: this.currentUser.version,
     };
 

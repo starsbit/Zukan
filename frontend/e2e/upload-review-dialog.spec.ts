@@ -619,6 +619,29 @@ test.describe('Upload review dialog', () => {
     await expect(page.getByText('series-only.png')).not.toBeVisible();
   });
 
+  test('user can treat an entire recommendation group as solo pictures', async ({ page }) => {
+    let dismissedPayload: { media_ids: string[]; metadata_review_dismissed: boolean } | null = null;
+
+    await ensureAdminAuthenticated(page);
+    await registerReviewFlowRoutes(page, {
+      onDismissPatch: (payload) => {
+        dismissedPayload = payload;
+      },
+    });
+
+    await page.goto('/');
+    await triggerTrackedUpload(page);
+    await openReviewDialogFromIsland(page);
+
+    await page.locator('.review-group-card').first().getByRole('button', { name: 'Treat as solo pictures', exact: true }).click();
+
+    await expect(page.getByText('Group moved to solo picture review for 2 items.')).toBeVisible();
+    await expect(page.locator('.review-group-card')).toHaveCount(0);
+    await expect(page.getByText('group-one.png')).toBeVisible();
+    await expect(page.getByText('group-two.png')).toBeVisible();
+    expect(dismissedPayload).toBeNull();
+  });
+
   test('user can discard an entire recommendation group', async ({ page }) => {
     let dismissedPayload: { media_ids: string[]; metadata_review_dismissed: boolean } | null = null;
 
@@ -633,7 +656,7 @@ test.describe('Upload review dialog', () => {
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
-    await page.locator('.review-group-card').first().getByRole('button', { name: 'Discard group', exact: true }).click();
+    await page.locator('.review-group-card').first().getByRole('button', { name: 'Discard from review', exact: true }).click();
 
     await expect.poll(() => dismissedPayload).not.toBeNull();
     expect(dismissedPayload).toEqual({

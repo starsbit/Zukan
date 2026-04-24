@@ -77,6 +77,7 @@ def _build_user(*, is_admin: bool = False) -> SimpleNamespace:
         show_nsfw=False,
         show_sensitive=False,
         tag_confidence_threshold=0.35,
+        library_classification_enabled=False,
         version=1,
         created_at=datetime.now(timezone.utc),
         storage_quota_mb=10240,

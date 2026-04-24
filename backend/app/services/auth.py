@@ -207,16 +207,19 @@ class AuthService:
             user.show_sensitive = body.show_sensitive
         if body.tag_confidence_threshold is not None:
             user.tag_confidence_threshold = body.tag_confidence_threshold
+        if body.library_classification_enabled is not None:
+            user.library_classification_enabled = body.library_classification_enabled
         if body.password is not None:
             user.hashed_password = hash_password(body.password)
         await self._db.commit()
         await self._db.refresh(user)
         logger.info(
-            "Updated current user settings user_id=%s show_nsfw_changed=%s show_sensitive_changed=%s threshold_changed=%s password_changed=%s",
+            "Updated current user settings user_id=%s show_nsfw_changed=%s show_sensitive_changed=%s threshold_changed=%s library_classification_changed=%s password_changed=%s",
             user.id,
             body.show_nsfw is not None,
             body.show_sensitive is not None,
             body.tag_confidence_threshold is not None,
+            body.library_classification_enabled is not None,
             body.password is not None,
         )
         return user

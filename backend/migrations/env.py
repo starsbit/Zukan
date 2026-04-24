@@ -13,6 +13,7 @@ from backend.app.database.base import Base
 # Ensure model metadata is registered for autogenerate.
 from backend.app.models import albums as _albums  # noqa: F401
 from backend.app.models import auth as _auth  # noqa: F401
+from backend.app.models import embeddings as _embeddings  # noqa: F401
 from backend.app.models import media as _media  # noqa: F401
 from backend.app.models import media_interactions as _media_interactions  # noqa: F401
 from backend.app.models import notifications as _notifications  # noqa: F401
