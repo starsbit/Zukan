@@ -16,7 +16,7 @@ from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BulkResult, MediaDetail, MediaEntityBatchUpdate, MediaUpdate
 from backend.app.services.media.interactions import MediaInteractionService
 from backend.app.services.media.query import MediaQueryService
-from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
+from backend.app.utils.media_common import build_tag_payloads, normalize_manual_entity_names, normalize_manual_tags
 from backend.app.utils.tagging import tag_names_mark_sensitive, tag_names_mark_nsfw
 
 logger = logging.getLogger(__name__)
@@ -209,18 +209,4 @@ class MediaMetadataService:
         return BulkResult(processed=processed, skipped=skipped)
 
     def _normalize_entity_names(self, names: list[str] | None) -> list[str]:
-        if names is None:
-            return []
-
-        normalized: list[str] = []
-        seen: set[str] = set()
-        for value in names:
-            name = value.strip()
-            if not name:
-                continue
-            key = name.casefold()
-            if key in seen:
-                continue
-            seen.add(key)
-            normalized.append(name)
-        return normalized
+        return normalize_manual_entity_names(names)

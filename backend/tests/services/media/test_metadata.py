@@ -224,3 +224,26 @@ async def test_bulk_update_entities_replaces_only_requested_types(fake_db, stub_
         replace_existing_type=True,
     )
     fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_bulk_update_entities_dedupes_names_by_search_normalized_value(fake_db, stub_query, user):
+    media = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
+    stub_query.get_media_by_ids.return_value = [media]
+
+    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
+
+    with patch("backend.app.services.media.metadata.MediaEntityRepository") as repo_cls:
+        repo_cls.return_value.add_media_entities = AsyncMock()
+
+        await service.bulk_update_entities(
+            MediaEntityBatchUpdate(
+                media_ids=[media.id],
+                character_names=["Kazuki Kazami", "Kazuki_Kazami", "  kazuki   kazami  "],
+                series_names=["Grisaia no Kajitsu", "grisaia_no_kajitsu"],
+            ),
+            user,
+        )
+
+    assert repo_cls.return_value.add_media_entities.await_args_list[0].kwargs["names"] == ["Kazuki Kazami"]
+    assert repo_cls.return_value.add_media_entities.await_args_list[1].kwargs["names"] == ["Grisaia no Kajitsu"]

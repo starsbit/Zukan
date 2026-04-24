@@ -230,8 +230,8 @@
                       <button
                         class="review-group-card__remove"
                         type="button"
-                        aria-label="Discard {{ item.media.original_filename ?? item.media.filename }} from review"
-                        (click)="discardItemFromGroup(group, item.media.id)"
+                        aria-label="Move {{ item.media.original_filename ?? item.media.filename }} to solo picture review"
+                        (click)="removeItemFromGroup(item.media.id)"
                       >
                         <mat-icon>close</mat-icon>
                       </button>

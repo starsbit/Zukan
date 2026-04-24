@@ -489,6 +489,7 @@ describe('UploadReviewDialogComponent', () => {
   it('allows removing items from a recommendation group', async () => {
     const refreshBatchReview = vi.fn();
     const refreshBatchRecommendations = vi.fn();
+    const batchDismissMetadataReview = vi.fn(() => of({ processed: 1, skipped: 0 }));
     const tracker = {
       getBatchReview: signal({
         id: 'b1',
@@ -608,7 +609,7 @@ describe('UploadReviewDialogComponent', () => {
           provide: MediaService,
           useValue: {
             batchUpdateEntities: vi.fn(() => of({ processed: 1, skipped: 0 })),
-            batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
+            batchDismissMetadataReview,
             getCharacterSuggestions: vi.fn(() => of([])),
             getSeriesSuggestions: vi.fn(() => of([])),
             getThumbnailUrl: vi.fn(() => of('blob:thumb')),
@@ -628,10 +629,13 @@ describe('UploadReviewDialogComponent', () => {
     const component = fixture.componentInstance;
     expect(component.recommendationGroups()).toHaveLength(1);
 
-    component.discardItemFromGroup(component.recommendationGroups()[0], 'm1');
+    refreshBatchReview.mockClear();
+    component.removeItemFromGroup('m1');
     await Promise.resolve();
+    expect(batchDismissMetadataReview).not.toHaveBeenCalled();
+    expect(refreshBatchReview).not.toHaveBeenCalled();
     expect(component.recommendationGroups()).toHaveLength(0);
-    expect(component.ungroupedVisibleItems().map((item) => item.media.id)).toEqual(['m2']);
+    expect(component.ungroupedVisibleItems().map((item) => item.media.id)).toEqual(['m1', 'm2']);
   });
 
   it('can treat an entire recommendation group as solo pictures without dismissing media', async () => {

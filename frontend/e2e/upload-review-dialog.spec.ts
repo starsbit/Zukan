@@ -669,20 +669,28 @@ test.describe('Upload review dialog', () => {
     await expect(page.getByText('3 still need character or series names.')).toBeVisible();
   });
 
-  test('user can discard one grouped item and the remaining item falls back to manual review', async ({ page }) => {
+  test('user can move one grouped item to solo review without dismissing it', async ({ page }) => {
+    let dismissedPayload: { media_ids: string[]; metadata_review_dismissed: boolean } | null = null;
+
     await ensureAdminAuthenticated(page);
-    await registerReviewFlowRoutes(page);
+    await registerReviewFlowRoutes(page, {
+      onDismissPatch: (payload) => {
+        dismissedPayload = payload;
+      },
+    });
 
     await page.goto('/');
     await triggerTrackedUpload(page);
     await openReviewDialogFromIsland(page);
 
-    await page.getByRole('button', { name: 'Discard group-one.png from review' }).click();
+    await page.getByRole('button', { name: 'Move group-one.png to solo picture review' }).click();
 
-    await expect(page.getByText('Image discarded from missing-name review.')).toBeVisible();
+    await expect(page.getByText('Image moved to solo picture review.')).toBeVisible();
     await expect(page.locator('.review-group-card')).toHaveCount(0);
-    await expect(page.getByText('4 still need character or series names.')).toBeVisible();
+    await expect(page.getByText('5 still need character or series names.')).toBeVisible();
+    await expect(page.getByText('group-one.png')).toBeVisible();
     await expect(page.getByText('group-two.png')).toBeVisible();
+    expect(dismissedPayload).toBeNull();
   });
 
   test('user can reprocess selected unresolved media from the review dialog', async ({ page }) => {

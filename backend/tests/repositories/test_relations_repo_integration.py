@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.app.models.media import MediaVisibility
-from backend.app.models.relations import MediaEntityType, MediaExternalRef
+from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
 from backend.app.repositories.relations import MediaEntityRepository, MediaExternalRefRepository, OwnedEntityRepository
-from backend.app.schemas import MetadataListScope
+from backend.app.schemas import EntityCreate, MetadataListScope
 
 
 @pytest.mark.asyncio
@@ -136,6 +140,122 @@ async def test_owned_entity_preserves_tagger_slug_apostrophe(db_session, make_us
     )
     assert entity.name == "jeanne_d'arc_(fate)"
     assert entity.normalized_name == "jeanne_d_arc_fate"
+
+
+@pytest.mark.asyncio
+async def test_add_media_entities_dedupes_names_by_normalized_value(db_session, make_user, make_media):
+    viewer = await make_user()
+    media = await make_media(uploader_id=viewer.id)
+
+    await MediaEntityRepository(db_session).add_media_entities(
+        media,
+        entity_type=MediaEntityType.character,
+        names=["Kazuki Kazami", "Kazuki_Kazami", "kazuki   kazami"],
+        source="manual",
+    )
+
+    media_entities = (
+        await db_session.execute(
+            select(MediaEntity).where(
+                MediaEntity.media_id == media.id,
+                MediaEntity.entity_type == MediaEntityType.character,
+            )
+        )
+    ).scalars().all()
+    owned_entities = (
+        await db_session.execute(
+            select(OwnedEntity).where(
+                OwnedEntity.owner_user_id == viewer.id,
+                OwnedEntity.entity_type == MediaEntityType.character,
+                OwnedEntity.normalized_name == "kazuki_kazami",
+            )
+        )
+    ).scalars().all()
+
+    assert [entity.name for entity in media_entities] == ["Kazuki Kazami"]
+    assert [entity.name for entity in owned_entities] == ["Kazuki Kazami"]
+
+
+@pytest.mark.asyncio
+async def test_replace_media_entities_dedupes_names_by_normalized_value(db_session, make_user, make_media):
+    viewer = await make_user()
+    media = await make_media(uploader_id=viewer.id)
+
+    await MediaEntityRepository(db_session).replace_media_entities(
+        media,
+        entity_creates=[
+            EntityCreate(entity_type=MediaEntityType.character, name="Kazuki Kazami", role="primary"),
+            EntityCreate(entity_type=MediaEntityType.character, name="Kazuki_Kazami", role="primary"),
+            EntityCreate(entity_type=MediaEntityType.series, name="Grisaia no Kajitsu", role="primary"),
+        ],
+        source="manual",
+    )
+
+    media_entities = (
+        await db_session.execute(
+            select(MediaEntity).where(MediaEntity.media_id == media.id).order_by(MediaEntity.entity_type)
+        )
+    ).scalars().all()
+
+    assert [(entity.entity_type, entity.name) for entity in media_entities] == [
+        (MediaEntityType.character, "Kazuki Kazami"),
+        (MediaEntityType.series, "Grisaia no Kajitsu"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_owned_entity_get_or_create_handles_concurrent_create(db_engine, db_session, make_user):
+    viewer = await make_user()
+    await db_session.commit()
+    session_maker = async_sessionmaker(db_engine, class_=AsyncSession, expire_on_commit=False)
+    first_inserted = asyncio.Event()
+    allow_first_commit = asyncio.Event()
+
+    async def first_create():
+        async with session_maker() as session:
+            entity = await OwnedEntityRepository(session).get_or_create(
+                owner_user_id=viewer.id,
+                entity_type=MediaEntityType.character,
+                name="Kazuki Kazami",
+            )
+            first_inserted.set()
+            await allow_first_commit.wait()
+            await session.commit()
+            return entity.id
+
+    async def second_create():
+        await first_inserted.wait()
+        async with session_maker() as session:
+            entity = await OwnedEntityRepository(session).get_or_create(
+                owner_user_id=viewer.id,
+                entity_type=MediaEntityType.character,
+                name="Kazuki_Kazami",
+            )
+            await session.commit()
+            return entity.id
+
+    first_task = asyncio.create_task(first_create())
+    second_task = asyncio.create_task(second_create())
+    await first_inserted.wait()
+    await asyncio.sleep(0.1)
+    allow_first_commit.set()
+
+    entity_ids = await asyncio.gather(first_task, second_task)
+
+    async with session_maker() as session:
+        entities = (
+            await session.execute(
+                select(OwnedEntity).where(
+                    OwnedEntity.owner_user_id == viewer.id,
+                    OwnedEntity.entity_type == MediaEntityType.character,
+                    OwnedEntity.normalized_name == "kazuki_kazami",
+                )
+            )
+        ).scalars().all()
+
+    assert len(entities) == 1
+    assert set(entity_ids) == {entities[0].id}
+    assert entities[0].name == "Kazuki_Kazami"
 
 
 @pytest.mark.asyncio

@@ -294,12 +294,13 @@ export class UploadReviewDialogComponent {
     );
   }
 
-  discardItemFromGroup(group: ImportBatchRecommendationGroupRead, mediaId: string): void {
+  removeItemFromGroup(mediaId: string): void {
     const item = this.items().find((entry) => entry.media.id === mediaId);
     if (!item) {
       return;
     }
-    this.discardReviewItems([mediaId], 'Image discarded from missing-name review.');
+    this.removeMediaFromRecommendationGroups([mediaId]);
+    this.snackBar.open('Image moved to solo picture review.', 'Close', { duration: 3000 });
   }
 
   clearSelection(): void {

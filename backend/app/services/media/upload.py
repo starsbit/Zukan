@@ -19,7 +19,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, ExternalRefCreate, UploadResult
-from backend.app.utils.media_common import build_tag_payloads, normalize_manual_tags
+from backend.app.utils.media_common import build_tag_payloads, normalize_manual_entity_names, normalize_manual_tags
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
@@ -890,17 +890,4 @@ def _normalize_utc(value: datetime) -> datetime:
 
 
 def _normalize_entity_names(values: list[str] | None) -> list[str]:
-    if not values:
-        return []
-    normalized: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        cleaned = value.strip()
-        if not cleaned:
-            continue
-        key = cleaned.casefold()
-        if key in seen:
-            continue
-        seen.add(key)
-        normalized.append(cleaned)
-    return normalized
+    return normalize_manual_entity_names(values)

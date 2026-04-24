@@ -2,12 +2,14 @@ import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
 from backend.app.schemas import MetadataListScope
+from backend.app.utils.media_common import normalize_manual_entity_names
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 from backend.app.utils.search import normalize_metadata_search
 
@@ -132,11 +134,18 @@ class MediaEntityRepository:
 
         owner_user_id = _effective_media_owner_id(media)
         created_entity_ids: set[uuid.UUID] = set()
+        seen_entity_keys: set[tuple[MediaEntityType, str]] = set()
         for entity_create in entity_creates:
+            cleaned_name = entity_create.name.strip()
+            normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+            entity_key = (entity_create.entity_type, normalized_name)
+            if not cleaned_name or entity_key in seen_entity_keys:
+                continue
+            seen_entity_keys.add(entity_key)
             owned_entity = await OwnedEntityRepository(self.db).get_or_create(
                 owner_user_id=owner_user_id,
                 entity_type=entity_create.entity_type,
-                name=entity_create.name,
+                name=cleaned_name,
             )
             created_entity_ids.add(owned_entity.id)
             self.db.add(MediaEntity(
@@ -181,7 +190,7 @@ class MediaEntityRepository:
 
         owner_user_id = _effective_media_owner_id(media)
         created_entity_ids: set[uuid.UUID] = set()
-        for name in names:
+        for name in normalize_manual_entity_names(names):
             owned_entity = await owned_repo.get_or_create(
                 owner_user_id=owner_user_id,
                 entity_type=entity_type,
@@ -395,25 +404,39 @@ class OwnedEntityRepository:
     ) -> OwnedEntity:
         cleaned_name = name.strip()
         normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
-        existing = await self.get_by_owner_type_name(
-            owner_user_id=owner_user_id,
-            entity_type=entity_type,
-            name=cleaned_name,
-        )
-        if existing is not None:
-            if existing.name != cleaned_name:
-                existing.name = cleaned_name
-            return existing
+        if not hasattr(self.db, "sync_session"):
+            created = OwnedEntity(
+                owner_user_id=owner_user_id,
+                entity_type=entity_type,
+                name=cleaned_name,
+                normalized_name=normalized_name,
+            )
+            self.db.add(created)
+            await self.db.flush()
+            return created
 
-        created = OwnedEntity(
-            owner_user_id=owner_user_id,
-            entity_type=entity_type,
-            name=cleaned_name,
-            normalized_name=normalized_name,
+        stmt = (
+            insert(OwnedEntity)
+            .values(
+                owner_user_id=owner_user_id,
+                entity_type=entity_type,
+                name=cleaned_name,
+                normalized_name=normalized_name,
+            )
+            .on_conflict_do_update(
+                constraint="uq_owned_entities_owner_type_normalized_name",
+                set_={
+                    "name": cleaned_name,
+                    "updated_at": func.now(),
+                },
+            )
+            .returning(OwnedEntity.id)
         )
-        self.db.add(created)
-        await self.db.flush()
-        return created
+        entity_id = (await self.db.execute(stmt)).scalar_one()
+        entity = await self.db.get(OwnedEntity, entity_id, populate_existing=True)
+        if entity is None:  # pragma: no cover - returning id should always resolve.
+            raise RuntimeError(f"Upserted owned entity {entity_id} could not be loaded")
+        return entity
 
     async def recount_entity_ids(self, entity_ids: set[uuid.UUID]) -> None:
         if not entity_ids:

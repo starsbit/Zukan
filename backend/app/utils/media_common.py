@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from backend.app.utils.search import normalize_metadata_search
+
 
 def parse_csv_values(value: str | None) -> list[str]:
     if not value:
@@ -16,6 +18,24 @@ def normalize_manual_tags(tags: list[str]) -> list[str]:
             continue
         normalized.append(cleaned)
         seen.add(cleaned)
+    return normalized
+
+
+def normalize_manual_entity_names(names: list[str] | None) -> list[str]:
+    if not names:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        cleaned = name.strip()
+        if not cleaned:
+            continue
+        key = normalize_metadata_search(cleaned) or cleaned.casefold()
+        if key in seen:
+            continue
+        normalized.append(cleaned)
+        seen.add(key)
     return normalized
 
 
