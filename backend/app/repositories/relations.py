@@ -424,7 +424,11 @@ class OwnedEntityRepository:
                 normalized_name=normalized_name,
             )
             .on_conflict_do_update(
-                constraint="uq_owned_entities_owner_type_normalized_name",
+                index_elements=[
+                    OwnedEntity.owner_user_id,
+                    OwnedEntity.entity_type,
+                    OwnedEntity.normalized_name,
+                ],
                 set_={
                     "name": cleaned_name,
                     "updated_at": func.now(),

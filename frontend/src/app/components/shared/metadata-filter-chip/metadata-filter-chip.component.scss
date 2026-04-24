@@ -1,0 +1,43 @@
+.metadata-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 2rem;
+  padding: 0.28rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 38%, var(--mat-sys-surface-container-high));
+  color: var(--mat-sys-on-surface);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.2;
+  text-align: left;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.metadata-filter-chip:hover,
+.metadata-filter-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--mat-sys-primary) 72%, var(--mat-sys-outline-variant));
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 62%, var(--mat-sys-surface-container-high));
+  color: var(--mat-sys-on-primary-container);
+  outline: none;
+}
+
+.metadata-filter-chip__icon {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.38rem;
+  font-size: 1rem;
+  line-height: 1rem;
+}
+
+.metadata-filter-chip__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -111,6 +111,58 @@ class NotificationService:
         logger.info("Published admin notification title=%s count=%s kind=%s", title, len(user_ids), (data or {}).get("kind"))
         return len(user_ids)
 
+    async def publish_missing_admin_notification(
+        self,
+        *,
+        title: str,
+        body: str,
+        link_url: str | None = None,
+        data: dict | None = None,
+    ) -> int:
+        user_ids = (
+            await self._db.execute(select(User.id).where(User.is_admin.is_(True)))
+        ).scalars().all()
+        if not user_ids:
+            return 0
+
+        version = (data or {}).get("version")
+        existing_notifications = (
+            await self._db.execute(
+                select(Notification).where(
+                    Notification.user_id.in_(user_ids),
+                    Notification.type == NotificationType.app_update,
+                    Notification.is_read.is_(False),
+                )
+            )
+        ).scalars().all()
+        already_notified_ids = {
+            notification.user_id
+            for notification in existing_notifications
+            if (notification.data or {}).get("version") == version
+        }
+
+        notified = 0
+        for user_id in user_ids:
+            if user_id in already_notified_ids:
+                continue
+            self._db.add(
+                Notification(
+                    user_id=user_id,
+                    type=NotificationType.app_update,
+                    title=title,
+                    body=body,
+                    is_read=False,
+                    link_url=link_url,
+                    data=data,
+                )
+            )
+            notified += 1
+
+        if notified:
+            await self._db.commit()
+        logger.info("Published missing admin notifications title=%s count=%s kind=%s", title, notified, (data or {}).get("kind"))
+        return notified
+
     async def list_notifications(
         self,
         user_id: uuid.UUID,

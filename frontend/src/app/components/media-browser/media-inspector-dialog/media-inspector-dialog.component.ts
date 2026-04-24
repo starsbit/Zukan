@@ -31,6 +31,7 @@ import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
+import { MetadataFilterChipComponent } from '../../shared/metadata-filter-chip/metadata-filter-chip.component';
 import {
   formatConfidence,
   formatDateTime,
@@ -107,6 +108,7 @@ const CLASSIFICATION_OVERRIDE_OPTIONS: ReadonlyArray<{
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    MetadataFilterChipComponent,
     ReactiveFormsModule,
   ],
   templateUrl: './media-inspector-dialog.component.html',
@@ -987,7 +989,8 @@ export class MediaInspectorDialogComponent {
     return (this.detail()?.entities ?? [])
       .filter((entity) => entity.entity_type === entityType)
       .map((entity) => ({
-        name: formatMetadataName(entity.name),
+        name: entity.name,
+        label: formatMetadataName(entity.name),
         details: [
           entity.role ? humanizeBackendLabel(entity.role) : '',
           entity.source ? humanizeBackendLabel(entity.source) : '',

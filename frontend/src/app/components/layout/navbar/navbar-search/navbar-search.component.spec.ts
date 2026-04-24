@@ -2,7 +2,7 @@ import { BreakpointObserver } from '@angular/cdk/layout';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { provideRouter, Router } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter, Router } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { MediaType } from '../../../../models/media';
 import { NavbarSearchService } from '../../../../services/navbar-search.service';
@@ -44,8 +44,17 @@ describe('NavbarSearchComponent', () => {
     return input;
   }
 
-  async function createComponent(initialUrl = '/') {
+  async function createComponent(initialUrl = '/', initialQuery: Record<string, string | string[]> = {}) {
     const breakpoint = createBreakpointObserver();
+    const routeQueryParamMap = new BehaviorSubject(convertToParamMap(initialQuery));
+    const route = {
+      queryParamMap: routeQueryParamMap.asObservable(),
+      snapshot: {
+        get queryParamMap() {
+          return routeQueryParamMap.value;
+        },
+      },
+    };
     const tagsList = vi.fn((params: { q?: string; scope?: string }) => of({
       items: params.q ? [{ id: 1, name: 'Saber', media_count: 10, category: 4, category_name: 'character', category_key: 'character' }] : [],
       total: 1,
@@ -63,6 +72,7 @@ describe('NavbarSearchComponent', () => {
       imports: [NavbarSearchComponent, NoopAnimationsModule],
       providers: [
         provideRouter([]),
+        { provide: ActivatedRoute, useValue: route },
         { provide: BreakpointObserver, useValue: breakpoint.observer },
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
         {
@@ -103,6 +113,8 @@ describe('NavbarSearchComponent', () => {
       getCharacterSuggestions,
       getSeriesSuggestions,
       searchService: TestBed.inject(NavbarSearchService),
+      routeQueryParamMap,
+      router: TestBed.inject(Router),
     };
   }
 
@@ -257,6 +269,53 @@ describe('NavbarSearchComponent', () => {
     component.onRemoveChip({ type: 'tag', value: 'Saber' });
 
     expect(searchService.applied().tags).toEqual(['Archer']);
+  });
+
+  it('hydrates search chips from route query params', async () => {
+    const { searchService, element } = await createComponent('/gallery?tag=Saber&character_name=Rin%20Tohsaka', {
+      tag: 'Saber',
+      character_name: 'Rin Tohsaka',
+      series_name: 'Fate/stay night',
+    });
+
+    expect(searchService.draftChips()).toEqual([
+      { type: 'tag', value: 'Saber' },
+      { type: 'character', value: 'Rin Tohsaka' },
+      { type: 'series', value: 'Fate/stay night' },
+    ]);
+    expect(element.textContent).toContain('Saber');
+    expect(element.textContent).toContain('Rin Tohsaka');
+    expect(element.textContent).toContain('Fate/Stay Night');
+  });
+
+  it('writes canonical query params when search changes', async () => {
+    const { fixture, searchService, router } = await createComponent();
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    searchService.addTag('Saber');
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      [],
+      expect.objectContaining({
+        queryParams: expect.objectContaining({ tag: ['Saber'], character_name: null }),
+        queryParamsHandling: 'merge',
+      }),
+    );
+  });
+
+  it('rehydrates when browser navigation changes query params', async () => {
+    const { fixture, routeQueryParamMap, searchService } = await createComponent();
+
+    routeQueryParamMap.next(convertToParamMap({ tag: 'Archer', ocr_text: 'moon' }));
+    fixture.detectChanges();
+
+    expect(searchService.draftChips()).toEqual([
+      { type: 'tag', value: 'Archer' },
+      { type: 'ocr', value: 'moon' },
+    ]);
+    expect(searchService.appliedParams()).toEqual({ tag: ['Archer'], ocr_text: 'moon' });
   });
 
   it('hides already entered tags, characters, and series from suggestions', async () => {

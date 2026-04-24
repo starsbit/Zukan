@@ -319,7 +319,12 @@
               <div class="inspector-characters">
                 @for (character of characters(); track character.name + ':' + character.details) {
                   <div class="inspector-character">
-                    <strong>{{ character.name }}</strong>
+                    <zukan-metadata-filter-chip
+                      [type]="'character'"
+                      [value]="character.name"
+                      [display]="character.label"
+                      (filtered)="close()"
+                    ></zukan-metadata-filter-chip>
                     @if (character.details) {
                       <span>{{ character.details }}</span>
                     }
@@ -396,7 +401,12 @@
               <div class="inspector-characters">
                 @for (seriesItem of series(); track seriesItem.name + ':' + seriesItem.details) {
                   <div class="inspector-character">
-                    <strong>{{ seriesItem.name }}</strong>
+                    <zukan-metadata-filter-chip
+                      [type]="'series'"
+                      [value]="seriesItem.name"
+                      [display]="seriesItem.label"
+                      (filtered)="close()"
+                    ></zukan-metadata-filter-chip>
                     @if (seriesItem.details) {
                       <span>{{ seriesItem.details }}</span>
                     }
@@ -502,11 +512,15 @@
                 <p class="inspector-empty">No tags selected yet.</p>
               }
             } @else if (tags().length > 0) {
-              <mat-chip-set aria-label="Media tags" class="inspector-chips">
+              <div aria-label="Media tags" class="inspector-chips inspector-filter-chips">
                 @for (tag of tags(); track tag) {
-                  <mat-chip>{{ displayMetadataName(tag) }}</mat-chip>
+                  <zukan-metadata-filter-chip
+                    [type]="'tag'"
+                    [value]="tag"
+                    (filtered)="close()"
+                  ></zukan-metadata-filter-chip>
                 }
-              </mat-chip-set>
+              </div>
             } @else {
               <p class="inspector-empty">No tags available for this item yet.</p>
             }

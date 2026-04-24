@@ -9,6 +9,7 @@
             mat-list-item
             class="sidebar-link"
             [routerLink]="item.path"
+            [queryParams]="searchQueryParams()"
             routerLinkActive
             #activeLink="routerLinkActive"
             [activated]="activeLink.isActive"

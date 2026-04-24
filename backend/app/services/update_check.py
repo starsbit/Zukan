@@ -27,6 +27,27 @@ def _build_update_message(current_str: str, latest_str: str, release_notes: str 
     return "\n".join(lines).strip()
 
 
+async def _ensure_update_notification(
+    db,
+    *,
+    announcement: AppAnnouncement,
+    version: str,
+    html_url: str,
+) -> int:
+    return await NotificationService(db).publish_missing_admin_notification(
+        title=announcement.title,
+        body=announcement.message,
+        link_url=html_url or None,
+        data={
+            "announcement_id": str(announcement.id),
+            "severity": announcement.severity.value,
+            "version": version,
+            "starts_at": announcement.starts_at.isoformat() if announcement.starts_at else None,
+            "ends_at": announcement.ends_at.isoformat() if announcement.ends_at else None,
+        },
+    )
+
+
 async def _check_for_updates() -> None:
     current_str = settings.app_version
     if current_str == "dev":
@@ -63,7 +84,16 @@ async def _check_for_updates() -> None:
 
     async with AsyncSessionLocal() as db:
         repo = AppAnnouncementRepository(db)
-        if await repo.find_by_version(tag):
+        existing_announcement = await repo.find_by_version(tag)
+        if existing_announcement is not None:
+            count = await _ensure_update_notification(
+                db,
+                announcement=existing_announcement,
+                version=tag,
+                html_url=html_url,
+            )
+            if count:
+                logger.info("update_check: re-notified %d admins of version %s", count, tag)
             return
 
         body = _build_update_message(current_str, tag, release_notes)
@@ -79,18 +109,7 @@ async def _check_for_updates() -> None:
         await db.commit()
         await db.refresh(announcement)
 
-        count = await NotificationService(db).publish_admin_notification(
-            title=announcement.title,
-            body=announcement.message,
-            link_url=html_url or None,
-            data={
-                "announcement_id": str(announcement.id),
-                "severity": announcement.severity.value,
-                "version": tag,
-                "starts_at": None,
-                "ends_at": None,
-            },
-        )
+        count = await _ensure_update_notification(db, announcement=announcement, version=tag, html_url=html_url)
         logger.info("update_check: notified %d admins of version %s", count, tag)
 
 
@@ -154,7 +173,8 @@ async def check_for_updates_now() -> dict:
 
     async with AsyncSessionLocal() as db:
         repo = AppAnnouncementRepository(db)
-        if not await repo.find_by_version(tag):
+        existing_announcement = await repo.find_by_version(tag)
+        if existing_announcement is None:
             body = _build_update_message(current_str, tag, release_notes)
 
             announcement = AppAnnouncement(
@@ -167,19 +187,10 @@ async def check_for_updates_now() -> dict:
             db.add(announcement)
             await db.commit()
             await db.refresh(announcement)
+        else:
+            announcement = existing_announcement
 
-            await NotificationService(db).publish_admin_notification(
-                title=announcement.title,
-                body=announcement.message,
-                link_url=html_url or None,
-                data={
-                    "announcement_id": str(announcement.id),
-                    "severity": announcement.severity.value,
-                    "version": tag,
-                    "starts_at": None,
-                    "ends_at": None,
-                },
-            )
+        await _ensure_update_notification(db, announcement=announcement, version=tag, html_url=html_url)
 
     return {
         "current_version": current_str,

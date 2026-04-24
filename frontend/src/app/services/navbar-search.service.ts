@@ -3,6 +3,13 @@ import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode 
 import { MediaSearchParams } from './web/media-client.service';
 
 export type SearchChipType = 'tag' | 'character' | 'series' | 'ocr';
+export type MetadataFilterType = Exclude<SearchChipType, 'ocr'>;
+export type SearchQueryParams = Record<string, string | string[] | number | boolean | null>;
+
+export interface SearchParamReader {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+}
 
 export interface SearchChip {
   type: SearchChipType;
@@ -46,8 +53,51 @@ export interface AdvancedSearchFilters {
   uploadedBeforeYear: number | null;
 }
 
+const SEARCH_QUERY_PARAM_NAMES = [
+  'tag',
+  'character_name',
+  'series_name',
+  'ocr_text',
+  'exclude_tag',
+  'mode',
+  'character_mode',
+  'series_mode',
+  'nsfw',
+  'sensitive',
+  'status',
+  'favorited',
+  'visibility',
+  'owner_username',
+  'uploader_username',
+  'media_type',
+  'sort_by',
+  'sort_order',
+  'captured_year',
+  'captured_month',
+  'captured_day',
+  'captured_after',
+  'captured_before',
+  'captured_before_year',
+  'uploaded_year',
+  'uploaded_month',
+  'uploaded_day',
+  'uploaded_after',
+  'uploaded_before',
+  'uploaded_before_year',
+] as const;
+
+const TAG_FILTER_MODES = new Set<string>(Object.values(TagFilterMode));
+const NSFW_FILTERS = new Set<string>(Object.values(NsfwFilter));
+const SENSITIVE_FILTERS = new Set<string>(Object.values(SensitiveFilter));
+const VISIBILITIES = new Set<string>(Object.values(MediaVisibility));
+const MEDIA_TYPES = new Set<string>(Object.values(MediaType));
+const SORT_BY_VALUES = new Set<string>(['captured_at', 'uploaded_at', 'filename', 'file_size']);
+const SORT_ORDER_VALUES = new Set<string>(['asc', 'desc']);
+
 @Injectable({ providedIn: 'root' })
 export class NavbarSearchService {
+  readonly searchQueryParamNames = [...SEARCH_QUERY_PARAM_NAMES];
+
   private readonly emptyAdvancedFilters: AdvancedSearchFilters = {
     excludeTags: [],
     mode: null,
@@ -161,6 +211,72 @@ export class NavbarSearchService {
     this._draftText.set(value);
   }
 
+  hydrateFromQueryParams(params: SearchParamReader): void {
+    const state = this.stateFromQueryParams(params);
+
+    const chips: SearchChip[] = [
+      ...state.tags.map((value) => ({ type: 'tag' as const, value })),
+      ...state.characterNames.map((value) => ({ type: 'character' as const, value })),
+      ...state.seriesNames.map((value) => ({ type: 'series' as const, value })),
+      ...(state.ocrText ? [{ type: 'ocr' as const, value: state.ocrText }] : []),
+    ];
+
+    this._draftChips.set(chips);
+    this._draftText.set('');
+    this._applied.set(state);
+  }
+
+  toQueryParams(state: AppliedSearchState = this._applied()): SearchQueryParams {
+    const params: SearchQueryParams = {};
+    this.setArrayParam(params, 'tag', state.tags);
+    this.setArrayParam(params, 'character_name', state.characterNames);
+    this.setArrayParam(params, 'series_name', state.seriesNames);
+    this.setScalarParam(params, 'ocr_text', state.ocrText);
+    this.setArrayParam(params, 'exclude_tag', state.advanced.excludeTags);
+    this.setScalarParam(params, 'mode', state.advanced.mode);
+    this.setScalarParam(params, 'character_mode', state.advanced.characterMode);
+    this.setScalarParam(params, 'series_mode', state.advanced.seriesMode);
+    this.setScalarParam(params, 'nsfw', state.advanced.nsfw);
+    this.setScalarParam(params, 'sensitive', state.advanced.sensitive);
+    this.setScalarParam(params, 'status', state.advanced.status);
+    this.setScalarParam(params, 'favorited', state.advanced.favorited);
+    this.setScalarParam(params, 'visibility', state.advanced.visibility);
+    this.setScalarParam(params, 'owner_username', state.advanced.ownerUsername);
+    this.setScalarParam(params, 'uploader_username', state.advanced.uploaderUsername);
+    this.setArrayParam(params, 'media_type', state.advanced.mediaTypes);
+    this.setScalarParam(params, 'sort_by', state.advanced.sortBy);
+    this.setScalarParam(params, 'sort_order', state.advanced.sortOrder);
+    this.setScalarParam(params, 'captured_year', state.advanced.capturedYear);
+    this.setScalarParam(params, 'captured_month', state.advanced.capturedMonth);
+    this.setScalarParam(params, 'captured_day', state.advanced.capturedDay);
+    this.setScalarParam(params, 'captured_after', state.advanced.capturedAfter);
+    this.setScalarParam(params, 'captured_before', state.advanced.capturedBefore);
+    this.setScalarParam(params, 'captured_before_year', state.advanced.capturedBeforeYear);
+    this.setScalarParam(params, 'uploaded_year', state.advanced.uploadedYear);
+    this.setScalarParam(params, 'uploaded_month', state.advanced.uploadedMonth);
+    this.setScalarParam(params, 'uploaded_day', state.advanced.uploadedDay);
+    this.setScalarParam(params, 'uploaded_after', state.advanced.uploadedAfter);
+    this.setScalarParam(params, 'uploaded_before', state.advanced.uploadedBefore);
+    this.setScalarParam(params, 'uploaded_before_year', state.advanced.uploadedBeforeYear);
+    return params;
+  }
+
+  toQueryParamsWithClears(state: AppliedSearchState = this._applied()): SearchQueryParams {
+    const params = this.toQueryParams(state);
+    for (const name of SEARCH_QUERY_PARAM_NAMES) {
+      if (!(name in params)) {
+        params[name] = null;
+      }
+    }
+    return params;
+  }
+
+  queryParamsMatch(params: SearchParamReader, state: AppliedSearchState = this._applied()): boolean {
+    const current = this.toQueryParams(this.stateFromQueryParams(params));
+    const next = this.toQueryParams(state);
+    return this.queryParamKey(current) === this.queryParamKey(next);
+  }
+
   addTag(value: string): void {
     const normalized = value.trim();
     if (!normalized) {
@@ -204,6 +320,20 @@ export class NavbarSearchService {
         : [...chips, { type: 'series', value: normalized }],
     );
     this._draftText.set('');
+  }
+
+  addMetadataFilter(type: MetadataFilterType, value: string): void {
+    switch (type) {
+      case 'tag':
+        this.addTag(value);
+        return;
+      case 'character':
+        this.addCharacter(value);
+        return;
+      case 'series':
+        this.addSeries(value);
+        return;
+    }
   }
 
   setOcr(value: string): void {
@@ -314,5 +444,120 @@ export class NavbarSearchService {
       uploadedBefore: filters.uploadedBefore?.trim() || null,
       uploadedBeforeYear: filters.uploadedBeforeYear,
     };
+  }
+
+  private stateFromQueryParams(params: SearchParamReader): AppliedSearchState {
+    const tags = this.uniqueTrimmed(params.getAll('tag'));
+    const characterNames = this.uniqueTrimmed(params.getAll('character_name'));
+    const seriesNames = this.uniqueTrimmed(params.getAll('series_name'));
+    const ocrText = params.get('ocr_text')?.trim() || null;
+    return {
+      tags,
+      characterNames,
+      seriesNames,
+      ocrText,
+      advanced: this.normalizeAdvancedFilters({
+        excludeTags: this.uniqueTrimmed(params.getAll('exclude_tag')),
+        mode: this.parseEnum(params.get('mode'), TAG_FILTER_MODES) as TagFilterMode | null,
+        characterMode: this.parseEnum(params.get('character_mode'), TAG_FILTER_MODES) as TagFilterMode | null,
+        seriesMode: this.parseEnum(params.get('series_mode'), TAG_FILTER_MODES) as TagFilterMode | null,
+        nsfw: this.parseEnum(params.get('nsfw'), NSFW_FILTERS) as NsfwFilter | null,
+        sensitive: this.parseEnum(params.get('sensitive'), SENSITIVE_FILTERS) as SensitiveFilter | null,
+        status: params.get('status')?.trim() || null,
+        favorited: this.parseBoolean(params.get('favorited')),
+        visibility: this.parseEnum(params.get('visibility'), VISIBILITIES) as MediaVisibility | null,
+        ownerUsername: params.get('owner_username')?.trim() || null,
+        uploaderUsername: params.get('uploader_username')?.trim() || null,
+        mediaTypes: this.uniqueTrimmed(params.getAll('media_type'))
+          .filter((value) => MEDIA_TYPES.has(value)) as MediaType[],
+        sortBy: this.parseEnum(params.get('sort_by'), SORT_BY_VALUES) as MediaSearchParams['sort_by'] | null,
+        sortOrder: this.parseEnum(params.get('sort_order'), SORT_ORDER_VALUES) as MediaSearchParams['sort_order'] | null,
+        capturedYear: this.parseInteger(params.get('captured_year')),
+        capturedMonth: this.parseInteger(params.get('captured_month')),
+        capturedDay: this.parseInteger(params.get('captured_day')),
+        capturedAfter: params.get('captured_after')?.trim() || null,
+        capturedBefore: params.get('captured_before')?.trim() || null,
+        capturedBeforeYear: this.parseInteger(params.get('captured_before_year')),
+        uploadedYear: this.parseInteger(params.get('uploaded_year')),
+        uploadedMonth: this.parseInteger(params.get('uploaded_month')),
+        uploadedDay: this.parseInteger(params.get('uploaded_day')),
+        uploadedAfter: params.get('uploaded_after')?.trim() || null,
+        uploadedBefore: params.get('uploaded_before')?.trim() || null,
+        uploadedBeforeYear: this.parseInteger(params.get('uploaded_before_year')),
+      }),
+    };
+  }
+
+  private parseEnum(value: string | null, allowed: Set<string>): string | null {
+    const normalized = value?.trim() ?? '';
+    return allowed.has(normalized) ? normalized : null;
+  }
+
+  private parseBoolean(value: string | null): boolean | null {
+    if (value === 'true') {
+      return true;
+    }
+
+    if (value === 'false') {
+      return false;
+    }
+
+    return null;
+  }
+
+  private parseInteger(value: string | null): number | null {
+    const normalized = value?.trim() ?? '';
+    if (!/^-?\d+$/.test(normalized)) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(normalized, 10);
+    return Number.isSafeInteger(parsed) ? parsed : null;
+  }
+
+  private uniqueTrimmed(values: string[]): string[] {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const value of values) {
+      const normalized = value.trim();
+      const key = normalized.toLowerCase();
+      if (!normalized || seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      result.push(normalized);
+    }
+
+    return result;
+  }
+
+  private setArrayParam(params: SearchQueryParams, name: string, values: readonly string[]): void {
+    const normalized = this.uniqueTrimmed([...values]);
+    if (normalized.length > 0) {
+      params[name] = normalized;
+    }
+  }
+
+  private setScalarParam(
+    params: SearchQueryParams,
+    name: string,
+    value: string | number | boolean | null | undefined,
+  ): void {
+    if (value !== null && value !== undefined && value !== '') {
+      params[name] = value;
+    }
+  }
+
+  private queryParamKey(params: SearchQueryParams): string {
+    return Object.keys(params)
+      .filter((name) => params[name] !== null)
+      .sort()
+      .map((name) => {
+        const value = params[name];
+        const values = Array.isArray(value) ? value : [value];
+        return `${name}=${values.map((item) => `${item}`).join('\u0000')}`;
+      })
+      .join('\u0001');
   }
 }

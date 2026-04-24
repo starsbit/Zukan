@@ -169,3 +169,35 @@ async def test_publish_admin_notification_creates_notifications_for_all_admins(f
     assert len(notifications) == 2
     assert notifications[0].title == "Automation alert"
     assert notifications[0].data["kind"] == "automation_alert"
+
+
+@pytest.mark.asyncio
+async def test_publish_missing_admin_notification_skips_admins_with_unread_version(fake_db):
+    service = NotificationService(fake_db)
+    notified_admin = uuid.uuid4()
+    missing_admin = uuid.uuid4()
+    existing = Notification(
+        user_id=notified_admin,
+        type=NotificationType.app_update,
+        title="Zukan 1.2.3 is available",
+        body="Update available",
+        is_read=False,
+        data={"version": "1.2.3"},
+    )
+    fake_db.execute = AsyncMock(side_effect=[
+        ScalarResult(rows=[notified_admin, missing_admin]),
+        ScalarResult(rows=[existing]),
+    ])
+
+    published = await service.publish_missing_admin_notification(
+        title="Zukan 1.2.3 is available",
+        body="Update available",
+        data={"version": "1.2.3"},
+    )
+
+    assert published == 1
+    notifications = [item for item in fake_db.added if isinstance(item, Notification)]
+    assert len(notifications) == 1
+    assert notifications[0].user_id == missing_admin
+    assert notifications[0].data["version"] == "1.2.3"
+    fake_db.commit.assert_awaited_once()

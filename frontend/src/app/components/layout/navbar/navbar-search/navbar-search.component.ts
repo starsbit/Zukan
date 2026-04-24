@@ -8,7 +8,7 @@ import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { SearchFiltersDialogComponent } from '../search-filters-dialog/search-filters-dialog.component';
 import { AuthStore } from '../../../../services/web/auth.store';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
@@ -50,6 +50,7 @@ export class NavbarSearchComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
   private readonly mediaClient = inject(MediaClientService);
+  private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly searchService = inject(NavbarSearchService);
   private readonly tagsClient = inject(TagsClientService);
@@ -103,6 +104,12 @@ export class NavbarSearchComponent {
         }
       });
 
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        this.searchService.hydrateFromQueryParams(params);
+      });
+
     effect(() => {
       const value = this.searchService.draftText();
       if (value !== this.query.value) {
@@ -115,6 +122,20 @@ export class NavbarSearchComponent {
       }
 
       this.query.enable({ emitEvent: false });
+    });
+
+    effect(() => {
+      this.searchService.applied();
+      const params = this.route.snapshot.queryParamMap;
+      if (this.searchService.queryParamsMatch(params)) {
+        return;
+      }
+
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: this.searchService.toQueryParamsWithClears(),
+        queryParamsHandling: 'merge',
+      });
     });
 
     this.query.valueChanges.pipe(

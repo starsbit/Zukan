@@ -97,7 +97,7 @@ async def test_check_skips_when_already_up_to_date():
 
 
 @pytest.mark.asyncio
-async def test_check_skips_when_announcement_already_exists():
+async def test_check_reissues_missing_notification_when_announcement_already_exists():
     with patch("backend.app.services.update_check.settings") as mock_settings:
         mock_settings.app_version = "1.0.0"
 
@@ -119,8 +119,12 @@ async def test_check_skips_when_announcement_already_exists():
                     repo_cls.return_value.find_by_version = AsyncMock(return_value=_make_announcement("1.2.3"))
 
                     with patch("backend.app.services.update_check.NotificationService") as svc_cls:
+                        svc_cls.return_value.publish_missing_admin_notification = AsyncMock(return_value=1)
+
                         await _check_for_updates()
-                        svc_cls.return_value.publish_admin_notification.assert_not_called()
+                        svc_cls.return_value.publish_missing_admin_notification.assert_awaited_once()
+                        call_kwargs = svc_cls.return_value.publish_missing_admin_notification.call_args.kwargs
+                        assert call_kwargs["data"]["version"] == "1.2.3"
 
 
 @pytest.mark.asyncio
@@ -149,12 +153,12 @@ async def test_check_creates_announcement_and_notifies_admins():
                     repo_cls.return_value.find_by_version = AsyncMock(return_value=None)
 
                     with patch("backend.app.services.update_check.NotificationService") as svc_cls:
-                        svc_cls.return_value.publish_admin_notification = AsyncMock(return_value=1)
+                        svc_cls.return_value.publish_missing_admin_notification = AsyncMock(return_value=1)
 
                         await _check_for_updates()
 
-                        svc_cls.return_value.publish_admin_notification.assert_awaited_once()
-                        call_kwargs = svc_cls.return_value.publish_admin_notification.call_args.kwargs
+                        svc_cls.return_value.publish_missing_admin_notification.assert_awaited_once()
+                        call_kwargs = svc_cls.return_value.publish_missing_admin_notification.call_args.kwargs
                         assert "1.2.3" in call_kwargs["title"]
                         assert "Full changelog:" in call_kwargs["body"]
                         assert "compare/v1.0.0...v1.2.3" in call_kwargs["body"]

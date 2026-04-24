@@ -8,6 +8,7 @@ import { MediaDetail, MediaRead, MediaType, MediaVisibility, ProcessingStatus, T
 import { MediaEntityType } from '../../../models/relations';
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
+import { NavbarSearchService } from '../../../services/navbar-search.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog.component';
 
@@ -148,7 +149,16 @@ describe('MediaInspectorDialogComponent', () => {
     await fixture.whenStable();
     fixture.detectChanges();
 
-    return { fixture, mediaService, galleryStore, dialogRef, tagsClient, items, breakpointObserver };
+    return {
+      fixture,
+      mediaService,
+      galleryStore,
+      dialogRef,
+      tagsClient,
+      items,
+      breakpointObserver,
+      searchService: TestBed.inject(NavbarSearchService),
+    };
   }
 
   function setStageBounds(fixture: { nativeElement: HTMLElement }): void {
@@ -208,6 +218,50 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('White Hair');
     expect(fixture.nativeElement.textContent).toContain('Detected text');
     expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
+  });
+
+  it('filters from read-only character, series, and tag metadata chips', async () => {
+    const { fixture, dialogRef, searchService } = await createComponent();
+
+    const characterButton = fixture.nativeElement.querySelector(
+      'button[aria-label="Filter by character Saber Alter"]',
+    ) as HTMLButtonElement | null;
+    const seriesButton = fixture.nativeElement.querySelector(
+      'button[aria-label="Filter by series Fate/Stay Night"]',
+    ) as HTMLButtonElement | null;
+    const tagButton = fixture.nativeElement.querySelector(
+      'button[aria-label="Filter by tag White Hair"]',
+    ) as HTMLButtonElement | null;
+
+    expect(characterButton).not.toBeNull();
+    expect(seriesButton).not.toBeNull();
+    expect(tagButton).not.toBeNull();
+
+    characterButton?.click();
+    seriesButton?.click();
+    tagButton?.click();
+    fixture.detectChanges();
+
+    expect(searchService.appliedParams()).toEqual({
+      character_name: ['Saber Alter'],
+      series_name: ['Fate/stay night'],
+      tag: ['white hair'],
+    });
+    expect(dialogRef.close).toHaveBeenCalled();
+  });
+
+  it('keeps edit-mode metadata chips as editing controls instead of filter buttons', async () => {
+    const { fixture } = await createComponent();
+
+    fixture.componentInstance.beginEdit();
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('button[aria-label="Filter by tag White Hair"]'),
+    ).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('button[aria-label="Remove tag White Hair"]'),
+    ).not.toBeNull();
   });
 
   it('renders videos with native controls', async () => {

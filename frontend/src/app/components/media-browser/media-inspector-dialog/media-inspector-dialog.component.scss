@@ -293,6 +293,7 @@ video.inspector-media {
 .inspector-character {
   display: grid;
   gap: 0.25rem;
+  justify-items: start;
 }
 
 .inspector-field span,
@@ -334,6 +335,10 @@ video.inspector-media {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45rem;
+}
+
+.inspector-filter-chips {
+  align-items: center;
 }
 
 .inspector-chips mat-chip,

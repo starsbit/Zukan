@@ -1,6 +1,23 @@
 import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
 import { NavbarSearchService } from './navbar-search.service';
 
+function paramReader(params: Record<string, string | string[]> = {}) {
+  return {
+    get(name: string): string | null {
+      const value = params[name];
+      return Array.isArray(value) ? value[0] ?? null : value ?? null;
+    },
+    getAll(name: string): string[] {
+      const value = params[name];
+      if (Array.isArray(value)) {
+        return value;
+      }
+
+      return value == null ? [] : [value];
+    },
+  };
+}
+
 describe('NavbarSearchService', () => {
   let service: NavbarSearchService;
 
@@ -219,6 +236,118 @@ describe('NavbarSearchService', () => {
       status: 'done',
       favorited: true,
     });
+  });
+
+  it('hydrates draft and applied state from query params', () => {
+    service.hydrateFromQueryParams(paramReader({
+      tag: ['Saber', 'saber', ''],
+      character_name: ['Rin Tohsaka'],
+      series_name: ['Fate/stay night'],
+      ocr_text: 'Excalibur',
+      exclude_tag: ['spoiler'],
+      mode: 'and',
+      character_mode: 'or',
+      series_mode: 'and',
+      nsfw: 'include',
+      sensitive: 'only',
+      favorited: 'false',
+      visibility: 'public',
+      owner_username: ' rin ',
+      uploader_username: ' shirou ',
+      media_type: ['image', 'video', 'invalid'],
+      sort_by: 'captured_at',
+      sort_order: 'asc',
+      captured_year: '2026',
+      captured_month: '4',
+      captured_day: '24',
+      uploaded_before_year: '2025',
+    }));
+
+    expect(service.draftChips()).toEqual([
+      { type: 'tag', value: 'Saber' },
+      { type: 'character', value: 'Rin Tohsaka' },
+      { type: 'series', value: 'Fate/stay night' },
+      { type: 'ocr', value: 'Excalibur' },
+    ]);
+    expect(service.appliedParams()).toEqual({
+      tag: ['Saber'],
+      character_name: ['Rin Tohsaka'],
+      series_name: ['Fate/stay night'],
+      ocr_text: 'Excalibur',
+      exclude_tag: ['spoiler'],
+      mode: TagFilterMode.AND,
+      character_mode: TagFilterMode.OR,
+      series_mode: TagFilterMode.AND,
+      nsfw: NsfwFilter.INCLUDE,
+      sensitive: SensitiveFilter.ONLY,
+      favorited: false,
+      visibility: MediaVisibility.PUBLIC,
+      owner_username: 'rin',
+      uploader_username: 'shirou',
+      media_type: [MediaType.IMAGE, MediaType.VIDEO],
+      sort_by: 'captured_at',
+      sort_order: 'asc',
+      captured_year: 2026,
+      captured_month: 4,
+      captured_day: 24,
+      uploaded_before_year: 2025,
+    });
+  });
+
+  it('serializes search state to route query params with clear markers', () => {
+    service.addTag('Saber');
+    service.addCharacter('Rin Tohsaka');
+    service.setAdvancedFilters({
+      excludeTags: ['spoiler'],
+      favorited: true,
+      capturedYear: 2026,
+    });
+
+    expect(service.toQueryParams()).toEqual({
+      tag: ['Saber'],
+      character_name: ['Rin Tohsaka'],
+      exclude_tag: ['spoiler'],
+      favorited: true,
+      captured_year: 2026,
+    });
+    expect(service.toQueryParamsWithClears()).toMatchObject({
+      tag: ['Saber'],
+      character_name: ['Rin Tohsaka'],
+      exclude_tag: ['spoiler'],
+      favorited: true,
+      captured_year: 2026,
+      series_name: null,
+      ocr_text: null,
+      uploaded_before_year: null,
+    });
+  });
+
+  it('ignores invalid query values and compares canonical query params', () => {
+    service.hydrateFromQueryParams(paramReader({
+      tag: ['Saber', 'saber'],
+      mode: 'bad',
+      nsfw: 'nope',
+      favorited: 'maybe',
+      media_type: ['invalid'],
+      captured_year: 'not-a-year',
+    }));
+
+    expect(service.appliedParams()).toEqual({ tag: ['Saber'] });
+    expect(service.queryParamsMatch(paramReader({ tag: ['Saber'], mode: 'bad' }))).toBe(true);
+    expect(service.queryParamsMatch(paramReader({ tag: ['Archer'] }))).toBe(false);
+  });
+
+  it('adds metadata filters through the shared helper', () => {
+    service.addMetadataFilter('tag', 'Saber');
+    service.addMetadataFilter('character', 'Rin Tohsaka');
+    service.addMetadataFilter('series', 'Fate/stay night');
+    service.addMetadataFilter('tag', 'saber');
+
+    expect(service.draftChips()).toEqual([
+      { type: 'tag', value: 'Saber' },
+      { type: 'character', value: 'Rin Tohsaka' },
+      { type: 'series', value: 'Fate/stay night' },
+    ]);
   });
 
   it('removing chips updates the applied search immediately', () => {
