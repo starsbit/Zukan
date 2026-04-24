@@ -24,6 +24,14 @@ ok() { printf '  [OK]    %s\n' "$*"; }
 warn() { printf '  [WARN]  %s\n' "$*" >&2; }
 fail() { printf '  [ERROR] %s\n' "$*" >&2; exit 1; }
 
+generate_secret() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -hex 32
+    else
+        tr -dc 'a-f0-9' < /dev/urandom | head -c 64
+    fi
+}
+
 usage() {
     cat <<USAGE
 Usage: $0 [options]
@@ -128,6 +136,120 @@ sed_in_place() {
     fi
 }
 
+compose_has_service() {
+    service_name="$1"
+    file="$2"
+    awk -v service_name="$service_name" '
+        $0 ~ "^  " service_name ":[[:space:]]*$" { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$file"
+}
+
+compose_service_has_line() {
+    service_name="$1"
+    pattern="$2"
+    file="$3"
+    awk -v service_name="$service_name" -v pattern="$pattern" '
+        $0 ~ "^  " service_name ":[[:space:]]*$" { in_service = 1; next }
+        in_service && $0 ~ "^  [A-Za-z0-9_-]+:[[:space:]]*$" { in_service = 0 }
+        in_service && $0 ~ pattern { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$file"
+}
+
+detect_compose_template() {
+    explicit_template="$(sed -n 's/^[[:space:]]*ZUKAN_COMPOSE_TEMPLATE:[[:space:]]*//p' "$COMPOSE_FILE" | head -n 1 || true)"
+    if [ -n "$explicit_template" ]; then
+        printf '%s\n' "$explicit_template"
+        return 0
+    fi
+
+    case "$(basename "$COMPOSE_FILE")" in
+        docker-compose.prod.yml)
+            printf '%s\n' "docker-compose.prod.yml"
+            ;;
+        docker-compose.selfhost.gpu.yml)
+            printf '%s\n' "docker-compose.selfhost.gpu.yml"
+            ;;
+        docker-compose.selfhost.yml)
+            printf '%s\n' "docker-compose.selfhost.yml"
+            ;;
+        *)
+            if grep -q 'capabilities: \[gpu\]' "$COMPOSE_FILE" 2>/dev/null; then
+                printf '%s\n' "docker-compose.selfhost.gpu.yml"
+            else
+                printf '%s\n' "docker-compose.selfhost.yml"
+            fi
+            ;;
+    esac
+}
+
+validate_refreshed_compose() {
+    refreshed_file="$1"
+
+    grep -q '^services:' "$refreshed_file" \
+        && grep -q 'image:[[:space:]]*ghcr.io/starsbit/zukan-api' "$refreshed_file" \
+        && grep -q 'image:[[:space:]]*pgvector/pgvector:pg16' "$refreshed_file" \
+        && grep -q 'UPDATER_URL:[[:space:]]*http://updater:8080' "$refreshed_file" \
+        && compose_has_service updater "$refreshed_file"
+}
+
+normalize_refreshed_compose() {
+    refreshed_file="$1"
+    container_compose="/work/$(basename "$COMPOSE_FILE")"
+
+    if grep -q '^[[:space:]]*ZUKAN_COMPOSE_FILE:' "$refreshed_file"; then
+        sed_in_place "s#^\([[:space:]]*ZUKAN_COMPOSE_FILE:[[:space:]]*\).*$#\1${container_compose}#" "$refreshed_file"
+    fi
+}
+
+refresh_compose_from_repo() {
+    template="$(detect_compose_template)"
+    tmp_file="$(mktemp)"
+    url="https://raw.githubusercontent.com/${REPO}/${SOURCE_REF}/${template}"
+
+    info "Fetching ${template} from ${REPO}@${SOURCE_REF}"
+    if ! fetch_to_file "$url" "$tmp_file"; then
+        rm -f "$tmp_file"
+        warn "Could not fetch ${template}; falling back to patching the existing compose file"
+        return 1
+    fi
+
+    normalize_refreshed_compose "$tmp_file"
+
+    if ! validate_refreshed_compose "$tmp_file"; then
+        rm -f "$tmp_file"
+        warn "Downloaded ${template} failed validation; falling back to patching the existing compose file"
+        return 1
+    fi
+
+    if [ "$DRY_RUN" = "1" ]; then
+        info "Would replace $COMPOSE_FILE with ${template} from ${REPO}@${SOURCE_REF}"
+        rm -f "$tmp_file"
+        return 0
+    fi
+
+    mv "$tmp_file" "$COMPOSE_FILE"
+    ok "Refreshed compose file from ${template}"
+    return 0
+}
+
+ensure_updater_token() {
+    if grep -q '^UPDATER_TOKEN=' "$ENV_FILE"; then
+        return 0
+    fi
+
+    updater_token="$(grep '^WATCHTOWER_TOKEN=' "$ENV_FILE" | head -n 1 | cut -d= -f2- || true)"
+    [ -n "$updater_token" ] || updater_token="$(generate_secret)"
+
+    if [ "$DRY_RUN" = "1" ]; then
+        info "Would add UPDATER_TOKEN to $ENV_FILE"
+    else
+        printf '\nUPDATER_TOKEN=%s\n' "$updater_token" >> "$ENV_FILE"
+        ok "Added UPDATER_TOKEN to $ENV_FILE"
+    fi
+}
+
 require_inputs() {
     [ -f "$COMPOSE_FILE" ] || fail "Compose file not found: $COMPOSE_FILE"
     [ -f "$ENV_FILE" ] || fail "Env file not found: $ENV_FILE"
@@ -149,6 +271,7 @@ backup_compose() {
 patch_compose() {
     tmp_file="$(mktemp)"
     cp "$COMPOSE_FILE" "$tmp_file"
+    container_compose="/work/$(basename "$COMPOSE_FILE")"
 
     if grep -q 'image:[[:space:]]*pgvector/pgvector:pg16' "$tmp_file"; then
         info "Compose file already uses pgvector/pgvector:pg16 for PostgreSQL"
@@ -164,7 +287,79 @@ patch_compose() {
         fail "Could not find a PostgreSQL 16 image to migrate. Please inspect $COMPOSE_FILE manually."
     fi
 
-    container_compose="/work/$(basename "$COMPOSE_FILE")"
+    if ! compose_service_has_line api 'UPDATER_URL:' "$tmp_file"; then
+        if grep -q '^[[:space:]]*SECRET_KEY:' "$tmp_file"; then
+            sed_in_place "/^[[:space:]]*SECRET_KEY:/a\\
+      UPDATER_URL: http://updater:8080" "$tmp_file"
+        elif compose_service_has_line api 'DATABASE_URL:' "$tmp_file"; then
+            sed_in_place "/^[[:space:]]*DATABASE_URL:/a\\
+      UPDATER_URL: http://updater:8080" "$tmp_file"
+        else
+            rm -f "$tmp_file"
+            fail "Could not find api environment entries to add UPDATER_URL. Please inspect $COMPOSE_FILE manually."
+        fi
+    fi
+
+    if ! compose_service_has_line api 'UPDATER_TOKEN:' "$tmp_file"; then
+        sed_in_place "/^[[:space:]]*UPDATER_URL:/a\\
+      UPDATER_TOKEN: \${UPDATER_TOKEN}" "$tmp_file"
+    fi
+
+    if ! compose_has_service updater "$tmp_file"; then
+        updater_block="$(mktemp)"
+        cat > "$updater_block" <<UPDATER
+
+  updater:
+    image: docker:29.4.0-cli
+    command:
+      - sh
+      - -c
+      - |
+        cp /scripts/serve-update.sh /tmp/serve-update.sh
+        chmod 755 /tmp/serve-update.sh
+        exec nc -lk -p 8080 -e /tmp/serve-update.sh
+    environment:
+      UPDATER_TOKEN: \${UPDATER_TOKEN}
+      COMPOSE_PROJECT_NAME: \${COMPOSE_PROJECT_NAME:-zukan}
+      ZUKAN_COMPOSE_FILE: ${container_compose}
+      ZUKAN_UPDATER_DIR: /work/updater
+      ZUKAN_REPO: \${ZUKAN_REPO:-starsbit/zukan}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/work
+      - ./updater:/scripts:ro
+    restart: unless-stopped
+UPDATER
+
+        if [ "$(basename "$COMPOSE_FILE")" = "docker-compose.prod.yml" ]; then
+            sed_in_place "/ZUKAN_COMPOSE_FILE:/a\\
+      ZUKAN_COMPOSE_TEMPLATE: docker-compose.prod.yml" "$updater_block"
+        fi
+
+        patched_file="$(mktemp)"
+        awk -v block_file="$updater_block" '
+            function print_block() {
+                while ((getline line < block_file) > 0) {
+                    print line
+                }
+                close(block_file)
+            }
+            /^volumes:[[:space:]]*$/ && !inserted {
+                print_block()
+                inserted = 1
+            }
+            { print }
+            END {
+                if (!inserted) {
+                    print ""
+                    print_block()
+                }
+            }
+        ' "$tmp_file" > "$patched_file"
+        mv "$patched_file" "$tmp_file"
+        rm -f "$updater_block"
+    fi
+
     if ! grep -q 'ZUKAN_COMPOSE_FILE:' "$tmp_file" && grep -q 'COMPOSE_PROJECT_NAME:' "$tmp_file"; then
         sed_in_place "/COMPOSE_PROJECT_NAME:/a\\
       ZUKAN_COMPOSE_FILE: ${container_compose}\\
@@ -265,6 +460,7 @@ Zukan pgvector repair complete.
 
 What changed:
   - The compose file now uses pgvector/pgvector:pg16 for the db service.
+  - Missing updater wiring was added for legacy compose files when needed.
   - Existing Docker volumes were preserved. No reinstall and no volume deletion happened.
   - The updater mount was adjusted so future compose changes can be fetched automatically.
 
@@ -284,7 +480,10 @@ info "Repairing compose file: $COMPOSE_FILE"
 info "Using env file: $ENV_FILE"
 info "Important: this script never runs docker compose down -v and never deletes postgres_data."
 backup_compose
-patch_compose
+ensure_updater_token
+if ! refresh_compose_from_repo; then
+    patch_compose
+fi
 refresh_updater_scripts
 validate_compose
 if [ "$NO_RESTART" = "1" ]; then
