@@ -8,7 +8,6 @@ import { MediaDetail, MediaRead, MediaType, MediaVisibility, ProcessingStatus, T
 import { MediaEntityType } from '../../../models/relations';
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
-import { NavbarSearchService } from '../../../services/navbar-search.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog.component';
 
@@ -157,7 +156,6 @@ describe('MediaInspectorDialogComponent', () => {
       tagsClient,
       items,
       breakpointObserver,
-      searchService: TestBed.inject(NavbarSearchService),
     };
   }
 
@@ -220,8 +218,10 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
   });
 
-  it('filters from read-only character, series, and tag metadata chips', async () => {
-    const { fixture, dialogRef, searchService } = await createComponent();
+  it('emits filter selections from read-only character, series, and tag metadata chips', async () => {
+    const { fixture } = await createComponent();
+    const selections: unknown[] = [];
+    fixture.componentInstance.metadataFilterSelected.subscribe((selection) => selections.push(selection));
 
     const characterButton = fixture.nativeElement.querySelector(
       'button[aria-label="Filter by character Saber Alter"]',
@@ -242,12 +242,11 @@ describe('MediaInspectorDialogComponent', () => {
     tagButton?.click();
     fixture.detectChanges();
 
-    expect(searchService.appliedParams()).toEqual({
-      character_name: ['Saber Alter'],
-      series_name: ['Fate/stay night'],
-      tag: ['white hair'],
-    });
-    expect(dialogRef.close).toHaveBeenCalled();
+    expect(selections).toEqual([
+      { type: 'character', value: 'Saber Alter' },
+      { type: 'series', value: 'Fate/stay night' },
+      { type: 'tag', value: 'white hair' },
+    ]);
   });
 
   it('keeps edit-mode metadata chips as editing controls instead of filter buttons', async () => {

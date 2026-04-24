@@ -31,7 +31,10 @@ import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
-import { MetadataFilterChipComponent } from '../../shared/metadata-filter-chip/metadata-filter-chip.component';
+import {
+  MetadataFilterChipComponent,
+  MetadataFilterSelection,
+} from '../../shared/metadata-filter-chip/metadata-filter-chip.component';
 import {
   formatConfidence,
   formatDateTime,
@@ -131,6 +134,7 @@ export class MediaInspectorDialogComponent {
   private readonly tagsClient = inject(TagsClientService);
   private readonly zoomStage = viewChild<ElementRef<HTMLElement>>('zoomStage');
   readonly activeMediaChanged = output<string>();
+  readonly metadataFilterSelected = output<MetadataFilterSelection>();
 
   readonly items = signal<MediaRead[]>([]);
   readonly activeIndex = signal(0);
@@ -743,6 +747,10 @@ export class MediaInspectorDialogComponent {
 
   displayMetadataName(value: string): string {
     return formatMetadataName(value);
+  }
+
+  onMetadataFilterSelected(selection: MetadataFilterSelection): void {
+    this.metadataFilterSelected.emit(selection);
   }
 
   private navigateTo(index: number): void {

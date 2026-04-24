@@ -74,12 +74,14 @@ function makeDialogRefMock(overrides?: {
   afterClosed?: () => Observable<unknown>;
   close?: ReturnType<typeof vi.fn>;
   activeMediaChanged?: Subject<string>;
+  metadataFilterSelected?: Subject<{ type: 'tag' | 'character' | 'series'; value: string }>;
 }) {
   return {
     afterClosed: overrides?.afterClosed ?? (() => of(undefined as unknown)),
     close: overrides?.close ?? vi.fn(),
     componentInstance: {
       activeMediaChanged: overrides?.activeMediaChanged ?? new Subject<string>(),
+      metadataFilterSelected: overrides?.metadataFilterSelected ?? new Subject<{ type: 'tag' | 'character' | 'series'; value: string }>(),
     },
   };
 }
@@ -876,6 +878,75 @@ describe('MediaBrowserComponent', () => {
       querySubject.next(makeParamMap(null));
 
       expect(closeMock).toHaveBeenCalled();
+    });
+
+    it('does not write another history entry after a route-driven inspector close', async () => {
+      const closeMock = vi.fn();
+      const afterClosedSubject = new Subject<void>();
+      dialogMock.open.mockReturnValueOnce(
+        makeDialogRefMock({
+          afterClosed: () => afterClosedSubject,
+          close: closeMock,
+        }),
+      );
+
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      querySubject.next(makeParamMap('m1'));
+      querySubject.next(makeParamMap(null));
+      afterClosedSubject.next();
+      afterClosedSubject.complete();
+
+      expect(closeMock).toHaveBeenCalled();
+      expect(navigateSpy).not.toHaveBeenCalled();
+    });
+
+    it('commits inspector metadata filter selections as one inspect-clearing navigation', async () => {
+      const closeMock = vi.fn();
+      const afterClosedSubject = new Subject<void>();
+      const metadataFilterSelected = new Subject<{ type: 'tag' | 'character' | 'series'; value: string }>();
+      dialogMock.open.mockReturnValueOnce(
+        makeDialogRefMock({
+          afterClosed: () => afterClosedSubject,
+          close: closeMock,
+          metadataFilterSelected,
+        }),
+      );
+
+      const querySubject = new BehaviorSubject(makeParamMap(null));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const router = TestBed.inject(Router);
+      const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [makeMedia('m1', 100, 100)] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      querySubject.next(makeParamMap('m1'));
+      metadataFilterSelected.next({ type: 'tag', value: '1girl' });
+      afterClosedSubject.next();
+      afterClosedSubject.complete();
+
+      expect(closeMock).toHaveBeenCalled();
+      expect(navigateSpy).toHaveBeenCalledTimes(1);
+      expect(navigateSpy).toHaveBeenCalledWith(
+        [],
+        expect.objectContaining({
+          queryParams: expect.objectContaining({ tag: ['1girl'], inspect: null }),
+          queryParamsHandling: 'merge',
+        }),
+      );
     });
 
     it('clears the inspect query param when the dialog is closed', async () => {

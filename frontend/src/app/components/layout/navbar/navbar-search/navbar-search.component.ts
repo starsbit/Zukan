@@ -126,6 +126,10 @@ export class NavbarSearchComponent {
 
     effect(() => {
       this.searchService.applied();
+      if (this.searchService.consumeUrlSyncSuppression()) {
+        return;
+      }
+
       const params = this.route.snapshot.queryParamMap;
       if (this.searchService.queryParamsMatch(params)) {
         return;

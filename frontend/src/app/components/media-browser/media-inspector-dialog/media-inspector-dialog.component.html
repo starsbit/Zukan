@@ -323,7 +323,7 @@
                       [type]="'character'"
                       [value]="character.name"
                       [display]="character.label"
-                      (filtered)="close()"
+                      (filtered)="onMetadataFilterSelected($event)"
                     ></zukan-metadata-filter-chip>
                     @if (character.details) {
                       <span>{{ character.details }}</span>
@@ -405,7 +405,7 @@
                       [type]="'series'"
                       [value]="seriesItem.name"
                       [display]="seriesItem.label"
-                      (filtered)="close()"
+                      (filtered)="onMetadataFilterSelected($event)"
                     ></zukan-metadata-filter-chip>
                     @if (seriesItem.details) {
                       <span>{{ seriesItem.details }}</span>
@@ -517,7 +517,7 @@
                   <zukan-metadata-filter-chip
                     [type]="'tag'"
                     [value]="tag"
-                    (filtered)="close()"
+                    (filtered)="onMetadataFilterSelected($event)"
                   ></zukan-metadata-filter-chip>
                 }
               </div>

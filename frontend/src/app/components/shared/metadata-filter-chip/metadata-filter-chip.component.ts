@@ -1,7 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
-import { MetadataFilterType, NavbarSearchService } from '../../../services/navbar-search.service';
+import { MetadataFilterType } from '../../../services/navbar-search.service';
 import { formatMetadataName } from '../../../utils/media-display.utils';
+
+export interface MetadataFilterSelection {
+  type: MetadataFilterType;
+  value: string;
+}
 
 @Component({
   selector: 'zukan-metadata-filter-chip',
@@ -22,12 +27,10 @@ import { formatMetadataName } from '../../../utils/media-display.utils';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MetadataFilterChipComponent {
-  private readonly searchService = inject(NavbarSearchService);
-
   readonly type = input.required<MetadataFilterType>();
   readonly value = input.required<string>();
   readonly display = input<string | null>(null);
-  readonly filtered = output<void>();
+  readonly filtered = output<MetadataFilterSelection>();
 
   readonly label = computed(() => this.display()?.trim() || formatMetadataName(this.value()));
   readonly icon = computed(() => {
@@ -44,7 +47,6 @@ export class MetadataFilterChipComponent {
 
   applyFilter(event: Event): void {
     event.stopPropagation();
-    this.searchService.addMetadataFilter(this.type(), this.value());
-    this.filtered.emit();
+    this.filtered.emit({ type: this.type(), value: this.value() });
   }
 }

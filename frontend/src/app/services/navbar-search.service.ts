@@ -135,6 +135,7 @@ export class NavbarSearchService {
     ocrText: null,
     advanced: this.emptyAdvancedFilters,
   });
+  private skipNextUrlSync = false;
 
   readonly draftChips = this._draftChips.asReadonly();
   readonly draftText = this._draftText.asReadonly();
@@ -213,6 +214,9 @@ export class NavbarSearchService {
 
   hydrateFromQueryParams(params: SearchParamReader): void {
     const state = this.stateFromQueryParams(params);
+    if (this.searchStatesMatch(state, this._applied())) {
+      return;
+    }
 
     const chips: SearchChip[] = [
       ...state.tags.map((value) => ({ type: 'tag' as const, value })),
@@ -275,6 +279,16 @@ export class NavbarSearchService {
     const current = this.toQueryParams(this.stateFromQueryParams(params));
     const next = this.toQueryParams(state);
     return this.queryParamKey(current) === this.queryParamKey(next);
+  }
+
+  suppressNextUrlSync(): void {
+    this.skipNextUrlSync = true;
+  }
+
+  consumeUrlSyncSuppression(): boolean {
+    const skip = this.skipNextUrlSync;
+    this.skipNextUrlSync = false;
+    return skip;
   }
 
   addTag(value: string): void {
@@ -559,5 +573,9 @@ export class NavbarSearchService {
         return `${name}=${values.map((item) => `${item}`).join('\u0000')}`;
       })
       .join('\u0001');
+  }
+
+  private searchStatesMatch(left: AppliedSearchState, right: AppliedSearchState): boolean {
+    return this.queryParamKey(this.toQueryParams(left)) === this.queryParamKey(this.toQueryParams(right));
   }
 }

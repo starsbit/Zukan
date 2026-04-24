@@ -43,6 +43,7 @@ import {
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 import { MediaService } from '../../services/media.service';
+import { NavbarSearchService } from '../../services/navbar-search.service';
 
 interface JustifiedRowItem {
   media: MediaRead | null;
@@ -137,6 +138,7 @@ export class MediaBrowserComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly zone = inject(NgZone);
   private readonly mediaService = inject(MediaService);
+  private readonly searchService = inject(NavbarSearchService);
   private inspectorRef: MatDialogRef<MediaInspectorDialogComponent> | null = null;
 
   @ViewChildren('monthSection', { read: ElementRef })
@@ -177,6 +179,9 @@ export class MediaBrowserComponent {
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
   private pendingInspectId: string | null = null;
+  private currentInspectId: string | null = null;
+  private closingInspectorFromRoute = false;
+  private closingInspectorFromMetadataFilter = false;
 
   private static readonly MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
@@ -213,12 +218,15 @@ export class MediaBrowserComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
         const inspectId = params.get('inspect');
+        this.currentInspectId = inspectId;
         if (inspectId) {
           this.openInspectorForId(inspectId);
         } else {
           this.pendingInspectId = null;
-          this.inspectorRef?.close();
-          this.inspectorRef = null;
+          if (this.inspectorRef) {
+            this.closingInspectorFromRoute = true;
+            this.inspectorRef.close();
+          }
         }
       });
   }
@@ -290,8 +298,32 @@ export class MediaBrowserComponent {
         queryParamsHandling: 'merge',
       });
     });
+    this.inspectorRef.componentInstance?.metadataFilterSelected.subscribe((selection) => {
+      this.closingInspectorFromMetadataFilter = true;
+      this.searchService.suppressNextUrlSync();
+      this.searchService.addMetadataFilter(selection.type, selection.value);
+      this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: {
+          ...this.searchService.toQueryParamsWithClears(),
+          inspect: null,
+        },
+        queryParamsHandling: 'merge',
+      });
+      this.inspectorRef?.close();
+    });
     this.inspectorRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.inspectorRef = null;
+      if (this.closingInspectorFromRoute || this.closingInspectorFromMetadataFilter) {
+        this.closingInspectorFromRoute = false;
+        this.closingInspectorFromMetadataFilter = false;
+        return;
+      }
+
+      if (!this.currentInspectId) {
+        return;
+      }
+
       this.router.navigate([], {
         relativeTo: this.route,
         queryParams: { inspect: null },

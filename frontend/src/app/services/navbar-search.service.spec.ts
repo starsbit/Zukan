@@ -337,6 +337,18 @@ describe('NavbarSearchService', () => {
     expect(service.queryParamsMatch(paramReader({ tag: ['Archer'] }))).toBe(false);
   });
 
+  it('does not rehydrate when only non-search query params change', () => {
+    service.hydrateFromQueryParams(paramReader({ tag: 'Saber', inspect: 'm1' }));
+    const applied = service.applied();
+    service.setText('draft that should survive inspector close');
+
+    service.hydrateFromQueryParams(paramReader({ tag: 'Saber' }));
+
+    expect(service.applied()).toBe(applied);
+    expect(service.draftText()).toBe('draft that should survive inspector close');
+    expect(service.draftChips()).toEqual([{ type: 'tag', value: 'Saber' }]);
+  });
+
   it('adds metadata filters through the shared helper', () => {
     service.addMetadataFilter('tag', 'Saber');
     service.addMetadataFilter('character', 'Rin Tohsaka');
