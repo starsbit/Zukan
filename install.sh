@@ -164,6 +164,7 @@ COMPOSE
       UPDATER_TOKEN: ${UPDATER_TOKEN}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
       ZUKAN_COMPOSE_FILE: /work/docker-compose.yml
+      ZUKAN_UPDATER_DIR: /work/updater
       ZUKAN_REPO: ${ZUKAN_REPO:-starsbit/zukan}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
@@ -291,6 +292,8 @@ repo="${ZUKAN_REPO:-starsbit/zukan}"
 compose_file="${ZUKAN_COMPOSE_FILE:-/work/docker-compose.yml}"
 env_file="${ZUKAN_ENV_FILE:-/work/.env}"
 compose_template="${ZUKAN_COMPOSE_TEMPLATE:-}"
+updater_dir="${ZUKAN_UPDATER_DIR:-/work/updater}"
+release_tag=""
 
 fetch_to_file() {
     url="$1"
@@ -306,11 +309,18 @@ fetch_to_file() {
 }
 
 latest_release_tag() {
+    if [ -n "$release_tag" ]; then
+        printf '%s\n' "$release_tag"
+        return 0
+    fi
+
     release_json="/tmp/zukan-latest-release.json"
     if ! fetch_to_file "https://api.github.com/repos/${repo}/releases/latest" "$release_json"; then
         return 1
     fi
-    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release_json" | head -n 1
+    release_tag="$(sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release_json" | head -n 1)"
+    [ -n "$release_tag" ] || return 1
+    printf '%s\n' "$release_tag"
 }
 
 detect_compose_template() {
@@ -361,11 +371,57 @@ refresh_compose_from_github() {
     fi
 }
 
+refresh_updater_scripts_from_github() {
+    tag="$(latest_release_tag || true)"
+    if [ -z "$tag" ]; then
+        echo "Could not determine the latest GitHub release; continuing with existing updater scripts." >&2
+        return 0
+    fi
+
+    if ! mkdir -p "$updater_dir" 2>/dev/null; then
+        echo "Could not access ${updater_dir}; continuing with existing updater scripts." >&2
+        return 0
+    fi
+
+    refreshed=0
+    for script_name in update.cgi serve-update.sh run-update.sh; do
+        tmp_script="/tmp/zukan-${script_name}.new"
+        url="https://raw.githubusercontent.com/${repo}/${tag}/updater/${script_name}"
+
+        if ! fetch_to_file "$url" "$tmp_script"; then
+            echo "Could not fetch updater/${script_name} from ${tag}; keeping existing file." >&2
+            rm -f "$tmp_script"
+            continue
+        fi
+
+        if ! head -n 1 "$tmp_script" | grep -q '^#!/'; then
+            echo "Downloaded updater/${script_name} failed validation; keeping existing file." >&2
+            rm -f "$tmp_script"
+            continue
+        fi
+
+        cp "${updater_dir}/${script_name}" "${updater_dir}/${script_name}.bak" 2>/dev/null || true
+        chmod 755 "$tmp_script"
+        if mv "$tmp_script" "${updater_dir}/${script_name}"; then
+            refreshed=$((refreshed + 1))
+        else
+            echo "Could not write ${updater_dir}/${script_name}; keeping existing file." >&2
+            rm -f "$tmp_script"
+        fi
+    done
+
+    if [ "$refreshed" -gt 0 ]; then
+        echo "Refreshed ${refreshed} updater script(s) from ${tag}."
+    fi
+}
+
 refresh_compose_from_github
 
 docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" pull db updater api frontend
 docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps db
 docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps --force-recreate api frontend
+refresh_updater_scripts_from_github
+docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps --force-recreate updater
 SCRIPT
 
     chmod 755 "$INSTALL_DIR/updater/update.cgi" "$INSTALL_DIR/updater/serve-update.sh" "$INSTALL_DIR/updater/run-update.sh"

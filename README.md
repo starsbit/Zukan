@@ -269,7 +269,7 @@ docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-The updater refreshes the deployed compose file from the latest GitHub release before pulling images, so service-level requirements such as database image changes are applied automatically. Database migrations run automatically on startup. Named volumes (`postgres_data`, `storage_data`, `model_cache`) are preserved.
+The updater refreshes the deployed compose file and updater helper scripts from the latest GitHub release before pulling images, so service-level requirements such as database image changes are applied automatically. Database migrations run automatically on startup. Named volumes (`postgres_data`, `storage_data`, `model_cache`) are preserved.
 
 Version `0011_library_embeddings` requires PostgreSQL with the `pgvector` extension. If you installed Zukan before this requirement and upgrades fail with `extension "vector" is not available`, update the `db` image in your deployed compose file to `pgvector/pgvector:pg16`, then recreate the DB container without deleting volumes:
 

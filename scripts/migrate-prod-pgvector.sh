@@ -171,6 +171,11 @@ patch_compose() {
       ZUKAN_REPO: \${ZUKAN_REPO:-starsbit/zukan}" "$tmp_file"
     fi
 
+    if ! grep -q 'ZUKAN_UPDATER_DIR:' "$tmp_file" && grep -q 'ZUKAN_COMPOSE_FILE:' "$tmp_file"; then
+        sed_in_place "/ZUKAN_COMPOSE_FILE:/a\\
+      ZUKAN_UPDATER_DIR: /work/updater" "$tmp_file"
+    fi
+
     if [ "$(basename "$COMPOSE_FILE")" = "docker-compose.prod.yml" ] \
         && ! grep -q 'ZUKAN_COMPOSE_TEMPLATE:' "$tmp_file" \
         && grep -q 'ZUKAN_COMPOSE_FILE:' "$tmp_file"; then

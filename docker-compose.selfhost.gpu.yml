@@ -65,6 +65,7 @@ services:
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
       ZUKAN_COMPOSE_FILE: /work/docker-compose.yml
       ZUKAN_COMPOSE_TEMPLATE: docker-compose.selfhost.gpu.yml
+      ZUKAN_UPDATER_DIR: /work/updater
       ZUKAN_REPO: ${ZUKAN_REPO:-starsbit/zukan}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
