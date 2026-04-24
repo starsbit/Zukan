@@ -262,14 +262,30 @@ All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate li
 
 ### Upgrading
 
-Edit `docker-compose.prod.yml` and update the image tags to the new version, then:
+Trigger the update from the admin panel, or pull and restart manually:
 
 ```bash
 docker compose -f docker-compose.prod.yml pull
 docker compose -f docker-compose.prod.yml up -d
 ```
 
-Database migrations run automatically on startup. Named volumes (`postgres_data`, `storage_data`, `model_cache`) are preserved.
+The updater refreshes the deployed compose file from the latest GitHub release before pulling images, so service-level requirements such as database image changes are applied automatically. Database migrations run automatically on startup. Named volumes (`postgres_data`, `storage_data`, `model_cache`) are preserved.
+
+Version `0011_library_embeddings` requires PostgreSQL with the `pgvector` extension. If you installed Zukan before this requirement and upgrades fail with `extension "vector" is not available`, update the `db` image in your deployed compose file to `pgvector/pgvector:pg16`, then recreate the DB container without deleting volumes:
+
+```bash
+docker compose pull db
+docker compose up -d --no-deps --force-recreate db
+docker compose up -d api
+```
+
+Or use the repair script, which backs up the compose file, preserves `postgres_data`, updates the database image, refreshes updater permissions, and restarts the affected containers:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/scripts/migrate-prod-pgvector.sh | sudo bash
+```
+
+Installs created before the compose-refreshing updater may need one manual rerun of the installer so the updater container gets write access to `/opt/zukan/docker-compose.yml`. After that, future compose template changes are fetched automatically.
 
 When a new version is available, all users will receive an in-app notification automatically.
 

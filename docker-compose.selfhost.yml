@@ -1,6 +1,5 @@
-# Production docker-compose for self-hosted Zukan.
-# Replace the image tags below with the version you want to run.
-# See: https://github.com/starsbit/zukan/releases
+# Managed compose template for installer-based Zukan self-hosting.
+# The in-app updater refreshes this file from the latest GitHub release.
 
 services:
   frontend:
@@ -29,13 +28,6 @@ services:
       updater:
         condition: service_started
     restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
 
   db:
     image: pgvector/pgvector:pg16
@@ -64,8 +56,8 @@ services:
     environment:
       UPDATER_TOKEN: ${UPDATER_TOKEN}
       COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
-      ZUKAN_COMPOSE_FILE: /work/docker-compose.prod.yml
-      ZUKAN_COMPOSE_TEMPLATE: docker-compose.prod.yml
+      ZUKAN_COMPOSE_FILE: /work/docker-compose.yml
+      ZUKAN_COMPOSE_TEMPLATE: docker-compose.selfhost.yml
       ZUKAN_REPO: ${ZUKAN_REPO:-starsbit/zukan}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
