@@ -12,7 +12,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_character_name_search, normalized_token_sequence_like_patterns
+from backend.app.utils.search import normalize_character_name_search, normalize_metadata_search, normalized_token_sequence_like_patterns
 
 
 
@@ -25,16 +25,19 @@ def uploaded_timestamp_expr():
 
 def apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | None, mode: TagFilterMode):
     if tags:
+        tag_conditions = _tag_name_conditions(tags)
         if mode == TagFilterMode.AND:
-            for tag_name in tags:
-                subq = select(MediaTag.media_id).join(Tag).where(Tag.name == tag_name)
+            for condition in tag_conditions:
+                subq = select(MediaTag.media_id).join(Tag).where(condition)
                 stmt = stmt.where(Media.id.in_(subq))
-        else:
-            subq = select(MediaTag.media_id).join(Tag).where(Tag.name.in_(tags))
+        elif tag_conditions:
+            subq = select(MediaTag.media_id).join(Tag).where(or_(*tag_conditions))
             stmt = stmt.where(Media.id.in_(subq))
     if exclude_tags:
-        subq = select(MediaTag.media_id).join(Tag).where(Tag.name.in_(exclude_tags))
-        stmt = stmt.where(~Media.id.in_(subq))
+        exclude_conditions = _tag_name_conditions(exclude_tags)
+        if exclude_conditions:
+            subq = select(MediaTag.media_id).join(Tag).where(or_(*exclude_conditions))
+            stmt = stmt.where(~Media.id.in_(subq))
     return stmt
 
 def apply_character_name_filter(stmt, character_names: list[str] | None, mode: TagFilterMode = TagFilterMode.AND):
@@ -174,6 +177,24 @@ def _normalized_entity_name_expr():
         func.regexp_replace(func.lower(func.coalesce(MediaEntity.name, "")), r"[^a-z0-9]+", "_", "g"),
         "_",
     )
+
+
+def _normalized_tag_name_expr():
+    return func.btrim(
+        func.regexp_replace(func.lower(func.coalesce(Tag.name, "")), r"[^a-z0-9]+", "_", "g"),
+        "_",
+    )
+
+
+def _tag_name_conditions(tags: list[str]) -> list:
+    normalized_tag_name = _normalized_tag_name_expr()
+    conditions = []
+    for tag_name in tags:
+        cleaned = tag_name.strip()
+        normalized = normalize_metadata_search(cleaned)
+        if normalized:
+            conditions.append(or_(Tag.name == cleaned, normalized_tag_name == normalized))
+    return conditions
 
 
 def _apply_entity_name_filter(stmt, entity_type: MediaEntityType, names: list[str] | None, mode: TagFilterMode):

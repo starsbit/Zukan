@@ -61,6 +61,49 @@ async def test_media_filters_tag_character_ocr_and_nsfw(db_session, make_user, m
 
 
 @pytest.mark.asyncio
+async def test_media_filters_match_display_form_tag_names(db_session, make_user, make_media):
+    user = await make_user()
+    full_body = await make_media(uploader_id=user.id)
+    upper_body = await make_media(uploader_id=user.id)
+
+    full_body_tag = Tag(owner_user_id=user.id, name="full_body", category=0, media_count=1)
+    upper_body_tag = Tag(owner_user_id=user.id, name="upper_body", category=0, media_count=1)
+    db_session.add_all([full_body_tag, upper_body_tag])
+    await db_session.flush()
+    db_session.add_all(
+        [
+            MediaTag(media_id=full_body.id, tag_id=full_body_tag.id, confidence=0.9),
+            MediaTag(media_id=upper_body.id, tag_id=upper_body_tag.id, confidence=0.9),
+        ]
+    )
+    await db_session.flush()
+
+    rows = (
+        await db_session.execute(
+            media_filters.apply_tag_filters(
+                select(type(full_body)),
+                ["Full Body"],
+                None,
+                TagFilterMode.AND,
+            )
+        )
+    ).scalars().all()
+    excluded_rows = (
+        await db_session.execute(
+            media_filters.apply_tag_filters(
+                select(type(full_body)),
+                None,
+                ["Full Body"],
+                TagFilterMode.AND,
+            )
+        )
+    ).scalars().all()
+
+    assert {row.id for row in rows} == {full_body.id}
+    assert {row.id for row in excluded_rows} == {upper_body.id}
+
+
+@pytest.mark.asyncio
 async def test_media_filters_use_effective_classification_overrides(db_session, make_user, make_media):
     user = await make_user(show_nsfw=False, show_sensitive=False)
     auto_safe = await make_media(uploader_id=user.id, is_nsfw=False, is_sensitive=False)
