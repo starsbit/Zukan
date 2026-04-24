@@ -81,14 +81,20 @@ def test_load_wires_session_and_input_metadata(monkeypatch):
         shape = [1, 448, 448, 3]
 
     class _Session:
-        def __init__(self, model_path, providers):
+        def __init__(self, model_path, sess_options, providers):
             self.model_path = model_path
+            self.sess_options = sess_options
             self.providers = providers
 
         def get_inputs(self):
             return [_Input()]
 
+    class _SessionOptions:
+        intra_op_num_threads = None
+        inter_op_num_threads = None
+
     fake_rt.InferenceSession = _Session
+    fake_rt.SessionOptions = _SessionOptions
     fake_rt.get_available_providers = lambda: ["CPUExecutionProvider"]
     monkeypatch.setitem(__import__("sys").modules, "onnxruntime", fake_rt)
 

@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     model_cache_dir: Path = Path("model_cache")
     tagging_retry_attempts: int = 3
     tagging_retry_backoff_seconds: float = 0.25
+    tagging_prediction_timeout_seconds: float = 60.0
     ocr_enabled: bool = True
     ocr_languages: str = "eng"
     ocr_tesseract_config: str = "--psm 6"

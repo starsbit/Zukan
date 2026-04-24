@@ -252,15 +252,19 @@ class TagService:
         if media is None:
             logger.warning("Tagging skipped because media was not found media_id=%s", media_id)
             return
+        media_filepath = media.filepath
+        media_type = media.media_type
         media.tagging_status = "processing"
         media.tagging_error = None
+        media.tagging_started_at = datetime.now(timezone.utc)
+        media.tagging_finished_at = None
         await self._db.commit()
-        logger.info("Tagging started media_id=%s media_type=%s", media.id, media.media_type.value)
+        logger.info("Tagging started media_id=%s media_type=%s", media.id, media_type.value)
 
-        frames = sample_media_frames(media.filepath, media.media_type)
+        frames = sample_media_frames(media_filepath, media_type)
         try:
             results: list[TaggingResult] = []
-            for frame_path in frames or [Path(media.filepath)]:
+            for frame_path in frames or [Path(media_filepath)]:
                 results.append(await self._predict_with_retries(str(frame_path)))
             aggregated = aggregate_tagging_results(results)
             await self._store_tagging_result(media, aggregated)
@@ -268,21 +272,26 @@ class TagService:
             if uploader is not None and uploader.library_classification_enabled:
                 await self._library_enrichment.enrich_media(media.id, user_id=media.uploader_id)
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != Path(media.filepath)])
+            cleanup_sampled_frames([frame for frame in frames if frame != Path(media_filepath)])
 
     async def _predict_with_retries(self, image_path: str) -> TaggingResult:
         attempts = max(1, settings.tagging_retry_attempts)
         last_error: Exception | None = None
         for attempt in range(1, attempts + 1):
             try:
-                return await self._tagger.predict(image_path)
+                timeout_seconds = settings.tagging_prediction_timeout_seconds
+                prediction = self._tagger.predict(image_path)
+                if timeout_seconds and timeout_seconds > 0:
+                    return await asyncio.wait_for(prediction, timeout=timeout_seconds)
+                return await prediction
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    "Tag prediction attempt failed image_path=%s attempt=%s max_attempts=%s error=%s",
+                    "Tag prediction attempt failed image_path=%s attempt=%s max_attempts=%s error_type=%s error=%s",
                     image_path,
                     attempt,
                     attempts,
+                    exc.__class__.__name__,
                     exc,
                 )
                 if attempt >= attempts:
@@ -309,6 +318,7 @@ class TagService:
         media.is_sensitive = tagging_result.is_sensitive or tag_names_mark_sensitive(filtered_tag_names)
         media.tagging_status = "done"
         media.tagging_error = None
+        media.tagging_finished_at = datetime.now(timezone.utc)
 
         entity_predictions = [
             (MediaEntityType.character, prediction)

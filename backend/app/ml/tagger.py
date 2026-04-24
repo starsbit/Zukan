@@ -54,8 +54,12 @@ class WDTagger:
             available_providers,
             providers,
         )
+        session_options = rt.SessionOptions()
+        session_options.intra_op_num_threads = max(1, settings.tagger_executor_workers)
+        session_options.inter_op_num_threads = 1
         self._session = rt.InferenceSession(
             model_path,
+            sess_options=session_options,
             providers=providers,
         )
         active_providers = (

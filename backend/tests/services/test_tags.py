@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -148,6 +149,29 @@ async def test_predict_with_retries_retries_then_succeeds(fake_db):
 
     assert isinstance(result, TaggingResult)
     assert tagger.predict.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_predict_with_retries_times_out_then_succeeds(fake_db, monkeypatch):
+    attempts = 0
+
+    async def predict(_image_path: str):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            await asyncio.Future()
+        return TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)
+
+    monkeypatch.setattr("backend.app.services.tags.settings.tagging_retry_attempts", 2)
+    monkeypatch.setattr("backend.app.services.tags.settings.tagging_retry_backoff_seconds", 0)
+    monkeypatch.setattr("backend.app.services.tags.settings.tagging_prediction_timeout_seconds", 0.001)
+
+    result = await TagService(fake_db, tagger=SimpleNamespace(predict=predict))._predict_with_retries(
+        "/tmp/a.webp"
+    )
+
+    assert isinstance(result, TaggingResult)
+    assert attempts == 2
 
 
 @pytest.mark.asyncio

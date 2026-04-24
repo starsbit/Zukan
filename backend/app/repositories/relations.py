@@ -1,7 +1,7 @@
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -446,31 +446,35 @@ class OwnedEntityRepository:
         if not entity_ids:
             return
 
-        counts = {
-            row.entity_id: int(row.media_count)
-            for row in (
-                await self.db.execute(
-                    select(
-                        MediaEntity.entity_id.label("entity_id"),
-                        func.count(MediaEntity.media_id.distinct()).label("media_count"),
-                    )
-                    .join(Media, Media.id == MediaEntity.media_id)
-                    .where(
-                        MediaEntity.entity_id.in_(entity_ids),
-                        Media.deleted_at.is_(None),
-                    )
-                    .group_by(MediaEntity.entity_id)
-                )
-            ).all()
-        }
+        active_counts = (
+            select(
+                MediaEntity.entity_id.label("entity_id"),
+                func.count(MediaEntity.media_id.distinct()).label("media_count"),
+            )
+            .join(Media, Media.id == MediaEntity.media_id)
+            .where(
+                MediaEntity.entity_id.in_(entity_ids),
+                Media.deleted_at.is_(None),
+            )
+            .group_by(MediaEntity.entity_id)
+            .subquery()
+        )
+        active_entity_ids = select(active_counts.c.entity_id)
 
-        entities = (
-            await self.db.execute(select(OwnedEntity).where(OwnedEntity.id.in_(entity_ids)))
-        ).scalars().all()
-        for entity in entities:
-            entity.media_count = counts.get(entity.id, 0)
-            if entity.media_count <= 0:
-                await self.db.delete(entity)
+        await self.db.execute(
+            delete(OwnedEntity)
+            .where(
+                OwnedEntity.id.in_(entity_ids),
+                OwnedEntity.id.not_in(active_entity_ids),
+            )
+            .execution_options(synchronize_session=False)
+        )
+        await self.db.execute(
+            update(OwnedEntity)
+            .where(OwnedEntity.id == active_counts.c.entity_id)
+            .values(media_count=active_counts.c.media_count)
+            .execution_options(synchronize_session=False)
+        )
 
 
 class MediaExternalRefRepository:

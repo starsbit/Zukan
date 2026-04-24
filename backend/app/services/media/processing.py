@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -64,6 +65,7 @@ class MediaProcessingService:
             return
         media.tagging_status = "failed"
         media.tagging_error = format_tagging_error(exc)
+        media.tagging_finished_at = datetime.now(timezone.utc)
         await self._db.commit()
 
     async def run_ocr_for_media(self, media_id: uuid.UUID, ocr_model: TesseractOCR | None) -> None:
