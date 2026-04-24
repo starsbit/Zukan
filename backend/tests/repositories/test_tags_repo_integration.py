@@ -94,6 +94,27 @@ async def test_list_accessible_supports_fuzzy_tag_queries(db_session, make_user,
 
 
 @pytest.mark.asyncio
+async def test_list_accessible_matches_tag_query_on_token_boundaries(db_session, make_user, make_media):
+    viewer = await make_user()
+    aru_media = await make_media(uploader_id=viewer.id)
+    koharu_media = await make_media(uploader_id=viewer.id)
+
+    repo = TagRepository(db_session)
+    await repo.set_media_tag_links(aru_media, [("Aru (Blue Archive)", 4, 0.9)])
+    await repo.set_media_tag_links(koharu_media, [("Koharu (Blue Archive)", 4, 0.9)])
+    await db_session.flush()
+
+    rows = await repo.list_accessible(
+        viewer,
+        category=None,
+        query="Aru (Blue Archive)",
+        scope="owner",
+    )
+
+    assert [row.name for row in rows] == ["Aru (Blue Archive)"]
+
+
+@pytest.mark.asyncio
 async def test_set_media_tag_links_create_same_name_rows_per_owner(db_session, make_user, make_media):
     owner_a = await make_user()
     owner_b = await make_user()

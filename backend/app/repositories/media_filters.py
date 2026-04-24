@@ -12,7 +12,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_character_name_search
+from backend.app.utils.search import normalize_character_name_search, normalized_token_sequence_like_patterns
 
 
 
@@ -190,17 +190,26 @@ def _apply_entity_name_filter(stmt, entity_type: MediaEntityType, names: list[st
         return stmt
 
     normalized_entity_name = _normalized_entity_name_expr()
+    def matches_query(query: str):
+        return or_(
+            normalized_entity_name == query,
+            *[
+                normalized_entity_name.like(pattern, escape="\\")
+                for pattern in normalized_token_sequence_like_patterns(query)
+            ],
+        )
+
     if mode == TagFilterMode.OR:
         subq = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == entity_type,
-            or_(*[normalized_entity_name.contains(query) for query in normalized_queries]),
+            or_(*[matches_query(query) for query in normalized_queries]),
         )
         return stmt.where(Media.id.in_(subq))
 
     for query in normalized_queries:
         subq = select(MediaEntity.media_id).where(
             MediaEntity.entity_type == entity_type,
-            normalized_entity_name.contains(query),
+            matches_query(query),
         )
         stmt = stmt.where(Media.id.in_(subq))
     return stmt

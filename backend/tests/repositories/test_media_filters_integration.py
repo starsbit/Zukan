@@ -269,6 +269,46 @@ async def test_media_filters_match_apostrophe_entity_names(db_session, make_user
 
 
 @pytest.mark.asyncio
+async def test_media_filters_match_character_name_on_token_boundaries(db_session, make_user, make_media):
+    user = await make_user()
+    aru = await make_media(uploader_id=user.id)
+    koharu = await make_media(uploader_id=user.id)
+
+    db_session.add_all(
+        [
+            MediaEntity(
+                media_id=aru.id,
+                entity_type=MediaEntityType.character,
+                name="Aru (Blue Archive)",
+                role="primary",
+                source="manual",
+                confidence=0.9,
+            ),
+            MediaEntity(
+                media_id=koharu.id,
+                entity_type=MediaEntityType.character,
+                name="Koharu (Blue Archive)",
+                role="primary",
+                source="manual",
+                confidence=0.9,
+            ),
+        ]
+    )
+    await db_session.flush()
+
+    rows = (
+        await db_session.execute(
+            media_filters.apply_character_name_filter(
+                select(type(aru)),
+                ["Aru (Blue Archive)"],
+            )
+        )
+    ).scalars().all()
+
+    assert {row.id for row in rows} == {aru.id}
+
+
+@pytest.mark.asyncio
 async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_session, make_user, make_media):
     user = await make_user()
     m1 = await make_media(uploader_id=user.id)

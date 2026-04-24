@@ -11,7 +11,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExte
 from backend.app.schemas import MetadataListScope
 from backend.app.utils.media_common import normalize_manual_entity_names
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_metadata_search
+from backend.app.utils.search import normalize_metadata_search, normalized_token_sequence_like_patterns
 
 
 @dataclass
@@ -516,7 +516,13 @@ def _normalized_media_entity_name_expr():
 
 def _metadata_name_query_conditions(name_expr, normalized_name_expr, query: str):
     normalized_query = normalize_metadata_search(query)
-    conditions = [name_expr.ilike(f"%{query}%")]
+    conditions = []
     if normalized_query:
-        conditions.append(normalized_name_expr.contains(normalized_query))
+        conditions.append(normalized_name_expr == normalized_query)
+        conditions.extend(
+            normalized_name_expr.like(pattern, escape="\\")
+            for pattern in normalized_token_sequence_like_patterns(normalized_query)
+        )
+    elif query:
+        conditions.append(name_expr.ilike(f"%{query}%"))
     return conditions

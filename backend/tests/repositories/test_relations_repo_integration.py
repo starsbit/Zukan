@@ -129,6 +129,42 @@ async def test_media_entity_queries_support_fuzzy_matching(db_session, make_user
 
 
 @pytest.mark.asyncio
+async def test_entity_suggestions_match_name_on_token_boundaries(db_session, make_user, make_media):
+    viewer = await make_user()
+    aru = await make_media(uploader_id=viewer.id)
+    koharu = await make_media(uploader_id=viewer.id)
+    repo = MediaEntityRepository(db_session)
+
+    await repo.add_media_entities(
+        aru,
+        entity_type=MediaEntityType.character,
+        names=["Aru (Blue Archive)"],
+        source="manual",
+    )
+    await repo.add_media_entities(
+        koharu,
+        entity_type=MediaEntityType.character,
+        names=["Koharu (Blue Archive)"],
+        source="manual",
+    )
+
+    suggestions = await repo.list_character_suggestions(
+        user=viewer,
+        query="Aru (Blue Archive)",
+        limit=10,
+    )
+    rows = await repo.list_entity_names(
+        user=viewer,
+        entity_type=MediaEntityType.character,
+        query="Aru (Blue Archive)",
+        scope=MetadataListScope.OWNER,
+    )
+
+    assert [item["name"] for item in suggestions] == ["Aru (Blue Archive)"]
+    assert [(row.name, row.media_count) for row in rows] == [("Aru (Blue Archive)", 1)]
+
+
+@pytest.mark.asyncio
 async def test_owned_entity_preserves_tagger_slug_apostrophe(db_session, make_user):
     viewer = await make_user()
     repo = OwnedEntityRepository(db_session)

@@ -11,7 +11,7 @@ from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.schemas import MetadataListScope
-from backend.app.utils.search import normalize_metadata_search
+from backend.app.utils.search import normalize_metadata_search, normalized_token_sequence_like_patterns
 
 
 @dataclass
@@ -68,9 +68,16 @@ class TagRepository:
             stmt = stmt.where(Tag.category == category)
         if query:
             normalized_query = normalize_metadata_search(query)
-            conditions = [Tag.name.ilike(f"%{query}%")]
+            conditions = []
             if normalized_query:
-                conditions.append(_normalized_tag_name_expr().contains(normalized_query))
+                normalized_tag_name = _normalized_tag_name_expr()
+                conditions.append(normalized_tag_name == normalized_query)
+                conditions.extend(
+                    normalized_tag_name.like(pattern, escape="\\")
+                    for pattern in normalized_token_sequence_like_patterns(normalized_query)
+                )
+            else:
+                conditions.append(Tag.name.ilike(f"%{query}%"))
             stmt = stmt.where(
                 or_(
                     *conditions,
