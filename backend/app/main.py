@@ -26,7 +26,7 @@ from backend.app.models.processing import BatchType, ImportBatch, ImportBatchIte
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.runtime import health_monitor
-from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
+from backend.app.routers import admin, albums, auth, batches, config, graphs, media, notifications, tags, users
 from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue
 from backend.app.services.embedding_backfill import set_embedding_backfill_queue
@@ -80,6 +80,7 @@ OPENAPI_TAGS = [
     {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
     {"name": "users", "description": "Current-user profile read/update operations."},
     {"name": "media", "description": "Media upload, filtering, metadata mutation, and download operations."},
+    {"name": "graphs", "description": "Personal-library graph exploration endpoints."},
     {"name": "albums", "description": "Album management, sharing, and album-scoped media operations."},
     {"name": "tags", "description": "Tag browsing, filtering utilities, and tag management actions."},
     {"name": "admin", "description": "Administrative controls, diagnostics, and global announcement publishing. Admin authentication required."},
@@ -584,6 +585,7 @@ v1_router.include_router(auth.router)
 v1_router.include_router(users.router)
 v1_router.include_router(config.router)
 v1_router.include_router(media.router)
+v1_router.include_router(graphs.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
 v1_router.include_router(admin.router)

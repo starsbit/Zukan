@@ -1,0 +1,189 @@
+<zukan-layout>
+  <section class="graph-shell">
+    <aside class="graph-controls" aria-label="Character graph controls">
+      <div class="panel-heading">
+        <span class="eyebrow">Character graph</span>
+        <h1>Similarity Map</h1>
+      </div>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Character search</mat-label>
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          matInput
+          type="text"
+          [formControl]="searchControl"
+          [matAutocomplete]="characterAutocomplete" />
+      </mat-form-field>
+      <mat-autocomplete #characterAutocomplete="matAutocomplete" (optionSelected)="onSuggestionSelected($event)">
+        @for (suggestion of suggestions(); track suggestion.id) {
+          <mat-option [value]="suggestion">
+            <span>{{ formatName(suggestion.name) }}</span>
+            <small>{{ suggestion.media_count }} media</small>
+          </mat-option>
+        }
+      </mat-autocomplete>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Min similarity</mat-label>
+        <input
+          matInput
+          type="number"
+          min="0"
+          max="1"
+          step="0.05"
+          [formControl]="minSimilarityControl" />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Series relation</mat-label>
+        <mat-select [formControl]="seriesModeControl">
+          <mat-option value="any">Any series</mat-option>
+          <mat-option value="same">Same series</mat-option>
+          <mat-option value="different">Different series</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <div class="graph-stats">
+        <div>
+          <span>Characters</span>
+          <strong>{{ graphData()?.nodes?.length ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>Relations</span>
+          <strong>{{ graphData()?.edges?.length ?? 0 }}</strong>
+        </div>
+        <div>
+          <span>Considered</span>
+          <strong>{{ graphData()?.total_characters_considered ?? 0 }}</strong>
+        </div>
+      </div>
+
+      <section class="graph-legend" aria-label="Graph color legend">
+        <h3>Legend</h3>
+        <ul>
+          <li>
+            <span class="legend-swatch legend-swatch--node" aria-hidden="true"></span>
+            <span>Character</span>
+          </li>
+          <li>
+            <span class="legend-swatch legend-swatch--series" aria-hidden="true"></span>
+            <span>Has series metadata</span>
+          </li>
+          <li>
+            <span class="legend-swatch legend-swatch--selected" aria-hidden="true"></span>
+            <span>Selected character</span>
+          </li>
+          <li>
+            <span class="legend-swatch legend-swatch--neighbor" aria-hidden="true"></span>
+            <span>Direct neighbor</span>
+          </li>
+          <li>
+            <span class="legend-swatch legend-swatch--dimmed" aria-hidden="true"></span>
+            <span>Outside selection</span>
+          </li>
+        </ul>
+      </section>
+    </aside>
+
+    <section class="graph-stage" aria-label="Character similarity graph">
+      <div #graphContainer class="graph-canvas"></div>
+
+      @if (loading()) {
+        <div class="graph-overlay">
+          <mat-spinner diameter="40"></mat-spinner>
+        </div>
+      } @else if (error()) {
+        <div class="graph-overlay graph-message">{{ error() }}</div>
+      } @else if ((graphData()?.nodes?.length ?? 0) === 0) {
+        <div class="graph-overlay graph-message">
+          No embedded character data is ready yet.
+        </div>
+      }
+    </section>
+
+    <aside class="details-panel" aria-label="Selected character details">
+      @if (selectedNode(); as node) {
+        <div class="details-header">
+          <button mat-icon-button type="button" aria-label="Clear selection" (click)="clearSelection()">
+            <mat-icon>close</mat-icon>
+          </button>
+          <div>
+            <span class="eyebrow">Selected</span>
+            <h2>{{ formatName(node.name) }}</h2>
+          </div>
+        </div>
+
+        <div class="details-metrics">
+          <article>
+            <span>Media</span>
+            <strong>{{ node.media_count }}</strong>
+          </article>
+          <article>
+            <span>Embeddings</span>
+            <strong>{{ node.embedding_support }}</strong>
+          </article>
+          <article>
+            <span>Neighbors</span>
+            <strong>{{ selectedNeighbors().length }}</strong>
+          </article>
+        </div>
+
+        @if (thumbnails().length > 0) {
+          <div class="thumbnail-grid">
+            @for (thumb of thumbnails(); track thumb.id) {
+              @if (thumb.url) {
+                <img [src]="thumb.url" alt="" />
+              } @else {
+                <div class="thumb-placeholder"><mat-icon>image_not_supported</mat-icon></div>
+              }
+            }
+          </div>
+        }
+
+        @if (node.series_names.length > 0) {
+          <div class="chip-list" aria-label="Series">
+            @for (series of node.series_names; track series) {
+              <span>{{ formatName(series) }}</span>
+            }
+          </div>
+        }
+
+        <div class="action-stack">
+          <button mat-flat-button type="button" (click)="centerOnSelected()">
+            <mat-icon>filter_center_focus</mat-icon>
+            Center graph here
+          </button>
+          @if (centeredGraphNodeId()) {
+            <button mat-stroked-button type="button" (click)="showFullGraph()">
+              <mat-icon>fullscreen</mat-icon>
+              Show full graph
+            </button>
+          }
+          <button mat-stroked-button type="button" (click)="openMediaSearch()">
+            <mat-icon>photo_library</mat-icon>
+            Open media search
+          </button>
+        </div>
+
+        @if (selectedNeighbors().length > 0) {
+          <div class="neighbor-list">
+            <h3>Neighbors</h3>
+            @for (neighbor of selectedNeighbors().slice(0, 8); track neighbor.id) {
+              <button type="button" (click)="selectedNodeId.set(neighbor.id)">
+                <span>{{ formatName(neighbor.name) }}</span>
+                <small>{{ neighbor.embedding_support }} embeddings</small>
+              </button>
+            }
+          </div>
+        }
+      } @else {
+        <div class="empty-details">
+          <mat-icon>hub</mat-icon>
+          <h2>Select a character</h2>
+          <p>Click a node or use search to inspect its closest neighbors.</p>
+        </div>
+      }
+    </aside>
+  </section>
+</zukan-layout>

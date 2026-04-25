@@ -54,6 +54,7 @@ export class SidebarComponent {
       items: [
         { icon: 'photo_library', label: 'Gallery', path: '/gallery' },
         { icon: 'travel_explore', label: 'Browse', path: '/browse' },
+        { icon: 'hub', label: 'Graph', path: '/graph/characters' },
         { icon: 'favorite', label: 'Favorites', path: '/favorites' },
       ],
     },

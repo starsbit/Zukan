@@ -52,6 +52,13 @@ from .auth import (
 )
 from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
 from .bulk import BulkResult, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
+from .graphs import (
+    CharacterGraphEdge,
+    CharacterGraphNode,
+    CharacterGraphResponse,
+    CharacterGraphSearchResult,
+    GraphSeriesMode,
+)
 from .media import (
     MediaCursorPage,
     MediaDetail,
@@ -175,6 +182,10 @@ __all__ = [
     "ADMIN_ERROR_RESPONSES",
     "AUTHENTICATED_ERROR_RESPONSES",
     "CharacterSuggestion",
+    "CharacterGraphEdge",
+    "CharacterGraphNode",
+    "CharacterGraphResponse",
+    "CharacterGraphSearchResult",
     "ERROR_RESPONSES",
     "MetadataListScope",
     "MetadataNameListResponse",
@@ -185,6 +196,7 @@ __all__ = [
     "error_responses",
     "ExternalRefCreate",
     "ExternalRefRead",
+    "GraphSeriesMode",
     "LibraryClassificationFeedbackCreate",
     "LibraryClassificationFeedbackRead",
     "ImportBatchItemRead",
