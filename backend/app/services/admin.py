@@ -20,6 +20,7 @@ from backend.app.models.library_classification import LibraryClassificationFeedb
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.models.relations import MediaEntity, MediaEntityType
+from backend.app.models.tags import MediaTag
 from backend.app.repositories.auth import UserRepository
 from backend.app.repositories.media import MediaRepository
 from backend.app.runtime import health_monitor
@@ -29,6 +30,7 @@ from backend.app.schemas import (
     AdminEmbeddingClusterListResponse,
     AdminEmbeddingClusterRead,
     AdminEmbeddingClusterSampleRead,
+    AdminEmbeddingScoreBreakdownRead,
     AdminHealthResponse,
     AdminHealthSample,
     AdminLibraryClassificationMetricsResponse,
@@ -42,6 +44,14 @@ from backend.app.schemas import (
 )
 from backend.app.services.embedding_backfill import get_embedding_backfill_queue
 from backend.app.services.embeddings import MediaEmbeddingService
+from backend.app.services.hybrid_similarity import (
+    HybridScore,
+    HybridScoreBreakdown,
+    HybridSimilarityScorer,
+    MediaSimilarityProfile,
+    centroid,
+    cosine_similarity,
+)
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.query import MediaQueryService
@@ -329,18 +339,33 @@ class AdminService:
         limit: int | None,
         sample_size: int,
         min_cluster_size: int,
+        discovery_mode: bool = False,
     ) -> AdminEmbeddingClusterListResponse:
         target = await UserRepository(self._db).get_by_id(user_id)
         if target is None:
             raise AppError(status_code=404, code=user_not_found, detail="User not found")
         rows = await self._load_embedding_cluster_rows(user_id, limit=limit)
+        scorer = HybridSimilarityScorer()
         clusters = (
-            self._build_label_clusters(rows, sample_size=sample_size, min_cluster_size=min_cluster_size)
+            self._build_label_clusters(
+                rows,
+                sample_size=sample_size,
+                min_cluster_size=min_cluster_size,
+                scorer=scorer,
+                discovery_mode=discovery_mode,
+            )
             if mode == "label"
-            else self._build_unsupervised_clusters(rows, sample_size=sample_size, min_cluster_size=min_cluster_size)
+            else self._build_unsupervised_clusters(
+                rows,
+                sample_size=sample_size,
+                min_cluster_size=min_cluster_size,
+                scorer=scorer,
+                discovery_mode=discovery_mode,
+            )
         )
         return AdminEmbeddingClusterListResponse(
             mode=mode,
+            discovery_mode=discovery_mode,
             model_version=EMBEDDING_MODEL_VERSION,
             total_embeddings=len(rows),
             clusters=clusters,
@@ -352,6 +377,7 @@ class AdminService:
         *,
         mode: str,
         min_cluster_size: int,
+        discovery_mode: bool = False,
     ) -> bytes:
         target = await UserRepository(self._db).get_by_id(user_id)
         if target is None:
@@ -361,6 +387,7 @@ class AdminService:
             rows,
             mode=mode,
             min_cluster_size=min_cluster_size,
+            discovery_mode=discovery_mode,
         )
 
     async def get_library_classification_metrics(
@@ -501,6 +528,10 @@ class AdminService:
     async def _load_embedding_cluster_rows(self, user_id: uuid.UUID, *, limit: int | None) -> list[dict]:
         stmt = (
             select(Media, MediaEmbedding.embedding)
+            .options(
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(Media.entities),
+            )
             .join(MediaEmbedding, MediaEmbedding.media_id == Media.id)
             .where(
                 Media.uploader_id == user_id,
@@ -520,7 +551,7 @@ class AdminService:
                     select(MediaEntity).where(
                         MediaEntity.media_id.in_(media_ids),
                         MediaEntity.entity_type == MediaEntityType.character,
-                        _trusted_entity_sql_filter(MediaEntity),
+                        MediaEntity.source == "manual",
                         MediaEntity.name != "",
                     )
                 )
@@ -538,7 +569,15 @@ class AdminService:
             if normalized
         ]
 
-    def _build_label_clusters(self, rows: list[dict], *, sample_size: int, min_cluster_size: int) -> list[AdminEmbeddingClusterRead]:
+    def _build_label_clusters(
+        self,
+        rows: list[dict],
+        *,
+        sample_size: int,
+        min_cluster_size: int,
+        scorer: HybridSimilarityScorer,
+        discovery_mode: bool,
+    ) -> list[AdminEmbeddingClusterRead]:
         grouped: dict[tuple[uuid.UUID | None, str], list[dict]] = defaultdict(list)
         for row in rows:
             for label in row["labels"]:
@@ -548,16 +587,28 @@ class AdminService:
             distinct_ids = {item["media"].id for item in items}
             if len(distinct_ids) < min_cluster_size:
                 continue
-            centroid = _centroid([item["embedding"] for item in items])
+            profiles = [
+                _media_profile_for_cluster_item(scorer, item, support_count=1)
+                for item in items
+            ]
+            prototype_profile = scorer.prototype_profile(profiles)
+            prototype_profile.support_count = len(distinct_ids)
             scored = sorted(
                 [
-                    (item, _cosine_similarity(item["embedding"], centroid))
+                    (
+                        item,
+                        scorer.score(
+                            _media_profile_for_cluster_item(scorer, item, support_count=10),
+                            prototype_profile,
+                            discovery_mode=discovery_mode,
+                        ),
+                    )
                     for item in items
                 ],
-                key=lambda pair: pair[1],
+                key=lambda pair: pair[1].score,
                 reverse=True,
             )
-            similarities = [score for _, score in scored]
+            similarities = [score.score for _, score in scored]
             outliers = list(reversed(scored))[: min(sample_size, max(0, len(scored) // 5 or 1))]
             clusters.append(AdminEmbeddingClusterRead(
                 id=str(entity_id or name),
@@ -569,6 +620,7 @@ class AdminService:
                 cohesion=round(sum(similarities) / len(similarities), 3) if similarities else None,
                 min_similarity=round(min(similarities), 3) if similarities else None,
                 max_similarity=round(max(similarities), 3) if similarities else None,
+                score_breakdown=_average_breakdown([score.breakdown for _, score in scored]),
                 nearest_labels=[name],
                 samples=[
                     _cluster_sample(item, similarity=score, label=name)
@@ -581,7 +633,15 @@ class AdminService:
             ))
         return sorted(clusters, key=lambda cluster: (-cluster.distinct_media_support, cluster.label or ""))[:100]
 
-    def _build_unsupervised_clusters(self, rows: list[dict], *, sample_size: int, min_cluster_size: int) -> list[AdminEmbeddingClusterRead]:
+    def _build_unsupervised_clusters(
+        self,
+        rows: list[dict],
+        *,
+        sample_size: int,
+        min_cluster_size: int,
+        scorer: HybridSimilarityScorer,
+        discovery_mode: bool,
+    ) -> list[AdminEmbeddingClusterRead]:
         clusters: list[dict] = []
         threshold = 0.78
         for row in rows:
@@ -590,9 +650,9 @@ class AdminService:
                 key=lambda cluster: _cosine_similarity(row["embedding"], cluster["centroid"]),
                 default=None,
             )
-            if best is not None and _cosine_similarity(row["embedding"], best["centroid"]) >= threshold:
+            if best is not None and cosine_similarity(row["embedding"], best["centroid"]) >= threshold:
                 best["items"].append(row)
-                best["centroid"] = _centroid([item["embedding"] for item in best["items"]])
+                best["centroid"] = centroid([item["embedding"] for item in best["items"]])
             else:
                 clusters.append({"items": [row], "centroid": row["embedding"]})
 
@@ -601,18 +661,33 @@ class AdminService:
             items = cluster["items"]
             if len(items) < min_cluster_size:
                 continue
-            centroid = cluster["centroid"]
+            profiles = [
+                _media_profile_for_cluster_item(scorer, item, support_count=1)
+                for item in items
+            ]
+            prototype_profile = scorer.prototype_profile(profiles)
+            prototype_profile.support_count = len({item["media"].id for item in items})
             label_counts = Counter(
                 label.name
                 for item in items
                 for label in item["labels"]
             )
             scored = sorted(
-                [(item, _cosine_similarity(item["embedding"], centroid)) for item in items],
-                key=lambda pair: pair[1],
+                [
+                    (
+                        item,
+                        scorer.score(
+                            _media_profile_for_cluster_item(scorer, item, support_count=10),
+                            prototype_profile,
+                            discovery_mode=discovery_mode,
+                        ),
+                    )
+                    for item in items
+                ],
+                key=lambda pair: pair[1].score,
                 reverse=True,
             )
-            similarities = [score for _, score in scored]
+            similarities = [score.score for _, score in scored]
             result.append(AdminEmbeddingClusterRead(
                 id=f"cluster-{index}",
                 label=label_counts.most_common(1)[0][0] if label_counts else None,
@@ -622,6 +697,7 @@ class AdminService:
                 cohesion=round(sum(similarities) / len(similarities), 3) if similarities else None,
                 min_similarity=round(min(similarities), 3) if similarities else None,
                 max_similarity=round(max(similarities), 3) if similarities else None,
+                score_breakdown=_average_breakdown([score.breakdown for _, score in scored]),
                 nearest_labels=[name for name, _ in label_counts.most_common(3)],
                 samples=[
                     _cluster_sample(item, similarity=score, label=None)
@@ -672,14 +748,68 @@ def _prototype_count(vectors: list[list[float]]) -> int:
     return max(1, len(prototypes))
 
 
-def _cluster_sample(item: dict, *, similarity: float | None, label: str | None) -> AdminEmbeddingClusterSampleRead:
+def _cluster_sample(item: dict, *, similarity: HybridScore | float | None, label: str | None) -> AdminEmbeddingClusterSampleRead:
     media = item["media"]
+    score_value: float | None
+    breakdown: AdminEmbeddingScoreBreakdownRead | None = None
+    if isinstance(similarity, HybridScore):
+        score_value = similarity.score
+        breakdown = _score_breakdown_read(similarity.breakdown)
+    else:
+        score_value = similarity
     return AdminEmbeddingClusterSampleRead(
         media_id=media.id,
         filename=media.original_filename or media.filename,
-        similarity=round(similarity, 3) if similarity is not None else None,
+        similarity=round(score_value, 3) if score_value is not None else None,
         label=label,
+        score_breakdown=breakdown,
     )
+
+
+def _media_profile_for_cluster_item(
+    scorer: HybridSimilarityScorer,
+    item: dict,
+    *,
+    support_count: int,
+) -> MediaSimilarityProfile:
+    profile = scorer.media_profile(item["media"], item["embedding"])
+    profile.support_count = support_count
+    return profile
+
+
+def _score_breakdown_read(breakdown: HybridScoreBreakdown | None) -> AdminEmbeddingScoreBreakdownRead | None:
+    if breakdown is None:
+        return None
+    return AdminEmbeddingScoreBreakdownRead(
+        visual=_round_optional(breakdown.visual),
+        tags=_round_optional(breakdown.tags),
+        color=_round_optional(breakdown.color),
+        confidence=_round_optional(breakdown.confidence),
+        series_penalty=_round_optional(breakdown.series_penalty),
+    )
+
+
+def _average_breakdown(breakdowns: list[HybridScoreBreakdown]) -> AdminEmbeddingScoreBreakdownRead | None:
+    if not breakdowns:
+        return None
+
+    def average(values: list[float | None]) -> float | None:
+        numeric = [value for value in values if value is not None]
+        if not numeric:
+            return None
+        return round(sum(numeric) / len(numeric), 3)
+
+    return AdminEmbeddingScoreBreakdownRead(
+        visual=average([breakdown.visual for breakdown in breakdowns]),
+        tags=average([breakdown.tags for breakdown in breakdowns]),
+        color=average([breakdown.color for breakdown in breakdowns]),
+        confidence=average([breakdown.confidence for breakdown in breakdowns]),
+        series_penalty=average([breakdown.series_penalty for breakdown in breakdowns]),
+    )
+
+
+def _round_optional(value: float | None) -> float | None:
+    return round(value, 3) if value is not None else None
 
 
 def _empty_feedback_counts() -> dict[str, int]:
@@ -700,7 +830,7 @@ def _ratio(numerator: int, denominator: int) -> float | None:
     return round(numerator / denominator, 4)
 
 
-def _render_embedding_cluster_plot(rows: list[dict], *, mode: str, min_cluster_size: int) -> bytes:
+def _render_embedding_cluster_plot(rows: list[dict], *, mode: str, min_cluster_size: int, discovery_mode: bool) -> bytes:
     import io
 
     try:
@@ -750,7 +880,8 @@ def _render_embedding_cluster_plot(rows: list[dict], *, mode: str, min_cluster_s
             )
         ax.set_xlabel("PCA 1")
         ax.set_ylabel("PCA 2")
-        ax.set_title(f"Embedding map ({mode}, all current embeddings: {len(projected)})")
+        title_suffix = ", discovery" if discovery_mode else ""
+        ax.set_title(f"Embedding map ({mode}{title_suffix}, all current embeddings: {len(projected)})")
         handles, legend_labels = ax.get_legend_handles_labels()
         if handles:
             ax.legend(

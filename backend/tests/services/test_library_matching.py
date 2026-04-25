@@ -114,17 +114,17 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
 
 
 @pytest.mark.asyncio
-async def test_character_prototype_auto_applies_only_with_distinct_manual_support(fake_db, user):
+async def test_character_prototype_auto_applies_with_high_confidence_support(fake_db, user):
     target = make_media(user.id, "target.webp")
     service = MediaLibraryEnrichmentService(fake_db)
     service._rejected_suggestion_keys = AsyncMock(return_value=set())
     service._build_character_prototypes = AsyncMock(return_value=[
-        CharacterPrototype(
-            names=["Saber"],
-            normalized_signature=("saber",),
-            centroid=[1.0, 0.0],
-            support_keys={"media-a", "media-b"},
-        )
+            CharacterPrototype(
+                names=["Saber"],
+                normalized_signature=("saber",),
+                centroid=[1.0, 0.0],
+                support_keys={f"media-{index}" for index in range(10)},
+            )
     ])
 
     decision = await service._score_character_prototypes(
@@ -138,7 +138,7 @@ async def test_character_prototype_auto_applies_only_with_distinct_manual_suppor
 
 
 @pytest.mark.asyncio
-async def test_character_prototype_single_high_match_stays_suggestion(fake_db, user):
+async def test_character_prototype_single_high_match_is_suppressed_by_confidence(fake_db, user):
     target = make_media(user.id, "target.webp")
     service = MediaLibraryEnrichmentService(fake_db)
     service._rejected_suggestion_keys = AsyncMock(return_value=set())
@@ -158,8 +158,28 @@ async def test_character_prototype_single_high_match_stays_suggestion(fake_db, u
     )
 
     assert decision["auto_names"] == []
-    assert [suggestion.name for suggestion in decision["suggestions"]] == ["Saber"]
-    assert decision["metadata"]["reason"] == "prototype_suggest_only"
+    assert decision["suggestions"] == []
+    assert decision["metadata"]["reason"] == "no_ranked_prototypes"
+
+
+@pytest.mark.asyncio
+async def test_character_prototypes_use_manual_labels_only(fake_db, user):
+    service = MediaLibraryEnrichmentService(fake_db)
+    fake_db.execute = AsyncMock(return_value=RowResult([]))
+
+    await service._build_character_prototypes(
+        user_id=user.id,
+        target_media_id=uuid.uuid4(),
+    )
+
+    stmt = fake_db.execute.await_args.args[0]
+    compiled = stmt.compile()
+    source_values = [
+        value
+        for key, value in compiled.params.items()
+        if key.startswith("source_")
+    ]
+    assert source_values == ["manual"]
 
 
 def test_trusted_entity_names_include_only_high_confidence_tagger_labels(fake_db, user):

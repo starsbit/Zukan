@@ -3,6 +3,9 @@
 <mat-dialog-content class="cluster-dialog">
   <div class="cluster-dialog__meta">
     <span>Model {{ modelVersion() }}</span>
+    <mat-checkbox [checked]="discoveryMode()" (change)="setDiscoveryMode($event.checked)">
+      Discovery mode
+    </mat-checkbox>
   </div>
 
   <mat-tab-group>
@@ -108,18 +111,18 @@
                     <strong>{{ displayLabel(cluster) }}</strong>
                     <span>{{ cluster.size }} items · {{ cluster.distinct_media_support }} media · {{ cluster.prototype_count }} prototypes</span>
                   </div>
-                  <span class="score">cohesion {{ similarity(cluster.cohesion) }}</span>
+                  <span class="score" [title]="scoreDetails(cluster.score_breakdown)">cohesion {{ similarity(cluster.cohesion) }}</span>
                 </header>
                 <div class="cluster-row__samples">
                   @for (sample of cluster.samples; track sample.media_id) {
-                    <span title="{{ sample.media_id }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
+                    <span title="{{ sample.media_id }} {{ scoreDetails(sample.score_breakdown) }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
                   }
                 </div>
                 @if (cluster.outliers.length) {
                   <div class="cluster-row__outliers">
                     <mat-icon aria-hidden="true">report</mat-icon>
                     @for (outlier of cluster.outliers; track outlier.media_id) {
-                      <span title="{{ outlier.media_id }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
+                      <span title="{{ outlier.media_id }} {{ scoreDetails(outlier.score_breakdown) }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
                     }
                   </div>
                 }
@@ -152,18 +155,18 @@
                     <strong>{{ displayLabel(cluster) }}</strong>
                     <span>{{ cluster.size }} items · nearest {{ cluster.nearest_labels.join(', ') || 'none' }}</span>
                   </div>
-                  <span class="score">cohesion {{ similarity(cluster.cohesion) }}</span>
+                  <span class="score" [title]="scoreDetails(cluster.score_breakdown)">cohesion {{ similarity(cluster.cohesion) }}</span>
                 </header>
                 <div class="cluster-row__samples">
                   @for (sample of cluster.samples; track sample.media_id) {
-                    <span title="{{ sample.media_id }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
+                    <span title="{{ sample.media_id }} {{ scoreDetails(sample.score_breakdown) }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
                   }
                 </div>
                 @if (cluster.outliers.length) {
                   <div class="cluster-row__outliers">
                     <mat-icon aria-hidden="true">report</mat-icon>
                     @for (outlier of cluster.outliers; track outlier.media_id) {
-                      <span title="{{ outlier.media_id }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
+                      <span title="{{ outlier.media_id }} {{ scoreDetails(outlier.score_breakdown) }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
                     }
                   </div>
                 }

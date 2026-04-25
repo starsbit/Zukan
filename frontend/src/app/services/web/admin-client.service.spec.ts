@@ -159,12 +159,13 @@ describe('AdminClientService', () => {
   it('getEmbeddingClusters sends mode and limits', () => {
     const mock = {
       mode: 'label' as const,
+      discovery_mode: true,
       model_version: 'clip_onnx_v1',
       total_embeddings: 2,
       clusters: [],
     };
 
-    service.getEmbeddingClusters('u1', 'label', { limit: 50, sample_size: 4, min_cluster_size: 2 })
+    service.getEmbeddingClusters('u1', 'label', { limit: 50, sample_size: 4, min_cluster_size: 2, discovery_mode: true })
       .subscribe(res => expect(res).toEqual(mock));
 
     const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1/embedding-clusters');
@@ -173,13 +174,14 @@ describe('AdminClientService', () => {
     expect(req.request.params.get('limit')).toBe('50');
     expect(req.request.params.get('sample_size')).toBe('4');
     expect(req.request.params.get('min_cluster_size')).toBe('2');
+    expect(req.request.params.get('discovery_mode')).toBe('true');
     req.flush(mock);
   });
 
   it('getEmbeddingClusterPlot sends GET /api/v1/admin/users/{id}/embedding-clusters/plot', () => {
     const mock = new Blob(['png'], { type: 'image/png' });
 
-    service.getEmbeddingClusterPlot('u1', 'unsupervised', { min_cluster_size: 2 })
+    service.getEmbeddingClusterPlot('u1', 'unsupervised', { min_cluster_size: 2, discovery_mode: true })
       .subscribe(res => expect(res).toBe(mock));
 
     const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1/embedding-clusters/plot');
@@ -188,6 +190,7 @@ describe('AdminClientService', () => {
     expect(req.request.params.get('mode')).toBe('unsupervised');
     expect(req.request.params.has('limit')).toBe(false);
     expect(req.request.params.get('min_cluster_size')).toBe('2');
+    expect(req.request.params.get('discovery_mode')).toBe('true');
     req.flush(mock);
   });
 

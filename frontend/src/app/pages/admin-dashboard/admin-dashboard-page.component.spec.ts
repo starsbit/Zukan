@@ -114,7 +114,7 @@ describe('AdminDashboardPageComponent', () => {
               error_summary: null,
               recent_failed_items: [],
             }),
-            getEmbeddingClusters: () => of({ mode: 'label', model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] }),
+            getEmbeddingClusters: () => of({ mode: 'label', discovery_mode: false, model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] }),
             getEmbeddingClusterPlot: () => of(new Blob(['png'], { type: 'image/png' })),
             getLibraryClassificationMetrics: () => of({
               user_id: 'u2',

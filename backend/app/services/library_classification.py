@@ -22,6 +22,7 @@ from backend.app.models.media import Media, MediaTag, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.embeddings import MediaEmbeddingRepository
 from backend.app.repositories.relations import MediaEntityRepository
+from backend.app.services.hybrid_similarity import HybridSimilarityScorer, MediaSimilarityProfile
 from backend.app.schemas import ImportBatchRecommendationSuggestionRead, LibraryClassificationFeedbackCreate
 from backend.app.services.embeddings import MediaEmbeddingService
 
@@ -52,6 +53,9 @@ class CharacterPrototype:
     centroid: list[float]
     support_keys: set[str] = field(default_factory=set)
     entity_id: uuid.UUID | None = None
+    tags: set[str] = field(default_factory=set)
+    color_histogram: list[float] = field(default_factory=list)
+    series_names: set[str] = field(default_factory=set)
 
 
 @dataclass
@@ -71,6 +75,7 @@ class MediaLibraryEnrichmentService:
         self._db = db
         self._embeddings = embedding_service or MediaEmbeddingService(db)
         self._embedding_repo = MediaEmbeddingRepository(db)
+        self._hybrid_similarity = HybridSimilarityScorer()
 
     async def enrich_media(
         self,
@@ -287,6 +292,7 @@ class MediaLibraryEnrichmentService:
             select(Media)
             .options(
                 selectinload(Media.entities),
+                selectinload(Media.embedding),
                 selectinload(Media.media_tags).selectinload(MediaTag.tag),
             )
             .where(
@@ -375,7 +381,7 @@ class MediaLibraryEnrichmentService:
         auto_apply: bool,
     ) -> dict[str, Any]:
         votes: dict[tuple[str, ...], SignatureVote] = {}
-        target_tags = self._general_tag_names(target)
+        target_profile: MediaSimilarityProfile | None = None
         for neighbor in neighbors:
             if neighbor.similarity < settings.library_classification_min_visual_similarity:
                 continue
@@ -391,19 +397,34 @@ class MediaLibraryEnrichmentService:
 
             trust = self._source_weight(media, entity_type)
             vote = votes.setdefault(signature, SignatureVote(names=names, normalized_signature=signature))
-            tag_boost = self._tag_overlap_score(target_tags, self._general_tag_names(media))
-            adjusted_similarity = min(
-                0.999,
-                neighbor.similarity * (1.0 - settings.library_classification_tag_overlap_weight)
-                + tag_boost * settings.library_classification_tag_overlap_weight,
-            )
+            if entity_type == MediaEntityType.character:
+                if target_profile is None:
+                    target_profile = self._hybrid_similarity.media_profile(target, [1.0, 0.0])
+                    target_profile.support_count = 10
+                candidate_profile = self._hybrid_similarity.media_profile(media, _synthetic_cosine_vector(neighbor.similarity))
+                candidate_profile.support_count = 10
+                hybrid = self._hybrid_similarity.score(target_profile, candidate_profile, apply_confidence=False)
+                adjusted_similarity = hybrid.score
+                explanation = (
+                    f"Matched nearby library item for {', '.join(names)}, "
+                    f"hybrid similarity {adjusted_similarity:.2f} "
+                    f"(visual {hybrid.breakdown.visual or 0.0:.2f}, tags {hybrid.breakdown.tags or 0.0:.2f}, color {hybrid.breakdown.color or 0.0:.2f})."
+                )
+            else:
+                tag_boost = self._tag_overlap_score(self._general_tag_names(target), self._general_tag_names(media))
+                adjusted_similarity = min(
+                    0.999,
+                    neighbor.similarity * (1.0 - settings.library_classification_tag_overlap_weight)
+                    + tag_boost * settings.library_classification_tag_overlap_weight,
+                )
+                explanation = (
+                    f"Matched nearby library item for {', '.join(names)}, "
+                    f"visual similarity {neighbor.similarity:.2f}."
+                )
             vote.score += adjusted_similarity * trust
             vote.support += 1
-            vote.max_similarity = max(vote.max_similarity, neighbor.similarity)
-            vote.explanation = (
-                f"Matched nearby library item for {', '.join(names)}, "
-                f"visual similarity {neighbor.similarity:.2f}."
-            )
+            vote.max_similarity = max(vote.max_similarity, adjusted_similarity)
+            vote.explanation = explanation
 
         ranked = sorted(
             votes.values(),
@@ -467,20 +488,25 @@ class MediaLibraryEnrichmentService:
         for prototype in prototypes:
             if prototype.normalized_signature in rejected:
                 continue
-            similarity = _cosine_similarity(target_embedding, prototype.centroid)
-            if similarity < settings.library_classification_suggestion_min_similarity:
+            target_profile = self._hybrid_similarity.media_profile(target, _normalized(target_embedding))
+            target_profile.support_count = 10
+            prototype_profile = _profile_from_character_prototype(prototype)
+            hybrid = self._hybrid_similarity.score(target_profile, prototype_profile)
+            if hybrid.score < settings.library_classification_suggestion_min_similarity:
                 continue
             support = len(prototype.support_keys)
             explanation = (
                 f"Matched {support} trusted example{'s' if support != 1 else ''} of "
-                f"{', '.join(prototype.names)}, best prototype similarity {similarity:.2f}."
+                f"{', '.join(prototype.names)}, hybrid similarity {hybrid.score:.2f} "
+                f"(visual {hybrid.breakdown.visual or 0.0:.2f}, tags {hybrid.breakdown.tags or 0.0:.2f}, "
+                f"color {hybrid.breakdown.color or 0.0:.2f}, confidence {hybrid.breakdown.confidence or 0.0:.2f})."
             )
             ranked.append(SignatureVote(
                 names=prototype.names,
                 normalized_signature=prototype.normalized_signature,
-                score=similarity,
+                score=hybrid.score,
                 support=support,
-                max_similarity=similarity,
+                max_similarity=hybrid.score,
                 source="prototype",
                 explanation=explanation,
                 entity_id=prototype.entity_id,
@@ -527,12 +553,15 @@ class MediaLibraryEnrichmentService:
             select(
                 MediaEntity.name,
                 MediaEntity.entity_id,
-                MediaEntity.media_id,
-                Media.phash,
+                Media,
                 MediaEmbedding.embedding,
             )
             .join(Media, Media.id == MediaEntity.media_id)
             .join(MediaEmbedding, MediaEmbedding.media_id == Media.id)
+            .options(
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(Media.entities),
+            )
             .where(
                 Media.uploader_id == user_id,
                 Media.deleted_at.is_(None),
@@ -540,7 +569,7 @@ class MediaLibraryEnrichmentService:
                 Media.id != target_media_id,
                 MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
                 MediaEntity.entity_type == MediaEntityType.character,
-                _trusted_entity_sql_filter(MediaEntity),
+                MediaEntity.source == "manual",
                 MediaEntity.name != "",
             )
             .order_by(Media.uploaded_at.desc(), Media.id.desc())
@@ -554,7 +583,8 @@ class MediaLibraryEnrichmentService:
             embedding = getattr(row, "embedding", None)
             if not signature[0] or not embedding:
                 continue
-            support_key = str(row.phash or row.media_id)
+            media = row.Media if hasattr(row, "Media") else row[2]
+            support_key = str(media.phash or media.id)
             seen_keys = used_support_keys.setdefault(signature, set())
             if support_key in seen_keys:
                 continue
@@ -563,6 +593,7 @@ class MediaLibraryEnrichmentService:
             vector = _normalized(embedding)
             if not vector:
                 continue
+            media_profile = self._hybrid_similarity.media_profile(media, vector)
             prototypes = prototypes_by_signature.setdefault(signature, [])
             best = max(
                 prototypes,
@@ -578,6 +609,11 @@ class MediaLibraryEnrichmentService:
                     for index in range(min(len(best.centroid), len(vector)))
                 ])
                 best.support_keys.add(support_key)
+                best_profile = _profile_from_character_prototype(best)
+                merged_profile = self._hybrid_similarity.prototype_profile([best_profile, media_profile])
+                best.tags = merged_profile.tags
+                best.color_histogram = merged_profile.color_histogram
+                best.series_names = merged_profile.series_names
                 continue
 
             if len(prototypes) >= settings.library_classification_prototype_max_per_entity:
@@ -588,6 +624,9 @@ class MediaLibraryEnrichmentService:
                 centroid=vector,
                 support_keys={support_key},
                 entity_id=row.entity_id,
+                tags=set(media_profile.tags),
+                color_histogram=list(media_profile.color_histogram),
+                series_names=set(media_profile.series_names),
             ))
 
         return [
@@ -928,6 +967,21 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
         return 0.0
     limit = min(len(left), len(right))
     return sum(float(left[index]) * float(right[index]) for index in range(limit))
+
+
+def _synthetic_cosine_vector(similarity: float) -> list[float]:
+    clamped = max(0.0, min(1.0, float(similarity)))
+    return [clamped, math.sqrt(max(0.0, 1.0 - clamped * clamped))]
+
+
+def _profile_from_character_prototype(prototype: CharacterPrototype) -> MediaSimilarityProfile:
+    return MediaSimilarityProfile(
+        embedding=prototype.centroid,
+        tags=set(prototype.tags),
+        color_histogram=list(prototype.color_histogram),
+        series_names=set(prototype.series_names),
+        support_count=max(1, len(prototype.support_keys)),
+    )
 
 
 def _is_trusted_entity(entity: MediaEntity) -> bool:

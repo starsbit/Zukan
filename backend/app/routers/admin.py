@@ -166,6 +166,7 @@ async def get_embedding_clusters(
     limit: int | None = Query(default=None, ge=1, le=50000),
     sample_size: int = Query(default=6, ge=1, le=24),
     min_cluster_size: int = Query(default=2, ge=1, le=100),
+    discovery_mode: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
     return await AdminService(db).get_embedding_clusters(
@@ -174,6 +175,7 @@ async def get_embedding_clusters(
         limit=limit,
         sample_size=sample_size,
         min_cluster_size=min_cluster_size,
+        discovery_mode=discovery_mode,
     )
 
 
@@ -185,12 +187,14 @@ async def get_embedding_cluster_plot(
     user_id: uuid.UUID,
     mode: Literal["label", "unsupervised"] = Query(default="label"),
     min_cluster_size: int = Query(default=2, ge=1, le=100),
+    discovery_mode: bool = Query(default=False),
     db: AsyncSession = Depends(get_db),
 ):
     image = await AdminService(db).get_embedding_cluster_plot(
         user_id,
         mode=mode,
         min_cluster_size=min_cluster_size,
+        discovery_mode=discovery_mode,
     )
     return Response(
         content=image,

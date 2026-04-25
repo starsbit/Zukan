@@ -256,7 +256,7 @@ describe('AdminService', () => {
     });
 
     it('getEmbeddingClusters sends GET /api/v1/admin/users/{id}/embedding-clusters', () => {
-      const mock = { mode: 'unsupervised', model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] };
+      const mock = { mode: 'unsupervised', discovery_mode: false, model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] };
       service.getEmbeddingClusters('u2', 'unsupervised').subscribe(res => expect(res).toEqual(mock));
       const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2/embedding-clusters');
       expect(req.request.method).toBe('GET');

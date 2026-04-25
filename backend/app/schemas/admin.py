@@ -86,11 +86,20 @@ class AdminEmbeddingBackfillStatus(BaseModel):
     recent_failed_items: list[str] = Field(default_factory=list)
 
 
+class AdminEmbeddingScoreBreakdownRead(BaseModel):
+    visual: float | None = None
+    tags: float | None = None
+    color: float | None = None
+    confidence: float | None = None
+    series_penalty: float | None = None
+
+
 class AdminEmbeddingClusterSampleRead(BaseModel):
     media_id: uuid.UUID
     filename: str
     similarity: float | None = None
     label: str | None = None
+    score_breakdown: AdminEmbeddingScoreBreakdownRead | None = None
 
 
 class AdminEmbeddingClusterRead(BaseModel):
@@ -103,6 +112,7 @@ class AdminEmbeddingClusterRead(BaseModel):
     cohesion: float | None = None
     min_similarity: float | None = None
     max_similarity: float | None = None
+    score_breakdown: AdminEmbeddingScoreBreakdownRead | None = None
     nearest_labels: list[str] = Field(default_factory=list)
     samples: list[AdminEmbeddingClusterSampleRead] = Field(default_factory=list)
     outliers: list[AdminEmbeddingClusterSampleRead] = Field(default_factory=list)
@@ -110,6 +120,7 @@ class AdminEmbeddingClusterRead(BaseModel):
 
 class AdminEmbeddingClusterListResponse(BaseModel):
     mode: str
+    discovery_mode: bool = False
     model_version: str
     total_embeddings: int = Field(ge=0)
     clusters: list[AdminEmbeddingClusterRead]

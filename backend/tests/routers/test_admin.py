@@ -257,14 +257,16 @@ def test_admin_embedding_clusters_contract(api_client, monkeypatch):
     media_id = uuid.uuid4()
     entity_id = uuid.uuid4()
 
-    async def _fake_clusters(self, requested_user_id, *, mode, limit, sample_size, min_cluster_size):
+    async def _fake_clusters(self, requested_user_id, *, mode, limit, sample_size, min_cluster_size, discovery_mode):
         assert requested_user_id == user_id
         assert mode == "label"
         assert limit == 50
         assert sample_size == 3
         assert min_cluster_size == 2
+        assert discovery_mode is True
         return {
             "mode": mode,
+            "discovery_mode": discovery_mode,
             "model_version": "clip_onnx_v1",
             "total_embeddings": 10,
             "clusters": [
@@ -278,6 +280,13 @@ def test_admin_embedding_clusters_contract(api_client, monkeypatch):
                     "cohesion": 0.81,
                     "min_similarity": 0.74,
                     "max_similarity": 0.92,
+                    "score_breakdown": {
+                        "visual": 0.9,
+                        "tags": 0.5,
+                        "color": 0.7,
+                        "confidence": 1.0,
+                        "series_penalty": 0.75,
+                    },
                     "nearest_labels": ["Saber"],
                     "samples": [
                         {
@@ -285,6 +294,7 @@ def test_admin_embedding_clusters_contract(api_client, monkeypatch):
                             "filename": "saber.png",
                             "similarity": 0.92,
                             "label": "Saber",
+                            "score_breakdown": None,
                         }
                     ],
                     "outliers": [],
@@ -296,7 +306,7 @@ def test_admin_embedding_clusters_contract(api_client, monkeypatch):
 
     response = api_client.get(
         f"/api/v1/admin/users/{user_id}/embedding-clusters",
-        params={"mode": "label", "limit": 50, "sample_size": 3, "min_cluster_size": 2},
+        params={"mode": "label", "limit": 50, "sample_size": 3, "min_cluster_size": 2, "discovery_mode": True},
     )
 
     assert response.status_code == 200
@@ -307,17 +317,18 @@ def test_admin_embedding_clusters_contract(api_client, monkeypatch):
 def test_admin_embedding_cluster_plot_contract(api_client, monkeypatch):
     user_id = uuid.uuid4()
 
-    async def _fake_plot(self, requested_user_id, *, mode, min_cluster_size):
+    async def _fake_plot(self, requested_user_id, *, mode, min_cluster_size, discovery_mode):
         assert requested_user_id == user_id
         assert mode == "unsupervised"
         assert min_cluster_size == 2
+        assert discovery_mode is True
         return b"fake-png"
 
     monkeypatch.setattr(AdminService, "get_embedding_cluster_plot", _fake_plot)
 
     response = api_client.get(
         f"/api/v1/admin/users/{user_id}/embedding-clusters/plot",
-        params={"mode": "unsupervised", "limit": 50, "min_cluster_size": 2},
+        params={"mode": "unsupervised", "limit": 50, "min_cluster_size": 2, "discovery_mode": True},
     )
 
     assert response.status_code == 200

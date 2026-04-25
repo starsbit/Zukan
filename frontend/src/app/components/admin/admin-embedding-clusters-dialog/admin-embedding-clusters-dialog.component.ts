@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
@@ -8,6 +9,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import {
   AdminEmbeddingClusterListResponse,
   AdminEmbeddingClusterRead,
+  AdminEmbeddingScoreBreakdownRead,
   AdminLibraryClassificationMetricsResponse,
   AdminUserSummary,
   EmbeddingClusterMode,
@@ -23,6 +25,7 @@ export interface AdminEmbeddingClustersDialogData {
   standalone: true,
   imports: [
     MatButtonModule,
+    MatCheckboxModule,
     MatDialogModule,
     MatIconModule,
     MatProgressSpinnerModule,
@@ -51,6 +54,7 @@ export class AdminEmbeddingClustersDialogComponent {
   protected readonly metrics = signal<AdminLibraryClassificationMetricsResponse | null>(null);
   protected readonly loadingMetrics = signal(true);
   protected readonly metricsError = signal<string | null>(null);
+  protected readonly discoveryMode = signal(false);
 
   protected readonly modelVersion = computed(() =>
     this.metrics()?.model_version ?? this.labelClusters()?.model_version ?? this.unsupervisedClusters()?.model_version ?? 'current',
@@ -80,6 +84,29 @@ export class AdminEmbeddingClustersDialogComponent {
     return value == null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
   }
 
+  protected scoreDetails(breakdown: AdminEmbeddingScoreBreakdownRead | null | undefined): string {
+    if (!breakdown) {
+      return '';
+    }
+    return [
+      `visual ${this.similarity(breakdown.visual)}`,
+      `tags ${this.similarity(breakdown.tags)}`,
+      `color ${this.similarity(breakdown.color)}`,
+      `confidence ${this.similarity(breakdown.confidence)}`,
+      `series ${this.similarity(breakdown.series_penalty)}`,
+    ].join(' · ');
+  }
+
+  protected setDiscoveryMode(enabled: boolean): void {
+    if (this.discoveryMode() === enabled) {
+      return;
+    }
+    this.discoveryMode.set(enabled);
+    this.loadPlot(this.plotMode());
+    this.load('label');
+    this.load('unsupervised');
+  }
+
   protected showPlot(mode: EmbeddingClusterMode): void {
     if (this.plotMode() === mode && this.plotUrl()) {
       return;
@@ -93,6 +120,7 @@ export class AdminEmbeddingClustersDialogComponent {
     this.plotError.set(null);
     this.adminService.getEmbeddingClusterPlot(this.data.user.id, mode, {
       min_cluster_size: 2,
+      discovery_mode: this.discoveryMode(),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (blob) => {
         this.revokePlotUrl();
@@ -115,6 +143,7 @@ export class AdminEmbeddingClustersDialogComponent {
     this.adminService.getEmbeddingClusters(this.data.user.id, mode, {
       sample_size: 6,
       min_cluster_size: 2,
+      discovery_mode: this.discoveryMode(),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (response) => {
         if (mode === 'label') {

@@ -74,7 +74,7 @@ export class AdminService {
   getEmbeddingClusters(
     userId: string,
     mode: EmbeddingClusterMode,
-    options?: { limit?: number; sample_size?: number; min_cluster_size?: number },
+    options?: { limit?: number; sample_size?: number; min_cluster_size?: number; discovery_mode?: boolean },
   ): Observable<AdminEmbeddingClusterListResponse> {
     return this.guard(() => this.client.getEmbeddingClusters(userId, mode, options));
   }
@@ -82,7 +82,7 @@ export class AdminService {
   getEmbeddingClusterPlot(
     userId: string,
     mode: EmbeddingClusterMode,
-    options?: { min_cluster_size?: number },
+    options?: { min_cluster_size?: number; discovery_mode?: boolean },
   ): Observable<Blob> {
     return this.guard(() => this.client.getEmbeddingClusterPlot(userId, mode, options));
   }

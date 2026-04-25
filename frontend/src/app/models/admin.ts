@@ -78,11 +78,20 @@ export interface AdminEmbeddingBackfillStatus {
   recent_failed_items: string[];
 }
 
+export interface AdminEmbeddingScoreBreakdownRead {
+  visual: number | null;
+  tags: number | null;
+  color: number | null;
+  confidence: number | null;
+  series_penalty: number | null;
+}
+
 export interface AdminEmbeddingClusterSampleRead {
   media_id: string;
   filename: string;
   similarity: number | null;
   label: string | null;
+  score_breakdown?: AdminEmbeddingScoreBreakdownRead | null;
 }
 
 export interface AdminEmbeddingClusterRead {
@@ -95,6 +104,7 @@ export interface AdminEmbeddingClusterRead {
   cohesion: number | null;
   min_similarity: number | null;
   max_similarity: number | null;
+  score_breakdown?: AdminEmbeddingScoreBreakdownRead | null;
   nearest_labels: string[];
   samples: AdminEmbeddingClusterSampleRead[];
   outliers: AdminEmbeddingClusterSampleRead[];
@@ -102,6 +112,7 @@ export interface AdminEmbeddingClusterRead {
 
 export interface AdminEmbeddingClusterListResponse {
   mode: EmbeddingClusterMode;
+  discovery_mode: boolean;
   model_version: string;
   total_embeddings: number;
   clusters: AdminEmbeddingClusterRead[];
