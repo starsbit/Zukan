@@ -6,9 +6,9 @@ import re
 import uuid
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from backend.app.config import settings
 from backend.app.models.media import Media, TaggingStatus
@@ -107,40 +107,94 @@ class MediaLibraryEnrichmentService:
         )
 
         entity_repo = MediaEntityRepository(self._db)
-        for entity_type in missing_types:
-            exact = self._pick_exact_signature(exact_matches, entity_type)
-            if exact is not None:
-                if apply:
-                    await entity_repo.add_media_entities(
-                        target,
-                        entity_type=entity_type,
-                        names=exact,
-                        source="library_match",
-                        confidence=EXACT_MATCH_CONFIDENCE,
-                        replace_existing_type=True,
-                    )
-                    result.applied[entity_type] = exact
+        remaining_missing_types = set(missing_types)
+        accepted_character_names = self._entity_names(target, MediaEntityType.character)
+
+        for entity_type in (MediaEntityType.character, MediaEntityType.series):
+            if entity_type not in remaining_missing_types:
                 continue
-
-            decision = self._score_signatures(
-                entity_type=entity_type,
-                neighbors=neighbors,
-                media_by_id=media_by_id,
-            )
-            result.suggestions[entity_type] = decision["suggestions"]
-            result.metadata[entity_type.value] = decision["metadata"]
-
-            auto_names = decision["auto_names"]
-            if apply and auto_names:
+            exact = self._pick_exact_signature(exact_matches, entity_type)
+            if exact is None:
+                continue
+            if apply:
                 await entity_repo.add_media_entities(
                     target,
                     entity_type=entity_type,
+                    names=exact,
+                    source="library_match",
+                    confidence=EXACT_MATCH_CONFIDENCE,
+                    replace_existing_type=True,
+                )
+                result.applied[entity_type] = exact
+            if entity_type == MediaEntityType.character:
+                accepted_character_names = exact
+            remaining_missing_types.remove(entity_type)
+
+        if MediaEntityType.character in remaining_missing_types:
+            decision = self._score_signatures(
+                entity_type=MediaEntityType.character,
+                neighbors=neighbors,
+                media_by_id=media_by_id,
+            )
+            result.suggestions[MediaEntityType.character] = decision["suggestions"]
+            result.metadata[MediaEntityType.character.value] = decision["metadata"]
+
+            auto_names = decision["auto_names"]
+            if auto_names:
+                accepted_character_names = auto_names
+            if apply and auto_names:
+                await entity_repo.add_media_entities(
+                    target,
+                    entity_type=MediaEntityType.character,
                     names=auto_names,
                     source="library_match",
                     confidence=decision["confidence"],
                     replace_existing_type=True,
                 )
-                result.applied[entity_type] = auto_names
+                result.applied[MediaEntityType.character] = auto_names
+            remaining_missing_types.remove(MediaEntityType.character)
+
+        if MediaEntityType.series in remaining_missing_types:
+            character_decision = await self._infer_series_from_characters(
+                user_id=user_id,
+                target_media_id=target.id,
+                character_names=accepted_character_names,
+            )
+            if character_decision["suggestions"]:
+                result.suggestions[MediaEntityType.series] = character_decision["suggestions"]
+                result.metadata[MediaEntityType.series.value] = character_decision["metadata"]
+
+                auto_names = character_decision["auto_names"]
+                if apply and auto_names:
+                    await entity_repo.add_media_entities(
+                        target,
+                        entity_type=MediaEntityType.series,
+                        names=auto_names,
+                        source="library_match",
+                        confidence=character_decision["confidence"],
+                        replace_existing_type=True,
+                    )
+                    result.applied[MediaEntityType.series] = auto_names
+            else:
+                decision = self._score_signatures(
+                    entity_type=MediaEntityType.series,
+                    neighbors=neighbors,
+                    media_by_id=media_by_id,
+                )
+                result.suggestions[MediaEntityType.series] = decision["suggestions"]
+                result.metadata[MediaEntityType.series.value] = decision["metadata"]
+
+                auto_names = decision["auto_names"]
+                if apply and auto_names:
+                    await entity_repo.add_media_entities(
+                        target,
+                        entity_type=MediaEntityType.series,
+                        names=auto_names,
+                        source="library_match",
+                        confidence=decision["confidence"],
+                        replace_existing_type=True,
+                    )
+                    result.applied[MediaEntityType.series] = auto_names
 
         if apply and result.applied:
             await self._db.commit()
@@ -314,6 +368,94 @@ class MediaLibraryEnrichmentService:
             },
         }
 
+    async def _infer_series_from_characters(
+        self,
+        *,
+        user_id: uuid.UUID,
+        target_media_id: uuid.UUID,
+        character_names: list[str],
+    ) -> dict[str, Any]:
+        normalized_character_names = self._unique_clean_names(character_names)
+        if not normalized_character_names:
+            return {
+                "auto_names": [],
+                "confidence": None,
+                "suggestions": [],
+                "metadata": {"reason": "no_character_context"},
+            }
+
+        character_model = aliased(MediaEntity)
+        series_model = aliased(MediaEntity)
+        trusted_sources = tuple(TRUSTED_ENTITY_SOURCES)
+        count_expr = func.count(series_model.media_id.distinct())
+        stmt = (
+            select(
+                series_model.name.label("name"),
+                count_expr.label("media_count"),
+            )
+            .join(character_model, character_model.media_id == series_model.media_id)
+            .join(Media, Media.id == series_model.media_id)
+            .where(
+                series_model.entity_type == MediaEntityType.series,
+                character_model.entity_type == MediaEntityType.character,
+                character_model.name.in_(normalized_character_names),
+                character_model.source.in_(trusted_sources),
+                series_model.source.in_(trusted_sources),
+                series_model.name != "",
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.uploader_id == user_id,
+                Media.id != target_media_id,
+            )
+            .group_by(series_model.name)
+            .order_by(count_expr.desc(), series_model.name.asc())
+            .limit(MAX_SUGGESTIONS + 1)
+        )
+        rows = (await self._db.execute(stmt)).all()
+        ranked = [
+            (row.name.strip(), int(row.media_count or 0))
+            for row in rows
+            if row.name and row.name.strip() and int(row.media_count or 0) > 0
+        ]
+        ranked.sort(key=lambda item: (-item[1], item[0].casefold()))
+        if not ranked:
+            return {
+                "auto_names": [],
+                "confidence": None,
+                "suggestions": [],
+                "metadata": {"reason": "no_character_series_matches"},
+            }
+
+        max_count = ranked[0][1] or 1
+        suggestions = [
+            ImportBatchRecommendationSuggestionRead(
+                name=name,
+                confidence=round(count / max_count, 3),
+            )
+            for name, count in ranked[:MAX_SUGGESTIONS]
+        ]
+
+        top_name, top_count = ranked[0]
+        runner_up_count = ranked[1][1] if len(ranked) > 1 else 0
+        only_observed_series = len(ranked) == 1
+        clear_top = only_observed_series or top_count > runner_up_count
+        auto_allowed = clear_top and (
+            top_count >= settings.library_classification_auto_min_support
+            or only_observed_series
+        )
+        return {
+            "auto_names": [top_name] if auto_allowed else [],
+            "confidence": 0.95 if auto_allowed else None,
+            "suggestions": suggestions,
+            "metadata": {
+                "reason": "character_inference" if auto_allowed else "character_inference_suggest_only",
+                "character_names": normalized_character_names,
+                "top_support": top_count,
+                "runner_up_support": runner_up_count,
+                "observed_series_count": len(ranked),
+            },
+        }
+
     def _build_suggestions(self, ranked: list[SignatureVote]) -> list[ImportBatchRecommendationSuggestionRead]:
         if not ranked:
             return []
@@ -351,6 +493,27 @@ class MediaLibraryEnrichmentService:
             seen.add(key)
             names.append(name)
         return names
+
+    def _entity_names(self, media: Media, entity_type: MediaEntityType) -> list[str]:
+        return self._unique_clean_names([
+            entity.name
+            for entity in media.entities
+            if entity.entity_type == entity_type
+        ])
+
+    def _unique_clean_names(self, names: list[str]) -> list[str]:
+        cleaned_names: list[str] = []
+        seen: set[str] = set()
+        for raw_name in names:
+            name = raw_name.strip()
+            if not name:
+                continue
+            key = name.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            cleaned_names.append(name)
+        return cleaned_names
 
     def _source_weight(self, media: Media, entity_type: MediaEntityType) -> float:
         weights = [

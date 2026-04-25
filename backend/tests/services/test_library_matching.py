@@ -14,6 +14,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.embeddings import MediaNeighbor
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.services.tags import TagService
+from backend.tests.services.conftest import RowResult
 from backend.app.utils.tagging import TagPrediction, TaggingResult
 
 
@@ -108,6 +109,226 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
         replace_existing_type=True,
     )
     fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_derives_series_from_existing_character_before_vector_majority(fake_db, user):
+    target = make_media(user.id, "target.webp", character_names=[("Saber", "tagger")])
+    blue_archive_neighbor = make_media(
+        user.id,
+        "blue-archive.webp",
+        character_names=[("Arona", "manual")],
+        series_names=[("Blue Archive", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[blue_archive_neighbor])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=blue_archive_neighbor.id, similarity=0.98),
+    ])
+    fake_db.execute = AsyncMock(return_value=RowResult([
+        SimpleNamespace(name="Fate/stay night", media_count=2),
+    ]))
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
+    assert result.metadata["series"]["reason"] == "character_inference"
+    entity_repo_cls.return_value.add_media_entities.assert_awaited_once_with(
+        target,
+        entity_type=MediaEntityType.series,
+        names=["Fate/stay night"],
+        source="library_match",
+        confidence=0.95,
+        replace_existing_type=True,
+    )
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_derives_series_after_strong_character_prediction(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    saber_blue_one = make_media(
+        user.id,
+        "saber-blue-one.webp",
+        character_names=[("Saber", "manual")],
+        series_names=[("Blue Archive", "manual")],
+    )
+    saber_blue_two = make_media(
+        user.id,
+        "saber-blue-two.webp",
+        character_names=[("Saber", "tagger")],
+        series_names=[("Blue Archive", "tagger")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[saber_blue_one, saber_blue_two])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=saber_blue_one.id, similarity=0.94),
+        MediaNeighbor(media_id=saber_blue_two.id, similarity=0.93),
+    ])
+    fake_db.execute = AsyncMock(return_value=RowResult([
+        SimpleNamespace(name="Fate/stay night", media_count=3),
+    ]))
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {
+        MediaEntityType.character: ["Saber"],
+        MediaEntityType.series: ["Fate/stay night"],
+    }
+    assert [call.kwargs["names"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
+        ["Saber"],
+        ["Fate/stay night"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_returns_character_derived_series_suggestions_read_only(fake_db, user):
+    target = make_media(user.id, "target.webp", character_names=[("Saber", "tagger")])
+    blue_archive_neighbor = make_media(
+        user.id,
+        "blue-archive.webp",
+        series_names=[("Blue Archive", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[blue_archive_neighbor])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=blue_archive_neighbor.id, similarity=0.99),
+    ])
+    fake_db.execute = AsyncMock(return_value=RowResult([
+        SimpleNamespace(name="Fate/stay night", media_count=3),
+        SimpleNamespace(name="Fate/Zero", media_count=1),
+    ]))
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id, apply=False)
+
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == [
+        "Fate/stay night",
+        "Fate/Zero",
+    ]
+    assert result.metadata["series"]["reason"] == "character_inference"
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    fake_db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_does_not_auto_apply_ambiguous_character_series_inference(fake_db, user):
+    target = make_media(user.id, "target.webp", character_names=[("Saber", "tagger")])
+    blue_archive_neighbor = make_media(
+        user.id,
+        "blue-archive.webp",
+        series_names=[("Blue Archive", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[blue_archive_neighbor])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=blue_archive_neighbor.id, similarity=0.99),
+    ])
+    fake_db.execute = AsyncMock(return_value=RowResult([
+        SimpleNamespace(name="Fate/stay night", media_count=2),
+        SimpleNamespace(name="Fate/Zero", media_count=2),
+    ]))
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == [
+        "Fate/stay night",
+        "Fate/Zero",
+    ]
+    assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    fake_db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_excludes_library_match_sources_from_character_series_inference(fake_db, user):
+    target_id = uuid.uuid4()
+    service = MediaLibraryEnrichmentService(fake_db)
+    fake_db.execute = AsyncMock(return_value=RowResult([]))
+
+    result = await service._infer_series_from_characters(
+        user_id=user.id,
+        target_media_id=target_id,
+        character_names=["Saber"],
+    )
+
+    stmt = fake_db.execute.await_args.args[0]
+    compiled = stmt.compile()
+    source_values = [
+        value
+        for key, value in compiled.params.items()
+        if key.startswith("source_")
+    ]
+    assert result["suggestions"] == []
+    assert source_values
+    assert all(set(value) == {"manual", "tagger"} for value in source_values)
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_falls_back_to_vector_series_when_character_inference_has_no_result(fake_db, user):
+    target = make_media(user.id, "target.webp", character_names=[("Arona", "tagger")])
+    blue_archive_neighbor = make_media(
+        user.id,
+        "blue-archive.webp",
+        series_names=[("Blue Archive", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[blue_archive_neighbor])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=SimpleNamespace(embedding=[0.1, 0.2]))
+    service._embedding_repo.nearest_neighbors = AsyncMock(return_value=[
+        MediaNeighbor(media_id=blue_archive_neighbor.id, similarity=0.98),
+    ])
+    fake_db.execute = AsyncMock(return_value=RowResult([]))
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {MediaEntityType.series: ["Blue Archive"]}
+    assert result.metadata["series"]["reason"] == "auto_apply"
 
 
 @pytest.mark.asyncio
