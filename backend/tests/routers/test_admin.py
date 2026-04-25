@@ -325,6 +325,45 @@ def test_admin_embedding_cluster_plot_contract(api_client, monkeypatch):
     assert response.headers["content-type"] == "image/png"
 
 
+def test_admin_library_classification_metrics_contract(api_client, monkeypatch):
+    user_id = uuid.uuid4()
+
+    async def _fake_metrics(self, requested_user_id, *, model_version):
+        assert requested_user_id == user_id
+        assert model_version == "clip_onnx_v1"
+        return {
+            "user_id": user_id,
+            "model_version": model_version,
+            "reviewed": 10,
+            "accepted": 8,
+            "rejected": 2,
+            "auto_applied": 4,
+            "acceptance_rate": 0.8,
+            "rejection_rate": 0.2,
+            "by_source": [
+                {
+                    "source": "prototype",
+                    "reviewed": 6,
+                    "accepted": 5,
+                    "rejected": 1,
+                    "auto_applied": 3,
+                    "acceptance_rate": 0.8333,
+                }
+            ],
+        }
+
+    monkeypatch.setattr(AdminService, "get_library_classification_metrics", _fake_metrics)
+
+    response = api_client.get(
+        f"/api/v1/admin/users/{user_id}/library-classification-metrics",
+        params={"model_version": "clip_onnx_v1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["acceptance_rate"] == 0.8
+    assert response.json()["by_source"][0]["source"] == "prototype"
+
+
 def test_admin_list_announcements_contract(api_client, monkeypatch):
     now = datetime.now(timezone.utc)
 

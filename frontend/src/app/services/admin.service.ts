@@ -9,6 +9,7 @@ import {
   AdminEmbeddingClusterListResponse,
   EmbeddingClusterMode,
   AdminHealthResponse,
+  AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
   AdminUserDetail,
   AdminUserUpdate,
@@ -84,6 +85,13 @@ export class AdminService {
     options?: { min_cluster_size?: number },
   ): Observable<Blob> {
     return this.guard(() => this.client.getEmbeddingClusterPlot(userId, mode, options));
+  }
+
+  getLibraryClassificationMetrics(
+    userId: string,
+    modelVersion?: string,
+  ): Observable<AdminLibraryClassificationMetricsResponse> {
+    return this.guard(() => this.client.getLibraryClassificationMetrics(userId, modelVersion));
   }
 
   listAnnouncements(): Observable<AppAnnouncementRead[]> {

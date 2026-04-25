@@ -8,6 +8,7 @@ import { MatTabsModule } from '@angular/material/tabs';
 import {
   AdminEmbeddingClusterListResponse,
   AdminEmbeddingClusterRead,
+  AdminLibraryClassificationMetricsResponse,
   AdminUserSummary,
   EmbeddingClusterMode,
 } from '../../../models/admin';
@@ -47,9 +48,12 @@ export class AdminEmbeddingClustersDialogComponent {
   protected readonly loadingPlot = signal(true);
   protected readonly plotError = signal<string | null>(null);
   protected readonly plotMode = signal<EmbeddingClusterMode>('label');
+  protected readonly metrics = signal<AdminLibraryClassificationMetricsResponse | null>(null);
+  protected readonly loadingMetrics = signal(true);
+  protected readonly metricsError = signal<string | null>(null);
 
   protected readonly modelVersion = computed(() =>
-    this.labelClusters()?.model_version ?? this.unsupervisedClusters()?.model_version ?? 'current',
+    this.metrics()?.model_version ?? this.labelClusters()?.model_version ?? this.unsupervisedClusters()?.model_version ?? 'current',
   );
 
   constructor() {
@@ -57,6 +61,7 @@ export class AdminEmbeddingClustersDialogComponent {
     this.loadPlot('label');
     this.load('label');
     this.load('unsupervised');
+    this.loadMetrics();
   }
 
   protected close(): void {
@@ -69,6 +74,10 @@ export class AdminEmbeddingClustersDialogComponent {
 
   protected similarity(value: number | null): string {
     return value == null ? 'n/a' : value.toFixed(3);
+  }
+
+  protected percentage(value: number | null): string {
+    return value == null ? 'n/a' : `${(value * 100).toFixed(1)}%`;
   }
 
   protected showPlot(mode: EmbeddingClusterMode): void {
@@ -120,6 +129,23 @@ export class AdminEmbeddingClustersDialogComponent {
         loading.set(false);
       },
     });
+  }
+
+  private loadMetrics(): void {
+    this.loadingMetrics.set(true);
+    this.metricsError.set(null);
+    this.adminService.getLibraryClassificationMetrics(this.data.user.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          this.metrics.set(response);
+          this.loadingMetrics.set(false);
+        },
+        error: (err) => {
+          this.metricsError.set(err.error?.detail ?? 'Unable to load classifier accuracy.');
+          this.loadingMetrics.set(false);
+        },
+      });
   }
 
   private revokePlotUrl(): void {

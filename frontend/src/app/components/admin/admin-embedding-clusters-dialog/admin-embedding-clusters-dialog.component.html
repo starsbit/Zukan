@@ -31,6 +31,61 @@
       </section>
     </mat-tab>
 
+    <mat-tab label="Accuracy">
+      <section class="cluster-dialog__tab">
+        @if (loadingMetrics()) {
+          <div class="cluster-dialog__loading">
+            <mat-spinner diameter="32"></mat-spinner>
+          </div>
+        } @else if (metricsError()) {
+          <p class="cluster-dialog__error">{{ metricsError() }}</p>
+        } @else if (metrics()) {
+          <div class="metric-grid">
+            <article class="metric-card">
+              <span>Observed accuracy</span>
+              <strong>{{ percentage(metrics()!.acceptance_rate) }}</strong>
+              <small>accepted / reviewed</small>
+            </article>
+            <article class="metric-card">
+              <span>Reviewed</span>
+              <strong>{{ metrics()!.reviewed }}</strong>
+              <small>{{ metrics()!.accepted }} accepted · {{ metrics()!.rejected }} rejected</small>
+            </article>
+            <article class="metric-card">
+              <span>Auto-applied</span>
+              <strong>{{ metrics()!.auto_applied }}</strong>
+              <small>not counted as accuracy until reviewed</small>
+            </article>
+          </div>
+
+          @if (metrics()!.reviewed === 0) {
+            <p class="cluster-dialog__empty">No accepted or rejected classifier feedback yet, so observed accuracy is not measurable.</p>
+          }
+
+          @if (metrics()!.by_source.length) {
+            <div class="metrics-table" role="table" aria-label="Classifier accuracy by source">
+              <div class="metrics-table__row metrics-table__row--header" role="row">
+                <span role="columnheader">Source</span>
+                <span role="columnheader">Accuracy</span>
+                <span role="columnheader">Accepted</span>
+                <span role="columnheader">Rejected</span>
+                <span role="columnheader">Auto</span>
+              </div>
+              @for (source of metrics()!.by_source; track source.source) {
+                <div class="metrics-table__row" role="row">
+                  <span role="cell">{{ source.source }}</span>
+                  <span role="cell">{{ percentage(source.acceptance_rate) }}</span>
+                  <span role="cell">{{ source.accepted }}</span>
+                  <span role="cell">{{ source.rejected }}</span>
+                  <span role="cell">{{ source.auto_applied }}</span>
+                </div>
+              }
+            </div>
+          }
+        }
+      </section>
+    </mat-tab>
+
     <mat-tab label="Trusted labels">
       <section class="cluster-dialog__tab">
         @if (loadingLabel()) {

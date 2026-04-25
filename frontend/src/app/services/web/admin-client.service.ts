@@ -9,6 +9,7 @@ import {
   AdminEmbeddingClusterListResponse,
   EmbeddingClusterMode,
   AdminHealthResponse,
+  AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
   AdminUserDetail,
   AdminUserUpdate,
@@ -110,6 +111,18 @@ export class AdminClientService {
     return this.http.get(
       `${this.base}/api/v1/admin/users/${userId}/embedding-clusters/plot`,
       { params, responseType: 'blob' },
+    );
+  }
+
+  getLibraryClassificationMetrics(
+    userId: string,
+    modelVersion?: string,
+  ): Observable<AdminLibraryClassificationMetricsResponse> {
+    let params = new HttpParams();
+    if (modelVersion) params = params.set('model_version', modelVersion);
+    return this.http.get<AdminLibraryClassificationMetricsResponse>(
+      `${this.base}/api/v1/admin/users/${userId}/library-classification-metrics`,
+      { params },
     );
   }
 

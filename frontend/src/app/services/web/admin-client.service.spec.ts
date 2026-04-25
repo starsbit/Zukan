@@ -191,6 +191,27 @@ describe('AdminClientService', () => {
     req.flush(mock);
   });
 
+  it('getLibraryClassificationMetrics sends optional model_version', () => {
+    const mock = {
+      user_id: 'u1',
+      model_version: 'clip_onnx_v1',
+      reviewed: 10,
+      accepted: 8,
+      rejected: 2,
+      auto_applied: 3,
+      acceptance_rate: 0.8,
+      rejection_rate: 0.2,
+      by_source: [],
+    };
+
+    service.getLibraryClassificationMetrics('u1', 'clip_onnx_v1').subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1/library-classification-metrics');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('model_version')).toBe('clip_onnx_v1');
+    req.flush(mock);
+  });
+
   it('listAnnouncements sends GET /api/v1/admin/announcements', () => {
     const mock = [{ id: 'ann1', title: 'Update', message: 'New version', severity: 'info' as const, is_active: true, created_at: '2026-01-01T00:00:00Z', version: null, starts_at: null, ends_at: null }];
 

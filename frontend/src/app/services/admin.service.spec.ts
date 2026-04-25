@@ -107,6 +107,12 @@ describe('AdminService', () => {
       expect((err as Error).message).toMatch(/Forbidden/);
     });
 
+    it('getLibraryClassificationMetrics throws Forbidden', () => {
+      let err: unknown;
+      service.getLibraryClassificationMetrics('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
     it('listAnnouncements throws Forbidden', () => {
       let err: unknown;
       service.listAnnouncements().subscribe({ error: e => (err = e) });
@@ -265,6 +271,24 @@ describe('AdminService', () => {
       expect(req.request.method).toBe('GET');
       expect(req.request.responseType).toBe('blob');
       expect(req.request.params.get('mode')).toBe('label');
+      req.flush(mock);
+    });
+
+    it('getLibraryClassificationMetrics sends GET /api/v1/admin/users/{id}/library-classification-metrics', () => {
+      const mock = {
+        user_id: 'u2',
+        model_version: 'clip_onnx_v1',
+        reviewed: 4,
+        accepted: 3,
+        rejected: 1,
+        auto_applied: 2,
+        acceptance_rate: 0.75,
+        rejection_rate: 0.25,
+        by_source: [],
+      };
+      service.getLibraryClassificationMetrics('u2').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2/library-classification-metrics');
+      expect(req.request.method).toBe('GET');
       req.flush(mock);
     });
 

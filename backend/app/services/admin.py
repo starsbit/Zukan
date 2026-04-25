@@ -6,7 +6,7 @@ import uuid
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +16,7 @@ from backend.app.errors.error import AppError
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
 from backend.app.models.auth import User
 from backend.app.models.embeddings import MediaEmbedding
+from backend.app.models.library_classification import LibraryClassificationFeedback, LibraryClassificationFeedbackAction
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.models.relations import MediaEntity, MediaEntityType
@@ -30,6 +31,8 @@ from backend.app.schemas import (
     AdminEmbeddingClusterSampleRead,
     AdminHealthResponse,
     AdminHealthSample,
+    AdminLibraryClassificationMetricsResponse,
+    AdminLibraryClassificationSourceMetricsRead,
     AdminStatsResponse,
     AdminUserDetail,
     AdminUserListResponse,
@@ -360,6 +363,69 @@ class AdminService:
             min_cluster_size=min_cluster_size,
         )
 
+    async def get_library_classification_metrics(
+        self,
+        user_id: uuid.UUID,
+        *,
+        model_version: str | None,
+    ) -> AdminLibraryClassificationMetricsResponse:
+        target = await UserRepository(self._db).get_by_id(user_id)
+        if target is None:
+            raise AppError(status_code=404, code=user_not_found, detail="User not found")
+
+        version = model_version or EMBEDDING_MODEL_VERSION
+        source_expr = func.coalesce(LibraryClassificationFeedback.source, "unknown")
+        rows = (
+            await self._db.execute(
+                select(
+                    source_expr.label("source"),
+                    LibraryClassificationFeedback.action,
+                    func.count(LibraryClassificationFeedback.id).label("count"),
+                )
+                .where(
+                    LibraryClassificationFeedback.user_id == user_id,
+                    LibraryClassificationFeedback.model_version == version,
+                )
+                .group_by(source_expr, LibraryClassificationFeedback.action)
+            )
+        ).all()
+
+        totals = _empty_feedback_counts()
+        by_source: dict[str, dict[str, int]] = defaultdict(_empty_feedback_counts)
+        for source, action, count in rows:
+            action_value = _feedback_action_value(action)
+            if action_value not in totals:
+                continue
+            source_name = str(source or "unknown")
+            amount = int(count or 0)
+            totals[action_value] += amount
+            by_source[source_name][action_value] += amount
+
+        return AdminLibraryClassificationMetricsResponse(
+            user_id=user_id,
+            model_version=version,
+            reviewed=totals["accepted"] + totals["rejected"],
+            accepted=totals["accepted"],
+            rejected=totals["rejected"],
+            auto_applied=totals["auto_applied"],
+            acceptance_rate=_ratio(totals["accepted"], totals["accepted"] + totals["rejected"]),
+            rejection_rate=_ratio(totals["rejected"], totals["accepted"] + totals["rejected"]),
+            by_source=[
+                AdminLibraryClassificationSourceMetricsRead(
+                    source=source,
+                    reviewed=counts["accepted"] + counts["rejected"],
+                    accepted=counts["accepted"],
+                    rejected=counts["rejected"],
+                    auto_applied=counts["auto_applied"],
+                    acceptance_rate=_ratio(counts["accepted"], counts["accepted"] + counts["rejected"]),
+                )
+                for source, counts in sorted(
+                    by_source.items(),
+                    key=lambda item: (-(item[1]["accepted"] + item[1]["rejected"] + item[1]["auto_applied"]), item[0]),
+                )
+            ],
+        )
+
     async def delete_user_media(self, actor: User, user_id: uuid.UUID) -> int:
         target = await UserRepository(self._db).get_by_id(user_id)
         if target is None:
@@ -614,6 +680,24 @@ def _cluster_sample(item: dict, *, similarity: float | None, label: str | None) 
         similarity=round(similarity, 3) if similarity is not None else None,
         label=label,
     )
+
+
+def _empty_feedback_counts() -> dict[str, int]:
+    return {
+        LibraryClassificationFeedbackAction.accepted.value: 0,
+        LibraryClassificationFeedbackAction.rejected.value: 0,
+        LibraryClassificationFeedbackAction.auto_applied.value: 0,
+    }
+
+
+def _feedback_action_value(action: LibraryClassificationFeedbackAction | str) -> str:
+    return action.value if isinstance(action, LibraryClassificationFeedbackAction) else str(action)
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
 
 
 def _render_embedding_cluster_plot(rows: list[dict], *, mode: str, min_cluster_size: int) -> bytes:

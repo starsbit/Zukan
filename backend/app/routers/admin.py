@@ -20,6 +20,7 @@ from backend.app.schemas import (
     AdminEmbeddingBackfillStatus,
     AdminEmbeddingClusterListResponse,
     AdminHealthResponse,
+    AdminLibraryClassificationMetricsResponse,
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
     AdminStatsResponse,
@@ -196,6 +197,19 @@ async def get_embedding_cluster_plot(
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
+
+
+@router.get(
+    "/users/{user_id}/library-classification-metrics",
+    response_model=AdminLibraryClassificationMetricsResponse,
+    responses=error_responses(404),
+)
+async def get_library_classification_metrics(
+    user_id: uuid.UUID,
+    model_version: str | None = Query(default=None, max_length=64),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminService(db).get_library_classification_metrics(user_id, model_version=model_version)
 
 
 @router.get("/announcements", response_model=list[AppAnnouncementRead])

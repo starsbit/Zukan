@@ -115,6 +115,27 @@ class AdminEmbeddingClusterListResponse(BaseModel):
     clusters: list[AdminEmbeddingClusterRead]
 
 
+class AdminLibraryClassificationSourceMetricsRead(BaseModel):
+    source: str
+    reviewed: int = Field(ge=0)
+    accepted: int = Field(ge=0)
+    rejected: int = Field(ge=0)
+    auto_applied: int = Field(ge=0)
+    acceptance_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class AdminLibraryClassificationMetricsResponse(BaseModel):
+    user_id: uuid.UUID
+    model_version: str
+    reviewed: int = Field(ge=0)
+    accepted: int = Field(ge=0)
+    rejected: int = Field(ge=0)
+    auto_applied: int = Field(ge=0)
+    acceptance_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    rejection_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    by_source: list[AdminLibraryClassificationSourceMetricsRead] = Field(default_factory=list)
+
+
 class AdminAppConfigRead(BaseModel):
     auth_login_rate_limit_requests: int = Field(ge=0)
     auth_login_rate_limit_window_seconds: int = Field(ge=0)

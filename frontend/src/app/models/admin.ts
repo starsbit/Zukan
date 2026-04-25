@@ -107,6 +107,27 @@ export interface AdminEmbeddingClusterListResponse {
   clusters: AdminEmbeddingClusterRead[];
 }
 
+export interface AdminLibraryClassificationSourceMetricsRead {
+  source: string;
+  reviewed: number;
+  accepted: number;
+  rejected: number;
+  auto_applied: number;
+  acceptance_rate: number | null;
+}
+
+export interface AdminLibraryClassificationMetricsResponse {
+  user_id: string;
+  model_version: string;
+  reviewed: number;
+  accepted: number;
+  rejected: number;
+  auto_applied: number;
+  acceptance_rate: number | null;
+  rejection_rate: number | null;
+  by_source: AdminLibraryClassificationSourceMetricsRead[];
+}
+
 export type UserListResponse = PagedList<AdminUserSummary>;
 
 export interface UpdateCheckResponse {
