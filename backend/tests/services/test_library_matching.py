@@ -7,12 +7,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.app.config import settings
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
 from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
+from backend.app.schemas import LibraryClassificationFeedbackCreate
 from backend.app.repositories.embeddings import MediaNeighbor
-from backend.app.services.library_classification import MediaLibraryEnrichmentService
+from backend.app.services.library_classification import CharacterPrototype, MediaLibraryEnrichmentService
 from backend.app.services.tags import TagService
 from backend.tests.services.conftest import RowResult
 from backend.app.utils.tagging import TagPrediction, TaggingResult
@@ -112,6 +114,97 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
 
 
 @pytest.mark.asyncio
+async def test_character_prototype_auto_applies_only_with_distinct_manual_support(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._rejected_suggestion_keys = AsyncMock(return_value=set())
+    service._build_character_prototypes = AsyncMock(return_value=[
+        CharacterPrototype(
+            names=["Saber"],
+            normalized_signature=("saber",),
+            centroid=[1.0, 0.0],
+            support_keys={"media-a", "media-b"},
+        )
+    ])
+
+    decision = await service._score_character_prototypes(
+        user_id=user.id,
+        target=target,
+        target_embedding=[1.0, 0.0],
+    )
+
+    assert decision["auto_names"] == ["Saber"]
+    assert decision["metadata"]["reason"] == "prototype_auto_apply"
+
+
+@pytest.mark.asyncio
+async def test_character_prototype_single_high_match_stays_suggestion(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._rejected_suggestion_keys = AsyncMock(return_value=set())
+    service._build_character_prototypes = AsyncMock(return_value=[
+        CharacterPrototype(
+            names=["Saber"],
+            normalized_signature=("saber",),
+            centroid=[1.0, 0.0],
+            support_keys={"media-a"},
+        )
+    ])
+
+    decision = await service._score_character_prototypes(
+        user_id=user.id,
+        target=target,
+        target_embedding=[1.0, 0.0],
+    )
+
+    assert decision["auto_names"] == []
+    assert [suggestion.name for suggestion in decision["suggestions"]] == ["Saber"]
+    assert decision["metadata"]["reason"] == "prototype_suggest_only"
+
+
+def test_trusted_entity_names_include_only_high_confidence_tagger_labels(fake_db, user):
+    service = MediaLibraryEnrichmentService(fake_db)
+    low_confidence = make_media(user.id, "low.webp", character_names=[("Saber", "tagger")])
+    high_confidence = make_media(user.id, "high.webp", character_names=[("Saber", "tagger")])
+    high_confidence.entities[0].confidence = 0.99
+    manual = make_media(user.id, "manual.webp", character_names=[("Saber", "manual")])
+    manual.entities[0].confidence = 0.2
+
+    assert service._trusted_entity_names(low_confidence, MediaEntityType.character) == []
+    assert service._trusted_entity_names(high_confidence, MediaEntityType.character) == ["Saber"]
+    assert service._trusted_entity_names(manual, MediaEntityType.character) == ["Saber"]
+
+
+@pytest.mark.asyncio
+async def test_record_feedback_persists_entity_id_aware_rejection(fake_db, user):
+    media = make_media(user.id, "target.webp")
+    entity_id = uuid.uuid4()
+    fake_db.get = AsyncMock(return_value=media)
+    service = MediaLibraryEnrichmentService(fake_db)
+
+    feedback = await service.record_feedback(
+        user.id,
+        LibraryClassificationFeedbackCreate(
+            media_id=media.id,
+            entity_type=MediaEntityType.character,
+            suggested_entity_id=entity_id,
+            suggested_name="Saber",
+            series_name="Fate/stay night",
+            action="rejected",
+            source="prototype",
+            similarity=0.81,
+            explanation="Matched 2 manual examples of Saber.",
+        ),
+    )
+
+    assert feedback is not None
+    assert feedback.suggested_entity_id == entity_id
+    assert feedback.suggested_name == "Saber"
+    assert feedback.action.value == "rejected"
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_library_enrichment_derives_series_from_existing_character_before_vector_majority(fake_db, user):
     target = make_media(user.id, "target.webp", character_names=[("Saber", "tagger")])
     blue_archive_neighbor = make_media(
@@ -140,17 +233,10 @@ async def test_library_enrichment_derives_series_from_existing_character_before_
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
+    assert result.applied == {}
     assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
-    assert result.metadata["series"]["reason"] == "character_inference"
-    entity_repo_cls.return_value.add_media_entities.assert_awaited_once_with(
-        target,
-        entity_type=MediaEntityType.series,
-        names=["Fate/stay night"],
-        source="library_match",
-        confidence=0.95,
-        replace_existing_type=True,
-    )
+    assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -189,14 +275,10 @@ async def test_library_enrichment_derives_series_after_strong_character_predicti
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {
-        MediaEntityType.character: ["Saber"],
-        MediaEntityType.series: ["Fate/stay night"],
-    }
-    assert [call.kwargs["names"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
-        ["Saber"],
-        ["Fate/stay night"],
-    ]
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.character]] == ["Saber"]
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Blue Archive"]
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -233,7 +315,7 @@ async def test_library_enrichment_returns_character_derived_series_suggestions_r
         "Fate/stay night",
         "Fate/Zero",
     ]
-    assert result.metadata["series"]["reason"] == "character_inference"
+    assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
     entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
     fake_db.commit.assert_not_awaited()
 
@@ -296,9 +378,17 @@ async def test_library_enrichment_excludes_library_match_sources_from_character_
         for key, value in compiled.params.items()
         if key.startswith("source_")
     ]
+    confidence_values = [
+        value
+        for key, value in compiled.params.items()
+        if key.startswith("confidence_")
+    ]
     assert result["suggestions"] == []
     assert source_values
-    assert all(set(value) == {"manual", "tagger"} for value in source_values)
+    assert "manual" in source_values
+    assert "tagger" in source_values
+    assert "library_match" not in source_values
+    assert settings.library_classification_trusted_tagger_min_confidence in confidence_values
 
 
 @pytest.mark.asyncio
@@ -327,8 +417,9 @@ async def test_library_enrichment_falls_back_to_vector_series_when_character_inf
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {MediaEntityType.series: ["Blue Archive"]}
-    assert result.metadata["series"]["reason"] == "auto_apply"
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Blue Archive"]
+    assert result.metadata["series"]["reason"] == "suggest_only"
 
 
 @pytest.mark.asyncio
@@ -366,10 +457,11 @@ async def test_library_enrichment_returns_suggestions_for_ambiguous_neighbors(fa
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
+    assert result.applied == {}
     assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.character]] == ["Saber", "Rin"]
-    entity_repo_cls.return_value.add_media_entities.assert_awaited_once()
-    fake_db.commit.assert_awaited_once()
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    fake_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -439,19 +531,11 @@ async def test_library_enrichment_auto_applies_strong_neighbor_consensus(fake_db
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {
-        MediaEntityType.character: ["Saber"],
-        MediaEntityType.series: ["Fate/stay night"],
-    }
-    assert [call.kwargs["entity_type"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
-        MediaEntityType.character,
-        MediaEntityType.series,
-    ]
-    assert [call.kwargs["names"] for call in entity_repo_cls.return_value.add_media_entities.await_args_list] == [
-        ["Saber"],
-        ["Fate/stay night"],
-    ]
-    fake_db.commit.assert_awaited_once()
+    assert result.applied == {}
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.character]] == ["Saber"]
+    assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    fake_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

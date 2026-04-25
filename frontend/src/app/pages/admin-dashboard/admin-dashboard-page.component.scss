@@ -216,7 +216,21 @@ h1 {
 .action-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.action-row button mat-icon {
+  margin-right: 0.25rem;
+  font-size: 1.05rem;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.action-status {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.82rem;
+  white-space: nowrap;
 }
 
 .announcement-form {

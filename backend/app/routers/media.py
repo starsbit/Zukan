@@ -30,6 +30,8 @@ from backend.app.schemas import (
     MediaListState,
     MediaMetadataFilter,
     MediaTimeline,
+    LibraryClassificationFeedbackCreate,
+    LibraryClassificationFeedbackRead,
     MetadataListScope,
     MediaUploadRequest,
     MediaUpdate,
@@ -47,6 +49,7 @@ from backend.app.services.media.metadata import MediaMetadataService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
 from backend.app.utils.rate_limit import rate_limit
 from backend.app.utils.storage import zip_media
@@ -633,6 +636,24 @@ async def batch_update_media_entities(
 ):
     _, _, _, _, _, metadata = _media_services(db)
     return await metadata.bulk_update_entities(body, user)
+
+
+@router.post(
+    "/library-classification-feedback",
+    response_model=LibraryClassificationFeedbackRead,
+    summary="Record Library Classification Feedback",
+    description="Record accepted or rejected library classification suggestions for future suppression and tuning.",
+    responses=error_responses(404, 422),
+)
+async def record_library_classification_feedback(
+    body: LibraryClassificationFeedbackCreate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    feedback = await MediaLibraryEnrichmentService(db).record_feedback(user.id, body)
+    if feedback is None:
+        raise AppError(status_code=404, code="media_not_found", detail="Media not found")
+    return feedback
 
 
 @router.post(

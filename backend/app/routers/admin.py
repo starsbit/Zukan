@@ -3,7 +3,7 @@ import uuid
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.config import get_runtime_config, update_runtime_config
@@ -16,6 +16,9 @@ from backend.app.schemas import (
     ADMIN_ERROR_RESPONSES,
     AdminAppConfigRead,
     AdminAppConfigUpdate,
+    AdminEmbeddingBackfillResponse,
+    AdminEmbeddingBackfillStatus,
+    AdminEmbeddingClusterListResponse,
     AdminHealthResponse,
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
@@ -124,6 +127,75 @@ async def retag_all(
 ):
     queued = await AdminService(db).retag_all_media(user_id)
     return {"queued": queued}
+
+
+@router.post(
+    "/users/{user_id}/embedding-backfill",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=AdminEmbeddingBackfillResponse,
+    responses=error_responses(404),
+)
+async def start_embedding_backfill(
+    user_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminService(db).start_embedding_backfill(user_id)
+
+
+@router.get(
+    "/embedding-backfills/{batch_id}",
+    response_model=AdminEmbeddingBackfillStatus,
+    responses=error_responses(404),
+)
+async def get_embedding_backfill_status(
+    batch_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminService(db).get_embedding_backfill_status(batch_id)
+
+
+@router.get(
+    "/users/{user_id}/embedding-clusters",
+    response_model=AdminEmbeddingClusterListResponse,
+    responses=error_responses(404, 422),
+)
+async def get_embedding_clusters(
+    user_id: uuid.UUID,
+    mode: Literal["label", "unsupervised"] = Query(default="label"),
+    limit: int | None = Query(default=None, ge=1, le=50000),
+    sample_size: int = Query(default=6, ge=1, le=24),
+    min_cluster_size: int = Query(default=2, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AdminService(db).get_embedding_clusters(
+        user_id,
+        mode=mode,
+        limit=limit,
+        sample_size=sample_size,
+        min_cluster_size=min_cluster_size,
+    )
+
+
+@router.get(
+    "/users/{user_id}/embedding-clusters/plot",
+    responses=error_responses(404, 422),
+)
+async def get_embedding_cluster_plot(
+    user_id: uuid.UUID,
+    mode: Literal["label", "unsupervised"] = Query(default="label"),
+    min_cluster_size: int = Query(default=2, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    image = await AdminService(db).get_embedding_cluster_plot(
+        user_id,
+        mode=mode,
+        min_cluster_size=min_cluster_size,
+    )
+    return Response(
+        content=image,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @router.get("/announcements", response_model=list[AppAnnouncementRead])

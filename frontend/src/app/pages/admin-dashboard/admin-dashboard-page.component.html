@@ -189,8 +189,19 @@
                     <div class="action-row">
                       <button mat-stroked-button type="button" (click)="openEditUser(user)">Edit</button>
                       <button mat-stroked-button type="button" (click)="reprocessLibrary(user)">Reprocess</button>
+                      <button mat-stroked-button type="button" (click)="backfillEmbeddings(user)" [disabled]="isEmbeddingBackfillStarting(user)">
+                        <mat-icon aria-hidden="true">auto_awesome</mat-icon>
+                        Backfill Embeddings
+                      </button>
+                      <button mat-stroked-button type="button" (click)="viewEmbeddingClusters(user)">
+                        <mat-icon aria-hidden="true">scatter_plot</mat-icon>
+                        View Clusters
+                      </button>
                       <button mat-stroked-button type="button" color="warn" (click)="deleteAllMedia(user)" [disabled]="isSelf(user)">Delete Media</button>
                       <button mat-flat-button type="button" color="warn" (click)="deleteUser(user)" [disabled]="isSelf(user)">Delete User</button>
+                      @if (embeddingBackfillStatus(user); as status) {
+                        <span class="action-status">{{ formatBackfillStatus(status) }}</span>
+                      }
                     </div>
                   </td>
                 </ng-container>

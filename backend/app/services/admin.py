@@ -1,17 +1,33 @@
 from __future__ import annotations
 
 import logging
+import math
 import uuid
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
 
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from backend.app.config import settings
 from backend.app.errors.auth import duplicate_username, forbidden, user_not_found
 from backend.app.errors.error import AppError
+from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
 from backend.app.models.auth import User
+from backend.app.models.embeddings import MediaEmbedding
+from backend.app.models.media import Media, TaggingStatus
+from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.auth import UserRepository
 from backend.app.repositories.media import MediaRepository
 from backend.app.runtime import health_monitor
 from backend.app.schemas import (
+    AdminEmbeddingBackfillResponse,
+    AdminEmbeddingBackfillStatus,
+    AdminEmbeddingClusterListResponse,
+    AdminEmbeddingClusterRead,
+    AdminEmbeddingClusterSampleRead,
     AdminHealthResponse,
     AdminHealthSample,
     AdminStatsResponse,
@@ -21,6 +37,8 @@ from backend.app.schemas import (
     AdminUserUpdate,
     UserRead,
 )
+from backend.app.services.embedding_backfill import get_embedding_backfill_queue
+from backend.app.services.embeddings import MediaEmbeddingService
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.query import MediaQueryService
@@ -141,6 +159,207 @@ class AdminService:
                 await queue.put(media.id)
         return len(media_items)
 
+    async def start_embedding_backfill(self, user_id: uuid.UUID) -> AdminEmbeddingBackfillResponse:
+        target = await UserRepository(self._db).get_by_id(user_id)
+        if target is None:
+            raise AppError(status_code=404, code=user_not_found, detail="User not found")
+
+        active_batch = (
+            await self._db.execute(
+                select(ImportBatch)
+                .where(
+                    ImportBatch.user_id == user_id,
+                    ImportBatch.type == BatchType.embedding_backfill,
+                    ImportBatch.status.in_([BatchStatus.pending, BatchStatus.running]),
+                )
+                .order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if active_batch is not None:
+            return AdminEmbeddingBackfillResponse(
+                batch_id=active_batch.id,
+                queued=active_batch.queued_items + active_batch.processing_items,
+                already_current=0,
+            )
+
+        rows = (
+            await self._db.execute(
+                select(Media)
+                .outerjoin(MediaEmbedding, MediaEmbedding.media_id == Media.id)
+                .where(
+                    Media.uploader_id == user_id,
+                    Media.deleted_at.is_(None),
+                    Media.tagging_status == TaggingStatus.DONE,
+                )
+                .order_by(Media.uploaded_at.desc(), Media.id.desc())
+            )
+        ).scalars().all()
+        current_ids = set(
+            (
+                await self._db.execute(
+                    select(MediaEmbedding.media_id).where(
+                        MediaEmbedding.uploader_id == user_id,
+                        MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
+                    )
+                )
+            ).scalars().all()
+        )
+        media_items = [media for media in rows if media.id not in current_ids]
+        already_current = max(0, len(rows) - len(media_items))
+        now = datetime.now(timezone.utc)
+        batch = ImportBatch(
+            user_id=user_id,
+            type=BatchType.embedding_backfill,
+            status=BatchStatus.running if media_items else BatchStatus.done,
+            total_items=len(media_items),
+            queued_items=len(media_items),
+            processing_items=0,
+            done_items=0,
+            failed_items=0,
+            started_at=now,
+            finished_at=None if media_items else now,
+            last_heartbeat_at=now,
+        )
+        self._db.add(batch)
+        await self._db.flush()
+
+        items: list[ImportBatchItem] = []
+        for media in media_items:
+            item = ImportBatchItem(
+                batch_id=batch.id,
+                media_id=media.id,
+                source_filename=media.original_filename or media.filename,
+                status=ItemStatus.pending,
+                step=ProcessingStep.embedding,
+                progress_percent=0,
+            )
+            self._db.add(item)
+            items.append(item)
+        await self._db.flush()
+        await self._db.commit()
+
+        queue = get_embedding_backfill_queue()
+        if queue is not None:
+            for item in items:
+                await queue.put(item.id)
+        logger.info(
+            "Queued embedding backfill user_id=%s batch_id=%s queued=%s already_current=%s",
+            user_id,
+            batch.id,
+            len(items),
+            already_current,
+        )
+        return AdminEmbeddingBackfillResponse(batch_id=batch.id, queued=len(items), already_current=already_current)
+
+    async def get_embedding_backfill_status(self, batch_id: uuid.UUID) -> AdminEmbeddingBackfillStatus:
+        batch = await self._db.get(ImportBatch, batch_id)
+        if batch is None or batch.type != BatchType.embedding_backfill:
+            raise AppError(status_code=404, code="embedding_backfill_not_found", detail="Embedding backfill not found")
+        failed_items = (
+            await self._db.execute(
+                select(ImportBatchItem)
+                .where(
+                    ImportBatchItem.batch_id == batch_id,
+                    ImportBatchItem.status == ItemStatus.failed,
+                )
+                .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
+                .limit(5)
+            )
+        ).scalars().all()
+        return AdminEmbeddingBackfillStatus(
+            batch_id=batch.id,
+            user_id=batch.user_id,
+            status=batch.status.value if hasattr(batch.status, "value") else str(batch.status),
+            total_items=batch.total_items,
+            queued_items=batch.queued_items,
+            processing_items=batch.processing_items,
+            done_items=batch.done_items,
+            failed_items=batch.failed_items,
+            started_at=batch.started_at,
+            finished_at=batch.finished_at,
+            error_summary=batch.error_summary,
+            recent_failed_items=[
+                f"{item.source_filename}: {item.error or 'failed'}"
+                for item in failed_items
+            ],
+        )
+
+    async def run_embedding_backfill_item(self, item_id: uuid.UUID) -> None:
+        item = await self._load_embedding_backfill_item(item_id)
+        if item is None:
+            return
+        batch_id = item.batch_id
+        item.status = ItemStatus.processing
+        item.step = ProcessingStep.embedding
+        item.progress_percent = 10
+        item.error = None
+        await self._refresh_batch_counts(batch_id)
+        await self._db.commit()
+
+        item = await self._load_embedding_backfill_item(item_id)
+        if item is None:
+            return
+        try:
+            media = item.media
+            if media is None or media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
+                raise ValueError("Media is not eligible for embedding backfill")
+            embedding = await MediaEmbeddingService(self._db).ensure_for_media(media, force=False)
+            if embedding is None or embedding.model_version != EMBEDDING_MODEL_VERSION:
+                raise ValueError("Embedding was not created")
+            item.status = ItemStatus.done
+            item.progress_percent = 100
+            item.error = None
+        except Exception as exc:
+            item.status = ItemStatus.failed
+            item.progress_percent = 100
+            item.error = str(exc)[:1024]
+            logger.warning("Embedding backfill item failed item_id=%s error=%s", item_id, exc)
+        await self._refresh_batch_counts(batch_id)
+        await self._db.commit()
+
+    async def get_embedding_clusters(
+        self,
+        user_id: uuid.UUID,
+        *,
+        mode: str,
+        limit: int | None,
+        sample_size: int,
+        min_cluster_size: int,
+    ) -> AdminEmbeddingClusterListResponse:
+        target = await UserRepository(self._db).get_by_id(user_id)
+        if target is None:
+            raise AppError(status_code=404, code=user_not_found, detail="User not found")
+        rows = await self._load_embedding_cluster_rows(user_id, limit=limit)
+        clusters = (
+            self._build_label_clusters(rows, sample_size=sample_size, min_cluster_size=min_cluster_size)
+            if mode == "label"
+            else self._build_unsupervised_clusters(rows, sample_size=sample_size, min_cluster_size=min_cluster_size)
+        )
+        return AdminEmbeddingClusterListResponse(
+            mode=mode,
+            model_version=EMBEDDING_MODEL_VERSION,
+            total_embeddings=len(rows),
+            clusters=clusters,
+        )
+
+    async def get_embedding_cluster_plot(
+        self,
+        user_id: uuid.UUID,
+        *,
+        mode: str,
+        min_cluster_size: int,
+    ) -> bytes:
+        target = await UserRepository(self._db).get_by_id(user_id)
+        if target is None:
+            raise AppError(status_code=404, code=user_not_found, detail="User not found")
+        rows = await self._load_embedding_cluster_rows(user_id, limit=None)
+        return _render_embedding_cluster_plot(
+            rows,
+            mode=mode,
+            min_cluster_size=min_cluster_size,
+        )
+
     async def delete_user_media(self, actor: User, user_id: uuid.UUID) -> int:
         target = await UserRepository(self._db).get_by_id(user_id)
         if target is None:
@@ -177,6 +396,368 @@ class AdminService:
             ],
         )
 
+    async def _load_embedding_backfill_item(self, item_id: uuid.UUID) -> ImportBatchItem | None:
+        return (
+            await self._db.execute(
+                select(ImportBatchItem)
+                .options(selectinload(ImportBatchItem.media))
+                .where(ImportBatchItem.id == item_id)
+            )
+        ).scalar_one_or_none()
+
+    async def _refresh_batch_counts(self, batch_id: uuid.UUID) -> None:
+        batch = await self._db.get(ImportBatch, batch_id)
+        if batch is None:
+            return
+        statuses = (
+            await self._db.execute(
+                select(ImportBatchItem.status).where(ImportBatchItem.batch_id == batch_id)
+            )
+        ).scalars().all()
+        batch.total_items = len(statuses)
+        batch.queued_items = sum(1 for status in statuses if status == ItemStatus.pending)
+        batch.processing_items = sum(1 for status in statuses if status == ItemStatus.processing)
+        batch.done_items = sum(1 for status in statuses if status in {ItemStatus.done, ItemStatus.skipped})
+        batch.failed_items = sum(1 for status in statuses if status == ItemStatus.failed)
+        batch.last_heartbeat_at = datetime.now(timezone.utc)
+        if batch.queued_items or batch.processing_items:
+            batch.status = BatchStatus.running
+            batch.finished_at = None
+            return
+        if batch.failed_items == batch.total_items and batch.total_items > 0:
+            batch.status = BatchStatus.failed
+        elif batch.failed_items > 0:
+            batch.status = BatchStatus.partial_failed
+        else:
+            batch.status = BatchStatus.done
+        batch.finished_at = datetime.now(timezone.utc)
+
+    async def _load_embedding_cluster_rows(self, user_id: uuid.UUID, *, limit: int | None) -> list[dict]:
+        stmt = (
+            select(Media, MediaEmbedding.embedding)
+            .join(MediaEmbedding, MediaEmbedding.media_id == Media.id)
+            .where(
+                Media.uploader_id == user_id,
+                Media.deleted_at.is_(None),
+                MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
+            )
+            .order_by(Media.uploaded_at.desc(), Media.id.desc())
+        )
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        rows = (await self._db.execute(stmt)).all()
+        media_ids = [row[0].id for row in rows]
+        labels_by_media: dict[uuid.UUID, list[MediaEntity]] = defaultdict(list)
+        if media_ids:
+            entity_rows = (
+                await self._db.execute(
+                    select(MediaEntity).where(
+                        MediaEntity.media_id.in_(media_ids),
+                        MediaEntity.entity_type == MediaEntityType.character,
+                        _trusted_entity_sql_filter(MediaEntity),
+                        MediaEntity.name != "",
+                    )
+                )
+            ).scalars().all()
+            for entity in entity_rows:
+                labels_by_media[entity.media_id].append(entity)
+        return [
+            {
+                "media": row[0],
+                "embedding": normalized,
+                "labels": labels_by_media.get(row[0].id, []),
+            }
+            for row in rows
+            for normalized in [_normalized(row[1])]
+            if normalized
+        ]
+
+    def _build_label_clusters(self, rows: list[dict], *, sample_size: int, min_cluster_size: int) -> list[AdminEmbeddingClusterRead]:
+        grouped: dict[tuple[uuid.UUID | None, str], list[dict]] = defaultdict(list)
+        for row in rows:
+            for label in row["labels"]:
+                grouped[(label.entity_id, label.name)].append(row)
+        clusters: list[AdminEmbeddingClusterRead] = []
+        for (entity_id, name), items in grouped.items():
+            distinct_ids = {item["media"].id for item in items}
+            if len(distinct_ids) < min_cluster_size:
+                continue
+            centroid = _centroid([item["embedding"] for item in items])
+            scored = sorted(
+                [
+                    (item, _cosine_similarity(item["embedding"], centroid))
+                    for item in items
+                ],
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
+            similarities = [score for _, score in scored]
+            outliers = list(reversed(scored))[: min(sample_size, max(0, len(scored) // 5 or 1))]
+            clusters.append(AdminEmbeddingClusterRead(
+                id=str(entity_id or name),
+                label=name,
+                entity_id=entity_id,
+                size=len(items),
+                distinct_media_support=len(distinct_ids),
+                prototype_count=_prototype_count([item["embedding"] for item in items]),
+                cohesion=round(sum(similarities) / len(similarities), 3) if similarities else None,
+                min_similarity=round(min(similarities), 3) if similarities else None,
+                max_similarity=round(max(similarities), 3) if similarities else None,
+                nearest_labels=[name],
+                samples=[
+                    _cluster_sample(item, similarity=score, label=name)
+                    for item, score in scored[:sample_size]
+                ],
+                outliers=[
+                    _cluster_sample(item, similarity=score, label=name)
+                    for item, score in outliers
+                ],
+            ))
+        return sorted(clusters, key=lambda cluster: (-cluster.distinct_media_support, cluster.label or ""))[:100]
+
+    def _build_unsupervised_clusters(self, rows: list[dict], *, sample_size: int, min_cluster_size: int) -> list[AdminEmbeddingClusterRead]:
+        clusters: list[dict] = []
+        threshold = 0.78
+        for row in rows:
+            best = max(
+                clusters,
+                key=lambda cluster: _cosine_similarity(row["embedding"], cluster["centroid"]),
+                default=None,
+            )
+            if best is not None and _cosine_similarity(row["embedding"], best["centroid"]) >= threshold:
+                best["items"].append(row)
+                best["centroid"] = _centroid([item["embedding"] for item in best["items"]])
+            else:
+                clusters.append({"items": [row], "centroid": row["embedding"]})
+
+        result: list[AdminEmbeddingClusterRead] = []
+        for index, cluster in enumerate(clusters, start=1):
+            items = cluster["items"]
+            if len(items) < min_cluster_size:
+                continue
+            centroid = cluster["centroid"]
+            label_counts = Counter(
+                label.name
+                for item in items
+                for label in item["labels"]
+            )
+            scored = sorted(
+                [(item, _cosine_similarity(item["embedding"], centroid)) for item in items],
+                key=lambda pair: pair[1],
+                reverse=True,
+            )
+            similarities = [score for _, score in scored]
+            result.append(AdminEmbeddingClusterRead(
+                id=f"cluster-{index}",
+                label=label_counts.most_common(1)[0][0] if label_counts else None,
+                size=len(items),
+                distinct_media_support=len({item["media"].id for item in items}),
+                prototype_count=1,
+                cohesion=round(sum(similarities) / len(similarities), 3) if similarities else None,
+                min_similarity=round(min(similarities), 3) if similarities else None,
+                max_similarity=round(max(similarities), 3) if similarities else None,
+                nearest_labels=[name for name, _ in label_counts.most_common(3)],
+                samples=[
+                    _cluster_sample(item, similarity=score, label=None)
+                    for item, score in scored[:sample_size]
+                ],
+                outliers=[
+                    _cluster_sample(item, similarity=score, label=None)
+                    for item, score in list(reversed(scored))[:sample_size]
+                ],
+            ))
+        return sorted(result, key=lambda cluster: (-cluster.size, cluster.id))[:100]
+
     def _assert_not_self(self, actor: User, target: User) -> None:
         if actor.id == target.id:
             raise AppError(status_code=403, code=forbidden, detail="You cannot perform this action on your own account")
+
+
+def _normalized(vector: list[float]) -> list[float]:
+    norm = math.sqrt(sum(float(value) * float(value) for value in vector))
+    if norm <= 0:
+        return []
+    return [float(value) / norm for value in vector]
+
+
+def _centroid(vectors: list[list[float]]) -> list[float]:
+    if not vectors:
+        return []
+    length = min(len(vector) for vector in vectors)
+    return _normalized([
+        sum(vector[index] for vector in vectors) / len(vectors)
+        for index in range(length)
+    ])
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right:
+        return 0.0
+    limit = min(len(left), len(right))
+    return sum(left[index] * right[index] for index in range(limit))
+
+
+def _prototype_count(vectors: list[list[float]]) -> int:
+    prototypes: list[list[float]] = []
+    for vector in vectors:
+        best = max((_cosine_similarity(vector, prototype) for prototype in prototypes), default=0.0)
+        if best < 0.82:
+            prototypes.append(vector)
+    return max(1, len(prototypes))
+
+
+def _cluster_sample(item: dict, *, similarity: float | None, label: str | None) -> AdminEmbeddingClusterSampleRead:
+    media = item["media"]
+    return AdminEmbeddingClusterSampleRead(
+        media_id=media.id,
+        filename=media.original_filename or media.filename,
+        similarity=round(similarity, 3) if similarity is not None else None,
+        label=label,
+    )
+
+
+def _render_embedding_cluster_plot(rows: list[dict], *, mode: str, min_cluster_size: int) -> bytes:
+    import io
+
+    try:
+        import matplotlib
+    except ModuleNotFoundError as exc:
+        raise AppError(
+            status_code=503,
+            code="embedding_plot_dependency_missing",
+            detail="Matplotlib is required to render embedding cluster plots.",
+        ) from exc
+    matplotlib.use("Agg")
+    from matplotlib import pyplot as plt
+
+    projected = _project_embeddings_2d([row["embedding"] for row in rows])
+    labels = _plot_labels(rows, mode=mode, min_cluster_size=min_cluster_size)
+    fig, ax = plt.subplots(figsize=(11, 7), dpi=150)
+    fig.patch.set_facecolor("#ffffff")
+    ax.set_facecolor("#f8fafc")
+    ax.grid(True, color="#dbe3ed", linewidth=0.5, alpha=0.9)
+
+    if not projected:
+        ax.text(0.5, 0.5, "No current embeddings to plot", ha="center", va="center", transform=ax.transAxes)
+        ax.set_axis_off()
+    else:
+        top_labels = _top_plot_labels(labels)
+        palette = plt.get_cmap("tab20")
+        color_by_label = {label: palette(index % 20) for index, label in enumerate(top_labels)}
+        for label in [*top_labels, "Other"]:
+            points = [
+                point
+                for point, point_label in zip(projected, labels, strict=False)
+                if (point_label if point_label in color_by_label else "Other") == label
+            ]
+            if not points:
+                continue
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            ax.scatter(
+                xs,
+                ys,
+                s=22 if label != "Other" else 14,
+                alpha=0.86 if label != "Other" else 0.34,
+                linewidths=0.2,
+                edgecolors="#0f172a",
+                color=color_by_label.get(label, "#94a3b8"),
+                label=label,
+            )
+        ax.set_xlabel("PCA 1")
+        ax.set_ylabel("PCA 2")
+        ax.set_title(f"Embedding map ({mode}, all current embeddings: {len(projected)})")
+        handles, legend_labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend(
+                handles,
+                legend_labels,
+                loc="best",
+                fontsize=8,
+                frameon=True,
+                framealpha=0.88,
+                borderpad=0.6,
+                markerscale=1.3,
+            )
+
+    fig.tight_layout()
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", bbox_inches="tight")
+    plt.close(fig)
+    return buffer.getvalue()
+
+
+def _project_embeddings_2d(vectors: list[list[float]]) -> list[tuple[float, float]]:
+    if not vectors:
+        return []
+    import numpy as np
+
+    matrix = np.asarray(vectors, dtype=np.float32)
+    if matrix.ndim != 2 or matrix.shape[0] == 0:
+        return []
+    if matrix.shape[0] == 1:
+        return [(0.0, 0.0)]
+    matrix = matrix - matrix.mean(axis=0, keepdims=True)
+    _, _, vt = np.linalg.svd(matrix, full_matrices=False)
+    components = vt[:2].T
+    projected = matrix @ components
+    if projected.shape[1] == 1:
+        projected = np.concatenate([projected, np.zeros((projected.shape[0], 1), dtype=projected.dtype)], axis=1)
+    spread = projected.std(axis=0, keepdims=True)
+    projected = projected / np.where(spread == 0, 1.0, spread)
+    return [(float(point[0]), float(point[1])) for point in projected]
+
+
+def _plot_labels(rows: list[dict], *, mode: str, min_cluster_size: int) -> list[str]:
+    if mode == "unsupervised":
+        return _unsupervised_plot_labels(rows, min_cluster_size=min_cluster_size)
+    labels = []
+    for row in rows:
+        row_labels = [label.name for label in row["labels"] if label.name]
+        labels.append(row_labels[0] if row_labels else "Unlabeled")
+    return labels
+
+
+def _unsupervised_plot_labels(rows: list[dict], *, min_cluster_size: int) -> list[str]:
+    clusters: list[dict] = []
+    threshold = 0.78
+    for index, row in enumerate(rows):
+        best = max(
+            clusters,
+            key=lambda cluster: _cosine_similarity(row["embedding"], cluster["centroid"]),
+            default=None,
+        )
+        if best is not None and _cosine_similarity(row["embedding"], best["centroid"]) >= threshold:
+            best["items"].append(index)
+            best["vectors"].append(row["embedding"])
+            best["centroid"] = _centroid(best["vectors"])
+        else:
+            clusters.append({"items": [index], "vectors": [row["embedding"]], "centroid": row["embedding"]})
+
+    labels = ["Other" for _ in rows]
+    kept = [cluster for cluster in clusters if len(cluster["items"]) >= min_cluster_size]
+    kept.sort(key=lambda cluster: len(cluster["items"]), reverse=True)
+    for cluster_index, cluster in enumerate(kept, start=1):
+        for item_index in cluster["items"]:
+            labels[item_index] = f"Cluster {cluster_index}"
+    return labels
+
+
+def _top_plot_labels(labels: list[str]) -> list[str]:
+    counts = Counter(label for label in labels if label and label not in {"Other", "Unlabeled"})
+    return [
+        label
+        for label, count in counts.most_common(12)
+        if count >= 2
+    ]
+
+
+def _trusted_entity_sql_filter(model):
+    return or_(
+        model.source == "manual",
+        and_(
+            model.source == "tagger",
+            model.confidence.is_not(None),
+            model.confidence >= settings.library_classification_trusted_tagger_min_confidence,
+        ),
+    )

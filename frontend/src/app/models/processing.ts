@@ -8,6 +8,7 @@ export enum BatchType {
   RETAG = 'retag',
   RETHUMBNAIL = 'rethumbnail',
   RESCAN = 'rescan',
+  EMBEDDING_BACKFILL = 'embedding_backfill',
 }
 
 export enum BatchStatus {
@@ -33,6 +34,7 @@ export enum ProcessingStep {
   POSTER = 'poster',
   TAG = 'tag',
   OCR = 'ocr',
+  EMBEDDING = 'embedding',
 }
 
 export interface ImportBatchRead {
@@ -83,6 +85,30 @@ export interface ImportBatchReviewItemRead {
 export interface ImportBatchRecommendationSuggestionRead {
   name: string;
   confidence: number;
+  entity_id?: string | null;
+  entity_type?: string | null;
+  series_name?: string | null;
+  source?: string | null;
+  model_version?: string | null;
+  visual_similarity?: number | null;
+  explanation?: string | null;
+}
+
+export interface LibraryClassificationFeedbackCreate {
+  media_id: string;
+  entity_type: 'character' | 'series';
+  suggested_entity_id?: string | null;
+  suggested_name: string;
+  series_name?: string | null;
+  action: 'accepted' | 'rejected' | 'auto_applied';
+  source?: string | null;
+  model_version?: string | null;
+  similarity?: number | null;
+  explanation?: string | null;
+}
+
+export interface LibraryClassificationFeedbackRead extends LibraryClassificationFeedbackCreate {
+  id: string;
 }
 
 export interface ImportBatchRecommendationSignalRead {

@@ -20,6 +20,7 @@ from backend.app.config import settings
 from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
 from backend.app.models import embeddings as _embedding_models  # noqa: F401
+from backend.app.models import library_classification as _library_classification_models  # noqa: F401
 from backend.app.models.media import Media
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.models import notifications as _notifications_models  # noqa: F401
@@ -28,10 +29,12 @@ from backend.app.runtime import health_monitor
 from backend.app.routers import admin, albums, auth, batches, config, media, notifications, tags, users
 from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue
+from backend.app.services.embedding_backfill import set_embedding_backfill_queue
 from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.services.admin import AdminService
 from backend.app.services.auth import AuthService
 from backend.app.services.tags import TagService
 from backend.app.services.update_check import update_check_worker
@@ -45,6 +48,7 @@ configure_logging(settings.log_level)
 logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
+embedding_backfill_queue: asyncio.Queue = asyncio.Queue()
 
 
 class _MlStartupState:
@@ -102,8 +106,8 @@ API_KEY_AUTH_DESCRIPTION = (
 async def tagging_worker():
     while True:
         media_id: uuid.UUID = await tag_queue.get()
-        async with AsyncSessionLocal() as db:
-            try:
+        try:
+            async with AsyncSessionLocal() as db:
                 result = await db.execute(select(Media).where(Media.id == media_id))
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
@@ -118,17 +122,30 @@ async def tagging_worker():
                 await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
                 await upload_service.mark_upload_batch_item_done(media_id)
 
-            except Exception as exc:
+        except Exception as exc:
+            async with AsyncSessionLocal() as err_db:
+                query = MediaQueryService(err_db)
+                processing = MediaProcessingService(err_db, query)
+                upload_service = MediaUploadService(err_db, processing, query)
+                await processing.mark_tagging_failure(media_id, exc)
+                await upload_service.mark_upload_batch_item_failed(media_id, str(exc))
+            logger.exception("Tagging failed for media_id=%s", media_id)
+        finally:
+            tag_queue.task_done()
+
+
+async def embedding_backfill_worker():
+    while True:
+        item_id: uuid.UUID = await embedding_backfill_queue.get()
+        async with AsyncSessionLocal() as db:
+            try:
+                await ml_startup_state.wait_until_ready()
+                await AdminService(db).run_embedding_backfill_item(item_id)
+            except Exception:
                 await db.rollback()
-                async with AsyncSessionLocal() as err_db:
-                    query = MediaQueryService(err_db)
-                    processing = MediaProcessingService(err_db, query)
-                    upload_service = MediaUploadService(err_db, processing, query)
-                    await processing.mark_tagging_failure(media_id, exc)
-                    await upload_service.mark_upload_batch_item_failed(media_id, str(exc))
-                logger.exception("Tagging failed for media_id=%s", media_id)
+                logger.exception("Embedding backfill failed for item_id=%s", item_id)
             finally:
-                tag_queue.task_done()
+                embedding_backfill_queue.task_done()
 
 
 async def trash_purge_worker() -> None:
@@ -229,6 +246,37 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
     return len(ordered_media_ids)
 
 
+async def _recover_pending_embedding_backfill_jobs(queue: asyncio.Queue) -> int:
+    async with AsyncSessionLocal() as db:
+        pending_items = (
+            (
+                await db.execute(
+                    select(ImportBatchItem)
+                    .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                    .where(
+                        ImportBatch.type == BatchType.embedding_backfill,
+                        ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+                    )
+                    .order_by(ImportBatchItem.updated_at.asc(), ImportBatchItem.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        updated = False
+        for item in pending_items:
+            if item.status == ItemStatus.processing:
+                item.status = ItemStatus.pending
+                item.progress_percent = 0
+                updated = True
+        if updated:
+            await db.commit()
+
+    for item in pending_items:
+        await queue.put(item.id)
+    return len(pending_items)
+
+
 async def _initialize_ml_services() -> None:
     try:
         logger.info("Startup phase: loading tagger model")
@@ -276,6 +324,7 @@ async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
     startup_started_at = time.perf_counter()
     workers: list[asyncio.Task] = []
+    embedding_workers: list[asyncio.Task] = []
     purge_worker: asyncio.Task | None = None
     update_worker: asyncio.Task | None = None
     ml_worker: asyncio.Task | None = None
@@ -295,14 +344,20 @@ async def lifespan(_api: FastAPI):
 
         logger.info("Startup phase: wiring background services")
         set_tag_queue(tag_queue)
+        set_embedding_backfill_queue(embedding_backfill_queue)
         health_monitor.start()
         recovered_count = await _recover_pending_media_jobs(tag_queue)
+        recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(embedding_backfill_queue)
         workers = [asyncio.create_task(tagging_worker()) for _ in range(settings.tagging_worker_count)]
+        embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
         purge_worker = asyncio.create_task(trash_purge_worker())
         update_worker = asyncio.create_task(update_check_worker())
         logger.info("Background tagging workers started count=%s", settings.tagging_worker_count)
+        logger.info("Background embedding backfill worker started count=1")
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
+        if recovered_embedding_count:
+            logger.info("Recovered %s pending embedding backfill jobs after startup", recovered_embedding_count)
         logger.info("Background trash purge worker started")
         logger.info("Application startup completed successfully; ML initialization continues in background")
         logger.info("Application startup duration_seconds=%.2f", time.perf_counter() - startup_started_at)
@@ -315,6 +370,8 @@ async def lifespan(_api: FastAPI):
         logger.info("Application shutdown initiated")
         for w in workers:
             w.cancel()
+        for w in embedding_workers:
+            w.cancel()
         if purge_worker is not None:
             purge_worker.cancel()
         if update_worker is not None:
@@ -323,6 +380,11 @@ async def lifespan(_api: FastAPI):
             ml_worker.cancel()
         await health_monitor.stop()
         for w in workers:
+            try:
+                await w
+            except asyncio.CancelledError:
+                pass
+        for w in embedding_workers:
             try:
                 await w
             except asyncio.CancelledError:

@@ -55,6 +55,58 @@ export interface DeleteUserMediaResponse {
   deleted: number;
 }
 
+export type EmbeddingClusterMode = 'label' | 'unsupervised';
+
+export interface AdminEmbeddingBackfillResponse {
+  batch_id: string | null;
+  queued: number;
+  already_current: number;
+}
+
+export interface AdminEmbeddingBackfillStatus {
+  batch_id: string;
+  user_id: string;
+  status: string;
+  total_items: number;
+  queued_items: number;
+  processing_items: number;
+  done_items: number;
+  failed_items: number;
+  started_at: string | null;
+  finished_at: string | null;
+  error_summary: string | null;
+  recent_failed_items: string[];
+}
+
+export interface AdminEmbeddingClusterSampleRead {
+  media_id: string;
+  filename: string;
+  similarity: number | null;
+  label: string | null;
+}
+
+export interface AdminEmbeddingClusterRead {
+  id: string;
+  label: string | null;
+  entity_id: string | null;
+  size: number;
+  distinct_media_support: number;
+  prototype_count: number;
+  cohesion: number | null;
+  min_similarity: number | null;
+  max_similarity: number | null;
+  nearest_labels: string[];
+  samples: AdminEmbeddingClusterSampleRead[];
+  outliers: AdminEmbeddingClusterSampleRead[];
+}
+
+export interface AdminEmbeddingClusterListResponse {
+  mode: EmbeddingClusterMode;
+  model_version: string;
+  total_embeddings: number;
+  clusters: AdminEmbeddingClusterRead[];
+}
+
 export type UserListResponse = PagedList<AdminUserSummary>;
 
 export interface UpdateCheckResponse {

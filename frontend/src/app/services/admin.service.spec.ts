@@ -89,6 +89,24 @@ describe('AdminService', () => {
       expect((err as Error).message).toMatch(/Forbidden/);
     });
 
+    it('startEmbeddingBackfill throws Forbidden', () => {
+      let err: unknown;
+      service.startEmbeddingBackfill('u2').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('getEmbeddingClusters throws Forbidden', () => {
+      let err: unknown;
+      service.getEmbeddingClusters('u2', 'label').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
+    it('getEmbeddingClusterPlot throws Forbidden', () => {
+      let err: unknown;
+      service.getEmbeddingClusterPlot('u2', 'label').subscribe({ error: e => (err = e) });
+      expect((err as Error).message).toMatch(/Forbidden/);
+    });
+
     it('listAnnouncements throws Forbidden', () => {
       let err: unknown;
       service.listAnnouncements().subscribe({ error: e => (err = e) });
@@ -199,6 +217,54 @@ describe('AdminService', () => {
       service.retagAll('u2').subscribe(res => expect(res).toEqual(mock));
       const req = http.expectOne('/api/v1/admin/users/u2/tagging-jobs');
       expect(req.request.method).toBe('POST');
+      req.flush(mock);
+    });
+
+    it('startEmbeddingBackfill sends POST /api/v1/admin/users/{id}/embedding-backfill', () => {
+      const mock = { batch_id: 'b1', queued: 3, already_current: 7 };
+      service.startEmbeddingBackfill('u2').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/users/u2/embedding-backfill');
+      expect(req.request.method).toBe('POST');
+      req.flush(mock);
+    });
+
+    it('getEmbeddingBackfillStatus sends GET /api/v1/admin/embedding-backfills/{id}', () => {
+      const mock = {
+        batch_id: 'b1',
+        user_id: 'u2',
+        status: 'done',
+        total_items: 3,
+        queued_items: 0,
+        processing_items: 0,
+        done_items: 3,
+        failed_items: 0,
+        started_at: '2026-04-25T10:00:00Z',
+        finished_at: '2026-04-25T10:01:00Z',
+        error_summary: null,
+        recent_failed_items: [],
+      };
+      service.getEmbeddingBackfillStatus('b1').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/embedding-backfills/b1');
+      expect(req.request.method).toBe('GET');
+      req.flush(mock);
+    });
+
+    it('getEmbeddingClusters sends GET /api/v1/admin/users/{id}/embedding-clusters', () => {
+      const mock = { mode: 'unsupervised', model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] };
+      service.getEmbeddingClusters('u2', 'unsupervised').subscribe(res => expect(res).toEqual(mock));
+      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2/embedding-clusters');
+      expect(req.request.method).toBe('GET');
+      expect(req.request.params.get('mode')).toBe('unsupervised');
+      req.flush(mock);
+    });
+
+    it('getEmbeddingClusterPlot sends GET /api/v1/admin/users/{id}/embedding-clusters/plot', () => {
+      const mock = new Blob(['png'], { type: 'image/png' });
+      service.getEmbeddingClusterPlot('u2', 'label').subscribe(res => expect(res).toBe(mock));
+      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2/embedding-clusters/plot');
+      expect(req.request.method).toBe('GET');
+      expect(req.request.responseType).toBe('blob');
+      expect(req.request.params.get('mode')).toBe('label');
       req.flush(mock);
     });
 

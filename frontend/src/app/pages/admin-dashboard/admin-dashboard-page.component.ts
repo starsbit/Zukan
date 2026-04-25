@@ -13,12 +13,14 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
-import { interval, startWith, switchMap, finalize } from 'rxjs';
+import { interval, startWith, switchMap, finalize, takeWhile } from 'rxjs';
 import type { EChartsCoreOption } from 'echarts/core';
+import { AdminEmbeddingClustersDialogComponent } from '../../components/admin/admin-embedding-clusters-dialog/admin-embedding-clusters-dialog.component';
 import { AdminUserEditDialogComponent } from '../../components/admin/admin-user-edit-dialog/admin-user-edit-dialog.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { EchartPanelComponent } from '../../components/shared/echart-panel/echart-panel.component';
 import {
+  AdminEmbeddingBackfillStatus,
   AdminHealthResponse,
   AdminStatsResponse,
   AdminUserSummary,
@@ -81,6 +83,8 @@ export class AdminDashboardPageComponent {
   readonly health = signal<AdminHealthResponse | null>(null);
   readonly users = signal<AdminUserSummary[]>([]);
   readonly announcements = signal<any[]>([]);
+  readonly embeddingBackfills = signal<Record<string, AdminEmbeddingBackfillStatus>>({});
+  readonly embeddingBackfillStartingIds = signal<ReadonlySet<string>>(new Set());
   readonly userFilter = signal('');
   readonly userSort = signal<UserSortKey>('storage_used_mb');
   readonly currentUser = this.userStore.currentUser;
@@ -233,6 +237,48 @@ export class AdminDashboardPageComponent {
     });
   }
 
+  backfillEmbeddings(user: AdminUserSummary): void {
+    if (this.isEmbeddingBackfillStarting(user)) {
+      return;
+    }
+    this.confirmDialog.open({
+      title: 'Backfill embeddings?',
+      message: `This will only warm up missing or stale image embeddings for ${user.username}. It will not retag media, run OCR, overwrite manual metadata, or change review state.`,
+      confirmLabel: 'Backfill embeddings',
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
+      if (!confirmed) {
+        return;
+      }
+      this.setEmbeddingBackfillStarting(user.id, true);
+      this.adminService.startEmbeddingBackfill(user.id).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.setEmbeddingBackfillStarting(user.id, false)),
+      ).subscribe({
+        next: (response) => {
+          if (response.queued === 0) {
+            this.snackBar.open(`${user.username} already has current embeddings.`, 'Close');
+          } else {
+            this.snackBar.open(`Queued ${response.queued} embedding jobs for ${user.username}.`, 'Close');
+          }
+          if (response.batch_id) {
+            this.pollEmbeddingBackfill(user, response.batch_id);
+          }
+        },
+        error: (err) => {
+          this.snackBar.open(err.error?.detail ?? 'Unable to queue embedding backfill.', 'Close');
+        },
+      });
+    });
+  }
+
+  viewEmbeddingClusters(user: AdminUserSummary): void {
+    this.dialog.open(AdminEmbeddingClustersDialogComponent, {
+      data: { user },
+      width: 'min(66rem, 94vw)',
+      maxWidth: '94vw',
+    });
+  }
+
   deleteAllMedia(user: AdminUserSummary): void {
     this.confirmDialog.open({
       title: 'Delete all media?',
@@ -339,6 +385,25 @@ export class AdminDashboardPageComponent {
     return user.id === this.currentUser()?.id;
   }
 
+  isEmbeddingBackfillStarting(user: AdminUserSummary): boolean {
+    return this.embeddingBackfillStartingIds().has(user.id);
+  }
+
+  embeddingBackfillStatus(user: AdminUserSummary): AdminEmbeddingBackfillStatus | null {
+    return this.embeddingBackfills()[user.id] ?? null;
+  }
+
+  formatBackfillStatus(status: AdminEmbeddingBackfillStatus): string {
+    const active = status.queued_items + status.processing_items;
+    if (status.status === 'running' || active > 0) {
+      return `Embeddings ${status.done_items}/${status.total_items} done`;
+    }
+    if (status.failed_items > 0) {
+      return `Embeddings finished with ${status.failed_items} failed`;
+    }
+    return `Embeddings ${status.done_items}/${status.total_items} done`;
+  }
+
   formatMb(mb: number): string {
     if (mb >= 1024) {
       const gb = mb / 1024;
@@ -394,6 +459,37 @@ export class AdminDashboardPageComponent {
   private reloadStats(): void {
     this.adminService.getStats().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (stats) => this.stats.set(stats),
+    });
+  }
+
+  private setEmbeddingBackfillStarting(userId: string, starting: boolean): void {
+    this.embeddingBackfillStartingIds.update((ids) => {
+      const next = new Set(ids);
+      if (starting) {
+        next.add(userId);
+      } else {
+        next.delete(userId);
+      }
+      return next;
+    });
+  }
+
+  private pollEmbeddingBackfill(user: AdminUserSummary, batchId: string): void {
+    interval(2500).pipe(
+      startWith(0),
+      switchMap(() => this.adminService.getEmbeddingBackfillStatus(batchId)),
+      takeWhile((status) => status.status === 'running' || status.queued_items + status.processing_items > 0, true),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: (status) => {
+        this.embeddingBackfills.update((statuses) => ({ ...statuses, [user.id]: status }));
+        if (status.status !== 'running' && status.queued_items + status.processing_items === 0) {
+          this.snackBar.open(this.formatBackfillStatus(status), 'Close');
+        }
+      },
+      error: (err) => {
+        this.snackBar.open(err.error?.detail ?? 'Unable to read embedding backfill status.', 'Close');
+      },
     });
   }
 

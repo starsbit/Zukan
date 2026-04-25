@@ -3,7 +3,7 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { UserRead } from '../../../models/auth';
-import { NavbarSearchService } from '../../../services/navbar-search.service';
+import { NavbarSearchService, SearchQueryParams } from '../../../services/navbar-search.service';
 import { UserStore } from '../../../services/user.store';
 
 type NavigationItem = {
@@ -28,7 +28,12 @@ export class SidebarComponent {
   private readonly searchService = inject(NavbarSearchService);
   private readonly userStore = inject(UserStore);
   readonly currentUser = this.userStore.currentUser;
-  readonly searchQueryParams = this.searchService.toQueryParams.bind(this.searchService);
+
+  searchQueryParams(): SearchQueryParams {
+    return typeof this.searchService.toQueryParams === 'function'
+      ? this.searchService.toQueryParams()
+      : {};
+  }
 
   storagePercent(user: UserRead): number {
     if (!user.storage_quota_mb) return 0;

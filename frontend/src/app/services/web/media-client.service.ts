@@ -16,6 +16,10 @@ import {
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
+import {
+  LibraryClassificationFeedbackCreate,
+  LibraryClassificationFeedbackRead,
+} from '../../models/processing';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../../models/tags';
 import { MediaTimeline } from '../../models/timeline';
 import { normalizeMetadataNameForSubmission } from '../../utils/media-display.utils';
@@ -224,6 +228,15 @@ export class MediaClientService {
     return this.http.get<SeriesSuggestion[]>(
       `${this.base}/api/v1/media/series-suggestions`,
       { params },
+    );
+  }
+
+  recordLibraryClassificationFeedback(
+    body: LibraryClassificationFeedbackCreate,
+  ): Observable<LibraryClassificationFeedbackRead> {
+    return this.http.post<LibraryClassificationFeedbackRead>(
+      `${this.base}/api/v1/media/library-classification-feedback`,
+      body,
     );
   }
 

@@ -15,6 +15,7 @@ class BatchType(str, Enum):
     retag = "retag"
     rethumbnail = "rethumbnail"
     rescan = "rescan"
+    embedding_backfill = "embedding_backfill"
 
 
 class BatchStatus(str, Enum):
@@ -105,6 +106,13 @@ class ImportBatchReviewItemRead(BaseModel):
 class ImportBatchRecommendationSuggestionRead(BaseModel):
     name: str
     confidence: float = Field(description="Relative confidence for this suggestion within the recommendation group.")
+    entity_id: uuid.UUID | None = Field(default=None, description="Optional canonical entity id for this suggestion.")
+    entity_type: str | None = Field(default=None, description="Entity type this suggestion applies to.")
+    series_name: str | None = Field(default=None, description="Optional series context for this suggestion.")
+    source: str | None = Field(default=None, description="Signal source that produced this suggestion.")
+    model_version: str | None = Field(default=None, description="Embedding model version used for this suggestion.")
+    visual_similarity: float | None = Field(default=None, description="Best visual similarity behind this suggestion.")
+    explanation: str | None = Field(default=None, description="Human-readable explanation of why this suggestion was made.")
 
 
 class ImportBatchRecommendationSignalRead(BaseModel):

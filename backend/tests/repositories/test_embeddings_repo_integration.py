@@ -7,8 +7,8 @@ from backend.app.repositories.embeddings import MediaEmbeddingRepository
 
 
 def _vector(*values: float) -> list[float]:
-    padded = list(values) + [0.0] * (96 - len(values))
-    return padded[:96]
+    padded = list(values) + [0.0] * (512 - len(values))
+    return padded[:512]
 
 
 @pytest.mark.asyncio
@@ -83,6 +83,7 @@ async def test_embedding_repository_nearest_neighbors_scopes_to_uploader_and_exc
         uploader_id=user.id,
         embedding=_vector(1.0, 0.0, 0.0),
         limit=5,
+        model_version="test_v1",
     )
 
     assert [neighbor.media_id for neighbor in neighbors] == [close_match.id, distant_match.id]

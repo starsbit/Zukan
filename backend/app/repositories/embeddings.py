@@ -58,15 +58,18 @@ class MediaEmbeddingRepository:
         uploader_id: uuid.UUID,
         embedding: list[float],
         limit: int,
+        model_version: str | None = None,
     ) -> list[MediaNeighbor]:
+        model_filter = "AND model_version = :model_version" if model_version is not None else ""
         rows = (
             await self._db.execute(
                 text(
-                    """
+                    f"""
                     SELECT media_id, 1 - (embedding <=> CAST(:embedding AS vector)) AS similarity
                     FROM media_embeddings
                     WHERE uploader_id = :uploader_id
                       AND media_id != :media_id
+                      {model_filter}
                     ORDER BY embedding <=> CAST(:embedding AS vector)
                     LIMIT :limit
                     """
@@ -76,6 +79,7 @@ class MediaEmbeddingRepository:
                     "uploader_id": uploader_id,
                     "embedding": _vector_literal(embedding),
                     "limit": limit,
+                    "model_version": model_version,
                 },
             )
         ).mappings().all()

@@ -38,18 +38,24 @@ class Settings(BaseSettings):
     ocr_tesseract_config: str = "--psm 6"
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
-    embedding_backend: str = "color_histogram_v1"
+    embedding_backend: str = "clip_onnx_v1"
+    embedding_model_repo: str = "Xenova/clip-vit-base-patch32"
+    embedding_model_file: str = "onnx/vision_model_quantized.onnx"
     embedding_executor_workers: int = 2
     tagging_worker_count: int = 2
     tagger_executor_workers: int = 2
     ocr_executor_workers: int = 2
     library_classification_neighbor_count: int = 12
     library_classification_backfill_limit: int = 64
-    library_classification_suggestion_min_similarity: float = 0.55
-    library_classification_auto_min_similarity: float = 0.72
-    library_classification_auto_high_similarity: float = 0.90
+    library_classification_suggestion_min_similarity: float = 0.35
+    library_classification_auto_min_similarity: float = 0.60
     library_classification_auto_min_margin: float = 0.18
     library_classification_auto_min_support: int = 2
+    library_classification_min_visual_similarity: float = 0.32
+    library_classification_tag_overlap_weight: float = 0.20
+    library_classification_prototype_max_per_entity: int = 4
+    library_classification_prototype_cluster_similarity: float = 0.82
+    library_classification_trusted_tagger_min_confidence: float = 0.98
 
     thumbnail_size: int = 512
 
@@ -107,6 +113,7 @@ RUNTIME_CONFIG_FIELDS = {
     "remember_me_refresh_token_expire_days",
     "tagger_threshold_general",
     "tagger_threshold_character",
+    "library_classification_trusted_tagger_min_confidence",
     "ocr_enabled",
     "ocr_languages",
     "ocr_max_chars",

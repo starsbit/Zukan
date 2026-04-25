@@ -203,6 +203,128 @@ def test_admin_retag_contract(api_client, monkeypatch):
     assert response.json() == {"queued": 9}
 
 
+def test_admin_embedding_backfill_start_contract(api_client, monkeypatch):
+    batch_id = uuid.uuid4()
+
+    async def _fake_start(self, user_id):
+        return {"batch_id": batch_id, "queued": 12, "already_current": 3}
+
+    monkeypatch.setattr(AdminService, "start_embedding_backfill", _fake_start)
+
+    response = api_client.post(f"/api/v1/admin/users/{uuid.uuid4()}/embedding-backfill")
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "batch_id": str(batch_id),
+        "queued": 12,
+        "already_current": 3,
+    }
+
+
+def test_admin_embedding_backfill_status_contract(api_client, monkeypatch):
+    batch_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    now = datetime.now(timezone.utc).isoformat()
+
+    async def _fake_status(self, requested_batch_id):
+        assert requested_batch_id == batch_id
+        return {
+            "batch_id": batch_id,
+            "user_id": user_id,
+            "status": "running",
+            "total_items": 12,
+            "queued_items": 8,
+            "processing_items": 1,
+            "done_items": 3,
+            "failed_items": 0,
+            "started_at": now,
+            "finished_at": None,
+            "error_summary": None,
+            "recent_failed_items": [],
+        }
+
+    monkeypatch.setattr(AdminService, "get_embedding_backfill_status", _fake_status)
+
+    response = api_client.get(f"/api/v1/admin/embedding-backfills/{batch_id}")
+
+    assert response.status_code == 200
+    assert response.json()["batch_id"] == str(batch_id)
+    assert response.json()["queued_items"] == 8
+
+
+def test_admin_embedding_clusters_contract(api_client, monkeypatch):
+    user_id = uuid.uuid4()
+    media_id = uuid.uuid4()
+    entity_id = uuid.uuid4()
+
+    async def _fake_clusters(self, requested_user_id, *, mode, limit, sample_size, min_cluster_size):
+        assert requested_user_id == user_id
+        assert mode == "label"
+        assert limit == 50
+        assert sample_size == 3
+        assert min_cluster_size == 2
+        return {
+            "mode": mode,
+            "model_version": "clip_onnx_v1",
+            "total_embeddings": 10,
+            "clusters": [
+                {
+                    "id": str(entity_id),
+                    "label": "Saber",
+                    "entity_id": entity_id,
+                    "size": 3,
+                    "distinct_media_support": 3,
+                    "prototype_count": 2,
+                    "cohesion": 0.81,
+                    "min_similarity": 0.74,
+                    "max_similarity": 0.92,
+                    "nearest_labels": ["Saber"],
+                    "samples": [
+                        {
+                            "media_id": media_id,
+                            "filename": "saber.png",
+                            "similarity": 0.92,
+                            "label": "Saber",
+                        }
+                    ],
+                    "outliers": [],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(AdminService, "get_embedding_clusters", _fake_clusters)
+
+    response = api_client.get(
+        f"/api/v1/admin/users/{user_id}/embedding-clusters",
+        params={"mode": "label", "limit": 50, "sample_size": 3, "min_cluster_size": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["clusters"][0]["label"] == "Saber"
+    assert response.json()["clusters"][0]["samples"][0]["media_id"] == str(media_id)
+
+
+def test_admin_embedding_cluster_plot_contract(api_client, monkeypatch):
+    user_id = uuid.uuid4()
+
+    async def _fake_plot(self, requested_user_id, *, mode, min_cluster_size):
+        assert requested_user_id == user_id
+        assert mode == "unsupervised"
+        assert min_cluster_size == 2
+        return b"fake-png"
+
+    monkeypatch.setattr(AdminService, "get_embedding_cluster_plot", _fake_plot)
+
+    response = api_client.get(
+        f"/api/v1/admin/users/{user_id}/embedding-clusters/plot",
+        params={"mode": "unsupervised", "limit": 50, "min_cluster_size": 2},
+    )
+
+    assert response.status_code == 200
+    assert response.content == b"fake-png"
+    assert response.headers["content-type"] == "image/png"
+
+
 def test_admin_list_announcements_contract(api_client, monkeypatch):
     now = datetime.now(timezone.utc)
 

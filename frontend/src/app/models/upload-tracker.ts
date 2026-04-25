@@ -114,6 +114,8 @@ export function processingStepLabel(step: ProcessingStep | null): string | null 
       return 'Tagging';
     case ProcessingStep.OCR:
       return 'OCR';
+    case ProcessingStep.EMBEDDING:
+      return 'Embedding';
     case null:
       return null;
   }

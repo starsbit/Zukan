@@ -4,6 +4,7 @@ import uuid
 from dataclasses import dataclass
 
 from sqlalchemy import and_, func, or_, select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -169,22 +170,31 @@ class TagRepository:
 
         await self.db.flush()
 
-        missing_names = [name for name, _, _ in desired_payloads if name not in existing_by_name]
+        missing_payloads = [
+            (name, category)
+            for name, category, _ in desired_payloads
+            if name not in existing_by_name
+        ]
+        missing_names = [name for name, _ in missing_payloads]
         existing_tags: dict[str, Tag] = {}
         if missing_names:
-            existing_tags = await self.get_by_names(owner_user_id, missing_names)
-
-        new_tags_created = False
-        for name, category, confidence in desired_payloads:
-            if name in existing_by_name or name in existing_tags:
-                continue
-            tag = Tag(owner_user_id=owner_user_id, name=name, category=category, media_count=0)
-            self.db.add(tag)
-            existing_tags[name] = tag
-            new_tags_created = True
-
-        if new_tags_created:
+            await self.db.execute(
+                insert(Tag)
+                .values([
+                    {
+                        "owner_user_id": owner_user_id,
+                        "name": name,
+                        "category": category,
+                        "media_count": 0,
+                    }
+                    for name, category in missing_payloads
+                ])
+                .on_conflict_do_nothing(
+                    constraint="uq_tags_owner_user_id_name",
+                )
+            )
             await self.db.flush()
+            existing_tags = await self.get_by_names(owner_user_id, missing_names)
 
         for name, category, confidence in desired_payloads:
             if name in existing_by_name:

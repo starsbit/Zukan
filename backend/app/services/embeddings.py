@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION, EmbeddingBackend, embedding_backend
@@ -65,7 +65,10 @@ class MediaEmbeddingService:
                 Media.uploader_id == uploader_id,
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
-                MediaEmbedding.media_id.is_(None),
+                or_(
+                    MediaEmbedding.media_id.is_(None),
+                    MediaEmbedding.model_version != EMBEDDING_MODEL_VERSION,
+                ),
             )
             .order_by(Media.uploaded_at.desc(), Media.id.desc())
             .limit(limit)

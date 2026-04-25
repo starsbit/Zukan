@@ -99,6 +99,23 @@ describe('AdminDashboardPageComponent', () => {
             createAnnouncement: () => of({}),
             updateUser: () => of({ id: 'u2', username: 'alice2' }),
             retagAll: () => of({ queued: 2 }),
+            startEmbeddingBackfill: () => of({ batch_id: 'b1', queued: 2, already_current: 0 }),
+            getEmbeddingBackfillStatus: () => of({
+              batch_id: 'b1',
+              user_id: 'u2',
+              status: 'done',
+              total_items: 2,
+              queued_items: 0,
+              processing_items: 0,
+              done_items: 2,
+              failed_items: 0,
+              started_at: '2026-04-25T10:00:00Z',
+              finished_at: '2026-04-25T10:01:00Z',
+              error_summary: null,
+              recent_failed_items: [],
+            }),
+            getEmbeddingClusters: () => of({ mode: 'label', model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] }),
+            getEmbeddingClusterPlot: () => of(new Blob(['png'], { type: 'image/png' })),
             deleteUserMedia: () => of({ deleted: 2 }),
             deleteUser: () => of(void 0),
           },
@@ -137,6 +154,8 @@ describe('AdminDashboardPageComponent', () => {
     expect(text).toContain('Platform dashboard');
     expect(text).toContain('Maintenance');
     expect(text).toContain('alice@example.com');
+    expect(text).toContain('Backfill Embeddings');
+    expect(text).toContain('View Clusters');
     expect(text).toContain('Delete Media');
   });
 

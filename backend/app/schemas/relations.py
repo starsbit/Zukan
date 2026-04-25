@@ -5,6 +5,35 @@ from pydantic import BaseModel, Field
 from backend.app.models.relations import MediaEntityType
 
 
+class LibraryClassificationFeedbackCreate(BaseModel):
+    media_id: uuid.UUID
+    entity_type: MediaEntityType
+    suggested_entity_id: uuid.UUID | None = None
+    suggested_name: str = Field(min_length=1, max_length=512)
+    series_name: str | None = Field(default=None, max_length=512)
+    action: str = Field(pattern="^(accepted|rejected|auto_applied)$")
+    source: str | None = Field(default=None, max_length=64)
+    model_version: str | None = Field(default=None, max_length=64)
+    similarity: float | None = Field(default=None, ge=0.0, le=1.0)
+    explanation: str | None = Field(default=None, max_length=1024)
+
+
+class LibraryClassificationFeedbackRead(BaseModel):
+    id: uuid.UUID
+    media_id: uuid.UUID
+    entity_type: MediaEntityType
+    suggested_entity_id: uuid.UUID | None
+    suggested_name: str
+    series_name: str | None
+    model_version: str
+    action: str
+    source: str | None
+    similarity: float | None
+    explanation: str | None
+
+    model_config = {"from_attributes": True}
+
+
 class EntityRead(BaseModel):
     id: uuid.UUID
     entity_type: MediaEntityType = Field(description="Entity type.")

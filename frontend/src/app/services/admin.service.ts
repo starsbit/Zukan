@@ -4,6 +4,10 @@ import { AdminClientService, AdminUserListParams } from './web/admin-client.serv
 import { UserStore } from './user.store';
 import { UserRead } from '../models/auth';
 import {
+  AdminEmbeddingBackfillResponse,
+  AdminEmbeddingBackfillStatus,
+  AdminEmbeddingClusterListResponse,
+  EmbeddingClusterMode,
   AdminHealthResponse,
   AdminStatsResponse,
   AdminUserDetail,
@@ -56,6 +60,30 @@ export class AdminService {
 
   retagAll(userId: string): Observable<TaggingJobQueuedResponse> {
     return this.guard(() => this.client.retagAll(userId));
+  }
+
+  startEmbeddingBackfill(userId: string): Observable<AdminEmbeddingBackfillResponse> {
+    return this.guard(() => this.client.startEmbeddingBackfill(userId));
+  }
+
+  getEmbeddingBackfillStatus(batchId: string): Observable<AdminEmbeddingBackfillStatus> {
+    return this.guard(() => this.client.getEmbeddingBackfillStatus(batchId));
+  }
+
+  getEmbeddingClusters(
+    userId: string,
+    mode: EmbeddingClusterMode,
+    options?: { limit?: number; sample_size?: number; min_cluster_size?: number },
+  ): Observable<AdminEmbeddingClusterListResponse> {
+    return this.guard(() => this.client.getEmbeddingClusters(userId, mode, options));
+  }
+
+  getEmbeddingClusterPlot(
+    userId: string,
+    mode: EmbeddingClusterMode,
+    options?: { min_cluster_size?: number },
+  ): Observable<Blob> {
+    return this.guard(() => this.client.getEmbeddingClusterPlot(userId, mode, options));
   }
 
   listAnnouncements(): Observable<AppAnnouncementRead[]> {

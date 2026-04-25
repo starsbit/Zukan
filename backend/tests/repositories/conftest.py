@@ -13,6 +13,7 @@ from backend.app.database.base import Base
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare, AlbumShareRole
 from backend.app.models.auth import RefreshToken, User
 from backend.app.models.embeddings import MediaEmbedding
+from backend.app.models.library_classification import LibraryClassificationFeedback
 from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.notifications import AppAnnouncement, Notification, NotificationType

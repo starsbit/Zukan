@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid
 
 from pydantic import BaseModel, Field
 
@@ -64,6 +65,56 @@ class AdminHealthResponse(BaseModel):
     samples: list[AdminHealthSample]
 
 
+class AdminEmbeddingBackfillResponse(BaseModel):
+    batch_id: uuid.UUID | None = None
+    queued: int = Field(ge=0)
+    already_current: int = Field(ge=0)
+
+
+class AdminEmbeddingBackfillStatus(BaseModel):
+    batch_id: uuid.UUID
+    user_id: uuid.UUID
+    status: str
+    total_items: int = Field(ge=0)
+    queued_items: int = Field(ge=0)
+    processing_items: int = Field(ge=0)
+    done_items: int = Field(ge=0)
+    failed_items: int = Field(ge=0)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_summary: str | None = None
+    recent_failed_items: list[str] = Field(default_factory=list)
+
+
+class AdminEmbeddingClusterSampleRead(BaseModel):
+    media_id: uuid.UUID
+    filename: str
+    similarity: float | None = None
+    label: str | None = None
+
+
+class AdminEmbeddingClusterRead(BaseModel):
+    id: str
+    label: str | None = None
+    entity_id: uuid.UUID | None = None
+    size: int = Field(ge=0)
+    distinct_media_support: int = Field(ge=0)
+    prototype_count: int = Field(ge=0)
+    cohesion: float | None = None
+    min_similarity: float | None = None
+    max_similarity: float | None = None
+    nearest_labels: list[str] = Field(default_factory=list)
+    samples: list[AdminEmbeddingClusterSampleRead] = Field(default_factory=list)
+    outliers: list[AdminEmbeddingClusterSampleRead] = Field(default_factory=list)
+
+
+class AdminEmbeddingClusterListResponse(BaseModel):
+    mode: str
+    model_version: str
+    total_embeddings: int = Field(ge=0)
+    clusters: list[AdminEmbeddingClusterRead]
+
+
 class AdminAppConfigRead(BaseModel):
     auth_login_rate_limit_requests: int = Field(ge=0)
     auth_login_rate_limit_window_seconds: int = Field(ge=0)
@@ -78,6 +129,7 @@ class AdminAppConfigRead(BaseModel):
     remember_me_refresh_token_expire_days: int = Field(ge=1)
     tagger_threshold_general: float = Field(ge=0.0, le=1.0)
     tagger_threshold_character: float = Field(ge=0.0, le=1.0)
+    library_classification_trusted_tagger_min_confidence: float = Field(ge=0.0, le=1.0)
     ocr_enabled: bool
     ocr_languages: str
     ocr_max_chars: int = Field(ge=0)
@@ -99,6 +151,7 @@ class AdminAppConfigUpdate(BaseModel):
     remember_me_refresh_token_expire_days: int | None = Field(default=None, ge=1)
     tagger_threshold_general: float | None = Field(default=None, ge=0.0, le=1.0)
     tagger_threshold_character: float | None = Field(default=None, ge=0.0, le=1.0)
+    library_classification_trusted_tagger_min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     ocr_enabled: bool | None = None
     ocr_languages: str | None = None
     ocr_max_chars: int | None = Field(default=None, ge=0)

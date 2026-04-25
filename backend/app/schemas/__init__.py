@@ -1,6 +1,11 @@
 from .admin import (
     AdminAppConfigRead,
     AdminAppConfigUpdate,
+    AdminEmbeddingBackfillResponse,
+    AdminEmbeddingBackfillStatus,
+    AdminEmbeddingClusterListResponse,
+    AdminEmbeddingClusterRead,
+    AdminEmbeddingClusterSampleRead,
     AdminHealthResponse,
     AdminHealthSample,
     AdminServiceNotificationCreate,
@@ -81,7 +86,14 @@ from .processing import (
     ImportBatchListResponse,
     ImportBatchRead,
 )
-from .relations import EntityCreate, EntityRead, ExternalRefCreate, ExternalRefRead
+from .relations import (
+    EntityCreate,
+    EntityRead,
+    ExternalRefCreate,
+    ExternalRefRead,
+    LibraryClassificationFeedbackCreate,
+    LibraryClassificationFeedbackRead,
+)
 from .tags import (
     CATEGORY_NAMES,
     CharacterSuggestion,
@@ -114,6 +126,11 @@ __all__ = [
     "AdminHealthSample",
     "AdminAppConfigRead",
     "AdminAppConfigUpdate",
+    "AdminEmbeddingBackfillResponse",
+    "AdminEmbeddingBackfillStatus",
+    "AdminEmbeddingClusterListResponse",
+    "AdminEmbeddingClusterRead",
+    "AdminEmbeddingClusterSampleRead",
     "AdminServiceNotificationCreate",
     "AdminServiceNotificationResult",
     "AdminStatsResponse",
@@ -162,6 +179,8 @@ __all__ = [
     "error_responses",
     "ExternalRefCreate",
     "ExternalRefRead",
+    "LibraryClassificationFeedbackCreate",
+    "LibraryClassificationFeedbackRead",
     "ImportBatchItemRead",
     "ImportBatchItemListResponse",
     "ImportBatchListResponse",

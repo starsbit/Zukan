@@ -1,0 +1,126 @@
+<h2 mat-dialog-title>Embedding clusters for {{ data.user.username }}</h2>
+
+<mat-dialog-content class="cluster-dialog">
+  <div class="cluster-dialog__meta">
+    <span>Model {{ modelVersion() }}</span>
+  </div>
+
+  <mat-tab-group>
+    <mat-tab label="Map">
+      <section class="cluster-dialog__tab">
+        <div class="cluster-dialog__plot-toolbar">
+          <button mat-stroked-button type="button" [disabled]="plotMode() === 'label'" (click)="showPlot('label')">
+            Trusted labels
+          </button>
+          <button mat-stroked-button type="button" [disabled]="plotMode() === 'unsupervised'" (click)="showPlot('unsupervised')">
+            Unsupervised
+          </button>
+        </div>
+
+        @if (loadingPlot()) {
+          <div class="cluster-dialog__loading">
+            <mat-spinner diameter="32"></mat-spinner>
+          </div>
+        } @else if (plotError()) {
+          <p class="cluster-dialog__error">{{ plotError() }}</p>
+        } @else if (plotUrl()) {
+          <div class="cluster-dialog__plot-frame">
+            <img [src]="plotUrl()!" alt="Embedding cluster map">
+          </div>
+        }
+      </section>
+    </mat-tab>
+
+    <mat-tab label="Trusted labels">
+      <section class="cluster-dialog__tab">
+        @if (loadingLabel()) {
+          <div class="cluster-dialog__loading">
+            <mat-spinner diameter="32"></mat-spinner>
+          </div>
+        } @else if (labelError()) {
+          <p class="cluster-dialog__error">{{ labelError() }}</p>
+        } @else if (!labelClusters()?.clusters?.length) {
+          <p class="cluster-dialog__empty">No current trusted-label clusters with enough support.</p>
+        } @else {
+          <div class="cluster-dialog__summary">
+            {{ labelClusters()?.clusters?.length }} clusters from {{ labelClusters()?.total_embeddings }} current embeddings
+          </div>
+          <div class="cluster-list">
+            @for (cluster of labelClusters()!.clusters; track cluster.id) {
+              <article class="cluster-row">
+                <header>
+                  <div>
+                    <strong>{{ displayLabel(cluster) }}</strong>
+                    <span>{{ cluster.size }} items · {{ cluster.distinct_media_support }} media · {{ cluster.prototype_count }} prototypes</span>
+                  </div>
+                  <span class="score">cohesion {{ similarity(cluster.cohesion) }}</span>
+                </header>
+                <div class="cluster-row__samples">
+                  @for (sample of cluster.samples; track sample.media_id) {
+                    <span title="{{ sample.media_id }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
+                  }
+                </div>
+                @if (cluster.outliers.length) {
+                  <div class="cluster-row__outliers">
+                    <mat-icon aria-hidden="true">report</mat-icon>
+                    @for (outlier of cluster.outliers; track outlier.media_id) {
+                      <span title="{{ outlier.media_id }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
+                    }
+                  </div>
+                }
+              </article>
+            }
+          </div>
+        }
+      </section>
+    </mat-tab>
+
+    <mat-tab label="Unsupervised">
+      <section class="cluster-dialog__tab">
+        @if (loadingUnsupervised()) {
+          <div class="cluster-dialog__loading">
+            <mat-spinner diameter="32"></mat-spinner>
+          </div>
+        } @else if (unsupervisedError()) {
+          <p class="cluster-dialog__error">{{ unsupervisedError() }}</p>
+        } @else if (!unsupervisedClusters()?.clusters?.length) {
+          <p class="cluster-dialog__empty">No unsupervised clusters met the current support threshold.</p>
+        } @else {
+          <div class="cluster-dialog__summary">
+            {{ unsupervisedClusters()?.clusters?.length }} clusters from {{ unsupervisedClusters()?.total_embeddings }} current embeddings
+          </div>
+          <div class="cluster-list">
+            @for (cluster of unsupervisedClusters()!.clusters; track cluster.id) {
+              <article class="cluster-row">
+                <header>
+                  <div>
+                    <strong>{{ displayLabel(cluster) }}</strong>
+                    <span>{{ cluster.size }} items · nearest {{ cluster.nearest_labels.join(', ') || 'none' }}</span>
+                  </div>
+                  <span class="score">cohesion {{ similarity(cluster.cohesion) }}</span>
+                </header>
+                <div class="cluster-row__samples">
+                  @for (sample of cluster.samples; track sample.media_id) {
+                    <span title="{{ sample.media_id }}">{{ sample.filename || sample.media_id }} · {{ sample.media_id.slice(0, 8) }} · {{ similarity(sample.similarity) }}</span>
+                  }
+                </div>
+                @if (cluster.outliers.length) {
+                  <div class="cluster-row__outliers">
+                    <mat-icon aria-hidden="true">report</mat-icon>
+                    @for (outlier of cluster.outliers; track outlier.media_id) {
+                      <span title="{{ outlier.media_id }}">{{ outlier.filename }} · {{ outlier.media_id.slice(0, 8) }} · {{ similarity(outlier.similarity) }}</span>
+                    }
+                  </div>
+                }
+              </article>
+            }
+          </div>
+        }
+      </section>
+    </mat-tab>
+  </mat-tab-group>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="close()">Close</button>
+</mat-dialog-actions>

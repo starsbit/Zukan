@@ -123,6 +123,74 @@ describe('AdminClientService', () => {
     req.flush(mock);
   });
 
+  it('startEmbeddingBackfill sends POST /api/v1/admin/users/{id}/embedding-backfill', () => {
+    const mock = { batch_id: 'b1', queued: 5, already_current: 10 };
+
+    service.startEmbeddingBackfill('u1').subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/admin/users/u1/embedding-backfill');
+    expect(req.request.method).toBe('POST');
+    req.flush(mock);
+  });
+
+  it('getEmbeddingBackfillStatus sends GET /api/v1/admin/embedding-backfills/{id}', () => {
+    const mock = {
+      batch_id: 'b1',
+      user_id: 'u1',
+      status: 'running',
+      total_items: 5,
+      queued_items: 1,
+      processing_items: 1,
+      done_items: 3,
+      failed_items: 0,
+      started_at: '2026-04-25T10:00:00Z',
+      finished_at: null,
+      error_summary: null,
+      recent_failed_items: [],
+    };
+
+    service.getEmbeddingBackfillStatus('b1').subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/admin/embedding-backfills/b1');
+    expect(req.request.method).toBe('GET');
+    req.flush(mock);
+  });
+
+  it('getEmbeddingClusters sends mode and limits', () => {
+    const mock = {
+      mode: 'label' as const,
+      model_version: 'clip_onnx_v1',
+      total_embeddings: 2,
+      clusters: [],
+    };
+
+    service.getEmbeddingClusters('u1', 'label', { limit: 50, sample_size: 4, min_cluster_size: 2 })
+      .subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1/embedding-clusters');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('mode')).toBe('label');
+    expect(req.request.params.get('limit')).toBe('50');
+    expect(req.request.params.get('sample_size')).toBe('4');
+    expect(req.request.params.get('min_cluster_size')).toBe('2');
+    req.flush(mock);
+  });
+
+  it('getEmbeddingClusterPlot sends GET /api/v1/admin/users/{id}/embedding-clusters/plot', () => {
+    const mock = new Blob(['png'], { type: 'image/png' });
+
+    service.getEmbeddingClusterPlot('u1', 'unsupervised', { min_cluster_size: 2 })
+      .subscribe(res => expect(res).toBe(mock));
+
+    const req = http.expectOne(r => r.url === '/api/v1/admin/users/u1/embedding-clusters/plot');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.responseType).toBe('blob');
+    expect(req.request.params.get('mode')).toBe('unsupervised');
+    expect(req.request.params.has('limit')).toBe(false);
+    expect(req.request.params.get('min_cluster_size')).toBe('2');
+    req.flush(mock);
+  });
+
   it('listAnnouncements sends GET /api/v1/admin/announcements', () => {
     const mock = [{ id: 'ann1', title: 'Update', message: 'New version', severity: 'info' as const, is_active: true, created_at: '2026-01-01T00:00:00Z', version: null, starts_at: null, ends_at: null }];
 

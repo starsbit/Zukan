@@ -7,6 +7,10 @@ import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaU
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads';
 import { BulkResult } from '../models/common';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../models/tags';
+import {
+  LibraryClassificationFeedbackCreate,
+  LibraryClassificationFeedbackRead,
+} from '../models/processing';
 
 @Injectable({ providedIn: 'root' })
 export class MediaService implements OnDestroy {
@@ -83,6 +87,12 @@ export class MediaService implements OnDestroy {
     return this.client.update(id, body).pipe(
       tap(updated => this._patchItem(updated)),
     );
+  }
+
+  recordLibraryClassificationFeedback(
+    body: LibraryClassificationFeedbackCreate,
+  ): Observable<LibraryClassificationFeedbackRead> {
+    return this.client.recordLibraryClassificationFeedback(body);
   }
 
   delete(id: string): Observable<void> {

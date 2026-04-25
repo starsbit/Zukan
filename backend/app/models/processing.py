@@ -15,6 +15,7 @@ class BatchType(str, enum.Enum):
     retag = "retag"
     rethumbnail = "rethumbnail"
     rescan = "rescan"
+    embedding_backfill = "embedding_backfill"
 
 
 class BatchStatus(str, enum.Enum):
@@ -40,6 +41,7 @@ class ProcessingStep(str, enum.Enum):
     poster = "poster"
     tag = "tag"
     ocr = "ocr"
+    embedding = "embedding"
 
 
 class ImportBatch(Base):

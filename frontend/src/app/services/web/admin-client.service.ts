@@ -4,6 +4,10 @@ import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
 import { UserRead } from '../../models/auth';
 import {
+  AdminEmbeddingBackfillResponse,
+  AdminEmbeddingBackfillStatus,
+  AdminEmbeddingClusterListResponse,
+  EmbeddingClusterMode,
   AdminHealthResponse,
   AdminStatsResponse,
   AdminUserDetail,
@@ -65,6 +69,47 @@ export class AdminClientService {
     return this.http.post<TaggingJobQueuedResponse>(
       `${this.base}/api/v1/admin/users/${userId}/tagging-jobs`,
       null,
+    );
+  }
+
+  startEmbeddingBackfill(userId: string): Observable<AdminEmbeddingBackfillResponse> {
+    return this.http.post<AdminEmbeddingBackfillResponse>(
+      `${this.base}/api/v1/admin/users/${userId}/embedding-backfill`,
+      null,
+    );
+  }
+
+  getEmbeddingBackfillStatus(batchId: string): Observable<AdminEmbeddingBackfillStatus> {
+    return this.http.get<AdminEmbeddingBackfillStatus>(
+      `${this.base}/api/v1/admin/embedding-backfills/${batchId}`,
+    );
+  }
+
+  getEmbeddingClusters(
+    userId: string,
+    mode: EmbeddingClusterMode,
+    options: { limit?: number; sample_size?: number; min_cluster_size?: number } = {},
+  ): Observable<AdminEmbeddingClusterListResponse> {
+    let params = new HttpParams().set('mode', mode);
+    if (options.limit != null) params = params.set('limit', options.limit);
+    if (options.sample_size != null) params = params.set('sample_size', options.sample_size);
+    if (options.min_cluster_size != null) params = params.set('min_cluster_size', options.min_cluster_size);
+    return this.http.get<AdminEmbeddingClusterListResponse>(
+      `${this.base}/api/v1/admin/users/${userId}/embedding-clusters`,
+      { params },
+    );
+  }
+
+  getEmbeddingClusterPlot(
+    userId: string,
+    mode: EmbeddingClusterMode,
+    options: { min_cluster_size?: number } = {},
+  ): Observable<Blob> {
+    let params = new HttpParams().set('mode', mode);
+    if (options.min_cluster_size != null) params = params.set('min_cluster_size', options.min_cluster_size);
+    return this.http.get(
+      `${this.base}/api/v1/admin/users/${userId}/embedding-clusters/plot`,
+      { params, responseType: 'blob' },
     );
   }
 

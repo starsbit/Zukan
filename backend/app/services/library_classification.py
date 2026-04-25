@@ -2,26 +2,33 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
+import math
 import re
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
 from backend.app.config import settings
-from backend.app.models.media import Media, TaggingStatus
+from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
+from backend.app.models.library_classification import (
+    LibraryClassificationFeedback,
+    LibraryClassificationFeedbackAction,
+)
+from backend.app.models.embeddings import MediaEmbedding
+from backend.app.models.media import Media, MediaTag, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.embeddings import MediaEmbeddingRepository
 from backend.app.repositories.relations import MediaEntityRepository
-from backend.app.schemas import ImportBatchRecommendationSuggestionRead
+from backend.app.schemas import ImportBatchRecommendationSuggestionRead, LibraryClassificationFeedbackCreate
 from backend.app.services.embeddings import MediaEmbeddingService
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 MAX_SUGGESTIONS = 3
 EXACT_MATCH_CONFIDENCE = 0.99
-TRUSTED_ENTITY_SOURCES = {"manual": 1.0, "tagger": 0.92}
+TRUSTED_ENTITY_SOURCE_WEIGHTS = {"manual": 1.0, "tagger": 0.92}
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +40,18 @@ class SignatureVote:
     score: float = 0.0
     support: int = 0
     max_similarity: float = 0.0
+    source: str = "neighbor"
+    explanation: str | None = None
+    entity_id: uuid.UUID | None = None
+
+
+@dataclass
+class CharacterPrototype:
+    names: list[str]
+    normalized_signature: tuple[str, ...]
+    centroid: list[float]
+    support_keys: set[str] = field(default_factory=set)
+    entity_id: uuid.UUID | None = None
 
 
 @dataclass
@@ -77,6 +96,7 @@ class MediaLibraryEnrichmentService:
 
         exact_matches = await self._load_exact_matches(target)
         neighbors = []
+        target_embedding = None
         try:
             await self._embeddings.ensure_for_media(target)
             await self._embeddings.backfill_user_embeddings(
@@ -85,13 +105,16 @@ class MediaLibraryEnrichmentService:
                 limit=settings.library_classification_backfill_limit,
             )
             target_embedding = await self._embedding_repo.get_by_media_id(target.id)
-            if target_embedding is not None:
+            if target_embedding is not None and getattr(target_embedding, "model_version", EMBEDDING_MODEL_VERSION) == EMBEDDING_MODEL_VERSION:
                 neighbors = await self._embedding_repo.nearest_neighbors(
                     media_id=target.id,
                     uploader_id=user_id,
                     embedding=target_embedding.embedding,
                     limit=settings.library_classification_neighbor_count,
+                    model_version=EMBEDDING_MODEL_VERSION,
                 )
+            else:
+                target_embedding = None
         except Exception as exc:  # pragma: no cover - best-effort fallback for optional enrichment
             logger.warning("Library classification embedding lookup failed media_id=%s error=%s", target.id, exc)
 
@@ -125,17 +148,35 @@ class MediaLibraryEnrichmentService:
                     confidence=EXACT_MATCH_CONFIDENCE,
                     replace_existing_type=True,
                 )
+                await self._record_feedback(
+                    user_id=user_id,
+                    media_id=target.id,
+                    entity_type=entity_type,
+                    names=exact,
+                    action=LibraryClassificationFeedbackAction.auto_applied,
+                    source="exact_phash",
+                    similarity=EXACT_MATCH_CONFIDENCE,
+                    explanation=f"Exact visual duplicate matched {', '.join(exact)}.",
+                )
                 result.applied[entity_type] = exact
             if entity_type == MediaEntityType.character:
                 accepted_character_names = exact
             remaining_missing_types.remove(entity_type)
 
         if MediaEntityType.character in remaining_missing_types:
-            decision = self._score_signatures(
+            prototype_decision = await self._score_character_prototypes(
+                user_id=user_id,
+                target=target,
+                target_embedding=target_embedding.embedding if target_embedding is not None else None,
+            )
+            neighbor_decision = self._score_signatures(
                 entity_type=MediaEntityType.character,
                 neighbors=neighbors,
                 media_by_id=media_by_id,
+                target=target,
+                auto_apply=False,
             )
+            decision = self._merge_decisions(prototype_decision, neighbor_decision)
             result.suggestions[MediaEntityType.character] = decision["suggestions"]
             result.metadata[MediaEntityType.character.value] = decision["metadata"]
 
@@ -150,6 +191,16 @@ class MediaLibraryEnrichmentService:
                     source="library_match",
                     confidence=decision["confidence"],
                     replace_existing_type=True,
+                )
+                await self._record_feedback(
+                    user_id=user_id,
+                    media_id=target.id,
+                    entity_type=MediaEntityType.character,
+                    names=auto_names,
+                    action=LibraryClassificationFeedbackAction.auto_applied,
+                    source=decision["metadata"].get("reason"),
+                    similarity=decision["confidence"],
+                    explanation=decision["metadata"].get("explanation"),
                 )
                 result.applied[MediaEntityType.character] = auto_names
             remaining_missing_types.remove(MediaEntityType.character)
@@ -180,6 +231,8 @@ class MediaLibraryEnrichmentService:
                     entity_type=MediaEntityType.series,
                     neighbors=neighbors,
                     media_by_id=media_by_id,
+                    target=target,
+                    auto_apply=False,
                 )
                 result.suggestions[MediaEntityType.series] = decision["suggestions"]
                 result.metadata[MediaEntityType.series.value] = decision["metadata"]
@@ -212,7 +265,11 @@ class MediaLibraryEnrichmentService:
     async def _load_media(self, media_id: uuid.UUID, *, uploader_id: uuid.UUID) -> Media | None:
         stmt = (
             select(Media)
-            .options(selectinload(Media.entities), selectinload(Media.embedding))
+            .options(
+                selectinload(Media.entities),
+                selectinload(Media.embedding),
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
             .where(
                 Media.id == media_id,
                 Media.uploader_id == uploader_id,
@@ -228,7 +285,10 @@ class MediaLibraryEnrichmentService:
             return []
         stmt = (
             select(Media)
-            .options(selectinload(Media.entities))
+            .options(
+                selectinload(Media.entities),
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
             .where(
                 Media.id.in_(media_ids),
                 Media.deleted_at.is_(None),
@@ -311,10 +371,13 @@ class MediaLibraryEnrichmentService:
         entity_type: MediaEntityType,
         neighbors,
         media_by_id: dict[uuid.UUID, Media],
+        target: Media,
+        auto_apply: bool,
     ) -> dict[str, Any]:
         votes: dict[tuple[str, ...], SignatureVote] = {}
+        target_tags = self._general_tag_names(target)
         for neighbor in neighbors:
-            if neighbor.similarity < settings.library_classification_suggestion_min_similarity:
+            if neighbor.similarity < settings.library_classification_min_visual_similarity:
                 continue
             media = media_by_id.get(neighbor.media_id)
             if media is None:
@@ -328,9 +391,19 @@ class MediaLibraryEnrichmentService:
 
             trust = self._source_weight(media, entity_type)
             vote = votes.setdefault(signature, SignatureVote(names=names, normalized_signature=signature))
-            vote.score += neighbor.similarity * trust
+            tag_boost = self._tag_overlap_score(target_tags, self._general_tag_names(media))
+            adjusted_similarity = min(
+                0.999,
+                neighbor.similarity * (1.0 - settings.library_classification_tag_overlap_weight)
+                + tag_boost * settings.library_classification_tag_overlap_weight,
+            )
+            vote.score += adjusted_similarity * trust
             vote.support += 1
             vote.max_similarity = max(vote.max_similarity, neighbor.similarity)
+            vote.explanation = (
+                f"Matched nearby library item for {', '.join(names)}, "
+                f"visual similarity {neighbor.similarity:.2f}."
+            )
 
         ranked = sorted(
             votes.values(),
@@ -348,12 +421,9 @@ class MediaLibraryEnrichmentService:
         top = ranked[0]
         runner_up = ranked[1] if len(ranked) > 1 else None
         margin = top.score - (runner_up.score if runner_up is not None else 0.0)
-        auto_allowed = (
+        auto_allowed = auto_apply and (
             top.max_similarity >= settings.library_classification_auto_min_similarity
-            and (
-                top.support >= settings.library_classification_auto_min_support
-                or top.max_similarity >= settings.library_classification_auto_high_similarity
-            )
+            and top.support >= settings.library_classification_auto_min_support
             and margin >= settings.library_classification_auto_min_margin
         )
         return {
@@ -365,8 +435,200 @@ class MediaLibraryEnrichmentService:
                 "top_support": top.support,
                 "top_similarity": round(top.max_similarity, 3),
                 "margin": round(margin, 3),
+                "explanation": top.explanation,
             },
         }
+
+    async def _score_character_prototypes(
+        self,
+        *,
+        user_id: uuid.UUID,
+        target: Media,
+        target_embedding: list[float] | None,
+    ) -> dict[str, Any]:
+        if not target_embedding:
+            return {
+                "auto_names": [],
+                "confidence": None,
+                "suggestions": [],
+                "metadata": {"reason": "no_target_embedding"},
+            }
+
+        rejected = await self._rejected_suggestion_keys(
+            user_id=user_id,
+            media_id=target.id,
+            entity_type=MediaEntityType.character,
+        )
+        prototypes = await self._build_character_prototypes(
+            user_id=user_id,
+            target_media_id=target.id,
+        )
+        ranked: list[SignatureVote] = []
+        for prototype in prototypes:
+            if prototype.normalized_signature in rejected:
+                continue
+            similarity = _cosine_similarity(target_embedding, prototype.centroid)
+            if similarity < settings.library_classification_suggestion_min_similarity:
+                continue
+            support = len(prototype.support_keys)
+            explanation = (
+                f"Matched {support} trusted example{'s' if support != 1 else ''} of "
+                f"{', '.join(prototype.names)}, best prototype similarity {similarity:.2f}."
+            )
+            ranked.append(SignatureVote(
+                names=prototype.names,
+                normalized_signature=prototype.normalized_signature,
+                score=similarity,
+                support=support,
+                max_similarity=similarity,
+                source="prototype",
+                explanation=explanation,
+                entity_id=prototype.entity_id,
+            ))
+
+        ranked.sort(key=lambda vote: (-vote.score, -vote.support, vote.normalized_signature))
+        suggestions = self._build_suggestions(ranked)
+        if not ranked:
+            return {
+                "auto_names": [],
+                "confidence": None,
+                "suggestions": suggestions,
+                "metadata": {"reason": "no_ranked_prototypes"},
+            }
+
+        top = ranked[0]
+        runner_up = ranked[1] if len(ranked) > 1 else None
+        margin = top.score - (runner_up.score if runner_up is not None else 0.0)
+        auto_allowed = (
+            top.max_similarity >= settings.library_classification_auto_min_similarity
+            and top.support >= settings.library_classification_auto_min_support
+            and margin >= settings.library_classification_auto_min_margin
+        )
+        return {
+            "auto_names": top.names if auto_allowed else [],
+            "confidence": round(top.max_similarity, 3) if auto_allowed else None,
+            "suggestions": suggestions,
+            "metadata": {
+                "reason": "prototype_auto_apply" if auto_allowed else "prototype_suggest_only",
+                "top_support": top.support,
+                "top_similarity": round(top.max_similarity, 3),
+                "margin": round(margin, 3),
+                "explanation": top.explanation,
+            },
+        }
+
+    async def _build_character_prototypes(
+        self,
+        *,
+        user_id: uuid.UUID,
+        target_media_id: uuid.UUID,
+    ) -> list[CharacterPrototype]:
+        stmt = (
+            select(
+                MediaEntity.name,
+                MediaEntity.entity_id,
+                MediaEntity.media_id,
+                Media.phash,
+                MediaEmbedding.embedding,
+            )
+            .join(Media, Media.id == MediaEntity.media_id)
+            .join(MediaEmbedding, MediaEmbedding.media_id == Media.id)
+            .where(
+                Media.uploader_id == user_id,
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.id != target_media_id,
+                MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
+                MediaEntity.entity_type == MediaEntityType.character,
+                _trusted_entity_sql_filter(MediaEntity),
+                MediaEntity.name != "",
+            )
+            .order_by(Media.uploaded_at.desc(), Media.id.desc())
+        )
+        rows = (await self._db.execute(stmt)).all()
+        prototypes_by_signature: dict[tuple[str, ...], list[CharacterPrototype]] = {}
+        used_support_keys: dict[tuple[str, ...], set[str]] = {}
+        for row in rows:
+            name = str(row.name or "").strip()
+            signature = (self._normalize_name(name),)
+            embedding = getattr(row, "embedding", None)
+            if not signature[0] or not embedding:
+                continue
+            support_key = str(row.phash or row.media_id)
+            seen_keys = used_support_keys.setdefault(signature, set())
+            if support_key in seen_keys:
+                continue
+            seen_keys.add(support_key)
+
+            vector = _normalized(embedding)
+            if not vector:
+                continue
+            prototypes = prototypes_by_signature.setdefault(signature, [])
+            best = max(
+                prototypes,
+                key=lambda prototype: _cosine_similarity(vector, prototype.centroid),
+                default=None,
+            )
+            if (
+                best is not None
+                and _cosine_similarity(vector, best.centroid) >= settings.library_classification_prototype_cluster_similarity
+            ):
+                best.centroid = _normalized([
+                    (best.centroid[index] * len(best.support_keys) + vector[index]) / (len(best.support_keys) + 1)
+                    for index in range(min(len(best.centroid), len(vector)))
+                ])
+                best.support_keys.add(support_key)
+                continue
+
+            if len(prototypes) >= settings.library_classification_prototype_max_per_entity:
+                continue
+            prototypes.append(CharacterPrototype(
+                names=[name],
+                normalized_signature=signature,
+                centroid=vector,
+                support_keys={support_key},
+                entity_id=row.entity_id,
+            ))
+
+        return [
+            prototype
+            for prototypes in prototypes_by_signature.values()
+            for prototype in prototypes
+        ]
+
+    def _merge_decisions(self, primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+        merged_suggestions = self._merge_suggestion_lists(primary.get("suggestions", []), secondary.get("suggestions", []))
+        if primary.get("auto_names"):
+            primary["suggestions"] = merged_suggestions
+            return primary
+        primary_rank = primary.get("suggestions", [])
+        secondary_rank = secondary.get("suggestions", [])
+        if not primary_rank and secondary_rank:
+            secondary["suggestions"] = merged_suggestions
+            return secondary
+        primary["suggestions"] = merged_suggestions
+        return primary
+
+    def _merge_suggestion_lists(
+        self,
+        primary: list[ImportBatchRecommendationSuggestionRead],
+        secondary: list[ImportBatchRecommendationSuggestionRead],
+    ) -> list[ImportBatchRecommendationSuggestionRead]:
+        by_name: dict[str, ImportBatchRecommendationSuggestionRead] = {}
+        order: list[str] = []
+        for suggestion in [*primary, *secondary]:
+            key = suggestion.name.casefold()
+            current = by_name.get(key)
+            if current is None:
+                by_name[key] = suggestion
+                order.append(key)
+            elif suggestion.confidence > current.confidence:
+                by_name[key] = suggestion
+        ordered = sorted(
+            by_name.values(),
+            key=lambda suggestion: (-suggestion.confidence, order.index(suggestion.name.casefold())),
+        )
+        return ordered[:MAX_SUGGESTIONS]
 
     async def _infer_series_from_characters(
         self,
@@ -386,7 +648,6 @@ class MediaLibraryEnrichmentService:
 
         character_model = aliased(MediaEntity)
         series_model = aliased(MediaEntity)
-        trusted_sources = tuple(TRUSTED_ENTITY_SOURCES)
         count_expr = func.count(series_model.media_id.distinct())
         stmt = (
             select(
@@ -399,8 +660,8 @@ class MediaLibraryEnrichmentService:
                 series_model.entity_type == MediaEntityType.series,
                 character_model.entity_type == MediaEntityType.character,
                 character_model.name.in_(normalized_character_names),
-                character_model.source.in_(trusted_sources),
-                series_model.source.in_(trusted_sources),
+                _trusted_entity_sql_filter(character_model),
+                _trusted_entity_sql_filter(series_model),
                 series_model.name != "",
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
@@ -435,20 +696,14 @@ class MediaLibraryEnrichmentService:
             for name, count in ranked[:MAX_SUGGESTIONS]
         ]
 
-        top_name, top_count = ranked[0]
+        _, top_count = ranked[0]
         runner_up_count = ranked[1][1] if len(ranked) > 1 else 0
-        only_observed_series = len(ranked) == 1
-        clear_top = only_observed_series or top_count > runner_up_count
-        auto_allowed = clear_top and (
-            top_count >= settings.library_classification_auto_min_support
-            or only_observed_series
-        )
         return {
-            "auto_names": [top_name] if auto_allowed else [],
-            "confidence": 0.95 if auto_allowed else None,
+            "auto_names": [],
+            "confidence": None,
             "suggestions": suggestions,
             "metadata": {
-                "reason": "character_inference" if auto_allowed else "character_inference_suggest_only",
+                "reason": "character_inference_suggest_only",
                 "character_names": normalized_character_names,
                 "top_support": top_count,
                 "runner_up_support": runner_up_count,
@@ -472,6 +727,12 @@ class MediaLibraryEnrichmentService:
                     ImportBatchRecommendationSuggestionRead(
                         name=name,
                         confidence=round(min(0.999, vote.score / max_score), 3),
+                        entity_id=vote.entity_id,
+                        entity_type=None,
+                        source=vote.source,
+                        model_version=EMBEDDING_MODEL_VERSION,
+                        visual_similarity=round(vote.max_similarity, 3),
+                        explanation=vote.explanation,
                     )
                 )
                 if len(suggestions) >= MAX_SUGGESTIONS:
@@ -482,7 +743,7 @@ class MediaLibraryEnrichmentService:
         names: list[str] = []
         seen: set[str] = set()
         for entity in media.entities:
-            if entity.entity_type != entity_type or entity.source not in TRUSTED_ENTITY_SOURCES:
+            if entity.entity_type != entity_type or not _is_trusted_entity(entity):
                 continue
             name = entity.name.strip()
             if not name:
@@ -517,9 +778,9 @@ class MediaLibraryEnrichmentService:
 
     def _source_weight(self, media: Media, entity_type: MediaEntityType) -> float:
         weights = [
-            TRUSTED_ENTITY_SOURCES.get(entity.source, 0.0)
+            _trusted_entity_weight(entity)
             for entity in media.entities
-            if entity.entity_type == entity_type and entity.name.strip()
+            if entity.entity_type == entity_type and entity.name.strip() and _is_trusted_entity(entity)
         ]
         return max(weights, default=0.0)
 
@@ -533,3 +794,162 @@ class MediaLibraryEnrichmentService:
         if not value:
             return ""
         return " ".join(TOKEN_RE.findall(value.replace("_", " ").casefold())).strip()
+
+    def _general_tag_names(self, media: Media) -> set[str]:
+        names: set[str] = set()
+        for media_tag in getattr(media, "media_tags", []) or []:
+            tag = getattr(media_tag, "tag", None)
+            name = str(getattr(tag, "name", "") or "").strip().casefold()
+            category = int(getattr(tag, "category", 0) or 0)
+            if not name or category in {3, 4, 9}:
+                continue
+            names.add(name)
+        return names
+
+    def _tag_overlap_score(self, target_tags: set[str], candidate_tags: set[str]) -> float:
+        if not target_tags or not candidate_tags:
+            return 0.0
+        intersection = len(target_tags & candidate_tags)
+        union = len(target_tags | candidate_tags)
+        return intersection / union if union else 0.0
+
+    async def _rejected_suggestion_keys(
+        self,
+        *,
+        user_id: uuid.UUID,
+        media_id: uuid.UUID,
+        entity_type: MediaEntityType,
+    ) -> set[tuple[str, ...]]:
+        rows = (
+            await self._db.execute(
+                select(
+                    LibraryClassificationFeedback.suggested_name,
+                    LibraryClassificationFeedback.suggested_entity_id,
+                ).where(
+                    LibraryClassificationFeedback.user_id == user_id,
+                    LibraryClassificationFeedback.media_id == media_id,
+                    LibraryClassificationFeedback.entity_type == entity_type.value,
+                    LibraryClassificationFeedback.action == LibraryClassificationFeedbackAction.rejected,
+                )
+            )
+        ).all()
+        return {
+            (self._normalize_name(row.suggested_name),)
+            for row in rows
+            if hasattr(row, "suggested_name")
+            if self._normalize_name(row.suggested_name)
+        }
+
+    async def _record_feedback(
+        self,
+        *,
+        user_id: uuid.UUID,
+        media_id: uuid.UUID,
+        entity_type: MediaEntityType,
+        names: list[str],
+        action: LibraryClassificationFeedbackAction,
+        source: str | None,
+        similarity: float | None,
+        explanation: str | None,
+    ) -> None:
+        for name in self._unique_clean_names(names):
+            self._db.add(LibraryClassificationFeedback(
+                user_id=user_id,
+                media_id=media_id,
+                entity_type=entity_type.value,
+                suggested_entity_id=None,
+                suggested_name=name,
+                series_name=None,
+                model_version=EMBEDDING_MODEL_VERSION,
+                action=action,
+                source=source,
+                similarity=similarity,
+                explanation=explanation,
+            ))
+        logger.info(
+            "Library classification feedback recorded user_id=%s media_id=%s entity_type=%s action=%s names=%s source=%s similarity=%s",
+            user_id,
+            media_id,
+            entity_type.value,
+            action.value,
+            names,
+            source,
+            similarity,
+        )
+
+    async def record_feedback(
+        self,
+        user_id: uuid.UUID,
+        payload: LibraryClassificationFeedbackCreate,
+    ) -> LibraryClassificationFeedback | None:
+        media = await self._db.get(Media, payload.media_id)
+        if media is None or media.deleted_at is not None or media.uploader_id != user_id:
+            return None
+
+        action = LibraryClassificationFeedbackAction(payload.action)
+        feedback = LibraryClassificationFeedback(
+            user_id=user_id,
+            media_id=payload.media_id,
+            entity_type=payload.entity_type.value,
+            suggested_entity_id=payload.suggested_entity_id,
+            suggested_name=payload.suggested_name.strip(),
+            series_name=payload.series_name.strip() if payload.series_name else None,
+            model_version=payload.model_version or EMBEDDING_MODEL_VERSION,
+            action=action,
+            source=payload.source,
+            similarity=payload.similarity,
+            explanation=payload.explanation,
+        )
+        self._db.add(feedback)
+        await self._db.commit()
+        await self._db.refresh(feedback)
+        logger.info(
+            "Library classification feedback submitted user_id=%s media_id=%s entity_type=%s action=%s suggested_name=%s source=%s similarity=%s",
+            user_id,
+            payload.media_id,
+            payload.entity_type.value,
+            action.value,
+            feedback.suggested_name,
+            feedback.source,
+            feedback.similarity,
+        )
+        return feedback
+
+
+def _normalized(vector: list[float]) -> list[float]:
+    norm = math.sqrt(sum(float(value) * float(value) for value in vector))
+    if norm <= 0:
+        return []
+    return [float(value) / norm for value in vector]
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right:
+        return 0.0
+    limit = min(len(left), len(right))
+    return sum(float(left[index]) * float(right[index]) for index in range(limit))
+
+
+def _is_trusted_entity(entity: MediaEntity) -> bool:
+    if entity.source == "manual":
+        return True
+    if entity.source != "tagger":
+        return False
+    return entity.confidence is not None and entity.confidence >= settings.library_classification_trusted_tagger_min_confidence
+
+
+def _trusted_entity_weight(entity: MediaEntity) -> float:
+    if not _is_trusted_entity(entity):
+        return 0.0
+    return TRUSTED_ENTITY_SOURCE_WEIGHTS.get(entity.source, 0.0)
+
+
+def _trusted_entity_sql_filter(model):
+    return or_(
+        model.source == "manual",
+        and_(
+            model.source == "tagger",
+            model.confidence.is_not(None),
+            model.confidence >= settings.library_classification_trusted_tagger_min_confidence,
+        ),
+    )

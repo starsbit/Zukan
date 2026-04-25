@@ -208,9 +208,9 @@ def test_zip_media_handles_duplicates_and_missing_files(tmp_path):
     f1.write_text("1")
     f2.write_text("2")
     rows = [
-        SimpleNamespace(filepath=str(f1), filename="a.jpg", original_filename="dup.jpg"),
-        SimpleNamespace(filepath=str(f2), filename="b.jpg", original_filename="dup.jpg"),
-        SimpleNamespace(filepath=str(tmp_path / "missing.jpg"), filename="missing.jpg", original_filename="missing.jpg"),
+        SimpleNamespace(filepath=str(f1), filename="dup.jpg", original_filename="extensionless-original"),
+        SimpleNamespace(filepath=str(f2), filename="dup.jpg", original_filename="also-extensionless"),
+        SimpleNamespace(filepath=str(tmp_path / "missing.jpg"), filename="missing.jpg", original_filename="missing"),
     ]
     data = zip_media(rows)
     with ZipFile(data) as zf:

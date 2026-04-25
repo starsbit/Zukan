@@ -21,6 +21,7 @@ from backend.app.main import app_error_handler, http_exception_handler, request_
 from backend.app.models.albums import Album, AlbumMedia, AlbumShare
 from backend.app.models.auth import RefreshToken, User
 from backend.app.models.embeddings import MediaEmbedding
+from backend.app.models.library_classification import LibraryClassificationFeedback
 from backend.app.models.media import Media
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.notifications import AppAnnouncement, Notification

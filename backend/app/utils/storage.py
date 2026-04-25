@@ -123,7 +123,7 @@ def zip_media(rows: list[Media]) -> io.BytesIO:
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
         seen: dict[str, int] = {}
         for media in rows:
-            name = media.original_filename or media.filename
+            name = media.filename
             if name in seen:
                 seen[name] += 1
                 stem, _, ext = name.rpartition(".")

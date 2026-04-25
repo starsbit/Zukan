@@ -107,7 +107,7 @@ export class NavbarSearchComponent {
     this.route.queryParamMap
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((params) => {
-        this.searchService.hydrateFromQueryParams(params);
+        this.hydrateSearchFromQueryParams(params);
       });
 
     effect(() => {
@@ -125,19 +125,19 @@ export class NavbarSearchComponent {
     });
 
     effect(() => {
-      this.searchService.applied();
-      if (this.searchService.consumeUrlSyncSuppression()) {
+      this.readAppliedSearchState();
+      if (this.consumeUrlSyncSuppression()) {
         return;
       }
 
       const params = this.route.snapshot.queryParamMap;
-      if (this.searchService.queryParamsMatch(params)) {
+      if (this.queryParamsMatch(params)) {
         return;
       }
 
       void this.router.navigate([], {
         relativeTo: this.route,
-        queryParams: this.searchService.toQueryParamsWithClears(),
+        queryParams: this.toQueryParamsWithClears(),
         queryParamsHandling: 'merge',
       });
     });
@@ -340,5 +340,35 @@ export class NavbarSearchComponent {
     const leftExact = left.toLowerCase().startsWith(query) ? 0 : 1;
     const rightExact = right.toLowerCase().startsWith(query) ? 0 : 1;
     return leftExact - rightExact || left.localeCompare(right);
+  }
+
+  private hydrateSearchFromQueryParams(params: Parameters<NavbarSearchService['hydrateFromQueryParams']>[0]): void {
+    if (typeof this.searchService.hydrateFromQueryParams === 'function') {
+      this.searchService.hydrateFromQueryParams(params);
+    }
+  }
+
+  private consumeUrlSyncSuppression(): boolean {
+    return typeof this.searchService.consumeUrlSyncSuppression === 'function'
+      ? this.searchService.consumeUrlSyncSuppression()
+      : false;
+  }
+
+  private queryParamsMatch(params: Parameters<NavbarSearchService['queryParamsMatch']>[0]): boolean {
+    return typeof this.searchService.queryParamsMatch === 'function'
+      ? this.searchService.queryParamsMatch(params)
+      : true;
+  }
+
+  private toQueryParamsWithClears(): ReturnType<NavbarSearchService['toQueryParamsWithClears']> {
+    return typeof this.searchService.toQueryParamsWithClears === 'function'
+      ? this.searchService.toQueryParamsWithClears()
+      : {};
+  }
+
+  private readAppliedSearchState(): void {
+    if (typeof this.searchService.applied === 'function') {
+      this.searchService.applied();
+    }
   }
 }
