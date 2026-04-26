@@ -58,7 +58,7 @@ function makeReviewItem(
 }
 
 describe('UploadReviewDialogComponent', () => {
-  it('applies names to the selected media and refreshes the review queue', async () => {
+  it('applies names to the selected media and removes them without refreshing the whole queue', async () => {
     const refreshBatchReview = vi.fn();
     const refreshBatchRecommendations = vi.fn();
     const tracker = {
@@ -111,6 +111,20 @@ describe('UploadReviewDialogComponent', () => {
       }),
       refreshBatchReview,
       refreshBatchRecommendations,
+      applyReviewEntityUpdate: vi.fn((batchId: string, update: {
+        mediaIds: string[];
+        characterNames: string[];
+        seriesNames: string[];
+      }) => {
+        if (batchId !== 'b1') {
+          return;
+        }
+        const resolvedIds = new Set(update.mediaIds);
+        tracker.getBatchReview.update((state) => ({
+          ...state,
+          reviewItems: state.reviewItems.filter((item) => !resolvedIds.has(item.media.id)),
+        }));
+      }),
     };
     const batchUpdateEntities = vi.fn(() => of({ processed: 1, skipped: 0 }));
     const mediaService = {
@@ -131,6 +145,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
+            applyReviewEntityUpdate: tracker.applyReviewEntityUpdate,
           },
         },
         { provide: MediaService, useValue: mediaService },
@@ -145,6 +160,8 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     const component = fixture.componentInstance;
+    refreshBatchReview.mockClear();
+    refreshBatchRecommendations.mockClear();
     component.toggleSelected('m1');
     component.addCharacter("Jeanne D'Arc (Fate)");
     component.addSeries('Little Busters');
@@ -155,9 +172,14 @@ describe('UploadReviewDialogComponent', () => {
       character_names: ["Jeanne D'Arc (Fate)"],
       series_names: ['Little Busters'],
     });
-    expect(refreshBatchReview).toHaveBeenCalledWith('b1');
-    expect(refreshBatchRecommendations).toHaveBeenNthCalledWith(1, 'b1', false);
-    expect(refreshBatchRecommendations).toHaveBeenCalledTimes(1);
+    expect(tracker.applyReviewEntityUpdate).toHaveBeenCalledWith('b1', {
+      mediaIds: ['m1'],
+      characterNames: ["Jeanne D'Arc (Fate)"],
+      seriesNames: ['Little Busters'],
+    });
+    expect(refreshBatchReview).not.toHaveBeenCalled();
+    expect(refreshBatchRecommendations).not.toHaveBeenCalled();
+    expect(component.items()).toHaveLength(0);
   });
 
   it('defaults to grouped recommendations and lets suggestions prefill naming chips', async () => {
@@ -917,6 +939,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: () => null,
             refreshBatchReview: vi.fn(),
             refreshBatchRecommendations: vi.fn(),
+            applyReviewEntityUpdate: vi.fn(),
           },
         },
         {
@@ -996,6 +1019,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: () => null,
             refreshBatchReview: vi.fn(),
             refreshBatchRecommendations: vi.fn(),
+            applyReviewEntityUpdate: vi.fn(),
           },
         },
         {
@@ -1039,6 +1063,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: () => null,
             refreshBatchReview: vi.fn(),
             refreshBatchRecommendations: vi.fn(),
+            applyReviewEntityUpdate: vi.fn(),
           },
         },
         {
@@ -1321,7 +1346,7 @@ describe('UploadReviewDialogComponent', () => {
     expect(fixture.nativeElement.querySelector('mat-spinner')).toBeNull();
   });
 
-  it('re-fetches merged-batch groups after applying names in merged-batch mode', async () => {
+  it('removes merged-batch groups locally after applying names', async () => {
     const baseMedia = {
       uploader_id: 'u1',
       uploader_username: 'uploader',
@@ -1423,6 +1448,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: () => null,
             refreshBatchReview: vi.fn(),
             refreshBatchRecommendations: vi.fn(),
+            applyReviewEntityUpdate: vi.fn(),
           },
         },
         {
@@ -1451,15 +1477,16 @@ describe('UploadReviewDialogComponent', () => {
 
     component.toggleGroupSelection(component.recommendationGroups()[0]);
     component.addCharacter('Ryuuguu Rena');
+    component.addSeries('Higurashi no Naku Koro Ni');
     component.applySelected();
     fixture.detectChanges();
 
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1', 'm2'],
       character_names: ['Ryuuguu Rena'],
-      series_names: undefined,
+      series_names: ['Higurashi no Naku Koro Ni'],
     });
-    expect(listReviewItems).toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
+    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 
@@ -1687,6 +1714,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: () => null,
             refreshBatchReview: vi.fn(),
             refreshBatchRecommendations: vi.fn(),
+            applyReviewEntityUpdate: vi.fn(),
           },
         },
         {
@@ -1715,15 +1743,16 @@ describe('UploadReviewDialogComponent', () => {
 
     component.toggleGroupSelection(component.recommendationGroups()[0]);
     component.addCharacter('Ryuuguu Rena');
+    component.addSeries('Higurashi no Naku Koro Ni');
     component.applySelected();
     fixture.detectChanges();
 
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1', 'm2'],
       character_names: ['Ryuuguu Rena'],
-      series_names: undefined,
+      series_names: ['Higurashi no Naku Koro Ni'],
     });
-    expect(listReviewItems).toHaveBeenNthCalledWith(3, 'b1');
+    expect(listReviewItems).toHaveBeenCalledTimes(2);
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 

@@ -135,7 +135,7 @@ describe('UploadTrackerService', () => {
         batch_item_id: 'i1',
         source_filename: 'done.jpg',
         missing_character: true,
-        missing_series: false,
+        missing_series: true,
         entities: [],
         media: {
           id: 'm1',
@@ -204,6 +204,25 @@ describe('UploadTrackerService', () => {
     expect(service.summary().latestReviewBatchId).toBe('b1');
     expect(service.getBatchReview('b1')?.reviewItems).toHaveLength(1);
     expect(listReviewItems).toHaveBeenCalledWith('b1', { include_recommendations: false });
+
+    service.applyReviewEntityUpdate('b1', {
+      mediaIds: ['m1'],
+      characterNames: ['Saber'],
+      seriesNames: [],
+    });
+
+    expect(service.summary().reviewItems).toBe(1);
+    expect(service.getBatchReview('b1')?.reviewItems[0]?.missing_character).toBe(false);
+    expect(service.getBatchReview('b1')?.reviewItems[0]?.missing_series).toBe(true);
+
+    service.applyReviewEntityUpdate('b1', {
+      mediaIds: ['m1'],
+      characterNames: [],
+      seriesNames: ['Fate/stay night'],
+    });
+
+    expect(service.summary().reviewItems).toBe(0);
+    expect(service.getBatchReview('b1')?.reviewItems).toHaveLength(0);
   });
 
   it('polls active batches, merges paged items, and stops after terminal status', async () => {

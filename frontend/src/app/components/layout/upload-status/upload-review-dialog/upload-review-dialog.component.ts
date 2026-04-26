@@ -26,6 +26,10 @@ import {
   formatMetadataName,
   humanizeBackendLabel,
 } from '../../../../utils/media-display.utils';
+import {
+  applyReviewEntityUpdateToItems,
+  refreshRecommendationGroupsForItems,
+} from '../../../../utils/review-items.utils';
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
@@ -354,24 +358,20 @@ export class UploadReviewDialogComponent {
     }
 
     const appliedMediaIds = this.selectedIds();
+    const characterNames = this.characterNames().map((name) => name.trim()).filter((name) => !!name);
+    const seriesNames = this.seriesNames().map((name) => name.trim()).filter((name) => !!name);
     this.saving.set(true);
     this.mediaService.batchUpdateEntities({
       media_ids: appliedMediaIds,
-      character_names: this.characterNames().length > 0
-        ? this.characterNames().map((name) => name.trim()).filter((name) => !!name)
-        : undefined,
-      series_names: this.seriesNames().length > 0
-        ? this.seriesNames().map((name) => name.trim()).filter((name) => !!name)
-        : undefined,
+      character_names: characterNames.length > 0 ? characterNames : undefined,
+      series_names: seriesNames.length > 0 ? seriesNames : undefined,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
-        this.removeMediaFromRecommendationGroups(appliedMediaIds);
+        this.applyReviewEntityUpdate(appliedMediaIds, characterNames, seriesNames);
         this.selectedIds.set([]);
         this.characterNames.set([]);
         this.seriesNames.set([]);
-        this.discardedMediaIds.set([]);
         this.saving.set(false);
-        this.refreshCurrentScope();
         this.snackBar.open('Names applied to selected media.', 'Close', { duration: 3000 });
       },
       error: () => {
@@ -657,6 +657,30 @@ export class UploadReviewDialogComponent {
       }
       return next;
     });
+  }
+
+  private applyReviewEntityUpdate(mediaIds: string[], characterNames: string[], seriesNames: string[]): void {
+    if (mediaIds.length === 0) {
+      return;
+    }
+
+    const resolvedIds = new Set(mediaIds);
+    this.selectedIds.update((ids) => ids.filter((id) => !resolvedIds.has(id)));
+    this.discardedMediaIds.update((ids) => ids.filter((id) => !resolvedIds.has(id)));
+    const remoteResult = applyReviewEntityUpdateToItems(this.remoteItems(), {
+      mediaIds,
+      characterNames,
+      seriesNames,
+    });
+    this.remoteItems.set(remoteResult.items);
+    this.remoteRecommendationGroups.set(
+      refreshRecommendationGroupsForItems(this.remoteRecommendationGroups(), remoteResult.items),
+    );
+
+    const batchId = this.activeBatchId();
+    if (this.scope() === 'batch' && batchId) {
+      this.tracker.applyReviewEntityUpdate(batchId, { mediaIds, characterNames, seriesNames });
+    }
   }
 
   private discardReviewItems(mediaIds: string[], successMessage: string): void {

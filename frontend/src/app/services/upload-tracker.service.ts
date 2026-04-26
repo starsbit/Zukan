@@ -24,6 +24,11 @@ import { BatchUploadResponse } from '../models/uploads';
 import { GalleryStore } from './gallery.store';
 import { MediaService } from './media.service';
 import { BatchesClientService } from './web/batches-client.service';
+import {
+  applyReviewEntityUpdateToItems,
+  refreshRecommendationGroupsForItems,
+  type ReviewEntityUpdate,
+} from '../utils/review-items.utils';
 
 const DEFAULT_POLL_AFTER_SECONDS = 3;
 const ITEMS_PAGE_SIZE = 200;
@@ -535,6 +540,27 @@ export class UploadTrackerService implements OnDestroy {
       error: () => {
         this.patchBatch(batchId, { recommendationsRefreshing: false });
       },
+    });
+  }
+
+  applyReviewEntityUpdate(batchId: string, update: ReviewEntityUpdate): void {
+    const batch = this.trackedBatches()[batchId];
+    if (!batch || update.mediaIds.length === 0) {
+      return;
+    }
+
+    const targetIds = new Set(update.mediaIds);
+    if (!batch.reviewItems.some((item) => targetIds.has(item.media.id))) {
+      return;
+    }
+
+    const result = applyReviewEntityUpdateToItems(batch.reviewItems, update);
+
+    this.patchBatch(batchId, {
+      reviewItems: result.items,
+      recommendationGroups: refreshRecommendationGroupsForItems(batch.recommendationGroups, result.items),
+      reviewTotal: Math.max(batch.reviewTotal - result.resolvedCount, 0),
+      reviewRefreshing: false,
     });
   }
 
