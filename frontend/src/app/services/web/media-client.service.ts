@@ -17,8 +17,10 @@ import {
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
 import {
+  LibraryClassificationFeedbackBulkCreate,
   LibraryClassificationFeedbackCreate,
   LibraryClassificationFeedbackRead,
+  LibraryClassificationSuggestionResponse,
 } from '../../models/processing';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../../models/tags';
 import { MediaTimeline } from '../../models/timeline';
@@ -237,6 +239,21 @@ export class MediaClientService {
     return this.http.post<LibraryClassificationFeedbackRead>(
       `${this.base}/api/v1/media/library-classification-feedback`,
       body,
+    );
+  }
+
+  recordLibraryClassificationFeedbackBulk(
+    body: LibraryClassificationFeedbackBulkCreate,
+  ): Observable<BulkResult> {
+    return this.http.post<BulkResult>(
+      `${this.base}/api/v1/media/library-classification-feedback/bulk`,
+      body,
+    );
+  }
+
+  getLibraryClassificationSuggestions(id: string): Observable<LibraryClassificationSuggestionResponse> {
+    return this.http.get<LibraryClassificationSuggestionResponse>(
+      `${this.base}/api/v1/media/${id}/library-classification-suggestions`,
     );
   }
 

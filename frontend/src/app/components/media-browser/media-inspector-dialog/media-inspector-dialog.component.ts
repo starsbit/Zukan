@@ -26,6 +26,10 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { MediaDetail, MediaRead, MediaType } from '../../../models/media';
+import {
+  ImportBatchRecommendationSuggestionRead,
+  LibraryClassificationFeedbackCreate,
+} from '../../../models/processing';
 import { MediaEntityType } from '../../../models/relations';
 import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/tags';
 import { GalleryStore } from '../../../services/gallery.store';
@@ -158,6 +162,8 @@ export class MediaInspectorDialogComponent {
   readonly tagSuggestions = signal<TagRead[]>([]);
   readonly characterSuggestions = signal<CharacterSuggestion[]>([]);
   readonly seriesSuggestions = signal<SeriesSuggestion[]>([]);
+  readonly fallbackCharacterSuggestions = signal<ImportBatchRecommendationSuggestionRead[]>([]);
+  readonly fallbackSeriesSuggestions = signal<ImportBatchRecommendationSuggestionRead[]>([]);
   readonly draft = signal<MetadataDraft>({
     tags: [],
     characterNames: [],
@@ -575,6 +581,7 @@ export class MediaInspectorDialogComponent {
           this.detail.set(updated);
           this.replaceActiveItem(updated);
           this.galleryStore.patchItem(updated);
+          this.recordCharacterFeedbackForSave(media.id, draft.characterNames);
           this.resetDraftFromMedia(updated);
           this.editing.set(false);
           this.saving.set(false);
@@ -749,8 +756,69 @@ export class MediaInspectorDialogComponent {
     return formatMetadataName(value);
   }
 
+  suggestionLabel(suggestion: ImportBatchRecommendationSuggestionRead): string {
+    return `${this.displayMetadataName(suggestion.name)} · ${Math.round(suggestion.confidence * 100)}%`;
+  }
+
+  suggestionTitle(suggestion: ImportBatchRecommendationSuggestionRead): string {
+    return suggestion.explanation || `${Math.round(suggestion.confidence * 100)}% confidence`;
+  }
+
   onMetadataFilterSelected(selection: MetadataFilterSelection): void {
     this.metadataFilterSelected.emit(selection);
+  }
+
+  private recordCharacterFeedbackForSave(mediaId: string, characterNames: string[]): void {
+    const finalNames = characterNames.map((name) => name.trim()).filter((name) => !!name);
+    if (finalNames.length === 0) {
+      return;
+    }
+
+    const finalNameKeys = new Set(finalNames.map((name) => normalizeNameKey(name)));
+    const suggestions = uniqueClassificationSuggestions(this.fallbackCharacterSuggestions());
+    const suggestedKeys = new Set(suggestions.map((suggestion) => normalizeNameKey(suggestion.name)));
+    const payloads: LibraryClassificationFeedbackCreate[] = [];
+
+    for (const suggestion of suggestions) {
+      payloads.push({
+        media_id: mediaId,
+        entity_type: 'character',
+        suggested_entity_id: suggestion.entity_id ?? null,
+        suggested_name: suggestion.name,
+        series_name: suggestion.series_name ?? null,
+        action: finalNameKeys.has(normalizeNameKey(suggestion.name)) ? 'accepted' : 'rejected',
+        source: suggestion.source ?? null,
+        model_version: suggestion.model_version ?? null,
+        similarity: suggestion.visual_similarity ?? suggestion.confidence,
+        explanation: suggestion.explanation ?? null,
+      });
+    }
+
+    for (const name of finalNames) {
+      if (suggestedKeys.has(normalizeNameKey(name))) {
+        continue;
+      }
+      payloads.push({
+        media_id: mediaId,
+        entity_type: 'character',
+        suggested_name: name,
+        action: 'accepted',
+        source: 'manual_correction',
+        similarity: null,
+        explanation: null,
+      });
+    }
+
+    if (payloads.length === 0) {
+      return;
+    }
+    const recordFeedback = this.mediaService.recordLibraryClassificationFeedbackBulk?.bind(this.mediaService);
+    if (!recordFeedback) {
+      return;
+    }
+    recordFeedback({ items: payloads })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined });
   }
 
   private navigateTo(index: number): void {
@@ -830,6 +898,8 @@ export class MediaInspectorDialogComponent {
     this.fileError.set('');
     this.loadingDetail.set(true);
     this.loadingFile.set(true);
+    this.fallbackCharacterSuggestions.set([]);
+    this.fallbackSeriesSuggestions.set([]);
     this.revokeObjectUrl();
 
     this.mediaService
@@ -853,6 +923,28 @@ export class MediaInspectorDialogComponent {
           this.loadingDetail.set(false);
         },
       });
+
+    const getClassificationSuggestions = this.mediaService.getLibraryClassificationSuggestions?.bind(this.mediaService);
+    if (getClassificationSuggestions) {
+      getClassificationSuggestions(media.id)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (response) => {
+            if (requestId !== this.loadRequestId) {
+              return;
+            }
+            this.fallbackCharacterSuggestions.set(response.suggested_characters ?? []);
+            this.fallbackSeriesSuggestions.set(response.suggested_series ?? []);
+          },
+          error: () => {
+            if (requestId !== this.loadRequestId) {
+              return;
+            }
+            this.fallbackCharacterSuggestions.set([]);
+            this.fallbackSeriesSuggestions.set([]);
+          },
+        });
+    }
 
     this.mediaService
       .getFileUrl(media.id)
@@ -1384,6 +1476,24 @@ function normalizeChipValue(value: string | null | undefined): string | null {
 
 function dedupeNames(values: string[]): string[] {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function normalizeNameKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function uniqueClassificationSuggestions(
+  suggestions: ImportBatchRecommendationSuggestionRead[],
+): ImportBatchRecommendationSuggestionRead[] {
+  const byKey = new Map<string, ImportBatchRecommendationSuggestionRead>();
+  for (const suggestion of suggestions) {
+    const key = normalizeNameKey(suggestion.name);
+    const current = byKey.get(key);
+    if (!current || suggestion.confidence > current.confidence) {
+      byKey.set(key, suggestion);
+    }
+  }
+  return Array.from(byKey.values());
 }
 
 function isTouchLikePointer(pointerType: string): boolean {

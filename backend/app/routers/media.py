@@ -16,6 +16,7 @@ from backend.app.errors.error import AppError
 from backend.app.errors.media import poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
 from backend.app.models.media import MediaVisibility
+from backend.app.models.relations import MediaEntityType
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
     BatchUploadResponse,
@@ -31,7 +32,9 @@ from backend.app.schemas import (
     MediaMetadataFilter,
     MediaTimeline,
     LibraryClassificationFeedbackCreate,
+    LibraryClassificationFeedbackBulkCreate,
     LibraryClassificationFeedbackRead,
+    LibraryClassificationSuggestionResponse,
     MetadataListScope,
     MediaUploadRequest,
     MediaUpdate,
@@ -654,6 +657,42 @@ async def record_library_classification_feedback(
     if feedback is None:
         raise AppError(status_code=404, code="media_not_found", detail="Media not found")
     return feedback
+
+
+@router.post(
+    "/library-classification-feedback/bulk",
+    response_model=BulkResult,
+    summary="Record Library Classification Feedback In Bulk",
+    description="Record accepted or rejected library classification suggestions for several media items.",
+    responses=error_responses(422),
+)
+async def record_library_classification_feedback_bulk(
+    body: LibraryClassificationFeedbackBulkCreate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await MediaLibraryEnrichmentService(db).record_feedback_bulk(user.id, body.items)
+
+
+@router.get(
+    "/{media_id}/library-classification-suggestions",
+    response_model=LibraryClassificationSuggestionResponse,
+    summary="Get Library Classification Suggestions",
+    description="Return read-only library classification suggestions that would be used for missing character or series names.",
+    responses=error_responses(404),
+)
+async def get_library_classification_suggestions(
+    media_id: uuid.UUID,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await MediaLibraryEnrichmentService(db).enrich_media(media_id, user_id=user.id, apply=False)
+    if result.metadata.get("reason") == "media_not_found":
+        raise AppError(status_code=404, code="media_not_found", detail="Media not found")
+    return LibraryClassificationSuggestionResponse(
+        suggested_characters=result.suggestions.get(MediaEntityType.character, []),
+        suggested_series=result.suggestions.get(MediaEntityType.series, []),
+    )
 
 
 @router.post(

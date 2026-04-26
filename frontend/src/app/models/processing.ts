@@ -111,6 +111,15 @@ export interface LibraryClassificationFeedbackRead extends LibraryClassification
   id: string;
 }
 
+export interface LibraryClassificationFeedbackBulkCreate {
+  items: LibraryClassificationFeedbackCreate[];
+}
+
+export interface LibraryClassificationSuggestionResponse {
+  suggested_characters: ImportBatchRecommendationSuggestionRead[];
+  suggested_series: ImportBatchRecommendationSuggestionRead[];
+}
+
 export interface ImportBatchRecommendationSignalRead {
   kind: 'tag' | 'visual' | 'ocr' | 'entity';
   label: string;

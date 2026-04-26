@@ -115,6 +115,11 @@ class ImportBatchRecommendationSuggestionRead(BaseModel):
     explanation: str | None = Field(default=None, description="Human-readable explanation of why this suggestion was made.")
 
 
+class LibraryClassificationSuggestionResponse(BaseModel):
+    suggested_characters: list[ImportBatchRecommendationSuggestionRead] = Field(default_factory=list)
+    suggested_series: list[ImportBatchRecommendationSuggestionRead] = Field(default_factory=list)
+
+
 class ImportBatchRecommendationSignalRead(BaseModel):
     kind: Literal["tag", "visual", "ocr", "entity"]
     label: str

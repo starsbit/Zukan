@@ -104,6 +104,14 @@ describe('UploadReviewDialogComponent', () => {
             is_favorited: false,
             favorite_count: 0,
           },
+          suggested_characters: [{
+            name: 'Saber',
+            confidence: 0.91,
+            source: 'prototype',
+            model_version: 'clip_onnx_v1',
+            visual_similarity: 0.86,
+            explanation: 'Matched trusted examples.',
+          }],
         }],
         reviewBaselineTotal: 1,
         reviewRefreshing: false,
@@ -127,8 +135,10 @@ describe('UploadReviewDialogComponent', () => {
       }),
     };
     const batchUpdateEntities = vi.fn(() => of({ processed: 1, skipped: 0 }));
+    const recordLibraryClassificationFeedbackBulk = vi.fn(() => of({ processed: 2, skipped: 0 }));
     const mediaService = {
       batchUpdateEntities,
+      recordLibraryClassificationFeedbackBulk,
       batchDismissMetadataReview: vi.fn(() => of({ processed: 1, skipped: 0 })),
       getCharacterSuggestions: vi.fn(() => of([])),
       getSeriesSuggestions: vi.fn(() => of([])),
@@ -176,6 +186,22 @@ describe('UploadReviewDialogComponent', () => {
       mediaIds: ['m1'],
       characterNames: ["Jeanne D'Arc (Fate)"],
       seriesNames: ['Little Busters'],
+    });
+    expect(recordLibraryClassificationFeedbackBulk).toHaveBeenCalledWith({
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          media_id: 'm1',
+          suggested_name: 'Saber',
+          action: 'rejected',
+          source: 'prototype',
+        }),
+        expect.objectContaining({
+          media_id: 'm1',
+          suggested_name: "Jeanne D'Arc (Fate)",
+          action: 'accepted',
+          source: 'manual_correction',
+        }),
+      ]),
     });
     expect(refreshBatchReview).not.toHaveBeenCalled();
     expect(refreshBatchRecommendations).not.toHaveBeenCalled();

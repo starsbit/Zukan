@@ -13,8 +13,10 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, finalize, of, switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  ImportBatchRecommendationSuggestionRead,
   ImportBatchRecommendationGroupRead,
   ImportBatchReviewItemRead,
+  LibraryClassificationFeedbackCreate,
 } from '../../../../models/processing';
 import { CharacterSuggestion, SeriesSuggestion } from '../../../../models/tags';
 import { MediaService } from '../../../../services/media.service';
@@ -367,6 +369,7 @@ export class UploadReviewDialogComponent {
       series_names: seriesNames.length > 0 ? seriesNames : undefined,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: () => {
+        this.recordCharacterFeedbackForApply(appliedMediaIds, characterNames);
         this.applyReviewEntityUpdate(appliedMediaIds, characterNames, seriesNames);
         this.selectedIds.set([]);
         this.characterNames.set([]);
@@ -455,6 +458,14 @@ export class UploadReviewDialogComponent {
 
   displayMetadataName(value: string): string {
     return formatMetadataName(value);
+  }
+
+  suggestionLabel(suggestion: ImportBatchRecommendationSuggestionRead): string {
+    return `${this.displayMetadataName(suggestion.name)} · ${Math.round(suggestion.confidence * 100)}%`;
+  }
+
+  suggestionTitle(suggestion: ImportBatchRecommendationSuggestionRead): string {
+    return suggestion.explanation || `${Math.round(suggestion.confidence * 100)}% confidence`;
   }
 
   characterLabel(item: ImportBatchReviewItemRead): string {
@@ -683,6 +694,72 @@ export class UploadReviewDialogComponent {
     }
   }
 
+  private recordCharacterFeedbackForApply(mediaIds: string[], characterNames: string[]): void {
+    const finalNames = characterNames.map((name) => name.trim()).filter((name) => !!name);
+    if (mediaIds.length === 0 || finalNames.length === 0) {
+      return;
+    }
+
+    const finalNameKeys = new Set(finalNames.map((name) => normalizeNameKey(name)));
+    const payloads: LibraryClassificationFeedbackCreate[] = [];
+    for (const mediaId of mediaIds) {
+      const suggestions = this.characterSuggestionsForMedia(mediaId);
+      const suggestedKeys = new Set(suggestions.map((suggestion) => normalizeNameKey(suggestion.name)));
+
+      for (const suggestion of suggestions) {
+        payloads.push({
+          media_id: mediaId,
+          entity_type: 'character',
+          suggested_entity_id: suggestion.entity_id ?? null,
+          suggested_name: suggestion.name,
+          series_name: suggestion.series_name ?? null,
+          action: finalNameKeys.has(normalizeNameKey(suggestion.name)) ? 'accepted' : 'rejected',
+          source: suggestion.source ?? null,
+          model_version: suggestion.model_version ?? null,
+          similarity: suggestion.visual_similarity ?? suggestion.confidence,
+          explanation: suggestion.explanation ?? null,
+        });
+      }
+
+      for (const name of finalNames) {
+        if (suggestedKeys.has(normalizeNameKey(name))) {
+          continue;
+        }
+        payloads.push({
+          media_id: mediaId,
+          entity_type: 'character',
+          suggested_name: name,
+          action: 'accepted',
+          source: 'manual_correction',
+          similarity: null,
+          explanation: null,
+        });
+      }
+    }
+
+    if (payloads.length === 0) {
+      return;
+    }
+    const recordFeedback = this.mediaService.recordLibraryClassificationFeedbackBulk?.bind(this.mediaService);
+    if (!recordFeedback) {
+      return;
+    }
+    recordFeedback({ items: payloads })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({ error: () => undefined });
+  }
+
+  private characterSuggestionsForMedia(mediaId: string): ImportBatchRecommendationSuggestionRead[] {
+    const item = this.items().find((entry) => entry.media.id === mediaId);
+    const suggestions = [...(item?.suggested_characters ?? [])];
+    for (const group of this.recommendationGroups()) {
+      if (group.media_ids.includes(mediaId)) {
+        suggestions.push(...group.suggested_characters);
+      }
+    }
+    return uniqueSuggestions(suggestions);
+  }
+
   private discardReviewItems(mediaIds: string[], successMessage: string): void {
     if (mediaIds.length === 0 || this.discarding()) {
       return;
@@ -778,4 +855,22 @@ export class UploadReviewDialogComponent {
 
 function normalizeChipValue(rawValue: string): string {
   return rawValue.trim().replace(/\s+/g, ' ');
+}
+
+function normalizeNameKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function uniqueSuggestions(
+  suggestions: ImportBatchRecommendationSuggestionRead[],
+): ImportBatchRecommendationSuggestionRead[] {
+  const byKey = new Map<string, ImportBatchRecommendationSuggestionRead>();
+  for (const suggestion of suggestions) {
+    const key = normalizeNameKey(suggestion.name);
+    const current = byKey.get(key);
+    if (!current || suggestion.confidence > current.confidence) {
+      byKey.set(key, suggestion);
+    }
+  }
+  return Array.from(byKey.values());
 }

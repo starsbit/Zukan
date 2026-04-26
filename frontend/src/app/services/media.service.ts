@@ -8,8 +8,10 @@ import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads
 import { BulkResult } from '../models/common';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../models/tags';
 import {
+  LibraryClassificationFeedbackBulkCreate,
   LibraryClassificationFeedbackCreate,
   LibraryClassificationFeedbackRead,
+  LibraryClassificationSuggestionResponse,
 } from '../models/processing';
 
 @Injectable({ providedIn: 'root' })
@@ -93,6 +95,16 @@ export class MediaService implements OnDestroy {
     body: LibraryClassificationFeedbackCreate,
   ): Observable<LibraryClassificationFeedbackRead> {
     return this.client.recordLibraryClassificationFeedback(body);
+  }
+
+  recordLibraryClassificationFeedbackBulk(
+    body: LibraryClassificationFeedbackBulkCreate,
+  ): Observable<BulkResult> {
+    return this.client.recordLibraryClassificationFeedbackBulk(body);
+  }
+
+  getLibraryClassificationSuggestions(id: string): Observable<LibraryClassificationSuggestionResponse> {
+    return this.client.getLibraryClassificationSuggestions(id);
   }
 
   delete(id: string): Observable<void> {

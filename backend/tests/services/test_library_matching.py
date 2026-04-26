@@ -14,7 +14,8 @@ from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.schemas import LibraryClassificationFeedbackCreate
 from backend.app.repositories.embeddings import MediaNeighbor
-from backend.app.services.library_classification import CharacterPrototype, MediaLibraryEnrichmentService
+from backend.app.services.hybrid_similarity import HybridScoreBreakdown, MediaSimilarityProfile
+from backend.app.services.library_classification import CharacterFeedbackStats, CharacterPrototype, MediaLibraryEnrichmentService, SignatureVote
 from backend.app.services.tags import TagService
 from backend.tests.services.conftest import RowResult
 from backend.app.utils.tagging import TagPrediction, TaggingResult
@@ -114,7 +115,7 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
 
 
 @pytest.mark.asyncio
-async def test_character_prototype_auto_applies_with_high_confidence_support(fake_db, user):
+async def test_character_prototype_auto_apply_requires_positive_feedback_history(fake_db, user):
     target = make_media(user.id, "target.webp")
     service = MediaLibraryEnrichmentService(fake_db)
     service._rejected_suggestion_keys = AsyncMock(return_value=set())
@@ -131,6 +132,31 @@ async def test_character_prototype_auto_applies_with_high_confidence_support(fak
         user_id=user.id,
         target=target,
         target_embedding=[1.0, 0.0],
+    )
+
+    assert decision["auto_names"] == []
+    assert decision["metadata"]["reason"] == "prototype_suggest_only"
+
+
+@pytest.mark.asyncio
+async def test_character_prototype_auto_applies_with_high_confidence_support_and_feedback(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._rejected_suggestion_keys = AsyncMock(return_value=set())
+    service._build_character_prototypes = AsyncMock(return_value=[
+            CharacterPrototype(
+                names=["Saber"],
+                normalized_signature=("saber",),
+                centroid=[1.0, 0.0],
+                support_keys={f"media-{index}" for index in range(10)},
+            )
+    ])
+
+    decision = await service._score_character_prototypes(
+        user_id=user.id,
+        target=target,
+        target_embedding=[1.0, 0.0],
+        feedback_stats={("saber",): CharacterFeedbackStats(accepted=2, rejected=0)},
     )
 
     assert decision["auto_names"] == ["Saber"]
@@ -195,6 +221,65 @@ def test_trusted_entity_names_include_only_high_confidence_tagger_labels(fake_db
     assert service._trusted_entity_names(manual, MediaEntityType.character) == ["Saber"]
 
 
+def test_character_feedback_adjustment_rewards_and_penalizes_scores(fake_db):
+    service = MediaLibraryEnrichmentService(fake_db)
+
+    rewarded = service._apply_character_feedback_adjustment(
+        0.5,
+        ("saber",),
+        {("saber",): CharacterFeedbackStats(accepted=5, rejected=0)},
+    )
+    penalized = service._apply_character_feedback_adjustment(
+        0.5,
+        ("saber",),
+        {("saber",): CharacterFeedbackStats(accepted=0, rejected=5)},
+    )
+
+    assert rewarded == pytest.approx(0.66)
+    assert penalized == pytest.approx(0.18)
+
+
+def test_character_evidence_score_penalizes_low_context_overlap(fake_db):
+    service = MediaLibraryEnrichmentService(fake_db)
+    target = MediaSimilarityProfile(embedding=[1.0, 0.0], tags={"fox", "uniform", "white hair"})
+    candidate = MediaSimilarityProfile(embedding=[0.86, 0.51], tags={"witch", "black dress", "white hair"})
+
+    score = service._character_evidence_score(
+        0.67,
+        HybridScoreBreakdown(visual=0.86, tags=0.05, color=0.86, confidence=1.0, series_penalty=1.0),
+        target,
+        candidate,
+    )
+
+    assert score == pytest.approx(0.3015)
+
+
+def test_character_evidence_score_keeps_very_strong_visual_matches(fake_db):
+    service = MediaLibraryEnrichmentService(fake_db)
+    target = MediaSimilarityProfile(embedding=[1.0, 0.0], tags={"fox", "uniform", "white hair"})
+    candidate = MediaSimilarityProfile(embedding=[0.94, 0.34], tags={"witch", "black dress", "white hair"})
+
+    score = service._character_evidence_score(
+        0.67,
+        HybridScoreBreakdown(visual=0.94, tags=0.05, color=0.86, confidence=1.0, series_penalty=1.0),
+        target,
+        candidate,
+    )
+
+    assert score == pytest.approx(0.67)
+
+
+def test_build_suggestions_uses_absolute_confidence(fake_db):
+    service = MediaLibraryEnrichmentService(fake_db)
+
+    suggestions = service._build_suggestions([
+        SignatureVote(names=["Echidna"], normalized_signature=("echidna",), score=0.67, max_similarity=0.67),
+        SignatureVote(names=["Nero"], normalized_signature=("nero",), score=0.61, max_similarity=0.61),
+    ])
+
+    assert [suggestion.confidence for suggestion in suggestions] == [0.67, 0.61]
+
+
 @pytest.mark.asyncio
 async def test_record_feedback_persists_entity_id_aware_rejection(fake_db, user):
     media = make_media(user.id, "target.webp")
@@ -221,6 +306,38 @@ async def test_record_feedback_persists_entity_id_aware_rejection(fake_db, user)
     assert feedback.suggested_entity_id == entity_id
     assert feedback.suggested_name == "Saber"
     assert feedback.action.value == "rejected"
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_record_feedback_bulk_skips_media_not_owned_by_user(fake_db, user):
+    owned_media_id = uuid.uuid4()
+    foreign_media_id = uuid.uuid4()
+    fake_db.execute = AsyncMock(return_value=RowResult([SimpleNamespace(id=owned_media_id)]))
+    service = MediaLibraryEnrichmentService(fake_db)
+
+    result = await service.record_feedback_bulk(
+        user.id,
+        [
+            LibraryClassificationFeedbackCreate(
+                media_id=owned_media_id,
+                entity_type=MediaEntityType.character,
+                suggested_name="Saber",
+                action="accepted",
+            ),
+            LibraryClassificationFeedbackCreate(
+                media_id=foreign_media_id,
+                entity_type=MediaEntityType.character,
+                suggested_name="Rin",
+                action="rejected",
+            ),
+        ],
+    )
+
+    assert result.processed == 1
+    assert result.skipped == 1
+    assert len(fake_db.added) == 1
+    assert fake_db.added[0].suggested_name == "Saber"
     fake_db.commit.assert_awaited_once()
 
 

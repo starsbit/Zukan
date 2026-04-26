@@ -18,6 +18,10 @@ class LibraryClassificationFeedbackCreate(BaseModel):
     explanation: str | None = Field(default=None, max_length=1024)
 
 
+class LibraryClassificationFeedbackBulkCreate(BaseModel):
+    items: list[LibraryClassificationFeedbackCreate] = Field(min_length=1, max_length=100)
+
+
 class LibraryClassificationFeedbackRead(BaseModel):
     id: uuid.UUID
     media_id: uuid.UUID

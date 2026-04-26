@@ -96,6 +96,8 @@ describe('MediaInspectorDialogComponent', () => {
     get?: ReturnType<typeof vi.fn>;
     getFileUrl?: ReturnType<typeof vi.fn>;
     update?: ReturnType<typeof vi.fn>;
+    getLibraryClassificationSuggestions?: ReturnType<typeof vi.fn>;
+    recordLibraryClassificationFeedbackBulk?: ReturnType<typeof vi.fn>;
     toggleFavorite?: ReturnType<typeof vi.fn>;
     items?: MediaRead[];
     isMobile?: boolean;
@@ -106,6 +108,11 @@ describe('MediaInspectorDialogComponent', () => {
       update: overrides?.update ?? vi.fn((id: string, body: unknown) => of(makeDetail(id, body as Partial<MediaDetail>))),
       getCharacterSuggestions: vi.fn(() => of([{ name: 'Rin Tohsaka', media_count: 7 }])),
       getSeriesSuggestions: vi.fn(() => of([{ name: 'Fate/zero', media_count: 5 }])),
+      getLibraryClassificationSuggestions: overrides?.getLibraryClassificationSuggestions ?? vi.fn(() => of({
+        suggested_characters: [],
+        suggested_series: [],
+      })),
+      recordLibraryClassificationFeedbackBulk: overrides?.recordLibraryClassificationFeedbackBulk ?? vi.fn(() => of({ processed: 0, skipped: 0 })),
     };
     const galleryStore = {
       patchItem: vi.fn(),
@@ -639,7 +646,22 @@ describe('MediaInspectorDialogComponent', () => {
       version: 2,
     });
     const update = vi.fn(() => of(updated));
-    const { fixture, mediaService, galleryStore } = await createComponent({ update });
+    const recordLibraryClassificationFeedbackBulk = vi.fn(() => of({ processed: 2, skipped: 0 }));
+    const { fixture, mediaService, galleryStore } = await createComponent({
+      update,
+      getLibraryClassificationSuggestions: vi.fn(() => of({
+        suggested_characters: [{
+          name: 'Saber Alter',
+          confidence: 0.9,
+          source: 'prototype',
+          model_version: 'clip_onnx_v1',
+          visual_similarity: 0.84,
+          explanation: 'Matched trusted examples.',
+        }],
+        suggested_series: [],
+      })),
+      recordLibraryClassificationFeedbackBulk,
+    });
 
     fixture.componentInstance.beginEdit();
     fixture.componentInstance.removeTag('Saber');
@@ -666,6 +688,22 @@ describe('MediaInspectorDialogComponent', () => {
       version: 1,
     });
     expect(galleryStore.patchItem).toHaveBeenCalledWith(updated);
+    expect(recordLibraryClassificationFeedbackBulk).toHaveBeenCalledWith({
+      items: expect.arrayContaining([
+        expect.objectContaining({
+          media_id: 'm1',
+          suggested_name: 'Saber Alter',
+          action: 'rejected',
+          source: 'prototype',
+        }),
+        expect.objectContaining({
+          media_id: 'm1',
+          suggested_name: 'Rin Tohsaka',
+          action: 'accepted',
+          source: 'manual_correction',
+        }),
+      ]),
+    });
     expect(fixture.componentInstance.editing()).toBe(false);
   });
 

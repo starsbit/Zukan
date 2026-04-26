@@ -261,11 +261,11 @@
 
                 @if (group.suggested_characters.length > 0) {
                   <div class="review-group-card__suggestions">
-                    <strong>Character suggestions</strong>
-                    <mat-chip-set aria-label="Character suggestions">
+                    <strong>Characters it would detect</strong>
+                    <mat-chip-set aria-label="Characters it would detect">
                       @for (suggestion of group.suggested_characters; track suggestion.name) {
-                        <mat-chip-row (click)="useCharacterSuggestion(suggestion.name)">
-                          {{ displayMetadataName(suggestion.name) }}
+                        <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="useCharacterSuggestion(suggestion.name)">
+                          {{ suggestionLabel(suggestion) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>
@@ -274,11 +274,11 @@
 
                 @if (group.suggested_series.length > 0) {
                   <div class="review-group-card__suggestions">
-                    <strong>Series suggestions</strong>
-                    <mat-chip-set aria-label="Series suggestions">
+                    <strong>Series it would detect</strong>
+                    <mat-chip-set aria-label="Series it would detect">
                       @for (suggestion of group.suggested_series; track suggestion.name) {
-                        <mat-chip-row (click)="useSeriesSuggestion(suggestion.name)">
-                          {{ displayMetadataName(suggestion.name) }}
+                        <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="useSeriesSuggestion(suggestion.name)">
+                          {{ suggestionLabel(suggestion) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>
@@ -322,11 +322,11 @@
 
                 @if ((item.suggested_characters ?? []).length > 0) {
                   <div class="review-group-card__suggestions">
-                    <strong>Character suggestions</strong>
-                    <mat-chip-set aria-label="Character suggestions">
+                    <strong>Characters it would detect</strong>
+                    <mat-chip-set aria-label="Characters it would detect">
                       @for (suggestion of (item.suggested_characters ?? []); track suggestion.name) {
-                        <mat-chip-row (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
-                          {{ displayMetadataName(suggestion.name) }}
+                        <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
+                          {{ suggestionLabel(suggestion) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>
@@ -335,11 +335,11 @@
 
                 @if ((item.suggested_series ?? []).length > 0) {
                   <div class="review-group-card__suggestions">
-                    <strong>Series suggestions</strong>
-                    <mat-chip-set aria-label="Series suggestions">
+                    <strong>Series it would detect</strong>
+                    <mat-chip-set aria-label="Series it would detect">
                       @for (suggestion of (item.suggested_series ?? []); track suggestion.name) {
-                        <mat-chip-row (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
-                          {{ displayMetadataName(suggestion.name) }}
+                        <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
+                          {{ suggestionLabel(suggestion) }}
                         </mat-chip-row>
                       }
                     </mat-chip-set>
@@ -404,11 +404,11 @@
 
               @if ((item.suggested_characters ?? []).length > 0) {
                 <div class="review-group-card__suggestions">
-                  <strong>Character suggestions</strong>
-                  <mat-chip-set aria-label="Character suggestions">
+                  <strong>Characters it would detect</strong>
+                  <mat-chip-set aria-label="Characters it would detect">
                     @for (suggestion of (item.suggested_characters ?? []); track suggestion.name) {
-                      <mat-chip-row (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
-                        {{ displayMetadataName(suggestion.name) }}
+                      <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="$event.stopPropagation(); useCharacterSuggestion(suggestion.name)">
+                        {{ suggestionLabel(suggestion) }}
                       </mat-chip-row>
                     }
                   </mat-chip-set>
@@ -417,11 +417,11 @@
 
               @if ((item.suggested_series ?? []).length > 0) {
                 <div class="review-group-card__suggestions">
-                  <strong>Series suggestions</strong>
-                  <mat-chip-set aria-label="Series suggestions">
+                  <strong>Series it would detect</strong>
+                  <mat-chip-set aria-label="Series it would detect">
                     @for (suggestion of (item.suggested_series ?? []); track suggestion.name) {
-                      <mat-chip-row (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
-                        {{ displayMetadataName(suggestion.name) }}
+                      <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="$event.stopPropagation(); useSeriesSuggestion(suggestion.name)">
+                        {{ suggestionLabel(suggestion) }}
                       </mat-chip-row>
                     }
                   </mat-chip-set>

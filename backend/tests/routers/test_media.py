@@ -9,6 +9,9 @@ import uuid
 from starlette.requests import Request as StarletteRequest
 
 from backend.app.config import settings
+from backend.app.models.relations import MediaEntityType
+from backend.app.schemas import ImportBatchRecommendationSuggestionRead
+from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.metadata import MediaMetadataService
 from backend.app.services.media.processing import MediaProcessingService
@@ -467,6 +470,72 @@ def test_series_suggestions_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["name"] == "Fate/stay night"
+
+
+def test_library_classification_suggestions_contract(api_client, monkeypatch):
+    media_id = uuid.uuid4()
+
+    async def _fake_enrich(self, requested_media_id, *, user_id, apply=True, target_media=None):
+        assert requested_media_id == media_id
+        assert apply is False
+        return SimpleNamespace(
+            suggestions={
+                MediaEntityType.character: [
+                    ImportBatchRecommendationSuggestionRead(
+                        name="Saber",
+                        confidence=0.92,
+                        source="prototype",
+                        model_version="clip_onnx_v1",
+                        visual_similarity=0.88,
+                        explanation="Matched trusted examples.",
+                    )
+                ],
+                MediaEntityType.series: [
+                    ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.8)
+                ],
+            },
+            metadata={},
+        )
+
+    monkeypatch.setattr(MediaLibraryEnrichmentService, "enrich_media", _fake_enrich)
+
+    response = api_client.get(f"/api/v1/media/{media_id}/library-classification-suggestions")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["suggested_characters"][0]["name"] == "Saber"
+    assert payload["suggested_characters"][0]["source"] == "prototype"
+    assert payload["suggested_series"][0]["name"] == "Fate/stay night"
+
+
+def test_library_classification_feedback_bulk_contract(api_client, monkeypatch):
+    captured = {}
+
+    async def _fake_record_bulk(self, user_id, payloads):
+        captured["count"] = len(payloads)
+        captured["action"] = payloads[0].action
+        return {"processed": len(payloads), "skipped": 0}
+
+    monkeypatch.setattr(MediaLibraryEnrichmentService, "record_feedback_bulk", _fake_record_bulk)
+
+    response = api_client.post(
+        "/api/v1/media/library-classification-feedback/bulk",
+        json={
+            "items": [
+                {
+                    "media_id": str(uuid.uuid4()),
+                    "entity_type": "character",
+                    "suggested_name": "Saber",
+                    "action": "accepted",
+                    "source": "prototype",
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 1, "skipped": 0}
+    assert captured == {"count": 1, "action": "accepted"}
 
 
 def test_batch_update_contract(api_client, monkeypatch):

@@ -337,6 +337,16 @@ video.inspector-media {
   gap: 0.45rem;
 }
 
+.inspector-classification-suggestions {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.inspector-classification-suggestions strong {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+}
+
 .inspector-filter-chips {
   align-items: center;
 }

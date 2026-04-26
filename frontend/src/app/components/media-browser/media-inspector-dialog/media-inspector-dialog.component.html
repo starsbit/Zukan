@@ -297,6 +297,19 @@
                 }
               </mat-autocomplete>
 
+              @if (fallbackCharacterSuggestions().length > 0) {
+                <div class="inspector-classification-suggestions">
+                  <strong>Would detect</strong>
+                  <mat-chip-set aria-label="Library character suggestions">
+                    @for (suggestion of fallbackCharacterSuggestions(); track suggestion.name) {
+                      <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="selectCharacter(suggestion.name)">
+                        {{ suggestionLabel(suggestion) }}
+                      </mat-chip-row>
+                    }
+                  </mat-chip-set>
+                </div>
+              }
+
               @if (editableCharacters().length > 0) {
                 <mat-chip-set class="inspector-chips" aria-label="Selected characters">
                   @for (character of editableCharacters(); track character) {
@@ -378,6 +391,19 @@
                   </mat-option>
                 }
               </mat-autocomplete>
+
+              @if (fallbackSeriesSuggestions().length > 0) {
+                <div class="inspector-classification-suggestions">
+                  <strong>Would detect</strong>
+                  <mat-chip-set aria-label="Library series suggestions">
+                    @for (suggestion of fallbackSeriesSuggestions(); track suggestion.name) {
+                      <mat-chip-row [title]="suggestionTitle(suggestion)" (click)="selectSeries(suggestion.name)">
+                        {{ suggestionLabel(suggestion) }}
+                      </mat-chip-row>
+                    }
+                  </mat-chip-set>
+                </div>
+              }
 
               @if (editableSeries().length > 0) {
                 <mat-chip-set class="inspector-chips" aria-label="Selected series">

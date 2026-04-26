@@ -291,6 +291,32 @@ When a new version is available, all users will receive an in-app notification a
 
 ---
 
+### Exporting and Importing Data
+
+Use the data export script from your laptop to create one archive containing the PostgreSQL dump, tags, embeddings, media files, thumbnails, and posters:
+
+```bash
+scripts/export-production-data.sh --ssh root@your-server --remote-dir /opt/zukan --output ./zukan-prod-data.tar.gz
+```
+
+For an install created by `install-lxc.sh`, SSH to the Proxmox host and pass the container ID instead of enabling SSH inside the LXC:
+
+```bash
+scripts/export-production-data.sh --ssh root@your-proxmox-host --pct 201 --output ./zukan-prod-data.tar.gz
+```
+
+Import that archive into the current local Docker Compose install:
+
+```bash
+scripts/import-production-data.sh ./zukan-prod-data.tar.gz --yes
+```
+
+The import replaces the target database, copies media into the target storage volume, and rewrites stored media paths when the source and target installs use different storage directories. Existing unreferenced files in the target storage volume are left in place by default; add `--replace-storage` to clear the local storage volume first.
+
+Both scripts accept `--compose-file`, `--env-file`, and `--project-name` for non-standard installs. Run either script with `--help` for the full option list.
+
+---
+
 ### Configuration
 
 | Variable | Required | Description |
