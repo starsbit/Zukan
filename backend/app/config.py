@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     auth_login_rate_limit_window_seconds: int = 60
     auth_refresh_rate_limit_requests: int = 60
     auth_refresh_rate_limit_window_seconds: int = 60
+    gacha_pull_rate_limit_requests: int = 60
+    gacha_pull_rate_limit_window_seconds: int = 60
+    gacha_daily_claim_rate_limit_requests: int = 10
+    gacha_daily_claim_rate_limit_window_seconds: int = 60
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
     upload_max_batch_size: int = 1000
@@ -106,6 +110,10 @@ RUNTIME_CONFIG_FIELDS = {
     "auth_login_rate_limit_window_seconds",
     "auth_refresh_rate_limit_requests",
     "auth_refresh_rate_limit_window_seconds",
+    "gacha_pull_rate_limit_requests",
+    "gacha_pull_rate_limit_window_seconds",
+    "gacha_daily_claim_rate_limit_requests",
+    "gacha_daily_claim_rate_limit_window_seconds",
     "upload_rate_limit_requests",
     "upload_rate_limit_window_seconds",
     "access_token_expire_minutes",

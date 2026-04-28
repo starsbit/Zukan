@@ -12,6 +12,11 @@ class NotificationType(str, Enum):
     app_update = "app_update"
     share_invite = "share_invite"
     welcome = "welcome"
+    trade_received = "trade_received"
+    trade_accepted = "trade_accepted"
+    trade_rejected = "trade_rejected"
+    trade_cancelled = "trade_cancelled"
+    trade_expired = "trade_expired"
 
 
 class AnnouncementSeverity(str, Enum):

@@ -52,6 +52,26 @@ from .auth import (
 )
 from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
 from .bulk import BulkResult, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
+from .collection import (
+    CollectionFilters,
+    CollectionItemRead,
+    CollectionItemUpdate,
+    CollectionListResponse,
+    CollectionMediaRead,
+    CollectionPrivacyRead,
+    CollectionPrivacyUpdate,
+    CollectionStatsResponse,
+)
+from .gacha import (
+    GachaCurrencyBalanceRead,
+    GachaDailyClaimResponse,
+    GachaPullItemRead,
+    GachaPullRead,
+    GachaPullRequest,
+    GachaStatsResponse,
+    RarityRecalculationResponse,
+    RaritySnapshotRead,
+)
 from .graphs import (
     CharacterGraphEdge,
     CharacterGraphNode,
@@ -123,6 +143,12 @@ from .tags import (
     TagRead,
     TagWithConfidence,
 )
+from .trade import (
+    TradeCreateRequest,
+    TradeListResponse,
+    TradeOfferItemRead,
+    TradeOfferRead,
+)
 from .uploads import (
     BatchUploadResponse,
     MediaAnnotatedUploadRequest,
@@ -183,6 +209,14 @@ __all__ = [
     "CATEGORY_NAMES",
     "ADMIN_ERROR_RESPONSES",
     "AUTHENTICATED_ERROR_RESPONSES",
+    "CollectionFilters",
+    "CollectionItemRead",
+    "CollectionItemUpdate",
+    "CollectionListResponse",
+    "CollectionMediaRead",
+    "CollectionPrivacyRead",
+    "CollectionPrivacyUpdate",
+    "CollectionStatsResponse",
     "CharacterSuggestion",
     "CharacterGraphEdge",
     "CharacterGraphNode",
@@ -198,6 +232,12 @@ __all__ = [
     "error_responses",
     "ExternalRefCreate",
     "ExternalRefRead",
+    "GachaCurrencyBalanceRead",
+    "GachaDailyClaimResponse",
+    "GachaPullItemRead",
+    "GachaPullRead",
+    "GachaPullRequest",
+    "GachaStatsResponse",
     "GraphSeriesMode",
     "LibraryClassificationFeedbackCreate",
     "LibraryClassificationFeedbackBulkCreate",
@@ -237,6 +277,8 @@ __all__ = [
     "NsfwFilter",
     "SensitiveFilter",
     "RefreshTokenRequest",
+    "RarityRecalculationResponse",
+    "RaritySnapshotRead",
     "TagFilterMode",
     "TagListResponse",
     "TagMergeRequest",
@@ -245,6 +287,10 @@ __all__ = [
     "TagWithConfidence",
     "TaggingJobQueuedResponse",
     "TokenResponse",
+    "TradeCreateRequest",
+    "TradeListResponse",
+    "TradeOfferItemRead",
+    "TradeOfferRead",
     "SetupRequiredResponse",
     "SeriesSuggestion",
     "UploadConfigResponse",

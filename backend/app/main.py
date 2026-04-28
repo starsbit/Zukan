@@ -19,14 +19,17 @@ from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
+from backend.app.models import collection as _collection_models  # noqa: F401
 from backend.app.models import embeddings as _embedding_models  # noqa: F401
+from backend.app.models import gacha as _gacha_models  # noqa: F401
 from backend.app.models import library_classification as _library_classification_models  # noqa: F401
 from backend.app.models.media import Media
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
+from backend.app.models import trade as _trade_models  # noqa: F401
 from backend.app.runtime import health_monitor
-from backend.app.routers import admin, albums, auth, batches, config, graphs, media, notifications, tags, users
+from backend.app.routers import admin, albums, auth, batches, collection, config, gacha, graphs, media, notifications, tags, trades, users
 from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue
 from backend.app.services.embedding_backfill import set_embedding_backfill_queue
@@ -80,12 +83,15 @@ OPENAPI_TAGS = [
     {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
     {"name": "users", "description": "Current-user profile read/update operations."},
     {"name": "media", "description": "Media upload, filtering, metadata mutation, and download operations."},
+    {"name": "collection", "description": "User-owned gacha collection, upgrades, and collection privacy."},
+    {"name": "gacha", "description": "Cached rarity snapshots and authenticated media card pulls."},
     {"name": "graphs", "description": "Personal-library graph exploration endpoints."},
     {"name": "albums", "description": "Album management, sharing, and album-scoped media operations."},
     {"name": "tags", "description": "Tag browsing, filtering utilities, and tag management actions."},
     {"name": "admin", "description": "Administrative controls, diagnostics, and global announcement publishing. Admin authentication required."},
     {"name": "batches", "description": "Import and processing batch visibility endpoints."},
     {"name": "notifications", "description": "User-targeted inbox notification endpoints under /me/notifications."},
+    {"name": "trades", "description": "User-to-user collection item trade offers and responses."},
     {"name": "config", "description": "Client-facing runtime limits and feature configuration endpoints."},
 ]
 OPENAPI_SERVERS = [
@@ -583,14 +589,18 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth.router)
 v1_router.include_router(users.router)
+v1_router.include_router(collection.users_collection_router)
 v1_router.include_router(config.router)
 v1_router.include_router(media.router)
+v1_router.include_router(collection.collection_router)
+v1_router.include_router(gacha.router)
 v1_router.include_router(graphs.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
 v1_router.include_router(admin.router)
 v1_router.include_router(batches.router)
 v1_router.include_router(notifications.router)
+v1_router.include_router(trades.router)
 api.include_router(v1_router)
 
 
