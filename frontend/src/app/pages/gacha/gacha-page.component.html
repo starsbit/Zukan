@@ -1,0 +1,189 @@
+<zukan-layout>
+  <section class="gacha-page">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">Zukan Gacha</p>
+        <h1>Summon media from your library</h1>
+      </div>
+
+      <div class="balance-panel" aria-label="Gacha currency balance">
+        <mat-icon aria-hidden="true">token</mat-icon>
+        <div>
+          <span class="balance-value">{{ balanceValue() }}</span>
+          <span class="balance-label">Currency</span>
+        </div>
+      </div>
+    </header>
+
+    <mat-tab-group animationDuration="180ms">
+      <mat-tab label="Gacha">
+        <section class="tab-panel gacha-grid">
+          <div class="summon-column">
+            <mat-card class="summon-stage-card" appearance="outlined">
+              <div
+                class="summon-stage"
+                [class.summon-stage--active]="animationActive()"
+                [class.summon-stage--rare]="rareReveal()"
+                [attr.data-state]="animationState()">
+                <div class="summon-stage__flash" aria-hidden="true"></div>
+                <div class="summon-stage__ring summon-stage__ring--outer" aria-hidden="true"></div>
+                <div class="summon-stage__ring summon-stage__ring--inner" aria-hidden="true"></div>
+                <div class="summon-stage__core" aria-hidden="true">
+                  <mat-icon>auto_awesome</mat-icon>
+                </div>
+
+                <div class="summon-stage__copy">
+                  <span>{{ pullStageLabel() }}</span>
+                  @if (highestRarity(); as tier) {
+                    <strong [class]="rarityClass(tier)">{{ tier }}</strong>
+                  }
+                </div>
+
+                @if (animationActive()) {
+                  <button mat-stroked-button type="button" class="skip-button" (click)="skipAnimation()">
+                    Skip
+                  </button>
+                }
+              </div>
+            </mat-card>
+
+            @if (pullResults().length > 0) {
+              <section
+                class="pull-results"
+                [class.pull-results--single]="pullResults().length === 1"
+                [class.pull-results--revealed]="animationState() === 'reveal' || animationState() === 'complete'">
+                @for (item of pullResults(); track resultTrack($index, item); let index = $index) {
+                  <zukan-gacha-display-card
+                    [rarity]="item.rarity_tier"
+                    [thumbnailUrl]="item.thumbnail_url"
+                    [title]="pullTitle(item)"
+                    [meta]="pullMeta(item)"
+                    [revealed]="animationState() === 'reveal' || animationState() === 'complete'"
+                    [revealIndex]="index">
+                  </zukan-gacha-display-card>
+                }
+              </section>
+            }
+          </div>
+
+          <aside class="control-column">
+            <mat-card class="daily-card" appearance="outlined">
+              <mat-card-header>
+                <mat-icon mat-card-avatar aria-hidden="true">calendar_today</mat-icon>
+                <mat-card-title>Daily claim</mat-card-title>
+                <mat-card-subtitle>{{ nextDailyLabel(nextDailyClaimAt()) }}</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <p>Claim {{ dailyClaimAmount() }} currency once per day.</p>
+              </mat-card-content>
+              <mat-card-actions align="end">
+                <button mat-flat-button type="button" color="primary" [disabled]="!canClaimDaily()" (click)="claimDaily()">
+                  @if (claimLoading()) {
+                    <mat-spinner diameter="18"></mat-spinner>
+                  } @else {
+                    Claim daily
+                  }
+                </button>
+              </mat-card-actions>
+            </mat-card>
+
+            <mat-card class="pull-controls-card" appearance="outlined">
+              <mat-card-header>
+                <mat-card-title>Pull banner</mat-card-title>
+                <mat-card-subtitle>Ten-pull guarantees at least R when needed.</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="pull-actions">
+                  <button mat-flat-button color="primary" type="button" [disabled]="!canSinglePull()" (click)="pull(GachaPullMode.SINGLE)">
+                    <mat-icon aria-hidden="true">flare</mat-icon>
+                    Single · {{ singlePullCost }}
+                  </button>
+                  <button mat-flat-button color="accent" type="button" [disabled]="!canTenPull()" (click)="pull(GachaPullMode.TEN_PULL)">
+                    <mat-icon aria-hidden="true">auto_awesome_motion</mat-icon>
+                    10 Pulls · {{ tenPullCost }}
+                  </button>
+                </div>
+                @if (pullLoading()) {
+                  <div class="inline-loading">
+                    <mat-spinner diameter="20"></mat-spinner>
+                    <span>Contacting the banner…</span>
+                  </div>
+                }
+              </mat-card-content>
+            </mat-card>
+
+            <mat-card class="stats-card" appearance="outlined">
+              <mat-card-header>
+                <mat-card-title>Pool stats</mat-card-title>
+                <mat-card-subtitle>{{ stats()?.total_rarity_snapshots ?? 0 }} rarity snapshots</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <div class="stat-row">
+                  <span>Collection</span>
+                  <strong>{{ stats()?.collection_count ?? collectionTotal() }}</strong>
+                </div>
+                <div class="stat-row">
+                  <span>Duplicate copies</span>
+                  <strong>{{ stats()?.duplicate_copies ?? 0 }}</strong>
+                </div>
+                <div class="rarity-counts">
+                  @for (tier of rarityTiers; track tier) {
+                    <span [class]="rarityClass(tier)">{{ tier }} {{ tierCount(tier) }}</span>
+                  }
+                </div>
+              </mat-card-content>
+            </mat-card>
+          </aside>
+        </section>
+      </mat-tab>
+
+      <mat-tab label="Collection">
+        <section class="tab-panel collection-panel">
+          <div class="collection-toolbar">
+            <mat-button-toggle-group
+              [value]="rarityFilter()"
+              aria-label="Filter collection by rarity"
+              (change)="onRarityFilterChange($event.value)">
+              <mat-button-toggle [value]="null">All</mat-button-toggle>
+              @for (tier of rarityTiers; track tier) {
+                <mat-button-toggle [value]="tier">{{ tier }}</mat-button-toggle>
+              }
+            </mat-button-toggle-group>
+
+            <mat-checkbox [checked]="duplicatesOnly()" (change)="toggleDuplicatesOnly($event.checked)">
+              Duplicates only
+            </mat-checkbox>
+          </div>
+
+          @if (loadingCollection()) {
+            <mat-card class="state-card" appearance="outlined">
+              <mat-spinner diameter="36"></mat-spinner>
+              <span>Loading collection…</span>
+            </mat-card>
+          } @else if (collectionError()) {
+            <mat-card class="state-card" appearance="outlined">
+              <mat-icon aria-hidden="true">error_outline</mat-icon>
+              <span>{{ collectionError() }}</span>
+            </mat-card>
+          } @else if (!hasCollection()) {
+            <mat-card class="state-card" appearance="outlined">
+              <mat-icon aria-hidden="true">inventory_2</mat-icon>
+              <span>No collection items match these filters.</span>
+            </mat-card>
+          } @else {
+            <section class="collection-grid">
+              @for (item of collection(); track collectionTrack($index, item)) {
+                <zukan-gacha-display-card
+                  [rarity]="item.rarity_tier_at_acquisition"
+                  [thumbnailUrl]="item.thumbnail_url"
+                  [title]="collectionTitle(item)"
+                  [meta]="collectionMeta(item)">
+                </zukan-gacha-display-card>
+              }
+            </section>
+          }
+        </section>
+      </mat-tab>
+    </mat-tab-group>
+  </section>
+</zukan-layout>

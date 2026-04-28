@@ -20,7 +20,7 @@ describe('routes', () => {
   });
 
   it('protects the authenticated pages', () => {
-    const protectedPaths = ['browse', 'graph/characters', 'album', 'album/:albumId', 'favorites', 'tags', 'trash'];
+    const protectedPaths = ['browse', 'graph/characters', 'album', 'album/:albumId', 'favorites', 'gacha', 'tags', 'trash'];
 
     for (const path of protectedPaths) {
       const route = routes.find((candidate) => candidate.path === path);

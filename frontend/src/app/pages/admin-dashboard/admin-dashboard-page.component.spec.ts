@@ -2,12 +2,13 @@ import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { AdminDashboardPageComponent } from './admin-dashboard-page.component';
 import { AdminService } from '../../services/admin.service';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { UserStore } from '../../services/user.store';
 import { LOCAL_STORAGE, SESSION_STORAGE } from '../../services/web/auth.store';
+import { GachaClientService } from '../../services/web/gacha-client.service';
 import { AnnouncementSeverity } from '../../models/notifications';
 
 const storageStub: Storage = {
@@ -21,6 +22,12 @@ const storageStub: Storage = {
 
 describe('AdminDashboardPageComponent', () => {
   async function configureDashboardTestingModule() {
+    const recalculateRarity = vi.fn(() => of({
+      recalculated: 5,
+      score_version: 'v1',
+      tier_counts: { N: 2, R: 1, SR: 1, UR: 1 },
+    }));
+
     await TestBed.configureTestingModule({
       imports: [AdminDashboardPageComponent, NoopAnimationsModule],
       providers: [
@@ -132,6 +139,7 @@ describe('AdminDashboardPageComponent', () => {
           },
         },
         { provide: ConfirmDialogService, useValue: { open: () => of(true) } },
+        { provide: GachaClientService, useValue: { recalculateRarity } },
         { provide: LOCAL_STORAGE, useValue: storageStub },
         { provide: SESSION_STORAGE, useValue: storageStub },
         {
@@ -153,6 +161,8 @@ describe('AdminDashboardPageComponent', () => {
         },
       ],
     }).compileComponents();
+
+    return { recalculateRarity };
   }
 
   it('renders dashboard data and exposes user actions', async () => {
@@ -168,6 +178,19 @@ describe('AdminDashboardPageComponent', () => {
     expect(text).toContain('Backfill Embeddings');
     expect(text).toContain('View Clusters');
     expect(text).toContain('Delete Media');
+    expect(text).toContain('Gacha Pool');
+    expect(text).toContain('Refresh pool');
+  });
+
+  it('refreshes the gacha pool from the admin dashboard', async () => {
+    const { recalculateRarity } = await configureDashboardTestingModule();
+
+    const fixture = TestBed.createComponent(AdminDashboardPageComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.refreshGachaPool();
+
+    expect(recalculateRarity).toHaveBeenCalledOnce();
   });
 
   it('renders the responsive grid hooks used by the narrow-screen layout', async () => {

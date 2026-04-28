@@ -56,6 +56,7 @@ export class SidebarComponent {
         { icon: 'travel_explore', label: 'Browse', path: '/browse' },
         { icon: 'hub', label: 'Graph', path: '/graph/characters' },
         { icon: 'favorite', label: 'Favorites', path: '/favorites' },
+        { icon: 'auto_awesome', label: 'Gacha', path: '/gacha' },
       ],
     },
     {

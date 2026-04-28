@@ -6,6 +6,7 @@ import { guestGuard } from './guards/guest.guard';
 import { AlbumComponent } from './pages/album/album.component';
 import { AlbumDetailComponent } from './pages/album-detail/album-detail.component';
 import { FavoritesComponent } from './pages/favorites/favorites.component';
+import { GachaPageComponent } from './pages/gacha/gacha-page.component';
 import { GalleryComponent } from './pages/gallery/gallery.component';
 import { BrowseComponent } from './pages/browse/browse.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
@@ -57,6 +58,11 @@ export const routes: Routes = [
   {
     path: 'favorites',
     component: FavoritesComponent,
+    canActivate: [authGuard],
+  },
+  {
+    path: 'gacha',
+    component: GachaPageComponent,
     canActivate: [authGuard],
   },
   {

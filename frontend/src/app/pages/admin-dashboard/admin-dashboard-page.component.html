@@ -114,6 +114,31 @@
         </mat-card-content>
       </mat-card>
 
+      <mat-card class="panel admin-action-panel">
+        <mat-card-header>
+          <mat-card-title>Gacha Pool</mat-card-title>
+          <mat-card-subtitle>Recalculate rarity snapshots for eligible media.</mat-card-subtitle>
+        </mat-card-header>
+        <mat-card-content>
+          <p class="panel-copy">
+            Use this after imports, metadata changes, or when pulls report that no eligible gacha media is available.
+          </p>
+          <button
+            mat-flat-button
+            color="primary"
+            type="button"
+            (click)="refreshGachaPool()"
+            [disabled]="refreshingGachaPool()">
+            @if (refreshingGachaPool()) {
+              <mat-spinner diameter="16"></mat-spinner>
+            } @else {
+              <mat-icon aria-hidden="true">refresh</mat-icon>
+            }
+            Refresh pool
+          </button>
+        </mat-card-content>
+      </mat-card>
+
       <mat-card class="panel panel-wide">
         <mat-card-header>
           <mat-card-title>User Administration</mat-card-title>

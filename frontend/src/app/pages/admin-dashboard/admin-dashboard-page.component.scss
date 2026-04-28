@@ -170,6 +170,25 @@ h1 {
   color: var(--mat-sys-on-surface);
 }
 
+.admin-action-panel mat-card-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-action-panel button {
+  justify-self: start;
+}
+
+.admin-action-panel button mat-spinner {
+  display: inline-block;
+  margin-right: 0.35rem;
+}
+
+.panel-copy {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
 .toolbar-row {
   display: flex;
   gap: 1rem;

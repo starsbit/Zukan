@@ -1,0 +1,24 @@
+<article
+  class="gacha-card {{ rarityClass() }}"
+  [class.gacha-card--revealed]="revealed()"
+  [style.--reveal-index]="revealIndex()">
+  <div class="gacha-card__shine" aria-hidden="true"></div>
+  <div class="gacha-card__media">
+    @if (thumbnailUrl()) {
+      <img [src]="thumbnailUrl()!" [alt]="title() ?? 'Gacha media'" />
+    } @else {
+      <mat-icon aria-hidden="true">image</mat-icon>
+    }
+    <span class="rarity-badge">{{ rarity() }}</span>
+  </div>
+  <div class="gacha-card__content">
+    @if (title()) {
+      <h3>{{ title() }}</h3>
+    }
+    <div class="gacha-card__meta">
+      @for (item of meta(); track item) {
+        <span>{{ item }}</span>
+      }
+    </div>
+  </div>
+</article>

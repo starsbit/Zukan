@@ -31,6 +31,7 @@ import { AnnouncementSeverity } from '../../models/notifications';
 import { AdminService } from '../../services/admin.service';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { UserStore } from '../../services/user.store';
+import { GachaClientService } from '../../services/web/gacha-client.service';
 import { FormattedMessageComponent } from '../../components/shared/formatted-message/formatted-message.component';
 
 type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storage_used_mb';
@@ -65,6 +66,7 @@ export class AdminDashboardPageComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
   private readonly fb = inject(FormBuilder);
+  private readonly gachaClient = inject(GachaClientService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
 
@@ -75,6 +77,7 @@ export class AdminDashboardPageComponent {
   readonly loadingAnnouncements = signal(true);
   readonly submittingAnnouncement = signal(false);
   readonly checkingForUpdates = signal(false);
+  readonly refreshingGachaPool = signal(false);
   readonly updateCheckResult = signal<UpdateCheckResponse | null>(null);
   readonly overviewError = signal<string | null>(null);
   readonly usersError = signal<string | null>(null);
@@ -377,6 +380,35 @@ export class AdminDashboardPageComponent {
       },
       error: (err) => {
         this.snackBar.open(err.error?.detail ?? 'Unable to check for updates.', 'Close');
+      },
+    });
+  }
+
+  refreshGachaPool(): void {
+    if (this.refreshingGachaPool()) {
+      return;
+    }
+
+    this.refreshingGachaPool.set(true);
+    this.gachaClient.recalculateRarity().pipe(
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => this.refreshingGachaPool.set(false)),
+    ).subscribe({
+      next: (result) => {
+        const counts = Object.entries(result.tier_counts ?? {})
+          .filter(([, count]) => count > 0)
+          .map(([tier, count]) => `${tier}: ${count}`)
+          .join(', ');
+        this.snackBar.open(
+          counts
+            ? `Gacha pool refreshed: ${result.recalculated} media (${counts}).`
+            : `Gacha pool refreshed: ${result.recalculated} media.`,
+          'Close',
+          { duration: 6000 },
+        );
+      },
+      error: (err) => {
+        this.snackBar.open(err.error?.detail ?? 'Unable to refresh gacha pool.', 'Close', { duration: 6000 });
       },
     });
   }
