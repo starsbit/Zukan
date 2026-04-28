@@ -7,8 +7,9 @@ import re
 import uuid
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, inspect, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import NO_VALUE
 from sqlalchemy.orm import aliased, selectinload
 
 from backend.app.config import settings
@@ -112,6 +113,10 @@ class MediaLibraryEnrichmentService:
         target = target_media if self._is_matching_media(target_media, media_id=media_id, uploader_id=user_id) else None
         if target is None:
             target = await self._load_media(media_id, uploader_id=user_id)
+        elif not self._has_loaded_enrichment_relationships(target):
+            # tag_media may pass an ORM instance without eager-loaded relationships;
+            # reload to avoid lazy-load errors in async worker context.
+            target = await self._load_media(media_id, uploader_id=user_id)
         if target is None:
             return LibraryClassificationResult(metadata={"reason": "media_not_found"})
 
@@ -175,7 +180,7 @@ class MediaLibraryEnrichmentService:
                     names=exact,
                     source="library_match",
                     confidence=EXACT_MATCH_CONFIDENCE,
-                    replace_existing_type=True,
+                    replace_existing_type=False,
                 )
                 await self._record_feedback(
                     user_id=user_id,
@@ -222,7 +227,7 @@ class MediaLibraryEnrichmentService:
                     names=auto_names,
                     source="library_match",
                     confidence=decision["confidence"],
-                    replace_existing_type=True,
+                    replace_existing_type=False,
                 )
                 await self._record_feedback(
                     user_id=user_id,
@@ -243,7 +248,7 @@ class MediaLibraryEnrichmentService:
                 target_media_id=target.id,
                 character_names=accepted_character_names,
             )
-            if character_decision["suggestions"]:
+            if character_decision["auto_names"]:
                 result.suggestions[MediaEntityType.series] = character_decision["suggestions"]
                 result.metadata[MediaEntityType.series.value] = character_decision["metadata"]
 
@@ -255,7 +260,7 @@ class MediaLibraryEnrichmentService:
                         names=auto_names,
                         source="library_match",
                         confidence=character_decision["confidence"],
-                        replace_existing_type=True,
+                        replace_existing_type=False,
                     )
                     result.applied[MediaEntityType.series] = auto_names
             else:
@@ -266,8 +271,16 @@ class MediaLibraryEnrichmentService:
                     target=target,
                     auto_apply=False,
                 )
-                result.suggestions[MediaEntityType.series] = decision["suggestions"]
-                result.metadata[MediaEntityType.series.value] = decision["metadata"]
+                result.suggestions[MediaEntityType.series] = self._merge_suggestion_lists(
+                    character_decision["suggestions"],
+                    decision["suggestions"],
+                )
+                if character_decision["suggestions"]:
+                    metadata = dict(character_decision["metadata"])
+                    metadata["fallback_neighbor_reason"] = decision["metadata"].get("reason")
+                    result.metadata[MediaEntityType.series.value] = metadata
+                else:
+                    result.metadata[MediaEntityType.series.value] = decision["metadata"]
 
                 auto_names = decision["auto_names"]
                 if apply and auto_names:
@@ -277,7 +290,7 @@ class MediaLibraryEnrichmentService:
                         names=auto_names,
                         source="library_match",
                         confidence=decision["confidence"],
-                        replace_existing_type=True,
+                        replace_existing_type=False,
                     )
                     result.applied[MediaEntityType.series] = auto_names
 
@@ -791,15 +804,26 @@ class MediaLibraryEnrichmentService:
 
         _, top_count = ranked[0]
         runner_up_count = ranked[1][1] if len(ranked) > 1 else 0
+        total_count = sum(count for _, count in ranked) or 1
+        top_confidence = top_count / total_count
+        runner_up_confidence = runner_up_count / total_count if runner_up_count else 0.0
+        margin = top_confidence - runner_up_confidence
+        auto_allowed = (
+            top_confidence >= settings.library_classification_auto_min_similarity
+            and top_count >= settings.library_classification_auto_min_support
+            and margin >= settings.library_classification_auto_min_margin
+        )
         return {
-            "auto_names": [],
-            "confidence": None,
+            "auto_names": [ranked[0][0]] if auto_allowed else [],
+            "confidence": round(top_confidence, 3) if auto_allowed else None,
             "suggestions": suggestions,
             "metadata": {
-                "reason": "character_inference_suggest_only",
+                "reason": "character_inference_auto_apply" if auto_allowed else "character_inference_suggest_only",
                 "character_names": normalized_character_names,
                 "top_support": top_count,
                 "runner_up_support": runner_up_count,
+                "top_similarity": round(top_confidence, 3),
+                "margin": round(margin, 3),
                 "observed_series_count": len(ranked),
             },
         }
@@ -834,7 +858,7 @@ class MediaLibraryEnrichmentService:
     def _trusted_entity_names(self, media: Media, entity_type: MediaEntityType) -> list[str]:
         names: list[str] = []
         seen: set[str] = set()
-        for entity in media.entities:
+        for entity in self._media_entities(media):
             if entity.entity_type != entity_type or not _is_trusted_entity(entity):
                 continue
             name = entity.name.strip()
@@ -850,7 +874,7 @@ class MediaLibraryEnrichmentService:
     def _entity_names(self, media: Media, entity_type: MediaEntityType) -> list[str]:
         return self._unique_clean_names([
             entity.name
-            for entity in media.entities
+            for entity in self._media_entities(media)
             if entity.entity_type == entity_type
         ])
 
@@ -871,7 +895,7 @@ class MediaLibraryEnrichmentService:
     def _source_weight(self, media: Media, entity_type: MediaEntityType) -> float:
         weights = [
             _trusted_entity_weight(entity)
-            for entity in media.entities
+            for entity in self._media_entities(media)
             if entity.entity_type == entity_type and entity.name.strip() and _is_trusted_entity(entity)
         ]
         return max(weights, default=0.0)
@@ -879,8 +903,28 @@ class MediaLibraryEnrichmentService:
     def _has_non_empty_entities(self, media: Media, entity_type: MediaEntityType) -> bool:
         return any(
             entity.entity_type == entity_type and entity.name.strip()
-            for entity in media.entities
+            for entity in self._media_entities(media)
         )
+
+    def _media_entities(self, media: Media) -> list[MediaEntity]:
+        try:
+            entities = getattr(media, "entities", None)
+        except Exception:
+            return []
+        return list(entities or [])
+
+    def _has_loaded_enrichment_relationships(self, media: Media) -> bool:
+        try:
+            state = inspect(media)
+        except Exception:
+            return True
+        for relationship in ("entities", "media_tags"):
+            try:
+                if state.attrs[relationship].loaded_value is NO_VALUE:
+                    return False
+            except Exception:
+                continue
+        return True
 
     def _normalize_name(self, value: str | None) -> str:
         if not value:

@@ -5,7 +5,7 @@
         <div class="album-detail__cover" [class.album-detail__cover--empty]="!headerPreviewLoading() && headerPreviewUrls().length === 0">
           @if (headerPreviewUrls().length > 0) {
             <div class="album-detail__preview-grid" [attr.data-layout]="headerPreviewLayout()">
-              @for (url of visibleHeaderPreviewUrls(); track url; let index = $index) {
+              @for (url of visibleHeaderPreviewUrls(); track $index; let index = $index) {
                 <div class="album-detail__preview-tile" [class.album-detail__preview-tile--hero]="headerPreviewLayout() === 'trio' && index === 0">
                   <img [src]="url" alt="" loading="lazy">
                 </div>

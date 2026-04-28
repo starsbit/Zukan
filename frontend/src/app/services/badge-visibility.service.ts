@@ -3,9 +3,13 @@ import { Injectable, signal } from '@angular/core';
 const HIDE_NSFW_KEY = 'zukan-hide-nsfw-badge';
 const HIDE_SENSITIVE_KEY = 'zukan-hide-sensitive-badge';
 
+function browserStorage(): Storage | null {
+  return typeof window === 'undefined' ? null : window.localStorage;
+}
+
 function readBool(key: string, defaultValue = false): boolean {
   try {
-    const stored = localStorage.getItem(key);
+    const stored = browserStorage()?.getItem(key) ?? null;
     return stored === null ? defaultValue : stored === 'true';
   } catch {
     return defaultValue;
@@ -14,7 +18,7 @@ function readBool(key: string, defaultValue = false): boolean {
 
 function writeBool(key: string, value: boolean): void {
   try {
-    localStorage.setItem(key, String(value));
+    browserStorage()?.setItem(key, String(value));
   } catch { /* SSR / test environment */ }
 }
 

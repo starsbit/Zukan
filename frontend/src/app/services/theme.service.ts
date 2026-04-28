@@ -4,9 +4,13 @@ export type ThemePreference = 'system' | 'light' | 'dark';
 
 const STORAGE_KEY = 'zukan-theme';
 
+function browserStorage(): Storage | null {
+  return typeof window === 'undefined' ? null : window.localStorage;
+}
+
 function readStorage(): ThemePreference {
   try {
-    return (localStorage.getItem(STORAGE_KEY) as ThemePreference | null) ?? 'system';
+    return (browserStorage()?.getItem(STORAGE_KEY) as ThemePreference | null) ?? 'system';
   } catch {
     return 'system';
   }
@@ -14,7 +18,7 @@ function readStorage(): ThemePreference {
 
 function writeStorage(value: ThemePreference): void {
   try {
-    localStorage.setItem(STORAGE_KEY, value);
+    browserStorage()?.setItem(STORAGE_KEY, value);
   } catch { /* SSR / test environment */ }
 }
 

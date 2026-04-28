@@ -7,7 +7,6 @@ import { AlbumComponent } from './pages/album/album.component';
 import { AlbumDetailComponent } from './pages/album-detail/album-detail.component';
 import { FavoritesComponent } from './pages/favorites/favorites.component';
 import { GalleryComponent } from './pages/gallery/gallery.component';
-import { CharacterGraphPageComponent } from './pages/character-graph/character-graph.component';
 import { BrowseComponent } from './pages/browse/browse.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
 import { MetadataManagerPageComponent } from './pages/metadata-manager/metadata-manager-page.component';
@@ -36,7 +35,8 @@ export const routes: Routes = [
   },
   {
     path: 'graph/characters',
-    component: CharacterGraphPageComponent,
+    loadComponent: () => import('./pages/character-graph/character-graph.component')
+      .then((m) => m.CharacterGraphPageComponent),
     canActivate: [authGuard],
   },
   {

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.app.errors.error import AppError
+from backend.app.models.auth import User
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.services.tags import TagService
@@ -382,3 +383,39 @@ async def test_tag_media_full_flow_sets_processing_and_stores(fake_db, media):
 
     assert media.tagging_status == "processing"
     assert store_fn.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_tag_media_passes_target_media_to_library_enrichment(fake_db, media):
+    tagger = SimpleNamespace(predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)))
+    enrichment = SimpleNamespace(enrich_media=AsyncMock())
+    service = TagService(fake_db, tagger=tagger, library_enrichment=enrichment)
+
+    enabled_user = User(
+        id=media.uploader_id,
+        username="enabled",
+        email="enabled@example.com",
+        hashed_password="x",
+        is_admin=False,
+        show_nsfw=False,
+        show_sensitive=False,
+        tag_confidence_threshold=0.35,
+        library_classification_enabled=True,
+        version=1,
+        storage_quota_mb=10240,
+        created_at=datetime.now(timezone.utc),
+    )
+
+    with patch("backend.app.services.tags.MediaRepository") as media_repo_cls, patch(
+        "backend.app.services.tags.sample_media_frames", return_value=[]
+    ), patch.object(service, "_store_tagging_result", AsyncMock()) as store_fn:
+        media_repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        fake_db.get = AsyncMock(return_value=enabled_user)
+        await service.tag_media(media.id)
+
+    store_fn.assert_awaited_once()
+    enrichment.enrich_media.assert_awaited_once_with(
+        media.id,
+        user_id=media.uploader_id,
+        target_media=media,
+    )

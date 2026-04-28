@@ -109,9 +109,83 @@ async def test_library_enrichment_uses_exact_phash_match_for_missing_series(fake
         names=["Fate/stay night"],
         source="library_match",
         confidence=0.99,
-        replace_existing_type=True,
+        replace_existing_type=False,
     )
     fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_auto_applies_character_for_missing_slot_only(fake_db, user):
+    target = make_media(
+        user.id,
+        "target.webp",
+        series_names=[("Existing Series", "manual")],
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(return_value=target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=None)
+    service._score_character_prototypes = AsyncMock(return_value={
+        "auto_names": ["Saber"],
+        "confidence": 0.91,
+        "suggestions": [],
+        "metadata": {"reason": "prototype_auto_apply", "explanation": "high confidence"},
+    })
+    service._score_signatures = lambda **_: {
+        "auto_names": [],
+        "confidence": None,
+        "suggestions": [],
+        "metadata": {"reason": "suggest_only"},
+    }
+    service._record_feedback = AsyncMock()
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(target.id, user_id=user.id)
+
+    assert result.applied == {MediaEntityType.character: ["Saber"]}
+    entity_repo_cls.return_value.add_media_entities.assert_awaited_once_with(
+        target,
+        entity_type=MediaEntityType.character,
+        names=["Saber"],
+        source="library_match",
+        confidence=0.91,
+        replace_existing_type=False,
+    )
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_library_enrichment_reloads_when_passed_target_media_is_not_ready(fake_db, user):
+    loaded_target = make_media(user.id, "target.webp")
+    partial_target = SimpleNamespace(
+        id=loaded_target.id,
+        uploader_id=user.id,
+        deleted_at=None,
+    )
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._has_loaded_enrichment_relationships = lambda _: False
+    service._load_media = AsyncMock(return_value=loaded_target)
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[])
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock(return_value=0)
+    service._embedding_repo.get_by_media_id = AsyncMock(return_value=None)
+
+    with patch("backend.app.services.library_classification.MediaEntityRepository") as entity_repo_cls:
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+
+        result = await service.enrich_media(loaded_target.id, user_id=user.id, target_media=partial_target)
+
+    service._load_media.assert_awaited_once_with(loaded_target.id, uploader_id=user.id)
+    assert result.applied == {}
+    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -370,10 +444,17 @@ async def test_library_enrichment_derives_series_from_existing_character_before_
 
         result = await service.enrich_media(target.id, user_id=user.id)
 
-    assert result.applied == {}
+    assert result.applied == {MediaEntityType.series: ["Fate/stay night"]}
     assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == ["Fate/stay night"]
-    assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
-    entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
+    assert result.metadata["series"]["reason"] == "character_inference_auto_apply"
+    entity_repo_cls.return_value.add_media_entities.assert_awaited_once_with(
+        target,
+        entity_type=MediaEntityType.series,
+        names=["Fate/stay night"],
+        source="library_match",
+        confidence=1.0,
+        replace_existing_type=False,
+    )
 
 
 @pytest.mark.asyncio
@@ -452,7 +533,7 @@ async def test_library_enrichment_returns_character_derived_series_suggestions_r
         "Fate/stay night",
         "Fate/Zero",
     ]
-    assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
+    assert result.metadata["series"]["reason"] == "character_inference_auto_apply"
     entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
     fake_db.commit.assert_not_awaited()
 
@@ -490,8 +571,10 @@ async def test_library_enrichment_does_not_auto_apply_ambiguous_character_series
     assert [suggestion.name for suggestion in result.suggestions[MediaEntityType.series]] == [
         "Fate/stay night",
         "Fate/Zero",
+        "Blue Archive",
     ]
     assert result.metadata["series"]["reason"] == "character_inference_suggest_only"
+    assert result.metadata["series"]["fallback_neighbor_reason"] == "suggest_only"
     entity_repo_cls.return_value.add_media_entities.assert_not_awaited()
     fake_db.commit.assert_not_awaited()
 
@@ -770,7 +853,11 @@ async def test_tag_media_runs_library_enrichment_only_when_enabled(fake_db, medi
         await service.tag_media(media.id)
 
     store_fn.assert_awaited_once()
-    enrichment.enrich_media.assert_awaited_once_with(media.id, user_id=media.uploader_id)
+    enrichment.enrich_media.assert_awaited_once_with(
+        media.id,
+        user_id=media.uploader_id,
+        target_media=media,
+    )
 
 
 @pytest.mark.asyncio

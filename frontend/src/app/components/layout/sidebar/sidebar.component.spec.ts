@@ -20,7 +20,7 @@ describe('SidebarComponent', () => {
     const sectionTitles = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.section-title'))
       .map((title) => title.textContent?.trim());
 
-    expect(labels).toEqual(['Gallery', 'Browse', 'Favorites', 'Album', 'Tags', 'Trash']);
+    expect(labels).toEqual(['Gallery', 'Browse', 'Graph', 'Favorites', 'Album', 'Tags', 'Trash']);
     expect(sectionTitles).toEqual(['Browse', 'Library']);
   });
 });

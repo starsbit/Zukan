@@ -270,7 +270,11 @@ class TagService:
             await self._store_tagging_result(media, aggregated)
             uploader = await self._db.get(User, media.uploader_id) if media.uploader_id is not None else None
             if uploader is not None and uploader.library_classification_enabled:
-                await self._library_enrichment.enrich_media(media.id, user_id=media.uploader_id)
+                await self._library_enrichment.enrich_media(
+                    media.id,
+                    user_id=media.uploader_id,
+                    target_media=media,
+                )
         finally:
             cleanup_sampled_frames([frame for frame in frames if frame != Path(media_filepath)])
 
