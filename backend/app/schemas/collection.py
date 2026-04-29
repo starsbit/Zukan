@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from backend.app.models.collection import CollectionVisibility
 from backend.app.models.gacha import RarityTier
+from backend.app.utils.media_classification import effective_nsfw_value, effective_sensitive_value
 
 
 class CollectionMediaRead(BaseModel):
@@ -12,6 +14,20 @@ class CollectionMediaRead(BaseModel):
     filename: str
     is_nsfw: bool
     is_sensitive: bool
+
+    @model_validator(mode="before")
+    @classmethod
+    def apply_effective_classification(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return data
+        if hasattr(data, "is_nsfw") and hasattr(data, "is_sensitive"):
+            return {
+                "id": data.id,
+                "filename": data.filename,
+                "is_nsfw": effective_nsfw_value(data),
+                "is_sensitive": effective_sensitive_value(data),
+            }
+        return data
 
     model_config = {"from_attributes": True}
 

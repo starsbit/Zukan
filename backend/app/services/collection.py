@@ -25,7 +25,12 @@ class CollectionService:
         self._repo = CollectionRepository(db)
 
     async def list_own_collection(self, user: User, filters: CollectionFilters) -> list[UserCollectionItem]:
-        return await self._repo.list_items(user.id, **filters.model_dump())
+        return await self._repo.list_items(
+            user.id,
+            include_nsfw=user.show_nsfw,
+            include_sensitive=user.show_sensitive,
+            **filters.model_dump(),
+        )
 
     async def list_user_collection(
         self,
@@ -35,8 +40,13 @@ class CollectionService:
     ) -> list[UserCollectionItem]:
         privacy = await self._repo.get_or_create_privacy(owner_id)
         self._ensure_can_view_collection(owner_id, viewer, privacy)
-        include_nsfw = owner_id == viewer.id or privacy.show_nsfw
-        return await self._repo.list_items(owner_id, include_nsfw=include_nsfw, **filters.model_dump())
+        owner_allows_mature_media = owner_id == viewer.id or privacy.show_nsfw
+        return await self._repo.list_items(
+            owner_id,
+            include_nsfw=owner_allows_mature_media and viewer.show_nsfw,
+            include_sensitive=owner_allows_mature_media and viewer.show_sensitive,
+            **filters.model_dump(),
+        )
 
     async def get_item(self, item_id: uuid.UUID, user: User) -> UserCollectionItem:
         item = await self._repo.get_item_for_user(item_id, user.id)
@@ -92,9 +102,11 @@ class CollectionService:
         self._ensure_can_view_collection(owner_id, viewer, privacy)
         if owner_id != viewer.id and not privacy.show_stats:
             raise AppError(status_code=403, code="collection_stats_private", detail="Collection stats are private")
+        owner_allows_mature_media = owner_id == viewer.id or privacy.show_nsfw
         total, total_copies, duplicate_copies, max_level, tier_counts = await self._repo.stats(
             owner_id,
-            include_nsfw=owner_id == viewer.id or privacy.show_nsfw,
+            include_nsfw=owner_allows_mature_media and viewer.show_nsfw,
+            include_sensitive=owner_allows_mature_media and viewer.show_sensitive,
         )
         return CollectionStatsResponse(
             total_items=total,

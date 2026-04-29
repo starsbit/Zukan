@@ -21,6 +21,7 @@ import {
   RarityTier,
 } from '../../models/gacha';
 import { MediaService } from '../../services/media.service';
+import { UserStore } from '../../services/user.store';
 import { CollectionClientService } from '../../services/web/collection-client.service';
 import { GachaClientService } from '../../services/web/gacha-client.service';
 import { extractApiError } from '../../utils/api-error.utils';
@@ -64,6 +65,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   private readonly gachaClient = inject(GachaClientService);
   private readonly collectionClient = inject(CollectionClientService);
   private readonly mediaService = inject(MediaService);
+  private readonly userStore = inject(UserStore);
   private readonly snackBar = inject(MatSnackBar);
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
   private readonly reducedMotion = typeof window !== 'undefined'
@@ -94,7 +96,15 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   readonly dailyClaimAvailable = computed(() => this.balance()?.daily_claim_available ?? this.stats()?.daily_claim_available ?? false);
   readonly dailyClaimAmount = computed(() => this.balance()?.daily_claim_amount ?? 10);
   readonly nextDailyClaimAt = computed(() => this.balance()?.next_daily_claim_at ?? this.stats()?.next_daily_claim_at ?? null);
-  readonly hasCollection = computed(() => this.collection().length > 0);
+  readonly visibleCollection = computed(() => {
+    const user = this.userStore.currentUser();
+    return this.collection().filter((item) => {
+      if (!user?.show_nsfw && item.media?.is_nsfw) return false;
+      if (user?.show_sensitive === false && item.media?.is_sensitive) return false;
+      return true;
+    });
+  });
+  readonly hasCollection = computed(() => this.visibleCollection().length > 0);
   readonly animationActive = computed(() => !['idle', 'complete'].includes(this.animationState()));
   readonly canClaimDaily = computed(() => !this.claimLoading() && !this.loadingOverview() && this.dailyClaimAvailable());
   readonly canSinglePull = computed(() => this.canPull(SINGLE_PULL_COST));

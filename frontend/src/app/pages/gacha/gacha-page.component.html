@@ -172,7 +172,7 @@
             </mat-card>
           } @else {
             <section class="collection-grid">
-              @for (item of collection(); track collectionTrack($index, item)) {
+              @for (item of visibleCollection(); track collectionTrack($index, item)) {
                 <zukan-gacha-display-card
                   [rarity]="item.rarity_tier_at_acquisition"
                   [thumbnailUrl]="item.thumbnail_url"

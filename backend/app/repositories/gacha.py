@@ -10,6 +10,7 @@ from backend.app.models.relations import MediaExternalRef
 from backend.app.models.tags import MediaTag
 from backend.app.models.auth import User
 from backend.app.repositories.media import MediaRepository
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 
 
 class GachaRepository:
@@ -98,17 +99,28 @@ class GachaRepository:
             )
         )
         if not user.show_nsfw:
-            stmt = stmt.where(Media.is_nsfw.is_(False))
+            stmt = stmt.where(effective_nsfw_expr().is_(False))
         if not user.show_sensitive:
-            stmt = stmt.where(Media.is_sensitive.is_(False))
+            stmt = stmt.where(effective_sensitive_expr().is_(False))
         if exclude_media_ids:
             stmt = stmt.where(MediaGachaRarity.media_id.notin_(exclude_media_ids))
         return (await self.db.execute(stmt)).scalars().all()
 
-    async def user_collection_totals(self, user_id: uuid.UUID) -> tuple[int, int]:
+    async def user_collection_totals(
+        self,
+        user_id: uuid.UUID,
+        *,
+        include_nsfw: bool = True,
+        include_sensitive: bool = True,
+    ) -> tuple[int, int]:
         from backend.app.models.collection import UserCollectionItem
 
-        rows = (
-            await self.db.execute(select(UserCollectionItem).where(UserCollectionItem.user_id == user_id))
-        ).scalars().all()
+        stmt = select(UserCollectionItem).join(Media, Media.id == UserCollectionItem.media_id).where(
+            UserCollectionItem.user_id == user_id
+        )
+        if not include_nsfw:
+            stmt = stmt.where(effective_nsfw_expr().is_(False))
+        if not include_sensitive:
+            stmt = stmt.where(effective_sensitive_expr().is_(False))
+        rows = (await self.db.execute(stmt)).scalars().all()
         return len(rows), sum(max(row.copies_pulled - 1, 0) for row in rows)

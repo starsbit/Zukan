@@ -117,7 +117,11 @@ class GachaService:
     async def stats(self, user: User) -> GachaStatsResponse:
         snapshot_count = await self._repo.snapshot_count()
         tier_counts = await self._repo.tier_counts()
-        collection_count, duplicate_copies = await self._repo.user_collection_totals(user.id)
+        collection_count, duplicate_copies = await self._repo.user_collection_totals(
+            user.id,
+            include_nsfw=user.show_nsfw,
+            include_sensitive=user.show_sensitive,
+        )
         balance = await self._repo.get_balance(user.id)
         daily_available = self._daily_claim_available(balance.last_daily_claimed_on if balance else None)
         return GachaStatsResponse(

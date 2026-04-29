@@ -3,12 +3,14 @@ from __future__ import annotations
 from types import SimpleNamespace
 from datetime import datetime, timezone
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 
 from backend.app.errors.error import AppError
 from backend.app.models.collection import UserCollectionItem
 from backend.app.models.gacha import GachaPullMode, RarityTier
+from backend.app.schemas.collection import CollectionFilters
 from backend.app.services.collection import CollectionService, duplicate_xp_for_tier
 from backend.app.services.gacha import GachaService
 
@@ -92,6 +94,35 @@ async def test_upgrade_item_rejects_insufficient_xp(fake_db, user, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_own_collection_honors_viewer_content_settings(fake_db, user, monkeypatch):
+    service = CollectionService(fake_db)
+    list_items = AsyncMock(return_value=[])
+    monkeypatch.setattr(service._repo, "list_items", list_items)
+
+    await service.list_own_collection(user, CollectionFilters())
+
+    list_items.assert_awaited_once()
+    assert list_items.await_args.args == (user.id,)
+    assert list_items.await_args.kwargs["include_nsfw"] is False
+    assert list_items.await_args.kwargs["include_sensitive"] is False
+
+
+@pytest.mark.asyncio
+async def test_list_user_collection_applies_viewer_content_settings_to_owner(fake_db, user, monkeypatch):
+    service = CollectionService(fake_db)
+    list_items = AsyncMock(return_value=[])
+    privacy = SimpleNamespace(show_nsfw=True, visibility=None)
+    monkeypatch.setattr(service._repo, "list_items", list_items)
+    monkeypatch.setattr(service._repo, "get_or_create_privacy", AsyncMock(return_value=privacy))
+
+    await service.list_user_collection(user.id, user, CollectionFilters())
+
+    list_items.assert_awaited_once()
+    assert list_items.await_args.kwargs["include_nsfw"] is False
+    assert list_items.await_args.kwargs["include_sensitive"] is False
+
+
+@pytest.mark.asyncio
 async def test_daily_currency_claim_grants_once_per_utc_day(fake_db, user, monkeypatch):
     balance = SimpleNamespace(user_id=user.id, balance=0, total_claimed=0, total_spent=0, last_daily_claimed_on=None)
     service = GachaService(fake_db)
@@ -135,3 +166,25 @@ async def test_pull_rejects_insufficient_gacha_currency(fake_db, user, monkeypat
     assert exc.value.status_code == 409
     assert exc.value.detail["code"] == "insufficient_gacha_currency"
     assert exc.value.detail["details"] == {"balance": 0, "required": 9}
+
+
+@pytest.mark.asyncio
+async def test_gacha_stats_honors_viewer_content_settings(fake_db, user, monkeypatch):
+    service = GachaService(fake_db)
+    monkeypatch.setattr(service._repo, "snapshot_count", AsyncMock(return_value=4))
+    monkeypatch.setattr(service._repo, "tier_counts", AsyncMock(return_value={tier: 0 for tier in RarityTier}))
+    user_collection_totals = AsyncMock(return_value=(2, 1))
+    monkeypatch.setattr(service._repo, "user_collection_totals", user_collection_totals)
+    monkeypatch.setattr(
+        service._repo,
+        "get_balance",
+        AsyncMock(return_value=SimpleNamespace(balance=3, last_daily_claimed_on=None)),
+    )
+
+    await service.stats(user)
+
+    user_collection_totals.assert_awaited_once_with(
+        user.id,
+        include_nsfw=False,
+        include_sensitive=False,
+    )

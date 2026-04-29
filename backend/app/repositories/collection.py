@@ -8,6 +8,7 @@ from backend.app.models.collection import CollectionVisibility, UserCollectionIt
 from backend.app.models.gacha import RarityTier
 from backend.app.models.media import Media
 from backend.app.models.relations import MediaEntity
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 
 
 class CollectionRepository:
@@ -64,6 +65,7 @@ class CollectionRepository:
         tradeable: bool | None = None,
         duplicates_only: bool = False,
         include_nsfw: bool = True,
+        include_sensitive: bool = True,
     ) -> list[UserCollectionItem]:
         stmt = (
             select(UserCollectionItem)
@@ -81,7 +83,9 @@ class CollectionRepository:
         if duplicates_only:
             stmt = stmt.where(UserCollectionItem.copies_pulled > 1)
         if not include_nsfw:
-            stmt = stmt.where(Media.is_nsfw.is_(False), Media.is_sensitive.is_(False))
+            stmt = stmt.where(effective_nsfw_expr().is_(False))
+        if not include_sensitive:
+            stmt = stmt.where(effective_sensitive_expr().is_(False))
         if character_name:
             character = aliased(MediaEntity)
             stmt = stmt.join(character, character.media_id == UserCollectionItem.media_id).where(
@@ -114,12 +118,20 @@ class CollectionRepository:
         await self.db.flush()
         return privacy
 
-    async def stats(self, user_id: uuid.UUID, *, include_nsfw: bool = True) -> tuple[int, int, int, int, dict[RarityTier, int]]:
+    async def stats(
+        self,
+        user_id: uuid.UUID,
+        *,
+        include_nsfw: bool = True,
+        include_sensitive: bool = True,
+    ) -> tuple[int, int, int, int, dict[RarityTier, int]]:
         stmt = select(UserCollectionItem).join(Media, Media.id == UserCollectionItem.media_id).where(
             UserCollectionItem.user_id == user_id
         )
         if not include_nsfw:
-            stmt = stmt.where(Media.is_nsfw.is_(False), Media.is_sensitive.is_(False))
+            stmt = stmt.where(effective_nsfw_expr().is_(False))
+        if not include_sensitive:
+            stmt = stmt.where(effective_sensitive_expr().is_(False))
         rows = (await self.db.execute(stmt)).scalars().all()
         total = len(rows)
         total_copies = sum(item.copies_pulled for item in rows)

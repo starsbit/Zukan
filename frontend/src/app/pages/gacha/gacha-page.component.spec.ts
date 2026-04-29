@@ -1,5 +1,5 @@
 import '@angular/compiler';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -18,6 +18,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { CollectionItemRead } from '../../models/collection';
 import { GachaPullMode, RarityTier } from '../../models/gacha';
 import { MediaService } from '../../services/media.service';
+import { UserStore } from '../../services/user.store';
 import { CollectionClientService } from '../../services/web/collection-client.service';
 import { GachaClientService } from '../../services/web/gacha-client.service';
 import { GachaDisplayCardComponent } from './gacha-display-card/gacha-display-card.component';
@@ -56,6 +57,8 @@ describe('GachaPageComponent', () => {
     dailyAvailable?: boolean;
     collectionItems?: CollectionItemRead[];
     pullError?: unknown;
+    showNsfw?: boolean;
+    showSensitive?: boolean;
   } = {}) {
     const balance = options.balance ?? 10;
     const dailyAvailable = options.dailyAvailable ?? true;
@@ -121,6 +124,20 @@ describe('GachaPageComponent', () => {
     const mediaService = {
       getThumbnailUrl: vi.fn((id: string) => of(`blob:${id}`)),
     };
+    const currentUser = signal({
+      id: 'u1',
+      username: 'alice',
+      email: 'alice@example.com',
+      is_admin: false,
+      show_nsfw: options.showNsfw ?? true,
+      show_sensitive: options.showSensitive ?? true,
+      tag_confidence_threshold: 0.35,
+      version: 1,
+      created_at: '2026-04-28T00:00:00Z',
+      storage_quota_mb: 1024,
+      storage_used_mb: 0,
+    });
+    const userStore = { currentUser };
     const snackBar = { open: vi.fn() };
 
     await TestBed.configureTestingModule({
@@ -129,6 +146,7 @@ describe('GachaPageComponent', () => {
         { provide: GachaClientService, useValue: gachaClient },
         { provide: CollectionClientService, useValue: collectionClient },
         { provide: MediaService, useValue: mediaService },
+        { provide: UserStore, useValue: userStore },
         { provide: MatSnackBar, useValue: snackBar },
       ],
     })
@@ -173,6 +191,23 @@ describe('GachaPageComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('10');
     expect(element.textContent).toContain('Pool stats');
+  });
+
+  it('hides already loaded NSFW collection cards when the viewer setting is disabled', async () => {
+    const nsfwItem: CollectionItemRead = {
+      ...collectionItem,
+      id: 'ci2',
+      media_id: 'm2',
+      media: { id: 'm2', filename: 'alter.webp', is_nsfw: true, is_sensitive: false },
+    };
+
+    const { component } = await createComponent({
+      collectionItems: [collectionItem, nsfwItem],
+      showNsfw: false,
+    });
+
+    expect(component.collection()).toHaveLength(2);
+    expect(component.visibleCollection().map((item) => item.id)).toEqual(['ci1']);
   });
 
   it('claims daily currency and disables the unavailable claim state', async () => {
