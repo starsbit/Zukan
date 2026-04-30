@@ -5,8 +5,10 @@
 .gacha-page {
   display: grid;
   gap: 24px;
+  min-width: 0;
   max-width: 1320px;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .page-header {
@@ -63,6 +65,8 @@ h1 {
 
 .tab-panel {
   padding-top: 24px;
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .gacha-grid {
@@ -234,6 +238,35 @@ h1 {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 14px;
+  max-height: min(64vh, 620px);
+  min-width: 0;
+  padding: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.result-card-button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.result-card-button zukan-gacha-display-card {
+  height: auto;
+  min-height: 100%;
+}
+
+.result-card-button:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 3px;
 }
 
 .pull-results--single {
@@ -300,31 +333,215 @@ h1 {
 }
 
 .collection-panel {
-  display: grid;
-  gap: 18px;
+  display: block;
 }
 
-.collection-toolbar {
+.collectors-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.collector-list {
+  position: sticky;
+  top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.collector-list mat-form-field,
+.trade-submit-card mat-form-field {
+  width: 100%;
+}
+
+.collector-list__items {
+  display: grid;
+  gap: 8px;
+}
+
+.collector-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
+  color: var(--mat-sys-on-surface);
+  background: var(--mat-sys-surface-container-low);
+  text-align: left;
+  cursor: pointer;
 }
 
-.collection-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
-  gap: 16px;
+.collector-row:hover,
+.collector-row--active {
+  border-color: var(--mat-sys-primary);
+  background: color-mix(in srgb, var(--mat-sys-primary) 10%, var(--mat-sys-surface-container-low));
 }
 
-.state-card {
+.collector-row span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.collector-chip {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #16623b;
+  background: color-mix(in srgb, #c4f0d6 80%, var(--mat-sys-surface));
+  font: var(--mat-sys-label-medium);
+  font-weight: 700;
+  align-content: center;
+}
+
+.collector-chip--muted {
+  color: var(--mat-sys-on-surface-variant);
+  background: var(--mat-sys-surface-container-high);
+}
+
+.collector-state {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 12px;
-  min-height: 160px;
+  min-height: 120px;
+  padding: 16px;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
   color: var(--mat-sys-on-surface-variant);
+  text-align: center;
+}
+
+.trade-workspace {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.trade-panel,
+.trade-submit-card,
+.trade-panel mat-card-content,
+.trade-submit-card mat-card-content {
+  min-width: 0;
+}
+
+.trade-panel mat-card-content {
+  padding-top: 16px;
+}
+
+.trade-submit-card button mat-spinner {
+  display: inline-block;
+}
+
+.active-trades-card mat-card-content {
+  display: grid;
+  gap: 12px;
+}
+
+.trade-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 96px;
+  color: var(--mat-sys-on-surface-variant);
+  text-align: center;
+}
+
+.active-trade-list {
+  display: grid;
+  gap: 12px;
+}
+
+.active-trade {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-low) 86%, transparent);
+}
+
+.active-trade__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.active-trade__header strong,
+.active-trade__header p {
+  margin: 0;
+}
+
+.active-trade__header p {
+  margin-top: 4px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.active-trade__status,
+.active-trade__label,
+.active-trade__item {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  font: var(--mat-sys-label-medium);
+}
+
+.active-trade__status {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  color: #875200;
+  background: color-mix(in srgb, #ffe083 76%, var(--mat-sys-surface));
+  font-weight: 700;
+  text-transform: capitalize;
+}
+
+.active-trade__columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.active-trade__columns section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-content: flex-start;
+  min-width: 0;
+}
+
+.active-trade__label {
+  flex: 0 0 100%;
+  color: var(--mat-sys-on-surface-variant);
+  font-weight: 700;
+}
+
+.active-trade__item {
+  max-width: 100%;
+  padding: 2px 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-highest) 82%, transparent);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-trade__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.active-trade__actions mat-spinner {
+  display: inline-block;
 }
 
 .rarity-n {
@@ -414,12 +631,24 @@ h1 {
   .gacha-grid {
     grid-template-columns: 1fr;
   }
+
+  .collectors-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .collector-list {
+    position: static;
+  }
 }
 
 @media (max-width: 760px) {
   .page-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .active-trade__columns {
+    grid-template-columns: 1fr;
   }
 
   .pull-results {
@@ -436,8 +665,4 @@ h1 {
     min-height: 320px;
   }
 
-  .collection-toolbar {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }

@@ -1,4 +1,5 @@
 import { RarityTier } from './gacha';
+import { EntityRead } from './relations';
 
 export enum CollectionVisibility {
   PRIVATE = 'private',
@@ -11,6 +12,8 @@ export interface CollectionMediaRead {
   filename: string;
   is_nsfw: boolean;
   is_sensitive: boolean;
+  tags: string[];
+  entities: EntityRead[];
 }
 
 export interface CollectionItemRead {
@@ -38,6 +41,16 @@ export interface CollectionListResponse {
   items: CollectionItemRead[];
 }
 
+export interface CollectionDiscardResponse {
+  item_id: string;
+  media_id: string;
+  copies_discarded: number;
+  pulls_awarded: number;
+  currency_balance: number;
+  remaining_copies: number;
+  item: CollectionItemRead | null;
+}
+
 export interface CollectionStatsResponse {
   total_items: number;
   total_copies_pulled: number;
@@ -61,10 +74,30 @@ export interface CollectionPrivacyUpdate {
   show_nsfw?: boolean | null;
 }
 
+export interface CollectionOwnerRead {
+  user_id: string;
+  username: string;
+  allow_trade_requests: boolean;
+  show_stats: boolean;
+}
+
+export interface CollectionOwnerListResponse {
+  total: number;
+  items: CollectionOwnerRead[];
+}
+
+export interface CollectionOwnerListParams {
+  q?: string;
+  tradeable_only?: boolean;
+}
+
 export interface CollectionListParams {
   rarity_tier?: RarityTier;
+  tags?: string[];
   character_name?: string;
   series_name?: string;
+  character_names?: string[];
+  series_names?: string[];
   level?: number;
   tradeable?: boolean;
   duplicates_only?: boolean;

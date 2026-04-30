@@ -2,12 +2,13 @@ import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased, selectinload
+from sqlalchemy.orm import selectinload
 
+from backend.app.models.auth import User
 from backend.app.models.collection import CollectionVisibility, UserCollectionItem, UserCollectionPrivacy
 from backend.app.models.gacha import RarityTier
-from backend.app.models.media import Media
-from backend.app.models.relations import MediaEntity
+from backend.app.models.media import Media, MediaTag
+from backend.app.repositories import media_filters
 from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 
 
@@ -19,7 +20,10 @@ class CollectionRepository:
         return (
             await self.db.execute(
                 select(UserCollectionItem)
-                .options(selectinload(UserCollectionItem.media))
+                .options(
+                    selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                    selectinload(UserCollectionItem.media).selectinload(Media.entities),
+                )
                 .where(UserCollectionItem.id == item_id)
             )
         ).scalar_one_or_none()
@@ -28,7 +32,10 @@ class CollectionRepository:
         return (
             await self.db.execute(
                 select(UserCollectionItem)
-                .options(selectinload(UserCollectionItem.media))
+                .options(
+                    selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                    selectinload(UserCollectionItem.media).selectinload(Media.entities),
+                )
                 .where(UserCollectionItem.id == item_id, UserCollectionItem.user_id == user_id)
             )
         ).scalar_one_or_none()
@@ -49,8 +56,23 @@ class CollectionRepository:
         return (
             await self.db.execute(
                 select(UserCollectionItem)
-                .options(selectinload(UserCollectionItem.media))
+                .options(
+                    selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                    selectinload(UserCollectionItem.media).selectinload(Media.entities),
+                )
                 .where(UserCollectionItem.id.in_(item_ids))
+            )
+        ).scalars().all()
+
+    async def list_items_by_media_id(self, media_id: uuid.UUID) -> list[UserCollectionItem]:
+        return (
+            await self.db.execute(
+                select(UserCollectionItem)
+                .options(
+                    selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                    selectinload(UserCollectionItem.media).selectinload(Media.entities),
+                )
+                .where(UserCollectionItem.media_id == media_id)
             )
         ).scalars().all()
 
@@ -59,8 +81,11 @@ class CollectionRepository:
         user_id: uuid.UUID,
         *,
         rarity_tier: RarityTier | None = None,
+        tags: list[str] | None = None,
         character_name: str | None = None,
         series_name: str | None = None,
+        character_names: list[str] | None = None,
+        series_names: list[str] | None = None,
         level: int | None = None,
         tradeable: bool | None = None,
         duplicates_only: bool = False,
@@ -70,7 +95,10 @@ class CollectionRepository:
         stmt = (
             select(UserCollectionItem)
             .join(Media, Media.id == UserCollectionItem.media_id)
-            .options(selectinload(UserCollectionItem.media))
+            .options(
+                selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(UserCollectionItem.media).selectinload(Media.entities),
+            )
             .where(UserCollectionItem.user_id == user_id)
             .order_by(UserCollectionItem.acquired_at.desc(), UserCollectionItem.id.desc())
         )
@@ -86,18 +114,15 @@ class CollectionRepository:
             stmt = stmt.where(effective_nsfw_expr().is_(False))
         if not include_sensitive:
             stmt = stmt.where(effective_sensitive_expr().is_(False))
-        if character_name:
-            character = aliased(MediaEntity)
-            stmt = stmt.join(character, character.media_id == UserCollectionItem.media_id).where(
-                character.entity_type == "character",
-                func.lower(character.name) == character_name.lower(),
-            )
-        if series_name:
-            series = aliased(MediaEntity)
-            stmt = stmt.join(series, series.media_id == UserCollectionItem.media_id).where(
-                series.entity_type == "series",
-                func.lower(series.name) == series_name.lower(),
-            )
+        stmt = media_filters.apply_tag_filters(stmt, tags, None, media_filters.TagFilterMode.AND)
+        stmt = media_filters.apply_character_name_filter(
+            stmt,
+            [name for name in [character_name, *(character_names or [])] if name],
+        )
+        stmt = media_filters.apply_series_name_filter(
+            stmt,
+            [name for name in [series_name, *(series_names or [])] if name],
+        )
         return (await self.db.execute(stmt)).scalars().unique().all()
 
     async def get_privacy(self, user_id: uuid.UUID) -> UserCollectionPrivacy | None:
@@ -109,7 +134,7 @@ class CollectionRepository:
             return privacy
         privacy = UserCollectionPrivacy(
             user_id=user_id,
-            visibility=CollectionVisibility.private,
+            visibility=CollectionVisibility.public,
             allow_trade_requests=True,
             show_stats=True,
             show_nsfw=False,
@@ -117,6 +142,42 @@ class CollectionRepository:
         self.db.add(privacy)
         await self.db.flush()
         return privacy
+
+    async def list_public_collection_owners(
+        self,
+        *,
+        viewer_id: uuid.UUID,
+        q: str | None = None,
+        tradeable_only: bool = False,
+    ) -> list[dict[str, object]]:
+        stmt = (
+            select(
+                UserCollectionPrivacy.user_id,
+                User.username,
+                UserCollectionPrivacy.allow_trade_requests,
+                UserCollectionPrivacy.show_stats,
+            )
+            .join(User, User.id == UserCollectionPrivacy.user_id)
+            .where(
+                UserCollectionPrivacy.visibility == CollectionVisibility.public,
+                UserCollectionPrivacy.user_id != viewer_id,
+            )
+            .order_by(func.lower(User.username), User.id)
+        )
+        if q:
+            stmt = stmt.where(func.lower(User.username).like(f"%{q.strip().lower()}%"))
+        if tradeable_only:
+            stmt = stmt.where(UserCollectionPrivacy.allow_trade_requests.is_(True))
+
+        return [
+            {
+                "user_id": user_id,
+                "username": username,
+                "allow_trade_requests": allow_trade_requests,
+                "show_stats": show_stats,
+            }
+            for user_id, username, allow_trade_requests, show_stats in (await self.db.execute(stmt)).all()
+        ]
 
     async def stats(
         self,

@@ -13,7 +13,8 @@ mat-dialog-content {
   padding-top: 8px;
 }
 
-.api-key-section {
+.api-key-section,
+.collection-privacy-section {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -21,6 +22,10 @@ mat-dialog-content {
   border: 1px solid color-mix(in srgb, var(--mat-sys-outline) 65%, transparent);
   border-radius: 16px;
   background: color-mix(in srgb, var(--mat-sys-surface-container-low) 88%, white);
+}
+
+.collection-privacy-section h3 {
+  margin: 0;
 }
 
 .api-key-section__header {

@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.models.collection import UserCollectionItem
+from backend.app.models.media import Media, MediaTag
 from backend.app.models.trade import TradeOffer, TradeOfferItem, TradeStatus
 
 
@@ -15,11 +16,7 @@ class TradeRepository:
     async def get(self, trade_id: uuid.UUID, *, lock: bool = False) -> TradeOffer | None:
         stmt = (
             select(TradeOffer)
-            .options(
-                selectinload(TradeOffer.items)
-                .selectinload(TradeOfferItem.collection_item)
-                .selectinload(UserCollectionItem.media)
-            )
+            .options(*self._trade_load_options())
             .where(TradeOffer.id == trade_id)
         )
         if lock:
@@ -36,11 +33,7 @@ class TradeRepository:
         return (
             await self.db.execute(
                 select(TradeOffer)
-                .options(
-                    selectinload(TradeOffer.items)
-                    .selectinload(TradeOfferItem.collection_item)
-                    .selectinload(UserCollectionItem.media)
-                )
+                .options(*self._trade_load_options())
                 .where(predicate)
                 .order_by(TradeOffer.created_at.desc(), TradeOffer.id.desc())
             )
@@ -61,6 +54,28 @@ class TradeRepository:
         ).scalars().all()
         return set(rows)
 
+    async def pending_trades_for_item_ids(self, item_ids: list[uuid.UUID]) -> list[TradeOffer]:
+        if not item_ids:
+            return []
+        return (
+            await self.db.execute(
+                select(TradeOffer)
+                .join(TradeOfferItem, TradeOfferItem.trade_offer_id == TradeOffer.id)
+                .options(*self._trade_load_options())
+                .where(
+                    TradeOffer.status == TradeStatus.pending,
+                    TradeOfferItem.collection_item_id.in_(item_ids),
+                )
+            )
+        ).scalars().unique().all()
+
     async def count_for_user(self, user_id: uuid.UUID, *, incoming: bool) -> int:
         column = TradeOffer.receiver_user_id if incoming else TradeOffer.sender_user_id
         return (await self.db.execute(select(func.count(TradeOffer.id)).where(column == user_id))).scalar_one()
+
+    def _trade_load_options(self):
+        collection_item = selectinload(TradeOffer.items).selectinload(TradeOfferItem.collection_item)
+        return (
+            collection_item.selectinload(UserCollectionItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            collection_item.selectinload(UserCollectionItem.media).selectinload(Media.entities),
+        )

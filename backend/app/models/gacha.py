@@ -27,6 +27,8 @@ class GachaCurrencyLedgerReason(str, enum.Enum):
     daily_claim = "daily_claim"
     pull_spend = "pull_spend"
     admin_adjustment = "admin_adjustment"
+    collection_discard = "collection_discard"
+    media_removed_reimbursement = "media_removed_reimbursement"
 
 
 class GachaCurrencyBalance(Base):

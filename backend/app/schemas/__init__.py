@@ -53,11 +53,14 @@ from .auth import (
 from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
 from .bulk import BulkResult, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
 from .collection import (
+    CollectionDiscardResponse,
     CollectionFilters,
     CollectionItemRead,
     CollectionItemUpdate,
     CollectionListResponse,
     CollectionMediaRead,
+    CollectionOwnerListResponse,
+    CollectionOwnerRead,
     CollectionPrivacyRead,
     CollectionPrivacyUpdate,
     CollectionStatsResponse,
@@ -214,6 +217,8 @@ __all__ = [
     "CollectionItemUpdate",
     "CollectionListResponse",
     "CollectionMediaRead",
+    "CollectionOwnerListResponse",
+    "CollectionOwnerRead",
     "CollectionPrivacyRead",
     "CollectionPrivacyUpdate",
     "CollectionStatsResponse",

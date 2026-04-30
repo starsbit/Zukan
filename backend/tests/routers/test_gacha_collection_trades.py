@@ -140,6 +140,59 @@ def test_collection_privacy_contract(api_client, monkeypatch):
     fake_privacy.assert_awaited_once()
 
 
+def test_public_collection_owners_contract(api_client, monkeypatch):
+    owner_id = uuid.uuid4()
+    fake_owners = AsyncMock(
+        return_value=[
+            {
+                "user_id": owner_id,
+                "username": "sakura",
+                "allow_trade_requests": True,
+                "show_stats": False,
+            }
+        ]
+    )
+    monkeypatch.setattr(CollectionService, "list_public_collection_owners", fake_owners)
+
+    response = api_client.get("/api/v1/users/collections", params={"q": "sak", "tradeable_only": True})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0] == {
+        "user_id": str(owner_id),
+        "username": "sakura",
+        "allow_trade_requests": True,
+        "show_stats": False,
+    }
+    fake_owners.assert_awaited_once()
+
+
+def test_collection_discard_contract(api_client, monkeypatch):
+    item_id = uuid.uuid4()
+    media_id = uuid.uuid4()
+    fake_discard = AsyncMock(
+        return_value={
+            "item_id": item_id,
+            "media_id": media_id,
+            "copies_discarded": 1,
+            "pulls_awarded": 8,
+            "currency_balance": 18,
+            "remaining_copies": 2,
+            "item": None,
+        }
+    )
+    monkeypatch.setattr(CollectionService, "discard_item", fake_discard)
+
+    response = api_client.post(f"/api/v1/collection/items/{item_id}/discard")
+
+    assert response.status_code == 200
+    assert response.json()["pulls_awarded"] == 8
+    assert response.json()["currency_balance"] == 18
+    assert response.json()["item"] is None
+    fake_discard.assert_awaited_once()
+
+
 def test_trade_create_requires_requested_items(api_client):
     response = api_client.post(
         "/api/v1/trades",

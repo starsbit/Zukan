@@ -7,8 +7,10 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
+import { CollectionVisibility } from '../../../../models/collection';
 import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
+import { CollectionClientService } from '../../../../services/web/collection-client.service';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 import { NavbarProfileComponent } from '../navbar-profile/navbar-profile.component';
 import { UserSettingsDialogComponent } from './user-settings-dialog.component';
@@ -41,6 +43,26 @@ describe('UserSettingsDialogComponent', () => {
     };
   }
 
+  function baseCollectionClient(overrides: Record<string, unknown> = {}) {
+    return {
+      getPrivacy: vi.fn().mockReturnValue(of({
+        user_id: 'u1',
+        visibility: CollectionVisibility.PUBLIC,
+        allow_trade_requests: true,
+        show_stats: true,
+        show_nsfw: false,
+      })),
+      updatePrivacy: vi.fn().mockReturnValue(of({
+        user_id: 'u1',
+        visibility: CollectionVisibility.PUBLIC,
+        allow_trade_requests: true,
+        show_stats: true,
+        show_nsfw: false,
+      })),
+      ...overrides,
+    };
+  }
+
   function baseGalleryStore(overrides: Record<string, unknown> = {}) {
     return {
       refresh: vi.fn().mockReturnValue(of({})),
@@ -56,6 +78,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -68,6 +91,7 @@ describe('UserSettingsDialogComponent', () => {
       showSensitive: false,
       tagConfidenceThreshold: 0.5,
       libraryClassificationEnabled: false,
+      collectionVisibility: CollectionVisibility.PUBLIC,
       password: '',
       confirmPassword: '',
     });
@@ -93,6 +117,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore({ refresh }) },
       ],
     }).compileComponents();
@@ -132,6 +157,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -157,6 +183,7 @@ describe('UserSettingsDialogComponent', () => {
         provideRouter([]),
         { provide: UserStore, useValue: { currentUser: () => user, isAdmin: () => true } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
@@ -187,6 +214,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -208,6 +236,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -228,6 +257,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -253,6 +283,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -278,6 +309,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -307,6 +339,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();

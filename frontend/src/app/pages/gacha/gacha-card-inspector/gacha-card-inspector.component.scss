@@ -1,0 +1,233 @@
+:host {
+  display: block;
+}
+
+:host ::ng-deep .mat-mdc-dialog-container,
+:host ::ng-deep .mat-mdc-dialog-content {
+  padding: 0;
+}
+
+:host ::ng-deep .mat-mdc-dialog-surface {
+  overflow: hidden;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 18% 8%, color-mix(in srgb, #ffe083 18%, transparent), transparent 30%),
+    radial-gradient(circle at 76% 12%, color-mix(in srgb, #91d8ff 18%, transparent), transparent 34%),
+    color-mix(in srgb, var(--mat-sys-surface-container-low) 94%, black 6%);
+}
+
+.card-inspector {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(300px, 380px);
+  gap: 0;
+  width: min(1000px, 94vw);
+  max-height: min(760px, 92vh);
+  overflow: hidden;
+  color: var(--mat-sys-on-surface);
+}
+
+.card-inspector__stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: min(70vh, 660px);
+  padding: 32px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, #fff 14%, transparent) 0 13%, transparent 34%),
+    linear-gradient(145deg, #151925, #25202e 54%, #151925);
+}
+
+.card-inspector__stage::before,
+.card-inspector__stage::after {
+  content: "";
+  position: absolute;
+  inset: -25%;
+  pointer-events: none;
+}
+
+.card-inspector__stage::before {
+  background:
+    repeating-conic-gradient(from 15deg, color-mix(in srgb, #ffe083 14%, transparent) 0 10deg, transparent 10deg 24deg);
+  opacity: 0.24;
+  animation: inspector-spin 18s linear infinite;
+}
+
+.card-inspector__stage::after {
+  background:
+    linear-gradient(115deg, transparent 28%, color-mix(in srgb, #fff 34%, transparent) 45%, transparent 58%);
+  opacity: 0.32;
+  transform: translateX(-35%) rotate(8deg);
+}
+
+.card-inspector__stage--ur {
+  background:
+    radial-gradient(circle at center, color-mix(in srgb, #fff7c2 24%, transparent) 0 12%, transparent 35%),
+    linear-gradient(145deg, #15130e, #2e243d 44%, #172836 72%, #15130e);
+}
+
+.card-inspector__close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 4;
+  color: #fff;
+  background: color-mix(in srgb, #111 46%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.card-inspector__preview {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 100%);
+}
+
+.card-inspector__loading,
+.card-inspector__error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, black 34%, transparent);
+  color: #fff;
+}
+
+.card-inspector__error {
+  gap: 8px;
+  align-content: center;
+  text-align: center;
+}
+
+.card-inspector__details {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+  max-height: min(760px, 92vh);
+  padding: 28px;
+  overflow: auto;
+  line-height: 1.45;
+}
+
+.card-inspector__eyebrow {
+  margin: 0;
+  color: var(--mat-sys-primary);
+  font: var(--mat-sys-label-large);
+  font-weight: 700;
+}
+
+.card-inspector__details h2,
+.card-inspector__section h3 {
+  margin: 0;
+}
+
+.card-inspector__details h2 {
+  font: var(--mat-sys-headline-small);
+}
+
+.card-inspector__section {
+  display: grid;
+  gap: 10px;
+}
+
+.card-inspector__section h3 {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-title-small);
+}
+
+.card-inspector__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
+  overflow: visible;
+  padding-bottom: 2px;
+}
+
+.card-inspector__state-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 84%, transparent);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-label-large);
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.card-inspector__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.card-inspector__fields div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 68%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 70%, transparent);
+}
+
+.card-inspector__fields dt {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-medium);
+}
+
+.card-inspector__fields dd {
+  margin: 0;
+  overflow: hidden;
+  font: var(--mat-sys-body-medium);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes inspector-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 780px) {
+  .card-inspector {
+    grid-template-columns: 1fr;
+    width: 94vw;
+    max-height: 92vh;
+  }
+
+  .card-inspector__stage {
+    min-height: 420px;
+    padding: 26px;
+  }
+
+  .card-inspector__details {
+    max-height: none;
+    padding: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .card-inspector__stage {
+    min-height: 360px;
+    padding: 18px;
+  }
+
+  .card-inspector__fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-inspector__stage::before {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

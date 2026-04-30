@@ -8,19 +8,28 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabGroup, MatTabsModule } from '@angular/material/tabs';
+import { Router } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { CollectionItemRead } from '../../models/collection';
 import { GachaPullMode, RarityTier } from '../../models/gacha';
+import { TradeOfferRead, TradeSide, TradeStatus } from '../../models/trade';
 import { MediaService } from '../../services/media.service';
+import { NavbarSearchService } from '../../services/navbar-search.service';
 import { UserStore } from '../../services/user.store';
 import { CollectionClientService } from '../../services/web/collection-client.service';
 import { GachaClientService } from '../../services/web/gacha-client.service';
+import { TradesClientService } from '../../services/web/trades-client.service';
+import { GachaCardInspectorDialogComponent } from './gacha-card-inspector/gacha-card-inspector.component';
+import { GachaCollectionBrowserComponent } from './gacha-collection-browser/gacha-collection-browser.component';
 import { GachaDisplayCardComponent } from './gacha-display-card/gacha-display-card.component';
 import { GachaPageComponent } from './gacha-page.component';
 
@@ -43,7 +52,60 @@ const collectionItem: CollectionItemRead = {
   tradeable: true,
   acquired_at: '2026-04-28T00:00:00Z',
   updated_at: '2026-04-28T00:00:00Z',
-  media: { id: 'm1', filename: 'saber.webp', is_nsfw: false, is_sensitive: false },
+  media: {
+    id: 'm1',
+    filename: 'saber.webp',
+    is_nsfw: false,
+    is_sensitive: false,
+    tags: ['white hair'],
+    entities: [
+      {
+        id: 'e1',
+        entity_type: 'character' as any,
+        entity_id: null,
+        name: 'Saber',
+        role: 'primary',
+        source: 'manual',
+        confidence: null,
+      },
+      {
+        id: 'e2',
+        entity_type: 'series' as any,
+        entity_id: null,
+        name: 'Fate',
+        role: 'primary',
+        source: 'manual',
+        confidence: null,
+      },
+    ],
+  },
+};
+
+const outgoingTrade: TradeOfferRead = {
+  id: 't-active',
+  sender_user_id: 'u1',
+  receiver_user_id: 'u2',
+  status: TradeStatus.PENDING,
+  message: 'Want to trade?',
+  created_at: '2026-04-28T00:00:00Z',
+  updated_at: '2026-04-28T00:00:00Z',
+  expires_at: null,
+  items: [
+    {
+      id: 'toi-offered',
+      trade_offer_id: 't-active',
+      side: TradeSide.SENDER,
+      collection_item_id: 'ci1',
+      collection_item: { ...collectionItem, locked: false },
+    },
+    {
+      id: 'toi-requested',
+      trade_offer_id: 't-active',
+      side: TradeSide.RECEIVER,
+      collection_item_id: 'ci1-their',
+      collection_item: { ...collectionItem, id: 'ci1-their', user_id: 'u2', locked: false },
+    },
+  ],
 };
 
 describe('GachaPageComponent', () => {
@@ -56,6 +118,7 @@ describe('GachaPageComponent', () => {
     balance?: number;
     dailyAvailable?: boolean;
     collectionItems?: CollectionItemRead[];
+    outgoingTrades?: TradeOfferRead[];
     pullError?: unknown;
     showNsfw?: boolean;
     showSensitive?: boolean;
@@ -64,7 +127,8 @@ describe('GachaPageComponent', () => {
     const dailyAvailable = options.dailyAvailable ?? true;
     let currentBalance = balance;
     let currentDailyAvailable = dailyAvailable;
-    const collectionItems = options.collectionItems ?? [collectionItem];
+    let collectionItems = options.collectionItems ?? [collectionItem];
+    let outgoingTrades = options.outgoingTrades ?? [];
     const pullResponse = {
       id: 'p1',
       user_id: 'u1',
@@ -120,6 +184,48 @@ describe('GachaPageComponent', () => {
     };
     const collectionClient = {
       list: vi.fn(() => of({ total: collectionItems.length, items: collectionItems })),
+      listPublicOwners: vi.fn(() => of({
+        total: 1,
+        items: [{ user_id: 'u2', username: 'sakura', allow_trade_requests: true, show_stats: true }],
+      })),
+      listUser: vi.fn(() => of({ total: collectionItems.length, items: collectionItems.map((item) => ({ ...item, user_id: 'u2', id: `${item.id}-their` })) })),
+      discardItem: vi.fn((id: string) => {
+        const current = collectionItems.find((item) => item.id === id) ?? collectionItems[0];
+        const remaining = Math.max(current.copies_pulled - 1, 0);
+        const updated = remaining > 0 ? { ...current, copies_pulled: remaining } : null;
+        collectionItems = updated
+          ? collectionItems.map((item) => item.id === id ? updated : item)
+          : collectionItems.filter((item) => item.id !== id);
+        currentBalance += 8;
+        return of({
+          item_id: id,
+          media_id: current.media_id,
+          copies_discarded: 1,
+          pulls_awarded: 8,
+          currency_balance: currentBalance,
+          remaining_copies: remaining,
+          item: updated,
+        });
+      }),
+    };
+    const tradesClient = {
+      create: vi.fn(() => of({
+        id: 't1',
+        sender_user_id: 'u1',
+        receiver_user_id: 'u2',
+        status: 'pending',
+        message: null,
+        created_at: '2026-04-28T00:00:00Z',
+        updated_at: '2026-04-28T00:00:00Z',
+        expires_at: null,
+        items: [],
+      })),
+      outgoing: vi.fn(() => of({ total: outgoingTrades.length, items: outgoingTrades })),
+      cancel: vi.fn((id: string) => {
+        const trade = outgoingTrades.find((item) => item.id === id) ?? outgoingTrade;
+        outgoingTrades = outgoingTrades.filter((item) => item.id !== id);
+        return of({ ...trade, status: TradeStatus.CANCELLED });
+      }),
     };
     const mediaService = {
       getThumbnailUrl: vi.fn((id: string) => of(`blob:${id}`)),
@@ -146,6 +252,7 @@ describe('GachaPageComponent', () => {
         { provide: GachaClientService, useValue: gachaClient },
         { provide: CollectionClientService, useValue: collectionClient },
         { provide: MediaService, useValue: mediaService },
+        { provide: TradesClientService, useValue: tradesClient },
         { provide: UserStore, useValue: userStore },
         { provide: MatSnackBar, useValue: snackBar },
       ],
@@ -159,13 +266,20 @@ describe('GachaPageComponent', () => {
             MatButtonToggleModule,
             MatCardModule,
             MatCheckboxModule,
+            MatFormFieldModule,
             MatIconModule,
+            MatInputModule,
             MatProgressSpinnerModule,
+            MatDialogModule,
             MatSnackBarModule,
             MatTabsModule,
+            GachaCollectionBrowserComponent,
             GachaDisplayCardComponent,
           ],
         },
+      })
+      .overrideComponent(GachaCollectionBrowserComponent, {
+        set: { styles: [''] },
       })
       .overrideComponent(GachaDisplayCardComponent, {
         set: { styles: [''] },
@@ -177,19 +291,21 @@ describe('GachaPageComponent', () => {
     const snackBarOpenSpy = vi.spyOn(componentWithSnackBar.snackBar, 'open').mockImplementation(() => undefined as never);
     fixture.detectChanges();
 
-    return { fixture, component: fixture.componentInstance, gachaClient, collectionClient, mediaService, snackBar: { open: snackBarOpenSpy } };
+    return { fixture, component: fixture.componentInstance, gachaClient, collectionClient, tradesClient, mediaService, snackBar: { open: snackBarOpenSpy } };
   }
 
   it('loads balance, stats, and collection on init', async () => {
-    const { fixture, gachaClient, collectionClient, mediaService } = await createComponent();
+    const { fixture, gachaClient, collectionClient, tradesClient, mediaService } = await createComponent();
 
     expect(gachaClient.getBalance).toHaveBeenCalledOnce();
     expect(gachaClient.getStats).toHaveBeenCalledOnce();
-    expect(collectionClient.list).toHaveBeenCalledWith({ rarity_tier: undefined, duplicates_only: undefined });
+    expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({ rarity_tier: undefined, duplicates_only: undefined }));
     expect(mediaService.getThumbnailUrl).toHaveBeenCalledWith('m1');
+    expect(tradesClient.outgoing).toHaveBeenCalledOnce();
 
     const element = fixture.nativeElement as HTMLElement;
     expect(element.textContent).toContain('10');
+    expect(element.textContent).toContain('Pulls');
     expect(element.textContent).toContain('Pool stats');
   });
 
@@ -198,16 +314,24 @@ describe('GachaPageComponent', () => {
       ...collectionItem,
       id: 'ci2',
       media_id: 'm2',
-      media: { id: 'm2', filename: 'alter.webp', is_nsfw: true, is_sensitive: false },
+      media: { id: 'm2', filename: 'alter.webp', is_nsfw: true, is_sensitive: false, tags: [], entities: [] },
     };
 
-    const { component } = await createComponent({
+    const { fixture, component } = await createComponent({
       collectionItems: [collectionItem, nsfwItem],
       showNsfw: false,
     });
 
     expect(component.collection()).toHaveLength(2);
-    expect(component.visibleCollection().map((item) => item.id)).toEqual(['ci1']);
+    expect(component.hideNsfw()).toBe(true);
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Saber');
+    expect((fixture.nativeElement as HTMLElement).textContent).not.toContain('alter.webp');
   });
 
   it('claims daily currency and disables the unavailable claim state', async () => {
@@ -218,7 +342,7 @@ describe('GachaPageComponent', () => {
     expect(gachaClient.claimDaily).toHaveBeenCalledOnce();
     expect(component.balanceValue()).toBe(20);
     expect(component.canClaimDaily()).toBe(false);
-    expect(snackBar.open).toHaveBeenCalledWith('Claimed 10 currency.', 'Close', { duration: 3500 });
+    expect(snackBar.open).toHaveBeenCalledWith('Claimed 10 Pulls.', 'Close', { duration: 3500 });
   });
 
   it('sends single and ten-pull modes', async () => {
@@ -273,11 +397,279 @@ describe('GachaPageComponent', () => {
     tabGroup.selectedIndex = 1;
     fixture.detectChanges();
 
-    expect(collectionClient.list).toHaveBeenCalledWith({ rarity_tier: RarityTier.SR, duplicates_only: undefined });
-    expect(collectionClient.list).toHaveBeenCalledWith({ rarity_tier: RarityTier.SR, duplicates_only: true });
-    expect(component.collection()[0].media?.filename).toBe('saber.webp');
+    expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({ rarity_tier: RarityTier.SR, duplicates_only: undefined }));
+    expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({ rarity_tier: RarityTier.SR, duplicates_only: true }));
+    expect(component.collection()[0].media?.entities[0]?.name).toBe('Saber');
     expect(component.collection()[0].level).toBe(2);
-    expect((fixture.nativeElement as HTMLElement).textContent).toContain('saber.webp');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Saber');
+  });
+
+  it('destroys one collection copy for Pulls after confirmation', async () => {
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const { fixture, component, collectionClient, snackBar } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }],
+    });
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const discardButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-discard-button');
+    expect(discardButton?.textContent).toContain('+8 Pulls');
+    discardButton?.click();
+
+    expect(confirmSpy).toHaveBeenCalledWith('Destroy one copy of this card for 8 Pulls?');
+    expect(collectionClient.discardItem).toHaveBeenCalledWith('ci1');
+    expect(component.balanceValue()).toBe(18);
+    expect(snackBar.open).toHaveBeenCalledWith('Destroyed 1 copy for 8 Pulls.', 'Close', { duration: 3500 });
+    confirmSpy.mockRestore();
+  });
+
+  it('does not show destroy actions in collector trade panes', async () => {
+    const { fixture, component } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }],
+    });
+
+    component.selectOwner(component.owners()[0]);
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 2;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.collection-discard-button')).toBeNull();
+  });
+
+  it('renders compact collection cards without metadata chips', async () => {
+    const rawNamedItem: CollectionItemRead = {
+      ...collectionItem,
+      media: {
+        ...collectionItem.media!,
+        filename: '6148b148b8904f99b1abf48080f6.webp',
+        tags: ['little_busters', 'bat_hair_ornament'],
+        entities: [
+          {
+            ...collectionItem.media!.entities[0],
+            name: 'noumi_kudryavka',
+          },
+          {
+            ...collectionItem.media!.entities[1],
+            name: 'little_busters',
+          },
+        ],
+      },
+    };
+    const { fixture } = await createComponent({ collectionItems: [rawNamedItem] });
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Noumi Kudryavka');
+    expect(text).toContain('3 copies');
+    expect(text).not.toContain('Little Busters');
+    expect(text).not.toContain('Bat Hair Ornament');
+    expect(text).not.toContain('Tradeable');
+    expect(text).not.toContain('Lv. 2');
+    expect(text).not.toContain('noumi_kudryavka');
+    expect(text).not.toContain('6148b148b8904f99b1abf48080f6.webp');
+  });
+
+  it('opens the card inspector from collection cards', async () => {
+    const { fixture, component } = await createComponent();
+    const dialogOpenSpy = vi.spyOn((component as any).dialog, 'open').mockReturnValue({} as any);
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const cardButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-card-button');
+    cardButton?.click();
+
+    expect(dialogOpenSpy).toHaveBeenCalledWith(
+      GachaCardInspectorDialogComponent,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          card: expect.objectContaining({
+            mediaId: 'm1',
+            rarity: RarityTier.SR,
+            title: 'Saber',
+            contextLabel: 'Your collection',
+            tags: ['white hair'],
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('opens pull result cards in the inspector', async () => {
+    const { fixture, component } = await createComponent({ balance: 20 });
+    const dialogOpenSpy = vi.spyOn((component as any).dialog, 'open').mockReturnValue({} as any);
+
+    component.pull(GachaPullMode.SINGLE);
+    component.skipAnimation();
+    fixture.detectChanges();
+
+    const resultButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.result-card-button');
+    resultButton?.click();
+
+    expect(dialogOpenSpy).toHaveBeenCalledWith(
+      GachaCardInspectorDialogComponent,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          card: expect.objectContaining({
+            mediaId: 'm1',
+            rarity: RarityTier.UR,
+            contextLabel: 'Pull result',
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('keeps trade selection separate from card inspection', async () => {
+    const { fixture, component } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }],
+    });
+    const dialogOpenSpy = vi.spyOn((component as any).dialog, 'open').mockReturnValue({} as any);
+
+    component.selectOwner(component.owners()[0]);
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 2;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const cardButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-card-button');
+    cardButton?.click();
+    expect(dialogOpenSpy).toHaveBeenCalledOnce();
+    expect(component.requestedItemIds().size).toBe(0);
+
+    const selectButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-select-button');
+    selectButton?.click();
+    expect(dialogOpenSpy).toHaveBeenCalledOnce();
+    expect(component.requestedItemIds().has('ci1-their')).toBe(true);
+  });
+
+  it('sends metadata filters for the collection tab', async () => {
+    const { component, collectionClient } = await createComponent();
+
+    component.onTagFilterChange('white hair, sword');
+    component.onCharacterFilterChange('Saber');
+    component.onSeriesFilterChange('Fate');
+
+    expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({
+      tags: ['white hair', 'sword'],
+      character_names: ['Saber'],
+      series_names: ['Fate'],
+    }));
+  });
+
+  it('loads public collectors and renders a selected collection', async () => {
+    const { fixture, component, collectionClient } = await createComponent();
+
+    const owner = component.owners()[0];
+    component.selectOwner(owner);
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 2;
+    fixture.detectChanges();
+
+    expect(collectionClient.listPublicOwners).toHaveBeenCalled();
+    expect(collectionClient.listUser).toHaveBeenCalledWith('u2', expect.any(Object));
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('sakura');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain("sakura's collection");
+  });
+
+  it('keeps non-tradeable high rarity cards visible in viewed collections', async () => {
+    const urItem: CollectionItemRead = {
+      ...collectionItem,
+      id: 'ci-ur',
+      media_id: 'm-ur',
+      rarity_tier_at_acquisition: RarityTier.UR,
+      locked: true,
+      tradeable: false,
+      media: { id: 'm-ur', filename: 'excalibur.webp', is_nsfw: false, is_sensitive: false, tags: ['sword'], entities: [] },
+    };
+    const { component } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }, urItem],
+    });
+
+    component.selectOwner(component.owners()[0]);
+
+    expect(component.viewedCollection().map((item) => item.id)).toEqual(['ci1-their', 'ci-ur-their']);
+    expect(component.canSelectRequestedItem(component.viewedCollection()[1])).toBe(false);
+  });
+
+  it('sends metadata filters for viewed collector collections', async () => {
+    const { component, collectionClient } = await createComponent();
+
+    component.selectOwner(component.owners()[0]);
+    component.onViewedTagFilterChange('sword');
+    component.onViewedCharacterFilterChange('Saber');
+    component.onViewedSeriesFilterChange('Fate');
+
+    expect(collectionClient.listUser).toHaveBeenCalledWith('u2', expect.objectContaining({
+      tags: ['sword'],
+      character_names: ['Saber'],
+      series_names: ['Fate'],
+    }));
+  });
+
+  it('creates a trade offer from selected requested and offered items', async () => {
+    const { component, tradesClient, snackBar } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }],
+    });
+
+    component.selectOwner(component.owners()[0]);
+    component.toggleRequestedItem(component.viewedCollection()[0]);
+    component.toggleOfferedItem(component.tradeOwnCollection()[0]);
+    component.onTradeMessageChange('Want to trade?');
+    component.createTrade();
+
+    expect(tradesClient.create).toHaveBeenCalledWith({
+      receiver_user_id: 'u2',
+      offered_item_ids: ['ci1'],
+      requested_item_ids: ['ci1-their'],
+      message: 'Want to trade?',
+    });
+    expect(component.offeredItemIds().size).toBe(0);
+    expect(component.requestedItemIds().size).toBe(0);
+    expect(snackBar.open).toHaveBeenCalledWith('Trade offer sent to sakura.', 'Close', { duration: 3500 });
+    expect(tradesClient.outgoing).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders and cancels active outgoing trade offers', async () => {
+    const { fixture, component, tradesClient, snackBar } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false }],
+      outgoingTrades: [outgoingTrade],
+    });
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 2;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.textContent).toContain('Active offers');
+    expect(element.textContent).toContain('Want to trade?');
+    expect(element.textContent).toContain('You offer');
+    expect(element.textContent).toContain('You request');
+
+    const cancelButton = Array.from(element.querySelectorAll<HTMLButtonElement>('button'))
+      .find((button) => button.textContent?.includes('Cancel offer'));
+    cancelButton?.click();
+
+    expect(tradesClient.cancel).toHaveBeenCalledWith('t-active');
+    expect(component.outgoingTrades()).toHaveLength(0);
+    expect(snackBar.open).toHaveBeenCalledWith('Trade offer cancelled.', 'Close', { duration: 3500 });
   });
 
   it('shows API errors in a snackbar', async () => {
@@ -291,5 +683,85 @@ describe('GachaPageComponent', () => {
     component.pull(GachaPullMode.SINGLE);
 
     expect(snackBar.open).toHaveBeenCalledWith('Not enough gacha currency', 'Close', { duration: 5000 });
+  });
+});
+
+describe('GachaCardInspectorDialogComponent', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('renders normalized metadata and collection state', async () => {
+    const close = vi.fn();
+    const navigate = vi.fn(() => Promise.resolve(true));
+    const searchService = {
+      suppressNextUrlSync: vi.fn(),
+      addMetadataFilter: vi.fn(),
+      toQueryParamsWithClears: vi.fn(() => ({ tag: ['bat_hair_ornament'] })),
+    };
+    await TestBed.configureTestingModule({
+      imports: [GachaCardInspectorDialogComponent, NoopAnimationsModule],
+      providers: [
+        { provide: MatDialogRef, useValue: { close } },
+        { provide: Router, useValue: { navigate } },
+        { provide: NavbarSearchService, useValue: searchService },
+        {
+          provide: MAT_DIALOG_DATA,
+          useValue: {
+            card: {
+              id: 'ci1',
+              mediaId: 'm1',
+              rarity: RarityTier.UR,
+              title: 'noumi_kudryavka',
+              thumbnailUrl: 'blob:m1',
+              contextLabel: 'Your collection',
+              level: 4,
+              copiesPulled: 3,
+              locked: true,
+              tradeable: true,
+              tags: ['little_busters', 'bat_hair_ornament'],
+              characters: ['noumi_kudryavka'],
+              series: ['little_busters'],
+            },
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            get: vi.fn(() => throwError(() => new Error('not available'))),
+            getFileUrl: vi.fn(),
+            getPosterUrl: vi.fn(),
+          },
+        },
+      ],
+    })
+      .overrideComponent(GachaCardInspectorDialogComponent, {
+        set: { styles: [''] },
+      })
+      .overrideComponent(GachaDisplayCardComponent, {
+        set: { styles: [''] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(GachaCardInspectorDialogComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('Noumi Kudryavka');
+    expect(text).toContain('Little Busters');
+    expect(text).toContain('Bat Hair Ornament');
+    expect(text).toContain('Locked');
+    expect(text).toContain('Tradeable');
+    expect(text).toContain('3 copies');
+
+    const tagChip = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'))
+      .find((button) => button.textContent?.includes('Bat Hair Ornament'));
+    tagChip?.click();
+
+    expect(searchService.addMetadataFilter).toHaveBeenCalledWith('tag', 'bat_hair_ornament');
+    expect(navigate).toHaveBeenCalledWith(['/gallery'], { queryParams: { tag: ['bat_hair_ornament'] } });
+    expect(close).toHaveBeenCalled();
   });
 });

@@ -7,9 +7,17 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.auth import User
+from backend.app.models.collection import UserCollectionItem
+from backend.app.models.gacha import GachaCurrencyLedger, GachaCurrencyLedgerReason
 from backend.app.models.media import Media
+from backend.app.models.notifications import Notification, NotificationType
+from backend.app.models.trade import TradeStatus
+from backend.app.repositories.collection import CollectionRepository
+from backend.app.repositories.gacha import GachaRepository
 from backend.app.repositories.media import MediaRepository
+from backend.app.repositories.trade import TradeRepository
 from backend.app.schemas import BulkResult, MediaIdsRequest
+from backend.app.services.collection import collection_item_pull_value
 from backend.app.services.media.query import MediaQueryService
 
 TRASH_RETENTION_DAYS = 30
@@ -34,6 +42,7 @@ class MediaLifecycleService:
     async def purge_media_record(self, media: Media) -> None:
         from backend.app.utils.storage import delete_media_files
 
+        await self._reimburse_collection_items_for_media(media)
         await MediaRepository(self._db).delete(media)
         delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
         logger.info("Purged media record media_id=%s", media.id)
@@ -132,3 +141,82 @@ class MediaLifecycleService:
             skipped,
         )
         return processed, skipped
+
+    async def _reimburse_collection_items_for_media(self, media: Media) -> None:
+        collection_items = await CollectionRepository(self._db).list_items_by_media_id(media.id)
+        if not collection_items:
+            return
+
+        await self._cancel_pending_trades_for_collection_items(collection_items)
+        for item in collection_items:
+            pulls_awarded = collection_item_pull_value(item) * item.copies_pulled
+            balance = await GachaRepository(self._db).get_or_create_balance(item.user_id, lock=True)
+            balance.balance += pulls_awarded
+            balance.total_claimed += pulls_awarded
+            self._db.add(
+                GachaCurrencyLedger(
+                    user_id=item.user_id,
+                    amount=pulls_awarded,
+                    balance_after=balance.balance,
+                    reason=GachaCurrencyLedgerReason.media_removed_reimbursement,
+                    ledger_metadata={
+                        "collection_item_id": str(item.id),
+                        "media_id": str(item.media_id),
+                        "rarity_tier": item.rarity_tier_at_acquisition.value,
+                        "level": item.level,
+                        "copies_removed": item.copies_pulled,
+                    },
+                )
+            )
+            self._db.add(
+                Notification(
+                    user_id=item.user_id,
+                    type=NotificationType.app_update,
+                    title="A gacha card left your collection",
+                    body=f"Media was permanently deleted, so its gacha card was removed. You received {pulls_awarded} Pulls.",
+                    is_read=False,
+                    data={
+                        "kind": "gacha_media_removed",
+                        "media_id": str(item.media_id),
+                        "collection_item_id": str(item.id),
+                        "pulls_awarded": pulls_awarded,
+                        "copies_removed": item.copies_pulled,
+                    },
+                )
+            )
+            await self._db.delete(item)
+
+    async def _cancel_pending_trades_for_collection_items(self, collection_items: list[UserCollectionItem]) -> None:
+        item_ids = [item.id for item in collection_items]
+        trades = await TradeRepository(self._db).pending_trades_for_item_ids(item_ids)
+        affected_ids = {str(item_id) for item_id in item_ids}
+        for trade in trades:
+            trade.status = TradeStatus.cancelled
+            payload = {
+                "trade_id": str(trade.id),
+                "kind": NotificationType.trade_cancelled.value,
+                "reason": "media_removed",
+                "collection_item_ids": sorted(affected_ids),
+            }
+            self._db.add(
+                Notification(
+                    user_id=trade.sender_user_id,
+                    type=NotificationType.trade_cancelled,
+                    title="A trade offer was cancelled",
+                    body="A card in the offer was removed because its media was permanently deleted.",
+                    is_read=False,
+                    link_url=f"/trades/{trade.id}",
+                    data=payload,
+                )
+            )
+            self._db.add(
+                Notification(
+                    user_id=trade.receiver_user_id,
+                    type=NotificationType.trade_cancelled,
+                    title="A trade offer was cancelled",
+                    body="A card in the offer was removed because its media was permanently deleted.",
+                    is_read=False,
+                    link_url=f"/trades/{trade.id}",
+                    data=payload,
+                )
+            )

@@ -6,11 +6,11 @@
         <h1>Summon media from your library</h1>
       </div>
 
-      <div class="balance-panel" aria-label="Gacha currency balance">
+      <div class="balance-panel" aria-label="Gacha Pulls balance">
         <mat-icon aria-hidden="true">token</mat-icon>
         <div>
           <span class="balance-value">{{ balanceValue() }}</span>
-          <span class="balance-label">Currency</span>
+          <span class="balance-label">Pulls</span>
         </div>
       </div>
     </header>
@@ -53,14 +53,20 @@
                 [class.pull-results--single]="pullResults().length === 1"
                 [class.pull-results--revealed]="animationState() === 'reveal' || animationState() === 'complete'">
                 @for (item of pullResults(); track resultTrack($index, item); let index = $index) {
-                  <zukan-gacha-display-card
-                    [rarity]="item.rarity_tier"
-                    [thumbnailUrl]="item.thumbnail_url"
-                    [title]="pullTitle(item)"
-                    [meta]="pullMeta(item)"
-                    [revealed]="animationState() === 'reveal' || animationState() === 'complete'"
-                    [revealIndex]="index">
-                  </zukan-gacha-display-card>
+                  <button
+                    class="result-card-button"
+                    type="button"
+                    [attr.aria-label]="'Inspect ' + pullTitle(item)"
+                    (click)="inspectPullResult(item)">
+                    <zukan-gacha-display-card
+                      [rarity]="item.rarity_tier"
+                      [thumbnailUrl]="item.thumbnail_url"
+                      [title]="pullTitle(item)"
+                      [meta]="pullMeta(item)"
+                      [revealed]="animationState() === 'reveal' || animationState() === 'complete'"
+                      [revealIndex]="index">
+                    </zukan-gacha-display-card>
+                  </button>
                 }
               </section>
             }
@@ -74,7 +80,7 @@
                 <mat-card-subtitle>{{ nextDailyLabel(nextDailyClaimAt()) }}</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
-                <p>Claim {{ dailyClaimAmount() }} currency once per day.</p>
+                <p>Claim {{ dailyClaimAmount() }} Pulls once per day.</p>
               </mat-card-content>
               <mat-card-actions align="end">
                 <button mat-flat-button type="button" color="primary" [disabled]="!canClaimDaily()" (click)="claimDaily()">
@@ -139,49 +145,244 @@
 
       <mat-tab label="Collection">
         <section class="tab-panel collection-panel">
-          <div class="collection-toolbar">
-            <mat-button-toggle-group
-              [value]="rarityFilter()"
-              aria-label="Filter collection by rarity"
-              (change)="onRarityFilterChange($event.value)">
-              <mat-button-toggle [value]="null">All</mat-button-toggle>
-              @for (tier of rarityTiers; track tier) {
-                <mat-button-toggle [value]="tier">{{ tier }}</mat-button-toggle>
-              }
-            </mat-button-toggle-group>
+          <zukan-gacha-collection-browser
+            [items]="collection()"
+            [rarityTiers]="rarityTiers"
+            [rarityFilter]="rarityFilter()"
+            [duplicatesOnly]="duplicatesOnly()"
+            [tagFilter]="tagFilter()"
+            [characterFilter]="characterFilter()"
+            [seriesFilter]="seriesFilter()"
+            [loading]="loadingCollection()"
+            [error]="collectionError()"
+            [hideNsfw]="hideNsfw()"
+            [hideSensitive]="hideSensitive()"
+            [discardable]="true"
+            [discardLoadingIds]="discardLoadingIds()"
+            [discardPreview]="discardPreview"
+            [canDiscardItem]="canDiscardCollectionItem"
+            (rarityFilterChange)="onRarityFilterChange($event)"
+            (duplicatesOnlyChange)="toggleDuplicatesOnly($event)"
+            (tagFilterChange)="onTagFilterChange($event)"
+            (characterFilterChange)="onCharacterFilterChange($event)"
+            (seriesFilterChange)="onSeriesFilterChange($event)"
+            (filtersCleared)="clearCollectionFilters()"
+            (itemDiscarded)="discardCollectionItem($event)"
+            (itemInspected)="inspectCollectionItem($event)">
+          </zukan-gacha-collection-browser>
+        </section>
+      </mat-tab>
 
-            <mat-checkbox [checked]="duplicatesOnly()" (change)="toggleDuplicatesOnly($event.checked)">
-              Duplicates only
-            </mat-checkbox>
-          </div>
+      <mat-tab label="Collectors">
+        <section class="tab-panel collectors-panel">
+          <aside class="collector-list" aria-label="Public collectors">
+            <mat-form-field appearance="outline">
+              <mat-label>Search collectors</mat-label>
+              <input matInput [value]="ownerSearch()" (input)="onOwnerSearchChange($any($event.target).value)" />
+              <mat-icon matSuffix aria-hidden="true">search</mat-icon>
+            </mat-form-field>
 
-          @if (loadingCollection()) {
-            <mat-card class="state-card" appearance="outlined">
-              <mat-spinner diameter="36"></mat-spinner>
-              <span>Loading collection…</span>
+            @if (loadingOwners()) {
+              <div class="collector-state">
+                <mat-spinner diameter="24"></mat-spinner>
+                <span>Loading collectors...</span>
+              </div>
+            } @else if (ownersError()) {
+              <div class="collector-state">
+                <mat-icon aria-hidden="true">error_outline</mat-icon>
+                <span>{{ ownersError() }}</span>
+              </div>
+            } @else if (owners().length === 0) {
+              <div class="collector-state">
+                <mat-icon aria-hidden="true">person_search</mat-icon>
+                <span>No public collections found.</span>
+              </div>
+            } @else {
+              <div class="collector-list__items">
+                @for (owner of owners(); track ownerTrack($index, owner)) {
+                  <button
+                    type="button"
+                    class="collector-row"
+                    [class.collector-row--active]="selectedOwnerId() === owner.user_id"
+                    (click)="selectOwner(owner)">
+                    <span>{{ owner.username }}</span>
+                    <span class="collector-chip" [class.collector-chip--muted]="!owner.allow_trade_requests">
+                      {{ owner.allow_trade_requests ? 'Trading' : 'View only' }}
+                    </span>
+                  </button>
+                }
+              </div>
+            }
+          </aside>
+
+          <section class="trade-workspace">
+            <mat-card class="trade-panel" appearance="outlined">
+              <mat-card-header>
+                <mat-card-title>
+                  @if (selectedOwner(); as owner) {
+                    <span>{{ owner.username }}'s collection</span>
+                  } @else {
+                    <span>Select a collector</span>
+                  }
+                </mat-card-title>
+                <mat-card-subtitle>{{ requestedItemIds().size }} requested</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <zukan-gacha-collection-browser
+                  [items]="viewedCollection()"
+                  [rarityTiers]="rarityTiers"
+                  [rarityFilter]="viewedRarityFilter()"
+                  [duplicatesOnly]="viewedDuplicatesOnly()"
+                  [tagFilter]="viewedTagFilter()"
+                  [characterFilter]="viewedCharacterFilter()"
+                  [seriesFilter]="viewedSeriesFilter()"
+                  [loading]="loadingViewedCollection()"
+                  [error]="viewedCollectionError()"
+                  [hideNsfw]="hideNsfw()"
+                  [hideSensitive]="hideSensitive()"
+                  [showFilters]="!!selectedOwner()"
+                  [selectable]="!!selectedOwner()"
+                  [selectedIds]="requestedItemIds()"
+                  [canSelectItem]="canSelectRequestedItem"
+                  selectLabel="Request"
+                  selectedLabel="Requested"
+                  emptyMessage="Select a public collector to view their collection."
+                  ariaLabel="Requested trade items"
+                  (rarityFilterChange)="onViewedRarityFilterChange($event)"
+                  (duplicatesOnlyChange)="toggleViewedDuplicatesOnly($event)"
+                  (tagFilterChange)="onViewedTagFilterChange($event)"
+                  (characterFilterChange)="onViewedCharacterFilterChange($event)"
+                  (seriesFilterChange)="onViewedSeriesFilterChange($event)"
+                  (filtersCleared)="clearViewedCollectionFilters()"
+                  (itemToggled)="toggleRequestedItem($event)"
+                  (itemInspected)="inspectViewedCollectionItem($event)">
+                </zukan-gacha-collection-browser>
+              </mat-card-content>
             </mat-card>
-          } @else if (collectionError()) {
-            <mat-card class="state-card" appearance="outlined">
-              <mat-icon aria-hidden="true">error_outline</mat-icon>
-              <span>{{ collectionError() }}</span>
+
+            <mat-card class="trade-panel" appearance="outlined">
+              <mat-card-header>
+                <mat-card-title>Your offer</mat-card-title>
+                <mat-card-subtitle>{{ offeredItemIds().size }} offered</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                <zukan-gacha-collection-browser
+                  [items]="tradeOwnCollection()"
+                  [rarityTiers]="rarityTiers"
+                  [loading]="loadingTradeOwnCollection()"
+                  [error]="tradeOwnCollectionError()"
+                  [hideNsfw]="hideNsfw()"
+                  [hideSensitive]="hideSensitive()"
+                  [showFilters]="false"
+                  [selectable]="true"
+                  [selectedIds]="offeredItemIds()"
+                  [canSelectItem]="canSelectOfferedItem"
+                  selectLabel="Offer"
+                  selectedLabel="Offered"
+                  emptyMessage="You do not have tradeable unlocked items yet."
+                  ariaLabel="Offered trade items"
+                  (itemToggled)="toggleOfferedItem($event)"
+                  (itemInspected)="inspectOfferedCollectionItem($event)">
+                </zukan-gacha-collection-browser>
+              </mat-card-content>
             </mat-card>
-          } @else if (!hasCollection()) {
-            <mat-card class="state-card" appearance="outlined">
-              <mat-icon aria-hidden="true">inventory_2</mat-icon>
-              <span>No collection items match these filters.</span>
+
+            <mat-card class="trade-submit-card" appearance="outlined">
+              <mat-card-content>
+                <mat-form-field appearance="outline">
+                  <mat-label>Message</mat-label>
+                  <textarea
+                    matInput
+                    rows="3"
+                    maxlength="2000"
+                    [value]="tradeMessage()"
+                    (input)="onTradeMessageChange($any($event.target).value)">
+                  </textarea>
+                </mat-form-field>
+              </mat-card-content>
+              <mat-card-actions align="end">
+                <button mat-flat-button color="primary" type="button" [disabled]="!canCreateTrade()" (click)="createTrade()">
+                  @if (tradeSubmitting()) {
+                    <mat-spinner diameter="18"></mat-spinner>
+                  } @else {
+                    Send trade offer
+                  }
+                </button>
+              </mat-card-actions>
             </mat-card>
-          } @else {
-            <section class="collection-grid">
-              @for (item of visibleCollection(); track collectionTrack($index, item)) {
-                <zukan-gacha-display-card
-                  [rarity]="item.rarity_tier_at_acquisition"
-                  [thumbnailUrl]="item.thumbnail_url"
-                  [title]="collectionTitle(item)"
-                  [meta]="collectionMeta(item)">
-                </zukan-gacha-display-card>
-              }
-            </section>
-          }
+
+            <mat-card class="trade-panel active-trades-card" appearance="outlined">
+              <mat-card-header>
+                <mat-card-title>Active offers</mat-card-title>
+                <mat-card-subtitle>{{ outgoingTrades().length }} outgoing</mat-card-subtitle>
+              </mat-card-header>
+              <mat-card-content>
+                @if (loadingOutgoingTrades()) {
+                  <div class="trade-state">
+                    <mat-spinner diameter="24"></mat-spinner>
+                    <span>Loading active offers...</span>
+                  </div>
+                } @else if (outgoingTradesError()) {
+                  <div class="trade-state">
+                    <mat-icon aria-hidden="true">error_outline</mat-icon>
+                    <span>{{ outgoingTradesError() }}</span>
+                  </div>
+                } @else if (outgoingTrades().length === 0) {
+                  <div class="trade-state">
+                    <mat-icon aria-hidden="true">inventory_2</mat-icon>
+                    <span>No active outgoing offers.</span>
+                  </div>
+                } @else {
+                  <div class="active-trade-list">
+                    @for (trade of outgoingTrades(); track tradeTrack($index, trade)) {
+                      <article class="active-trade">
+                        <header class="active-trade__header">
+                          <div>
+                            <strong>Offer sent {{ tradeDateLabel(trade.created_at) }}</strong>
+                            @if (trade.message) {
+                              <p>{{ trade.message }}</p>
+                            }
+                          </div>
+                          <span class="active-trade__status">{{ trade.status }}</span>
+                        </header>
+
+                        <div class="active-trade__columns">
+                          <section>
+                            <span class="active-trade__label">You offer</span>
+                            @for (item of tradeItems(trade, TradeSide.SENDER); track item.id) {
+                              <span class="active-trade__item">{{ tradeItemLabel(item) }}</span>
+                            }
+                          </section>
+
+                          <section>
+                            <span class="active-trade__label">You request</span>
+                            @for (item of tradeItems(trade, TradeSide.RECEIVER); track item.id) {
+                              <span class="active-trade__item">{{ tradeItemLabel(item) }}</span>
+                            }
+                          </section>
+                        </div>
+
+                        <div class="active-trade__actions">
+                          <button
+                            mat-stroked-button
+                            type="button"
+                            color="warn"
+                            [disabled]="isCancellingTrade(trade)"
+                            (click)="cancelTrade(trade)">
+                            @if (isCancellingTrade(trade)) {
+                              <mat-spinner diameter="18"></mat-spinner>
+                            } @else {
+                              Cancel offer
+                            }
+                          </button>
+                        </div>
+                      </article>
+                    }
+                  </div>
+                }
+              </mat-card-content>
+            </mat-card>
+          </section>
         </section>
       </mat-tab>
     </mat-tab-group>

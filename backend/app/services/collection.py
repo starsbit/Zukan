@@ -5,9 +5,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.errors.error import AppError
 from backend.app.models.auth import User
 from backend.app.models.collection import CollectionVisibility, UserCollectionItem, UserCollectionPrivacy
-from backend.app.models.gacha import RarityTier
+from backend.app.models.gacha import GachaCurrencyLedger, GachaCurrencyLedgerReason, RarityTier
 from backend.app.repositories.collection import CollectionRepository
-from backend.app.schemas.collection import CollectionFilters, CollectionPrivacyUpdate, CollectionStatsResponse, CollectionItemUpdate
+from backend.app.repositories.gacha import GachaRepository
+from backend.app.repositories.trade import TradeRepository
+from backend.app.schemas.collection import (
+    CollectionDiscardResponse,
+    CollectionFilters,
+    CollectionItemUpdate,
+    CollectionOwnerRead,
+    CollectionPrivacyUpdate,
+    CollectionStatsResponse,
+)
 
 
 UPGRADE_COSTS = {
@@ -17,6 +26,13 @@ UPGRADE_COSTS = {
     4: 60,
 }
 MAX_COLLECTION_LEVEL = 5
+PULL_PAYOUT_BY_RARITY = {
+    RarityTier.N: 1,
+    RarityTier.R: 2,
+    RarityTier.SR: 4,
+    RarityTier.SSR: 7,
+    RarityTier.UR: 10,
+}
 
 
 class CollectionService:
@@ -48,6 +64,20 @@ class CollectionService:
             **filters.model_dump(),
         )
 
+    async def list_public_collection_owners(
+        self,
+        viewer: User,
+        *,
+        q: str | None = None,
+        tradeable_only: bool = False,
+    ) -> list[CollectionOwnerRead]:
+        rows = await self._repo.list_public_collection_owners(
+            viewer_id=viewer.id,
+            q=q,
+            tradeable_only=tradeable_only,
+        )
+        return [CollectionOwnerRead.model_validate(row) for row in rows]
+
     async def get_item(self, item_id: uuid.UUID, user: User) -> UserCollectionItem:
         item = await self._repo.get_item_for_user(item_id, user.id)
         if item is None:
@@ -76,6 +106,56 @@ class CollectionService:
         await self._db.commit()
         await self._db.refresh(item)
         return item
+
+    async def discard_item(self, item_id: uuid.UUID, user: User) -> CollectionDiscardResponse:
+        item = await self.get_item(item_id, user)
+        if item.locked:
+            raise AppError(status_code=409, code="collection_item_locked", detail="Locked collection items cannot be discarded")
+        active_item_ids = await TradeRepository(self._db).active_item_ids([item.id])
+        if item.id in active_item_ids:
+            raise AppError(status_code=409, code="collection_item_in_active_trade", detail="Collection item is in an active trade")
+
+        pulls_awarded = collection_item_pull_value(item)
+        balance = await GachaRepository(self._db).get_or_create_balance(user.id, lock=True)
+        balance.balance += pulls_awarded
+        balance.total_claimed += pulls_awarded
+        self._db.add(
+            GachaCurrencyLedger(
+                user_id=user.id,
+                amount=pulls_awarded,
+                balance_after=balance.balance,
+                reason=GachaCurrencyLedgerReason.collection_discard,
+                ledger_metadata={
+                    "collection_item_id": str(item.id),
+                    "media_id": str(item.media_id),
+                    "rarity_tier": item.rarity_tier_at_acquisition.value,
+                    "level": item.level,
+                    "copies_discarded": 1,
+                },
+            )
+        )
+
+        remaining_copies = max(item.copies_pulled - 1, 0)
+        response_item: UserCollectionItem | None = item
+        if remaining_copies == 0:
+            await self._db.delete(item)
+            response_item = None
+        else:
+            item.copies_pulled = remaining_copies
+
+        await self._db.commit()
+        if response_item is not None:
+            await self._db.refresh(response_item)
+
+        return CollectionDiscardResponse(
+            item_id=item_id,
+            media_id=item.media_id,
+            copies_discarded=1,
+            pulls_awarded=pulls_awarded,
+            currency_balance=balance.balance,
+            remaining_copies=remaining_copies,
+            item=response_item,
+        )
 
     async def get_privacy(self, user: User) -> UserCollectionPrivacy:
         privacy = await self._repo.get_or_create_privacy(user.id)
@@ -131,3 +211,7 @@ def duplicate_xp_for_tier(tier: RarityTier) -> int:
         RarityTier.SSR: 25,
         RarityTier.UR: 75,
     }[tier]
+
+
+def collection_item_pull_value(item: UserCollectionItem) -> int:
+    return PULL_PAYOUT_BY_RARITY[item.rarity_tier_at_acquisition] * item.level

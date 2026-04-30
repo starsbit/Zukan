@@ -41,6 +41,26 @@
       This can make tagging slower. It works best after you have already labeled a few matching pictures in your own library.
     </p>
 
+    <section class="collection-privacy-section">
+      <h3>Collection Sharing</h3>
+
+      <mat-form-field>
+        <mat-label>Collection visibility</mat-label>
+        <mat-select formControlName="collectionVisibility">
+          <mat-option [value]="collectionVisibility.PRIVATE">Private</mat-option>
+          <mat-option [value]="collectionVisibility.PUBLIC">Public</mat-option>
+        </mat-select>
+      </mat-form-field>
+
+      <mat-checkbox formControlName="allowTradeRequests">Allow trade requests</mat-checkbox>
+      <mat-checkbox formControlName="showCollectionStats">Show collection stats</mat-checkbox>
+      <mat-checkbox formControlName="showCollectionNsfw">Allow NSFW items in public collection views</mat-checkbox>
+
+      @if (privacyError()) {
+        <div class="form-error">{{ privacyError() }}</div>
+      }
+    </section>
+
     <mat-form-field>
       <mat-label>New Password</mat-label>
       <input matInput type="password" formControlName="password" autocomplete="new-password" />

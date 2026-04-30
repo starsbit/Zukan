@@ -68,8 +68,8 @@ class UserCollectionPrivacy(Base):
     visibility: Mapped[CollectionVisibility] = mapped_column(
         Enum(CollectionVisibility, name="collection_visibility_enum"),
         nullable=False,
-        default=CollectionVisibility.private,
-        server_default="private",
+        default=CollectionVisibility.public,
+        server_default="public",
     )
     allow_trade_requests: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
     show_stats: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")

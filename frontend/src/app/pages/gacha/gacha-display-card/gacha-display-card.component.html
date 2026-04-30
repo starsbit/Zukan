@@ -1,7 +1,13 @@
 <article
   class="gacha-card {{ rarityClass() }}"
   [class.gacha-card--revealed]="revealed()"
-  [style.--reveal-index]="revealIndex()">
+  [class.gacha-card--featured]="featured()"
+  [style.--reveal-index]="revealIndex()"
+  [style.--shine-position]="shinePosition()"
+  (pointermove)="onPointerMove($event)"
+  (pointerleave)="resetPointer()">
+  <div class="gacha-card__foil" aria-hidden="true"></div>
+  <div class="gacha-card__sparkles" aria-hidden="true"></div>
   <div class="gacha-card__shine" aria-hidden="true"></div>
   <div class="gacha-card__media">
     @if (thumbnailUrl()) {

@@ -19,7 +19,7 @@ const collectionItem = {
   tradeable: true,
   acquired_at: '2026-04-28T00:00:00Z',
   updated_at: '2026-04-28T00:00:00Z',
-  media: { id: 'm1', filename: 'saber.webp', is_nsfw: false, is_sensitive: false },
+  media: { id: 'm1', filename: 'saber.webp', is_nsfw: false, is_sensitive: false, tags: [], entities: [] },
 };
 
 describe('CollectionClientService', () => {
@@ -45,8 +45,11 @@ describe('CollectionClientService', () => {
 
     service.list({
       rarity_tier: RarityTier.SR,
+      tags: ['cat', 'night'],
       character_name: 'Saber',
       series_name: 'Fate',
+      character_names: ['Rin'],
+      series_names: ['Tsukihime'],
       level: 2,
       tradeable: true,
       duplicates_only: true,
@@ -55,8 +58,11 @@ describe('CollectionClientService', () => {
     const req = http.expectOne(r => r.url === '/api/v1/collection');
     expect(req.request.method).toBe('GET');
     expect(req.request.params.get('rarity_tier')).toBe('SR');
+    expect(req.request.params.getAll('tags')).toEqual(['cat', 'night']);
     expect(req.request.params.get('character_name')).toBe('Saber');
     expect(req.request.params.get('series_name')).toBe('Fate');
+    expect(req.request.params.getAll('character_names')).toEqual(['Rin']);
+    expect(req.request.params.getAll('series_names')).toEqual(['Tsukihime']);
     expect(req.request.params.get('level')).toBe('2');
     expect(req.request.params.get('tradeable')).toBe('true');
     expect(req.request.params.get('duplicates_only')).toBe('true');
@@ -91,6 +97,25 @@ describe('CollectionClientService', () => {
     req.flush(collectionItem);
   });
 
+  it('discardItem sends POST /api/v1/collection/items/{id}/discard', () => {
+    const response = {
+      item_id: 'ci1',
+      media_id: 'm1',
+      copies_discarded: 1,
+      pulls_awarded: 8,
+      currency_balance: 18,
+      remaining_copies: 2,
+      item: collectionItem,
+    };
+
+    service.discardItem('ci1').subscribe(res => expect(res).toEqual(response));
+
+    const req = http.expectOne('/api/v1/collection/items/ci1/discard');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({});
+    req.flush(response);
+  });
+
   it('listUser sends GET /api/v1/users/{userId}/collection', () => {
     const response = { total: 1, items: [collectionItem] };
 
@@ -115,6 +140,28 @@ describe('CollectionClientService', () => {
 
     const req = http.expectOne('/api/v1/users/u2/collection/stats');
     expect(req.request.method).toBe('GET');
+    req.flush(response);
+  });
+
+  it('listPublicOwners sends GET /api/v1/users/collections with filters', () => {
+    const response = {
+      total: 1,
+      items: [
+        {
+          user_id: 'u2',
+          username: 'sakura',
+          allow_trade_requests: true,
+          show_stats: false,
+        },
+      ],
+    };
+
+    service.listPublicOwners({ q: 'sak', tradeable_only: true }).subscribe(res => expect(res).toEqual(response));
+
+    const req = http.expectOne(r => r.url === '/api/v1/users/collections');
+    expect(req.request.method).toBe('GET');
+    expect(req.request.params.get('q')).toBe('sak');
+    expect(req.request.params.get('tradeable_only')).toBe('true');
     req.flush(response);
   });
 

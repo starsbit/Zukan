@@ -1,0 +1,112 @@
+<section class="collection-browser">
+  @if (showFilters()) {
+    <div class="collection-toolbar">
+      <div class="rarity-filter-row">
+        <mat-button-toggle-group
+          [value]="rarityFilter()"
+          aria-label="Filter collection by rarity"
+          (change)="rarityFilterChange.emit($event.value)">
+          <mat-button-toggle [value]="null">All</mat-button-toggle>
+          @for (tier of rarityTiers(); track tier) {
+            <mat-button-toggle [value]="tier">{{ tier }}</mat-button-toggle>
+          }
+        </mat-button-toggle-group>
+
+        <mat-checkbox [checked]="duplicatesOnly()" (change)="duplicatesOnlyChange.emit($event.checked)">
+          Duplicates only
+        </mat-checkbox>
+      </div>
+
+      <div class="metadata-filter-row">
+        <mat-form-field appearance="outline">
+          <mat-label>Tags</mat-label>
+          <input matInput [value]="tagFilter()" (input)="tagFilterChange.emit($any($event.target).value)" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Character</mat-label>
+          <input matInput [value]="characterFilter()" (input)="characterFilterChange.emit($any($event.target).value)" />
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Series</mat-label>
+          <input matInput [value]="seriesFilter()" (input)="seriesFilterChange.emit($any($event.target).value)" />
+        </mat-form-field>
+
+        <button mat-stroked-button type="button" (click)="filtersCleared.emit()">
+          Clear
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (loading()) {
+    <mat-card class="state-card" appearance="outlined">
+      <mat-spinner diameter="36"></mat-spinner>
+      <span>Loading collection...</span>
+    </mat-card>
+  } @else if (error()) {
+    <mat-card class="state-card" appearance="outlined">
+      <mat-icon aria-hidden="true">error_outline</mat-icon>
+      <span>{{ error() }}</span>
+    </mat-card>
+  } @else if (!hasItems()) {
+    <mat-card class="state-card" appearance="outlined">
+      <mat-icon aria-hidden="true">inventory_2</mat-icon>
+      <span>{{ emptyMessage() }}</span>
+    </mat-card>
+  } @else {
+    <section class="collection-grid" [attr.aria-label]="ariaLabel()">
+      @for (item of visibleItems(); track trackItem($index, item)) {
+        <div
+          class="collection-card-shell"
+          [class.collection-card-shell--selected]="isSelected(item)"
+          [class.collection-card-shell--disabled]="itemDisabled(item)">
+          <button
+            class="collection-card-button"
+            type="button"
+            [attr.aria-label]="'Inspect ' + title(item)"
+            (click)="inspect(item)">
+            <zukan-gacha-display-card
+              [rarity]="item.rarity_tier_at_acquisition"
+              [thumbnailUrl]="item.thumbnail_url"
+              [title]="title(item)"
+              [meta]="meta(item)">
+            </zukan-gacha-display-card>
+          </button>
+
+          @if (selectable()) {
+            <button
+              mat-stroked-button
+              class="collection-select-button"
+              type="button"
+              [class.collection-select-button--selected]="isSelected(item)"
+              [disabled]="itemDisabled(item)"
+              [attr.aria-pressed]="isSelected(item)"
+              (click)="toggleSelection($event, item)">
+              <mat-icon aria-hidden="true">{{ isSelected(item) ? 'check_circle' : 'add_circle' }}</mat-icon>
+              {{ selectionLabel(item) }}
+            </button>
+          }
+
+          @if (discardable()) {
+            <button
+              mat-stroked-button
+              color="warn"
+              class="collection-discard-button"
+              type="button"
+              [disabled]="discardDisabled(item)"
+              (click)="discard($event, item)">
+              @if (discardLoadingIds().has(item.id)) {
+                <mat-spinner diameter="16"></mat-spinner>
+              } @else {
+                <mat-icon aria-hidden="true">local_fire_department</mat-icon>
+              }
+              {{ discardLabel(item) }}
+            </button>
+          }
+        </div>
+      }
+    </section>
+  }
+</section>

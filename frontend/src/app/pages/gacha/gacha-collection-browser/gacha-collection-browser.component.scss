@@ -1,0 +1,157 @@
+:host {
+  display: block;
+}
+
+.collection-browser {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.collection-toolbar {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.rarity-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.rarity-filter-row mat-button-toggle-group {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.metadata-filter-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto;
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.metadata-filter-row mat-form-field {
+  min-width: 0;
+}
+
+.metadata-filter-row button {
+  min-height: 56px;
+}
+
+.collection-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.collection-card-shell {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  min-width: 0;
+  transition:
+    border-color 180ms ease,
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+
+.collection-card-button {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.collection-card-shell:hover,
+.collection-card-shell:focus-within {
+  border-color: var(--mat-sys-primary);
+}
+
+.collection-card-shell--selected {
+  border-color: var(--mat-sys-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+}
+
+.collection-card-shell--disabled {
+  opacity: 0.72;
+}
+
+.collection-card-shell--disabled .collection-select-button {
+  cursor: not-allowed;
+}
+
+.collection-select-button {
+  justify-self: stretch;
+  min-height: 34px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 86%, transparent);
+}
+
+.collection-discard-button {
+  justify-self: stretch;
+  min-height: 34px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mat-sys-error-container) 22%, var(--mat-sys-surface-container-high));
+}
+
+.collection-select-button mat-icon,
+.collection-discard-button mat-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}
+
+.collection-discard-button mat-spinner {
+  display: inline-flex;
+  margin-right: 6px;
+}
+
+.collection-select-button--selected {
+  color: var(--mat-sys-primary);
+}
+
+.state-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 160px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+@media (max-width: 480px) {
+  .rarity-filter-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .metadata-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .metadata-filter-row button {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 760px) {
+  .metadata-filter-row {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { MatIconModule } from '@angular/material/icon';
 import { RarityTier } from '../../../models/gacha';
 
@@ -16,6 +16,26 @@ export class GachaDisplayCardComponent {
   readonly meta = input<readonly string[]>([]);
   readonly revealed = input(true);
   readonly revealIndex = input(0);
+  readonly featured = input(false);
+
+  private readonly pointerX = signal(50);
+  private readonly pointerY = signal(50);
 
   readonly rarityClass = computed(() => `rarity-${this.rarity().toLowerCase()}`);
+  readonly shinePosition = computed(() => `${this.pointerX()}% ${this.pointerY()}%`);
+
+  onPointerMove(event: PointerEvent): void {
+    const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+
+    this.pointerX.set(Math.round(((event.clientX - rect.left) / rect.width) * 100));
+    this.pointerY.set(Math.round(((event.clientY - rect.top) / rect.height) * 100));
+  }
+
+  resetPointer(): void {
+    this.pointerX.set(50);
+    this.pointerY.set(50);
+  }
 }

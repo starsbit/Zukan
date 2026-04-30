@@ -160,7 +160,7 @@ def upgrade() -> None:
     op.create_table(
         "user_collection_privacy",
         sa.Column("user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
-        sa.Column("visibility", collection_visibility, nullable=False, server_default="private"),
+        sa.Column("visibility", collection_visibility, nullable=False, server_default="public"),
         sa.Column("allow_trade_requests", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("show_stats", sa.Boolean(), nullable=False, server_default=sa.text("true")),
         sa.Column("show_nsfw", sa.Boolean(), nullable=False, server_default=sa.text("false")),
