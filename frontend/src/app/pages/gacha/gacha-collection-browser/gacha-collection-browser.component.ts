@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { CollectionItemRead } from '../../../models/collection';
 import { RarityTier } from '../../../models/gacha';
 import { MediaEntityType } from '../../../models/relations';
@@ -28,6 +29,7 @@ export interface GachaCollectionCard extends CollectionItemRead {
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    MatTooltipModule,
     GachaDisplayCardComponent,
   ],
   templateUrl: './gacha-collection-browser.component.html',

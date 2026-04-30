@@ -127,6 +127,10 @@ h1 {
   z-index: 4;
 }
 
+.summon-stage zukan-gacha-rarity-particles {
+  z-index: 2;
+}
+
 .summon-stage__ring {
   position: absolute;
   border-radius: 50%;
@@ -247,6 +251,7 @@ h1 {
 
 .result-card-button {
   display: grid;
+  align-self: start;
   width: 100%;
   min-width: 0;
   height: auto;
@@ -257,11 +262,12 @@ h1 {
   background: transparent;
   text-align: inherit;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .result-card-button zukan-gacha-display-card {
   height: auto;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .result-card-button:focus-visible {

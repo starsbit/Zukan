@@ -1,5 +1,11 @@
 <mat-dialog-content class="card-inspector">
   <section class="card-inspector__stage" [class.card-inspector__stage--ur]="data.card.rarity === 'UR'">
+    <zukan-gacha-rarity-particles
+      [rarity]="data.card.rarity"
+      [active]="true"
+      variant="inspector">
+    </zukan-gacha-rarity-particles>
+
     <button
       mat-icon-button
       type="button"
@@ -35,7 +41,15 @@
 
   <aside class="card-inspector__details">
     <p class="card-inspector__eyebrow">{{ data.card.contextLabel }}</p>
-    <h2>{{ title() }}</h2>
+    <h2>
+      <button
+        class="card-inspector__title-link"
+        type="button"
+        (click)="openMediaInspector()">
+        {{ title() }}
+        <mat-icon aria-hidden="true">open_in_new</mat-icon>
+      </button>
+    </h2>
 
     @if (stateChips().length > 0) {
       <div class="card-inspector__chips" aria-label="Collection state">

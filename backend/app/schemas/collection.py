@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.app.models.collection import CollectionVisibility
 from backend.app.models.gacha import RarityTier
+from backend.app.models.media import MediaType
 from backend.app.models.relations import MediaEntityType
 from backend.app.schemas.relations import EntityRead
 from backend.app.utils.media_classification import effective_nsfw_value, effective_sensitive_value
@@ -14,6 +15,7 @@ from backend.app.utils.media_classification import effective_nsfw_value, effecti
 class CollectionMediaRead(BaseModel):
     id: uuid.UUID
     filename: str
+    media_type: MediaType
     is_nsfw: bool
     is_sensitive: bool
     tags: list[str] = Field(default_factory=list)
@@ -28,6 +30,7 @@ class CollectionMediaRead(BaseModel):
             return {
                 "id": data.id,
                 "filename": data.filename,
+                "media_type": data.media_type,
                 "is_nsfw": effective_nsfw_value(data),
                 "is_sensitive": effective_sensitive_value(data),
                 "tags": sorted(mt.tag.name for mt in getattr(data, "media_tags", []) if mt.tag is not None),

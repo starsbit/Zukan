@@ -1,4 +1,5 @@
 import { RarityTier } from './gacha';
+import { MediaType } from './media';
 import { EntityRead } from './relations';
 
 export enum CollectionVisibility {
@@ -10,6 +11,7 @@ export enum CollectionVisibility {
 export interface CollectionMediaRead {
   id: string;
   filename: string;
+  media_type?: MediaType;
   is_nsfw: boolean;
   is_sensitive: boolean;
   tags: string[];

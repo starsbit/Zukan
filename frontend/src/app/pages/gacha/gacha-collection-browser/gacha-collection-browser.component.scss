@@ -48,6 +48,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
   gap: 16px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -55,20 +56,19 @@
   position: relative;
   display: grid;
   gap: 8px;
-  border: 2px solid transparent;
   border-radius: 8px;
   min-width: 0;
   transition:
-    border-color 180ms ease,
     box-shadow 180ms ease,
     transform 180ms ease;
 }
 
 .collection-card-button {
-  display: block;
+  display: grid;
+  align-self: start;
   width: 100%;
   min-width: 0;
-  height: 100%;
+  height: auto;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -78,14 +78,26 @@
   cursor: pointer;
 }
 
-.collection-card-shell:hover,
-.collection-card-shell:focus-within {
-  border-color: var(--mat-sys-primary);
+.collection-card-button zukan-gacha-display-card {
+  height: auto;
+  min-height: 0;
+}
+
+.collection-card-button:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 3px;
 }
 
 .collection-card-shell--selected {
-  border-color: var(--mat-sys-primary);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+  box-shadow: none;
+}
+
+.collection-card-shell--selected .collection-card-button zukan-gacha-display-card {
+  border-radius: 8px;
+  box-shadow:
+    0 0 0 3px var(--mat-sys-primary),
+    0 0 0 6px color-mix(in srgb, var(--mat-sys-primary) 22%, transparent),
+    0 0 24px color-mix(in srgb, var(--mat-sys-primary) 34%, transparent);
 }
 
 .collection-card-shell--disabled {
@@ -104,14 +116,33 @@
 }
 
 .collection-discard-button {
-  justify-self: stretch;
-  min-height: 34px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mat-sys-error-container) 22%, var(--mat-sys-surface-container-high));
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.94);
+  color: var(--mat-sys-error);
+  background: color-mix(in srgb, var(--mat-sys-error-container) 92%, transparent);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 28%);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    background 160ms ease;
 }
 
-.collection-select-button mat-icon,
-.collection-discard-button mat-icon {
+.collection-card-shell:hover .collection-discard-button,
+.collection-card-shell:focus-within .collection-discard-button,
+.collection-discard-button:disabled {
+  opacity: 1;
+  transform: none;
+}
+
+.collection-discard-button:hover {
+  background: var(--mat-sys-error-container);
+}
+
+.collection-select-button mat-icon {
   width: 18px;
   height: 18px;
   font-size: 18px;
@@ -119,7 +150,6 @@
 
 .collection-discard-button mat-spinner {
   display: inline-flex;
-  margin-right: 6px;
 }
 
 .collection-select-button--selected {

@@ -17,6 +17,7 @@ import {
   MetadataFilterSelection,
 } from '../../../components/shared/metadata-filter-chip/metadata-filter-chip.component';
 import { GachaDisplayCardComponent } from '../gacha-display-card/gacha-display-card.component';
+import { GachaRarityParticlesComponent } from '../gacha-rarity-particles/gacha-rarity-particles.component';
 
 export interface GachaInspectorCard {
   id: string;
@@ -25,6 +26,8 @@ export interface GachaInspectorCard {
   title: string;
   thumbnailUrl: string | null;
   contextLabel: string;
+  mediaInspectorPath?: '/gallery' | '/browse';
+  currentUserId?: string | null;
   level?: number;
   copiesPulled?: number;
   locked?: boolean;
@@ -55,6 +58,7 @@ interface InspectorMetadataChip {
   standalone: true,
   imports: [
     GachaDisplayCardComponent,
+    GachaRarityParticlesComponent,
     MatButtonModule,
     MatDialogModule,
     MatIconModule,
@@ -122,6 +126,30 @@ export class GachaCardInspectorDialogComponent implements OnInit, OnDestroy {
     this.router.navigate(['/gallery'], {
       queryParams: this.searchService.toQueryParamsWithClears(),
     });
+    this.close();
+  }
+
+  openMediaInspector(): void {
+    if (!this.detail() && this.data.card.currentUserId) {
+      this.mediaService.get(this.data.card.mediaId).pipe(
+        takeUntilDestroyed(this.destroyRef),
+        catchError(() => of(null)),
+      ).subscribe((detail) => {
+        if (detail) {
+          this.detail.set(detail);
+        }
+        this.navigateToMediaInspector();
+      });
+      return;
+    }
+
+    this.navigateToMediaInspector();
+  }
+
+  private navigateToMediaInspector(): void {
+    void this.router.navigate([this.mediaInspectorPath()], {
+      queryParams: { inspect: this.data.card.mediaId },
+    }).catch(() => undefined);
     this.close();
   }
 
@@ -194,6 +222,18 @@ export class GachaCardInspectorDialogComponent implements OnInit, OnDestroy {
 
   private copyLabel(value: number): string {
     return value === 1 ? '1 copy' : `${value} copies`;
+  }
+
+  private mediaInspectorPath(): '/gallery' | '/browse' {
+    const detail = this.detail();
+    const currentUserId = this.data.card.currentUserId;
+    if (detail && currentUserId && (detail.owner_id === currentUserId || detail.uploader_id === currentUserId)) {
+      return '/gallery';
+    }
+    if (detail && currentUserId) {
+      return '/browse';
+    }
+    return this.data.card.mediaInspectorPath ?? '/gallery';
   }
 
   private revokeObjectUrl(): void {

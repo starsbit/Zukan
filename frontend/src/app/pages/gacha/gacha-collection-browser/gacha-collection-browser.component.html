@@ -71,7 +71,8 @@
               [rarity]="item.rarity_tier_at_acquisition"
               [thumbnailUrl]="item.thumbnail_url"
               [title]="title(item)"
-              [meta]="meta(item)">
+              [meta]="meta(item)"
+              [compact]="true">
             </zukan-gacha-display-card>
           </button>
 
@@ -91,18 +92,19 @@
 
           @if (discardable()) {
             <button
-              mat-stroked-button
+              mat-icon-button
               color="warn"
               class="collection-discard-button"
               type="button"
               [disabled]="discardDisabled(item)"
+              [matTooltip]="discardLabel(item)"
+              [attr.aria-label]="discardLabel(item)"
               (click)="discard($event, item)">
               @if (discardLoadingIds().has(item.id)) {
                 <mat-spinner diameter="16"></mat-spinner>
               } @else {
                 <mat-icon aria-hidden="true">local_fire_department</mat-icon>
               }
-              {{ discardLabel(item) }}
             </button>
           }
         </div>

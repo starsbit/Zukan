@@ -59,11 +59,24 @@
   border-radius: 9px;
 }
 
+.gacha-card--compact {
+  height: auto;
+  min-height: 0;
+}
+
+.gacha-card--compact:hover {
+  transform: translateY(-2px);
+}
+
 .gacha-card__foil,
 .gacha-card__sparkles,
 .gacha-card__shine {
   position: absolute;
   pointer-events: none;
+}
+
+zukan-gacha-rarity-particles {
+  z-index: 3;
 }
 
 .gacha-card__foil,
@@ -141,7 +154,8 @@
 .gacha-card__media::before {
   background: var(--rarity-media-foil, transparent);
   background-size: var(--rarity-media-foil-size, 180% 180%);
-  mix-blend-mode: screen;
+  background-position: var(--rarity-media-foil-position, 0% 0%);
+  mix-blend-mode: var(--rarity-media-foil-blend, screen);
 }
 
 .gacha-card__media::after {
@@ -277,25 +291,30 @@
   --rarity-chip: color-mix(in srgb, #e7c2ff 78%, var(--mat-sys-surface));
   --rarity-text: #7b2ca1;
   --rarity-foil:
-    repeating-linear-gradient(
-      132deg,
-      transparent 0 9px,
-      color-mix(in srgb, #fff 18%, transparent) 10px 12px,
-      transparent 13px 24px
-    ),
+    radial-gradient(circle at var(--shine-position), color-mix(in srgb, #fff 22%, transparent), transparent 32%),
     conic-gradient(from 90deg at 50% 50%, color-mix(in srgb, #ff9ed6 30%, transparent), transparent, color-mix(in srgb, #91d8ff 32%, transparent), transparent);
-  --rarity-foil-opacity: 0.64;
-  --rarity-sparkle-opacity: 0.5;
+  --rarity-foil-opacity: 0.34;
+  --rarity-sparkle-opacity: 0.32;
   --rarity-media-foil:
     repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, #ff9ed6 18%, transparent) 0 6px,
-      color-mix(in srgb, #91d8ff 18%, transparent) 7px 13px,
-      transparent 14px 26px
+      45deg,
+      transparent 0 18px,
+      color-mix(in srgb, #8fe8ff 48%, transparent) 19px 20px,
+      transparent 21px 38px
     ),
-    radial-gradient(circle at var(--shine-position), color-mix(in srgb, #fff 24%, transparent), transparent 32%);
-  --rarity-media-foil-opacity: 0.34;
-  --rarity-glint-opacity: 0.62;
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 18px,
+      color-mix(in srgb, #ff9ed6 44%, transparent) 19px 20px,
+      transparent 21px 38px
+    ),
+    linear-gradient(105deg, transparent 18%, color-mix(in srgb, #fff 18%, transparent) 42%, color-mix(in srgb, #8fe8ff 16%, transparent) 52%, transparent 74%);
+  --rarity-media-foil-size: 42px 42px, 42px 42px, 220% 100%;
+  --rarity-media-foil-position: 0 0, 0 0, 120% 0;
+  --rarity-media-foil-blend: normal;
+  --rarity-media-foil-opacity: 0;
+  --rarity-media-foil-active-opacity: 0.34;
+  --rarity-glint-opacity: 0.54;
   box-shadow:
     0 10px 28px color-mix(in srgb, #bd55e2 32%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #fff 16%, transparent);
@@ -307,14 +326,8 @@
   --rarity-chip: linear-gradient(135deg, #fff7c2, #ffd766 42%, #ff9ed6 72%, #91d8ff);
   --rarity-text: #432600;
   --rarity-foil:
-    repeating-linear-gradient(
-      32deg,
-      color-mix(in srgb, #fff7c2 22%, transparent) 0 4px,
-      transparent 5px 13px,
-      color-mix(in srgb, #91d8ff 18%, transparent) 14px 18px,
-      transparent 19px 30px
-    ),
-    linear-gradient(115deg, transparent 12%, color-mix(in srgb, #fff 48%, transparent) 27%, transparent 44%),
+    radial-gradient(circle at var(--shine-position), color-mix(in srgb, #fff7c2 26%, transparent), transparent 30%),
+    linear-gradient(115deg, transparent 16%, color-mix(in srgb, #fff 20%, transparent) 30%, transparent 48%),
     conic-gradient(
       from 30deg at 50% 50%,
       color-mix(in srgb, #ffda5a 48%, transparent),
@@ -323,20 +336,11 @@
       color-mix(in srgb, #9dff9d 38%, transparent),
       color-mix(in srgb, #ffda5a 48%, transparent)
     );
-  --rarity-foil-opacity: 0.82;
-  --rarity-sparkle-opacity: 0.95;
-  --rarity-media-foil:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, #fff7c2 30%, transparent) 0 5px,
-      color-mix(in srgb, #ff75c8 24%, transparent) 6px 12px,
-      color-mix(in srgb, #72e4ff 28%, transparent) 13px 19px,
-      transparent 20px 34px
-    ),
-    radial-gradient(circle at var(--shine-position), color-mix(in srgb, #fff 42%, transparent), transparent 30%);
-  --rarity-media-foil-size: 240% 240%, 100% 100%;
-  --rarity-media-foil-opacity: 0.54;
-  --rarity-glint-opacity: 0.86;
+  --rarity-foil-opacity: 0.4;
+  --rarity-sparkle-opacity: 0.48;
+  --rarity-media-foil: transparent;
+  --rarity-media-foil-opacity: 0;
+  --rarity-glint-opacity: 0.56;
   background:
     linear-gradient(160deg, color-mix(in srgb, #fff0be 26%, #26150a), color-mix(in srgb, #4b253f 64%, #111)),
     conic-gradient(from 0deg, #ffda5a, #ff75c8, #72e4ff, #9dff9d, #ffda5a);
@@ -345,6 +349,12 @@
     0 0 34px color-mix(in srgb, #fff0be 52%, transparent),
     0 0 74px color-mix(in srgb, #ff75c8 22%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #fff 28%, transparent);
+}
+
+.rarity-ur .gacha-card__media {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, #fff7c2 36%, transparent),
+    0 0 22px color-mix(in srgb, #ffcf57 26%, transparent);
 }
 
 .rarity-ur .rarity-badge {
@@ -363,19 +373,14 @@
     inset 0 0 0 1px color-mix(in srgb, #fff 36%, transparent);
 }
 
-.rarity-ssr .gacha-card__foil,
-.rarity-ur .gacha-card__foil {
-  animation: holo-shift 5s linear infinite;
-}
-
-.rarity-ur .gacha-card__sparkles {
-  animation: sparkle-pulse 2.6s ease-in-out infinite;
-}
-
-.rarity-sr .gacha-card__media::before,
-.rarity-ssr .gacha-card__media::before,
-.rarity-ur .gacha-card__media::before {
-  animation: holo-texture 6s linear infinite;
+.rarity-ssr .gacha-card__media::before {
+  animation: prismatic-net-sweep 3s ease-in-out infinite;
+  mask-image: linear-gradient(105deg, transparent 28%, #000 42%, #000 58%, transparent 72%);
+  mask-size: 220% 100%;
+  mask-position: 125% 0;
+  -webkit-mask-image: linear-gradient(105deg, transparent 28%, #000 42%, #000 58%, transparent 72%);
+  -webkit-mask-size: 220% 100%;
+  -webkit-mask-position: 125% 0;
 }
 
 @keyframes flip-reveal {
@@ -407,21 +412,30 @@
   }
 }
 
-@keyframes holo-shift {
+@keyframes prismatic-net-sweep {
   0% {
-    background-position: 0% 50%, 0% 50%, 50% 50%;
+    opacity: 0;
+    background-position: 0 0, 0 0, 120% 0;
+    mask-position: 125% 0;
+    -webkit-mask-position: 125% 0;
+  }
+  18% {
+    opacity: 0;
+  }
+  38% {
+    opacity: var(--rarity-media-foil-active-opacity, 0.34);
+  }
+  62% {
+    opacity: var(--rarity-media-foil-active-opacity, 0.34);
+  }
+  82% {
+    opacity: 0;
   }
   100% {
-    background-position: 160% 50%, 100% 50%, 50% 50%;
-  }
-}
-
-@keyframes holo-texture {
-  0% {
-    background-position: 0% 0%, var(--shine-position);
-  }
-  100% {
-    background-position: 180% 180%, var(--shine-position);
+    opacity: 0;
+    background-position: 0 0, 0 0, -120% 0;
+    mask-position: -125% 0;
+    -webkit-mask-position: -125% 0;
   }
 }
 
@@ -431,12 +445,6 @@
   }
   100% {
     transform: translateX(85%) skewX(-16deg);
-  }
-}
-
-@keyframes sparkle-pulse {
-  50% {
-    filter: brightness(1.35);
   }
 }
 

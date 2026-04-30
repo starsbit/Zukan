@@ -15,7 +15,10 @@
       </div>
     </header>
 
-    <mat-tab-group animationDuration="180ms">
+    <mat-tab-group
+      animationDuration="180ms"
+      [selectedIndex]="selectedTabIndex()"
+      (selectedIndexChange)="onSelectedTabIndexChange($event)">
       <mat-tab label="Gacha">
         <section class="tab-panel gacha-grid">
           <div class="summon-column">
@@ -26,6 +29,11 @@
                 [class.summon-stage--rare]="rareReveal()"
                 [attr.data-state]="animationState()">
                 <div class="summon-stage__flash" aria-hidden="true"></div>
+                <zukan-gacha-rarity-particles
+                  [rarity]="highestRarity()"
+                  [active]="stageParticlesActive()"
+                  variant="stage">
+                </zukan-gacha-rarity-particles>
                 <div class="summon-stage__ring summon-stage__ring--outer" aria-hidden="true"></div>
                 <div class="summon-stage__ring summon-stage__ring--inner" aria-hidden="true"></div>
                 <div class="summon-stage__core" aria-hidden="true">
@@ -64,7 +72,8 @@
                       [title]="pullTitle(item)"
                       [meta]="pullMeta(item)"
                       [revealed]="animationState() === 'reveal' || animationState() === 'complete'"
-                      [revealIndex]="index">
+                      [revealIndex]="index"
+                      [compact]="true">
                     </zukan-gacha-display-card>
                   </button>
                 }

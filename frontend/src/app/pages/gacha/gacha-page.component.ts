@@ -8,10 +8,11 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatDialog, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabsModule } from '@angular/material/tabs';
-import { EMPTY, catchError, finalize, forkJoin, of } from 'rxjs';
+import { ActivatedRoute, Router } from '@angular/router';
+import { EMPTY, catchError, finalize, forkJoin, of, switchMap } from 'rxjs';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { CollectionItemRead, CollectionListResponse, CollectionOwnerRead } from '../../models/collection';
 import {
@@ -26,7 +27,9 @@ import {
 import { MediaEntityType } from '../../models/relations';
 import { TradeOfferItemRead, TradeOfferRead, TradeSide, TradeStatus } from '../../models/trade';
 import { MediaService } from '../../services/media.service';
+import { MediaType } from '../../models/media';
 import { UserStore } from '../../services/user.store';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { CollectionClientService } from '../../services/web/collection-client.service';
 import { GachaClientService } from '../../services/web/gacha-client.service';
 import { TradesClientService } from '../../services/web/trades-client.service';
@@ -35,8 +38,10 @@ import { formatMetadataName } from '../../utils/media-display.utils';
 import { GachaCardInspectorDialogComponent, GachaInspectorCard } from './gacha-card-inspector/gacha-card-inspector.component';
 import { GachaCollectionBrowserComponent, GachaCollectionCard } from './gacha-collection-browser/gacha-collection-browser.component';
 import { GachaDisplayCardComponent } from './gacha-display-card/gacha-display-card.component';
+import { GachaRarityParticlesComponent } from './gacha-rarity-particles/gacha-rarity-particles.component';
 
 type AnimationState = 'idle' | 'summoning' | 'charging' | 'reveal' | 'complete';
+type GachaTab = 'pull' | 'collection' | 'collectors';
 
 interface PullResultCard extends GachaPullItemRead {
   thumbnail_url: string | null;
@@ -44,6 +49,7 @@ interface PullResultCard extends GachaPullItemRead {
 
 const SINGLE_PULL_COST = 1;
 const TEN_PULL_COST = 9;
+const GACHA_TABS: readonly GachaTab[] = ['pull', 'collection', 'collectors'];
 const RARITY_ORDER = [RarityTier.N, RarityTier.R, RarityTier.SR, RarityTier.SSR, RarityTier.UR];
 const RARITY_RANK = new Map(RARITY_ORDER.map((tier, index) => [tier, index]));
 const PULL_PAYOUT_BY_RARITY: Record<RarityTier, number> = {
@@ -71,6 +77,7 @@ const PULL_PAYOUT_BY_RARITY: Record<RarityTier, number> = {
     MatTabsModule,
     GachaCollectionBrowserComponent,
     GachaDisplayCardComponent,
+    GachaRarityParticlesComponent,
   ],
   templateUrl: './gacha-page.component.html',
   styleUrl: './gacha-page.component.scss',
@@ -83,9 +90,17 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   private readonly tradesClient = inject(TradesClientService);
   private readonly mediaService = inject(MediaService);
   private readonly userStore = inject(UserStore);
+  private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
+  private readonly router = inject(Router, { optional: true });
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly timers: ReturnType<typeof setTimeout>[] = [];
+  private inspectorRef: MatDialogRef<GachaCardInspectorDialogComponent> | null = null;
+  private pendingInspectId: string | null = null;
+  private pendingInspectorCard: GachaInspectorCard | null = null;
+  private currentInspectId: string | null = null;
+  private closingInspectorFromRoute = false;
   private readonly reducedMotion = typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -138,6 +153,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   readonly animationState = signal<AnimationState>('idle');
   readonly pullResults = signal<PullResultCard[]>([]);
   readonly activePullMode = signal<GachaPullMode | null>(null);
+  readonly activeTab = signal<GachaTab>('pull');
 
   readonly balanceValue = computed(() => this.balance()?.balance ?? this.stats()?.currency_balance ?? 0);
   readonly dailyClaimAvailable = computed(() => this.balance()?.daily_claim_available ?? this.stats()?.daily_claim_available ?? false);
@@ -161,6 +177,8 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     const tier = this.highestRarity();
     return tier === RarityTier.SSR || tier === RarityTier.UR;
   });
+  readonly stageParticlesActive = computed(() => this.animationState() === 'reveal' && this.rareReveal());
+  readonly selectedTabIndex = computed(() => GACHA_TABS.indexOf(this.activeTab()));
   readonly pullStageLabel = computed(() => {
     switch (this.animationState()) {
       case 'summoning':
@@ -177,6 +195,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   });
 
   ngOnInit(): void {
+    this.bindRouteState();
     this.loadOverview();
     this.loadCollection();
     this.loadOwners();
@@ -186,6 +205,19 @@ export class GachaPageComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.clearTimers();
+  }
+
+  onSelectedTabIndexChange(index: number): void {
+    const tab = GACHA_TABS[index] ?? 'pull';
+    if (!this.router) {
+      this.activeTab.set(tab);
+      return;
+    }
+
+    void this.router.navigate(['/gacha', tab], {
+      queryParams: { inspect: null },
+      queryParamsHandling: 'merge',
+    }).catch(() => undefined);
   }
 
   loadOverview(): void {
@@ -227,7 +259,8 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       this.collectionTotal.set(response.total);
       this.collection.set(this.toCollectionCards(response.items));
       this.loadingCollection.set(false);
-      this.loadCollectionThumbnails(response.items);
+      this.loadCollectionPreviews(response.items);
+      this.tryOpenPendingInspector();
     });
   }
 
@@ -278,7 +311,8 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     ).subscribe((response) => {
       this.viewedCollection.set(this.toCollectionCards(response.items));
       this.loadingViewedCollection.set(false);
-      this.loadViewedCollectionThumbnails(response.items);
+      this.loadViewedCollectionPreviews(response.items);
+      this.tryOpenPendingInspector();
     });
   }
 
@@ -296,7 +330,8 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       const tradeableItems = response.items.filter((item) => this.isTradeableItem(item));
       this.tradeOwnCollection.set(this.toCollectionCards(tradeableItems));
       this.loadingTradeOwnCollection.set(false);
-      this.loadTradeOwnCollectionThumbnails(tradeableItems);
+      this.loadTradeOwnCollectionPreviews(tradeableItems);
+      this.tryOpenPendingInspector();
     });
   }
 
@@ -357,6 +392,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       this.activePullMode.set(mode);
       this.pullResults.set(this.toResultCards(pull.items));
       this.loadPullThumbnails(pull.items);
+      this.tryOpenPendingInspector();
       this.runAnimation();
       this.loadOverview();
       this.loadCollection();
@@ -553,26 +589,32 @@ export class GachaPageComponent implements OnInit, OnDestroy {
 
     const pulls = this.discardPullValue(item);
     const finalCopy = item.copies_pulled <= 1;
-    const message = finalCopy
-      ? `Destroy your final copy of this card for ${pulls} Pulls?`
-      : `Destroy one copy of this card for ${pulls} Pulls?`;
-    if (!window.confirm(message)) {
-      return;
-    }
-
-    this.discardLoadingIds.update((current) => new Set(current).add(item.id));
-    this.collectionClient.discardItem(item.id).pipe(
+    const copyText = finalCopy ? 'your final copy of this card' : 'one copy of this card';
+    this.confirmDialog.open({
+      title: 'Destroy card?',
+      message: `Destroy ${copyText}. You will receive ${pulls} Pulls.`,
+      confirmLabel: `Destroy for ${pulls} Pulls`,
+      tone: 'warn',
+    }).pipe(
       takeUntilDestroyed(this.destroyRef),
-      finalize(() => {
-        this.discardLoadingIds.update((current) => {
-          const next = new Set(current);
-          next.delete(item.id);
-          return next;
-        });
-      }),
-      catchError((err) => {
-        this.snackBar.open(extractApiError(err, 'Unable to destroy this card.'), 'Close', { duration: 5000 });
-        return EMPTY;
+      switchMap((confirmed) => {
+        if (!confirmed) {
+          return EMPTY;
+        }
+        this.discardLoadingIds.update((current) => new Set(current).add(item.id));
+        return this.collectionClient.discardItem(item.id).pipe(
+          finalize(() => {
+            this.discardLoadingIds.update((current) => {
+              const next = new Set(current);
+              next.delete(item.id);
+              return next;
+            });
+          }),
+          catchError((err) => {
+            this.snackBar.open(extractApiError(err, 'Unable to destroy this card.'), 'Close', { duration: 5000 });
+            return EMPTY;
+          }),
+        );
       }),
     ).subscribe((response) => {
       this.applyDiscardResult(response.currency_balance, response.item);
@@ -639,30 +681,33 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   }
 
   inspectPullResult(item: PullResultCard): void {
-    this.openCardInspector({
+    this.navigateToCardInspector({
       id: item.id,
       mediaId: item.media_id,
       rarity: item.rarity_tier,
       title: this.pullTitle(item),
       thumbnailUrl: item.thumbnail_url,
       contextLabel: 'Pull result',
+      mediaInspectorPath: '/gallery',
+      currentUserId: this.userStore.currentUser()?.id ?? null,
     });
   }
 
   inspectCollectionItem(item: GachaCollectionCard): void {
-    this.openCardInspector(this.collectionInspectorCard(item, 'Your collection'));
+    this.navigateToCardInspector(this.collectionInspectorCard(item, 'Your collection', '/gallery'));
   }
 
   inspectViewedCollectionItem(item: GachaCollectionCard): void {
     const owner = this.selectedOwner();
-    this.openCardInspector(this.collectionInspectorCard(
+    this.navigateToCardInspector(this.collectionInspectorCard(
       item,
       owner ? `${owner.username}'s collection` : 'Collector collection',
+      '/browse',
     ));
   }
 
   inspectOfferedCollectionItem(item: GachaCollectionCard): void {
-    this.openCardInspector(this.collectionInspectorCard(item, 'Your offer'));
+    this.navigateToCardInspector(this.collectionInspectorCard(item, 'Your offer', '/gallery'));
   }
 
   nextDailyLabel(value: string | null): string {
@@ -778,8 +823,122 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     return item.tradeable && !item.locked;
   }
 
+  private bindRouteState(): void {
+    if (!this.route) {
+      return;
+    }
+
+    this.route.paramMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const rawTab = params.get('tab');
+        const tab = this.normalizeTab(rawTab);
+        this.activeTab.set(tab);
+        if (rawTab && rawTab !== tab && this.router) {
+          void this.router.navigate(['/gacha', tab], {
+            queryParamsHandling: 'preserve',
+            replaceUrl: true,
+          }).catch(() => undefined);
+        }
+      });
+
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((params) => {
+        const inspectId = params.get('inspect');
+        this.currentInspectId = inspectId;
+        if (inspectId) {
+          this.openInspectorForId(inspectId);
+        } else {
+          this.pendingInspectId = null;
+          this.pendingInspectorCard = null;
+          if (this.inspectorRef) {
+            this.closingInspectorFromRoute = true;
+            this.inspectorRef.close();
+          }
+        }
+      });
+  }
+
+  private normalizeTab(value: string | null): GachaTab {
+    return GACHA_TABS.includes(value as GachaTab) ? value as GachaTab : 'pull';
+  }
+
+  private navigateToCardInspector(card: GachaInspectorCard): void {
+    this.pendingInspectorCard = card;
+    if (!this.router || !this.route) {
+      this.openCardInspector(card);
+      return;
+    }
+
+    void this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { inspect: card.id },
+      queryParamsHandling: 'merge',
+    }).catch(() => undefined);
+  }
+
+  private openInspectorForId(id: string): void {
+    if (this.inspectorRef) {
+      return;
+    }
+
+    const card = this.resolveInspectorCard(id) ?? (this.pendingInspectorCard?.id === id ? this.pendingInspectorCard : null);
+    if (!card) {
+      this.pendingInspectId = id;
+      return;
+    }
+
+    this.pendingInspectId = null;
+    this.pendingInspectorCard = null;
+    this.openCardInspector(card);
+  }
+
+  private tryOpenPendingInspector(): void {
+    if (!this.pendingInspectId || this.inspectorRef) {
+      return;
+    }
+
+    this.openInspectorForId(this.pendingInspectId);
+  }
+
+  private resolveInspectorCard(id: string): GachaInspectorCard | null {
+    switch (this.activeTab()) {
+      case 'collection': {
+        const item = this.collection().find((card) => card.id === id);
+        return item ? this.collectionInspectorCard(item, 'Your collection', '/gallery') : null;
+      }
+      case 'collectors': {
+        const viewedItem = this.viewedCollection().find((card) => card.id === id);
+        if (viewedItem) {
+          const owner = this.selectedOwner();
+          return this.collectionInspectorCard(
+            viewedItem,
+            owner ? `${owner.username}'s collection` : 'Collector collection',
+            '/browse',
+          );
+        }
+        const offerItem = this.tradeOwnCollection().find((card) => card.id === id);
+        return offerItem ? this.collectionInspectorCard(offerItem, 'Your offer', '/gallery') : null;
+      }
+      default: {
+        const item = this.pullResults().find((card) => card.id === id);
+        return item ? {
+          id: item.id,
+          mediaId: item.media_id,
+          rarity: item.rarity_tier,
+          title: this.pullTitle(item),
+          thumbnailUrl: item.thumbnail_url,
+          contextLabel: 'Pull result',
+          mediaInspectorPath: '/gallery',
+          currentUserId: this.userStore.currentUser()?.id ?? null,
+        } : null;
+      }
+    }
+  }
+
   private openCardInspector(card: GachaInspectorCard): void {
-    this.dialog.open(GachaCardInspectorDialogComponent, {
+    this.inspectorRef = this.dialog.open(GachaCardInspectorDialogComponent, {
       data: { card },
       width: 'min(1000px, 94vw)',
       maxWidth: '94vw',
@@ -787,9 +946,35 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       autoFocus: false,
       panelClass: 'gacha-card-inspector-panel',
     });
+    const afterClosed$ = (this.inspectorRef as Partial<MatDialogRef<GachaCardInspectorDialogComponent>>).afterClosed?.();
+    if (!afterClosed$) {
+      return;
+    }
+
+    afterClosed$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.inspectorRef = null;
+      if (this.closingInspectorFromRoute) {
+        this.closingInspectorFromRoute = false;
+        return;
+      }
+
+      if (!this.currentInspectId || !this.router || !this.route) {
+        return;
+      }
+
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        queryParams: { inspect: null },
+        queryParamsHandling: 'merge',
+      }).catch(() => undefined);
+    });
   }
 
-  private collectionInspectorCard(item: GachaCollectionCard, contextLabel: string): GachaInspectorCard {
+  private collectionInspectorCard(
+    item: GachaCollectionCard,
+    contextLabel: string,
+    mediaInspectorPath: '/gallery' | '/browse',
+  ): GachaInspectorCard {
     return {
       id: item.id,
       mediaId: item.media_id,
@@ -806,6 +991,8 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       tags: item.media?.tags ?? [],
       characters: this.collectionEntityNames(item, MediaEntityType.CHARACTER),
       series: this.collectionEntityNames(item, MediaEntityType.SERIES),
+      mediaInspectorPath,
+      currentUserId: this.userStore.currentUser()?.id ?? null,
     };
   }
 
@@ -865,9 +1052,9 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private loadCollectionThumbnails(items: CollectionItemRead[]): void {
+  private loadCollectionPreviews(items: CollectionItemRead[]): void {
     for (const item of items) {
-      this.mediaService.getThumbnailUrl(item.media_id).pipe(
+      this.collectionPreviewUrl(item).pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => of(null)),
       ).subscribe((url) => {
@@ -879,9 +1066,9 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private loadViewedCollectionThumbnails(items: CollectionItemRead[]): void {
+  private loadViewedCollectionPreviews(items: CollectionItemRead[]): void {
     for (const item of items) {
-      this.mediaService.getThumbnailUrl(item.media_id).pipe(
+      this.collectionPreviewUrl(item).pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => of(null)),
       ).subscribe((url) => {
@@ -893,9 +1080,9 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  private loadTradeOwnCollectionThumbnails(items: CollectionItemRead[]): void {
+  private loadTradeOwnCollectionPreviews(items: CollectionItemRead[]): void {
     for (const item of items) {
-      this.mediaService.getThumbnailUrl(item.media_id).pipe(
+      this.collectionPreviewUrl(item).pipe(
         takeUntilDestroyed(this.destroyRef),
         catchError(() => of(null)),
       ).subscribe((url) => {
@@ -905,6 +1092,16 @@ export class GachaPageComponent implements OnInit, OnDestroy {
         )));
       });
     }
+  }
+
+  private collectionPreviewUrl(item: CollectionItemRead) {
+    if (item.media?.media_type === MediaType.VIDEO) {
+      return this.mediaService.getPosterUrl(item.media_id);
+    }
+    if (item.media?.media_type === MediaType.IMAGE || item.media?.media_type === MediaType.GIF) {
+      return this.mediaService.getFileUrl(item.media_id);
+    }
+    return this.mediaService.getThumbnailUrl(item.media_id);
   }
 
   private highestTier(items: Pick<GachaPullItemRead, 'rarity_tier'>[]): RarityTier | null {

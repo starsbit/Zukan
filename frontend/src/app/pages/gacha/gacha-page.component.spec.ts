@@ -16,15 +16,17 @@ import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/materia
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTabGroup, MatTabsModule } from '@angular/material/tabs';
-import { Router } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { CollectionItemRead } from '../../models/collection';
 import { GachaPullMode, RarityTier } from '../../models/gacha';
+import { MediaType } from '../../models/media';
 import { TradeOfferRead, TradeSide, TradeStatus } from '../../models/trade';
 import { MediaService } from '../../services/media.service';
 import { NavbarSearchService } from '../../services/navbar-search.service';
 import { UserStore } from '../../services/user.store';
+import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { CollectionClientService } from '../../services/web/collection-client.service';
 import { GachaClientService } from '../../services/web/gacha-client.service';
 import { TradesClientService } from '../../services/web/trades-client.service';
@@ -32,6 +34,7 @@ import { GachaCardInspectorDialogComponent } from './gacha-card-inspector/gacha-
 import { GachaCollectionBrowserComponent } from './gacha-collection-browser/gacha-collection-browser.component';
 import { GachaDisplayCardComponent } from './gacha-display-card/gacha-display-card.component';
 import { GachaPageComponent } from './gacha-page.component';
+import { GachaRarityParticlesComponent } from './gacha-rarity-particles/gacha-rarity-particles.component';
 
 @Component({
   selector: 'zukan-layout',
@@ -55,6 +58,7 @@ const collectionItem: CollectionItemRead = {
   media: {
     id: 'm1',
     filename: 'saber.webp',
+    media_type: MediaType.IMAGE,
     is_nsfw: false,
     is_sensitive: false,
     tags: ['white hair'],
@@ -122,6 +126,11 @@ describe('GachaPageComponent', () => {
     pullError?: unknown;
     showNsfw?: boolean;
     showSensitive?: boolean;
+    confirm?: boolean;
+    routeState?: {
+      tab?: string;
+      inspect?: string;
+    };
   } = {}) {
     const balance = options.balance ?? 10;
     const dailyAvailable = options.dailyAvailable ?? true;
@@ -229,6 +238,8 @@ describe('GachaPageComponent', () => {
     };
     const mediaService = {
       getThumbnailUrl: vi.fn((id: string) => of(`blob:${id}`)),
+      getFileUrl: vi.fn((id: string) => of(`blob:file:${id}`)),
+      getPosterUrl: vi.fn((id: string) => of(`blob:poster:${id}`)),
     };
     const currentUser = signal({
       id: 'u1',
@@ -245,6 +256,14 @@ describe('GachaPageComponent', () => {
     });
     const userStore = { currentUser };
     const snackBar = { open: vi.fn() };
+    const confirmDialog = { open: vi.fn(() => of(options.confirm ?? true)) };
+    const routeParamMap = new BehaviorSubject(convertToParamMap({
+      ...(options.routeState?.tab ? { tab: options.routeState.tab } : {}),
+    }));
+    const routeQueryParamMap = new BehaviorSubject(convertToParamMap({
+      ...(options.routeState?.inspect ? { inspect: options.routeState.inspect } : {}),
+    }));
+    const router = { navigate: vi.fn(() => Promise.resolve(true)) };
 
     await TestBed.configureTestingModule({
       imports: [GachaPageComponent, NoopAnimationsModule],
@@ -255,6 +274,13 @@ describe('GachaPageComponent', () => {
         { provide: TradesClientService, useValue: tradesClient },
         { provide: UserStore, useValue: userStore },
         { provide: MatSnackBar, useValue: snackBar },
+        { provide: ConfirmDialogService, useValue: confirmDialog },
+        ...(options.routeState
+          ? [
+              { provide: ActivatedRoute, useValue: { paramMap: routeParamMap, queryParamMap: routeQueryParamMap } },
+              { provide: Router, useValue: router },
+            ]
+          : []),
       ],
     })
       .overrideComponent(GachaPageComponent, {
@@ -275,6 +301,7 @@ describe('GachaPageComponent', () => {
             MatTabsModule,
             GachaCollectionBrowserComponent,
             GachaDisplayCardComponent,
+            GachaRarityParticlesComponent,
           ],
         },
       })
@@ -291,7 +318,19 @@ describe('GachaPageComponent', () => {
     const snackBarOpenSpy = vi.spyOn(componentWithSnackBar.snackBar, 'open').mockImplementation(() => undefined as never);
     fixture.detectChanges();
 
-    return { fixture, component: fixture.componentInstance, gachaClient, collectionClient, tradesClient, mediaService, snackBar: { open: snackBarOpenSpy } };
+    return {
+      fixture,
+      component: fixture.componentInstance,
+      gachaClient,
+      collectionClient,
+      tradesClient,
+      mediaService,
+      confirmDialog,
+      snackBar: { open: snackBarOpenSpy },
+      router,
+      routeParamMap,
+      routeQueryParamMap,
+    };
   }
 
   it('loads balance, stats, and collection on init', async () => {
@@ -300,7 +339,7 @@ describe('GachaPageComponent', () => {
     expect(gachaClient.getBalance).toHaveBeenCalledOnce();
     expect(gachaClient.getStats).toHaveBeenCalledOnce();
     expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({ rarity_tier: undefined, duplicates_only: undefined }));
-    expect(mediaService.getThumbnailUrl).toHaveBeenCalledWith('m1');
+    expect(mediaService.getFileUrl).toHaveBeenCalledWith('m1');
     expect(tradesClient.outgoing).toHaveBeenCalledOnce();
 
     const element = fixture.nativeElement as HTMLElement;
@@ -404,9 +443,22 @@ describe('GachaPageComponent', () => {
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Saber');
   });
 
+  it('syncs gacha tabs to route segments', async () => {
+    const { fixture, component, router } = await createComponent({ routeState: { tab: 'collection' } });
+
+    expect(component.activeTab()).toBe('collection');
+
+    router.navigate.mockClear();
+    component.onSelectedTabIndexChange(2);
+
+    expect(router.navigate).toHaveBeenCalledWith(['/gacha', 'collectors'], {
+      queryParams: { inspect: null },
+      queryParamsHandling: 'merge',
+    });
+  });
+
   it('destroys one collection copy for Pulls after confirmation', async () => {
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    const { fixture, component, collectionClient, snackBar } = await createComponent({
+    const { fixture, component, collectionClient, confirmDialog, snackBar } = await createComponent({
       collectionItems: [{ ...collectionItem, locked: false }],
     });
 
@@ -417,14 +469,18 @@ describe('GachaPageComponent', () => {
     fixture.detectChanges();
 
     const discardButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-discard-button');
-    expect(discardButton?.textContent).toContain('+8 Pulls');
+    expect(discardButton?.getAttribute('aria-label')).toContain('+8 Pulls');
     discardButton?.click();
 
-    expect(confirmSpy).toHaveBeenCalledWith('Destroy one copy of this card for 8 Pulls?');
+    expect(confirmDialog.open).toHaveBeenCalledWith({
+      title: 'Destroy card?',
+      message: 'Destroy one copy of this card. You will receive 8 Pulls.',
+      confirmLabel: 'Destroy for 8 Pulls',
+      tone: 'warn',
+    });
     expect(collectionClient.discardItem).toHaveBeenCalledWith('ci1');
     expect(component.balanceValue()).toBe(18);
     expect(snackBar.open).toHaveBeenCalledWith('Destroyed 1 copy for 8 Pulls.', 'Close', { duration: 3500 });
-    confirmSpy.mockRestore();
   });
 
   it('does not show destroy actions in collector trade panes', async () => {
@@ -507,6 +563,34 @@ describe('GachaPageComponent', () => {
         }),
       }),
     );
+  });
+
+  it('opens and clears the gacha card inspector from the inspect route', async () => {
+    const afterClosed = new Subject<void>();
+    const { component, router, routeQueryParamMap } = await createComponent({ routeState: { tab: 'collection' } });
+    const dialogOpenSpy = vi.spyOn((component as any).dialog, 'open').mockReturnValue({
+      afterClosed: () => afterClosed,
+    } as any);
+
+    routeQueryParamMap.next(convertToParamMap({ inspect: 'ci1' }));
+
+    expect(dialogOpenSpy).toHaveBeenCalledWith(
+      GachaCardInspectorDialogComponent,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          card: expect.objectContaining({ id: 'ci1', mediaId: 'm1' }),
+        }),
+      }),
+    );
+
+    afterClosed.next();
+    afterClosed.complete();
+
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      relativeTo: expect.any(Object),
+      queryParams: { inspect: null },
+      queryParamsHandling: 'merge',
+    });
   });
 
   it('opens pull result cards in the inspector', async () => {
@@ -686,6 +770,34 @@ describe('GachaPageComponent', () => {
   });
 });
 
+describe('GachaDisplayCardComponent', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+  });
+
+  it('shows triangle particle layer only for revealed UR cards', async () => {
+    await TestBed.configureTestingModule({
+      imports: [GachaDisplayCardComponent],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(GachaDisplayCardComponent);
+    fixture.componentRef.setInput('rarity', RarityTier.UR);
+    fixture.componentRef.setInput('revealed', false);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    expect(element.querySelector('zukan-gacha-rarity-particles')).toBeNull();
+
+    fixture.componentRef.setInput('revealed', true);
+    fixture.detectChanges();
+    expect(element.querySelector('zukan-gacha-rarity-particles')).not.toBeNull();
+
+    fixture.componentRef.setInput('rarity', RarityTier.SR);
+    fixture.detectChanges();
+    expect(element.querySelector('zukan-gacha-rarity-particles')).toBeNull();
+  });
+});
+
 describe('GachaCardInspectorDialogComponent', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
@@ -762,6 +874,66 @@ describe('GachaCardInspectorDialogComponent', () => {
 
     expect(searchService.addMetadataFilter).toHaveBeenCalledWith('tag', 'bat_hair_ornament');
     expect(navigate).toHaveBeenCalledWith(['/gallery'], { queryParams: { tag: ['bat_hair_ornament'] } });
+    expect(close).toHaveBeenCalled();
+  });
+
+  it('opens the source media inspector from the card title', async () => {
+    const close = vi.fn();
+    const navigate = vi.fn(() => Promise.resolve(true));
+    await TestBed.configureTestingModule({
+      imports: [GachaCardInspectorDialogComponent, NoopAnimationsModule],
+      providers: [
+        { provide: MatDialogRef, useValue: { close } },
+        { provide: Router, useValue: { navigate } },
+        { provide: NavbarSearchService, useValue: { suppressNextUrlSync: vi.fn(), addMetadataFilter: vi.fn(), toQueryParamsWithClears: vi.fn(() => ({})) } },
+        {
+          provide: MAT_DIALOG_DATA,
+          useValue: {
+            card: {
+              id: 'ci1',
+              mediaId: 'm-public',
+              rarity: RarityTier.SR,
+              title: 'shared_card',
+              thumbnailUrl: 'blob:m-public',
+              contextLabel: 'Collector collection',
+              mediaInspectorPath: '/gallery',
+              currentUserId: 'u1',
+            },
+          },
+        },
+        {
+          provide: MediaService,
+          useValue: {
+            get: vi.fn(() => of({
+              id: 'm-public',
+              owner_id: 'u2',
+              uploader_id: 'u2',
+              media_type: 'image',
+              tags: [],
+              entities: [],
+            } as any)),
+            getFileUrl: vi.fn(() => of('blob:file')),
+            getPosterUrl: vi.fn(),
+          },
+        },
+      ],
+    })
+      .overrideComponent(GachaCardInspectorDialogComponent, {
+        set: { styles: [''] },
+      })
+      .overrideComponent(GachaDisplayCardComponent, {
+        set: { styles: [''] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(GachaCardInspectorDialogComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.card-inspector__title-link')?.click();
+
+    expect(navigate).toHaveBeenCalledWith(['/browse'], { queryParams: { inspect: 'm-public' } });
     expect(close).toHaveBeenCalled();
   });
 });

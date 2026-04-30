@@ -66,6 +66,11 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'gacha/:tab',
+    component: GachaPageComponent,
+    canActivate: [authGuard],
+  },
+  {
     path: 'tags',
     component: MetadataManagerPageComponent,
     canActivate: [authGuard],
