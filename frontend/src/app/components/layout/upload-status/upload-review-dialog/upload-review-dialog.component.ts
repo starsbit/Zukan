@@ -787,7 +787,7 @@ export class UploadReviewDialogComponent {
 
   private refreshCurrentScope(): void {
     if (this.scope() === 'merged_batch') {
-      this.refreshRecommendations();
+      // Don't automatically refresh recommendations - let users manually trigger via refresh button
       return;
     }
 
