@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 
-from sqlalchemy import or_, select
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION, EmbeddingBackend, embedding_backend
@@ -37,6 +37,12 @@ class MediaEmbeddingService:
         if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
             return existing
 
+        await self._acquire_uploader_embedding_lock(media.uploader_id)
+
+        existing = await self._repo.get_by_media_id(media.id)
+        if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
+            return existing
+
         embedding = await self._backend.compute(media.filepath, media.media_type)
         if not embedding:
             logger.warning("Embedding compute returned empty media_id=%s", getattr(media, "id", None))
@@ -50,6 +56,16 @@ class MediaEmbeddingService:
         )
         await self._db.flush()
         return await self._repo.get_by_media_id(media.id)
+
+    async def _acquire_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> None:
+        bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
+        if dialect_name != "postgresql":
+            return
+        await self._db.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": _signed_lock_key(uploader_id)},
+        )
 
     async def backfill_user_embeddings(
         self,
@@ -83,3 +99,8 @@ class MediaEmbeddingService:
             if embedding is not None:
                 created += 1
         return created
+
+
+def _signed_lock_key(value: uuid.UUID) -> int:
+    raw = int.from_bytes(value.bytes[:8], byteorder="big", signed=False)
+    return raw - (1 << 64) if raw >= (1 << 63) else raw
