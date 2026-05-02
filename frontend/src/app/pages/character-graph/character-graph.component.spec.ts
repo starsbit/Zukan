@@ -4,28 +4,39 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { Router } from '@angular/router';
 import { of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type forceAtlas2Default from 'graphology-layout-forceatlas2';
+import type SigmaDefault from 'sigma';
 import { CharacterGraphResponse } from '../../models/character-graph';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { MediaService } from '../../services/media.service';
 import { CharacterGraphClientService } from '../../services/web/character-graph-client.service';
 import { CharacterGraphPageComponent } from './character-graph.component';
 
-vi.mock('graphology-layout-forceatlas2', () => ({
-  default: {
+const graphMocks = vi.hoisted(() => {
+  const forceAtlas2 = Object.assign(vi.fn(), {
     assign: vi.fn(),
     inferSettings: vi.fn(() => ({})),
-  },
-}));
+  });
 
-vi.mock('sigma', () => ({
-  default: class {
+  class SigmaMock {
     on = vi.fn();
     refresh = vi.fn();
     kill = vi.fn();
     getCamera(): { animate: ReturnType<typeof vi.fn> } {
       return { animate: vi.fn() };
     }
-  },
+  }
+
+  return { forceAtlas2, SigmaMock };
+});
+
+vi.mock(import('graphology-layout-forceatlas2'), () => ({
+  default: graphMocks.forceAtlas2 as unknown as typeof forceAtlas2Default,
+  inferSettings: graphMocks.forceAtlas2.inferSettings,
+}));
+
+vi.mock(import('sigma'), () => ({
+  default: graphMocks.SigmaMock as unknown as typeof SigmaDefault,
 }));
 
 @Component({

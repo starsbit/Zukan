@@ -46,7 +46,7 @@ class TagRepository:
                 select(Tag).where(
                     Tag.owner_user_id == owner_user_id,
                     Tag.name.in_(names),
-                )
+                ).execution_options(populate_existing=True)
             )
         ).scalars().all()
         return {tag.name: tag for tag in tags}
@@ -180,6 +180,7 @@ class TagRepository:
         )
         missing_names = [name for name, _ in missing_payloads]
         existing_tag_rows: dict[str, tuple[int, int]] = {}
+        existing_tags: dict[str, Tag] = {}
         if missing_names:
             tag_insert = insert(Tag).values([
                 {
@@ -215,16 +216,23 @@ class TagRepository:
                 row.name: (int(row.id), int(row.category))
                 for row in tag_rows
             }
+            existing_tags = await self.get_by_names(owner_user_id, missing_names)
 
         for name, category, confidence in desired_payloads:
             if name in existing_by_name:
                 continue
+            tag = existing_tags.get(name)
             tag_row = existing_tag_rows.get(name)
-            if tag_row is None:
+            if tag is None and tag_row is None:
                 raise RuntimeError(
                     f"Failed to create or load tag {name!r} for owner {owner_user_id}"
                 )
-            tag_id, _tag_category = tag_row
+            if tag is not None:
+                if tag.category == 0 and category != 0:
+                    tag.category = category
+                tag_id = tag.id
+            else:
+                tag_id, _tag_category = tag_row
             touched_tag_ids.add(tag_id)
             self.db.add(MediaTag(
                 media_id=media.id,

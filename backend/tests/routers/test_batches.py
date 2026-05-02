@@ -22,8 +22,8 @@ def _batch_payload(batch_id: str, user_id: str) -> dict:
         "started_at": now,
         "finished_at": None,
         "last_heartbeat_at": now,
-        "app_version": "0.2.10",
-        "worker_version": "0.2.10",
+        "app_version": "0.2.11",
+        "worker_version": "0.2.11",
         "error_summary": None,
     }
 
