@@ -774,7 +774,11 @@ export class UploadReviewDialogComponent {
       .subscribe({
         next: () => {
           this.discarding.set(false);
-          this.refreshCurrentScope();
+          if (this.scope() === 'merged_batch') {
+            this.refreshRecommendations();
+          } else {
+            this.refreshCurrentScope();
+          }
           this.snackBar.open(successMessage, 'Close', { duration: 3000 });
         },
         error: () => {
