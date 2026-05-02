@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     ocr_timeout_seconds: float = 60.0
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
+    ocr_max_image_dimension: int = 1600
+    ocr_autocontrast_variant_enabled: bool = False
     ffmpeg_timeout_seconds: float = 30.0
     embedding_backend: str = "clip_onnx_v1"
     embedding_model_repo: str = "Xenova/clip-vit-base-patch32"
@@ -47,6 +49,7 @@ class Settings(BaseSettings):
     embedding_executor_workers: int = 2
     embedding_compute_timeout_seconds: float = 120.0
     tagging_worker_count: int = 2
+    post_tag_worker_count: int = 1
     tagger_executor_workers: int = 2
     ocr_executor_workers: int = 2
     library_classification_neighbor_count: int = 12

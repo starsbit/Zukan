@@ -53,6 +53,7 @@ logger = logging.getLogger("backend.app")
 
 tag_queue: asyncio.Queue = asyncio.Queue()
 embedding_backfill_queue: asyncio.Queue = asyncio.Queue()
+post_tag_queue: asyncio.Queue = asyncio.Queue()
 
 
 class _MlStartupState:
@@ -129,8 +130,7 @@ async def tagging_worker():
                 )
                 await ml_startup_state.wait_until_ready()
                 query = MediaQueryService(db)
-                processing = MediaProcessingService(db, query)
-                upload_service = MediaUploadService(db, processing, query)
+                upload_service = MediaUploadService(db, MediaProcessingService(db, query), query)
                 if media_item.tagging_status in ("pending", "processing"):
                     logger.info("Tagging worker running tag prediction media_id=%s", media_id)
                     await TagService(db, tagger).tag_media(media_id)
@@ -140,11 +140,9 @@ async def tagging_worker():
                         media_id,
                         getattr(media_item.tagging_status, "value", media_item.tagging_status),
                     )
-                logger.info("Tagging worker running OCR media_id=%s", media_id)
-                await processing.run_ocr_for_media(media_id, ocr_backend)
-                logger.info("Tagging worker refreshing embedding media_id=%s", media_id)
-                await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
                 await upload_service.mark_upload_batch_item_done(media_id)
+                if settings.post_tag_worker_count > 0:
+                    await post_tag_queue.put(media_id)
                 logger.info("Tagging worker completed media_id=%s", media_id)
 
         except Exception as exc:
@@ -157,6 +155,30 @@ async def tagging_worker():
             logger.exception("Tagging failed for media_id=%s", media_id)
         finally:
             tag_queue.task_done()
+
+
+async def post_tag_worker():
+    while True:
+        media_id: uuid.UUID = await post_tag_queue.get()
+        try:
+            await ml_startup_state.wait_until_ready()
+            async with AsyncSessionLocal() as db:
+                query = MediaQueryService(db)
+                processing = MediaProcessingService(db, query)
+                logger.info(
+                    "Post-tag worker picked media_id=%s queue_depth=%s",
+                    media_id,
+                    post_tag_queue.qsize(),
+                )
+                logger.info("Post-tag worker running OCR media_id=%s", media_id)
+                await processing.run_ocr_for_media(media_id, ocr_backend)
+                logger.info("Post-tag worker refreshing embedding media_id=%s", media_id)
+                await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
+                logger.info("Post-tag worker completed media_id=%s", media_id)
+        except Exception:
+            logger.exception("Post-tag processing failed for media_id=%s", media_id)
+        finally:
+            post_tag_queue.task_done()
 
 
 async def embedding_backfill_worker():
@@ -452,6 +474,7 @@ async def lifespan(_api: FastAPI):
     logger.info("Application startup initiated")
     startup_started_at = time.perf_counter()
     workers: list[asyncio.Task] = []
+    post_tag_workers: list[asyncio.Task] = []
     embedding_workers: list[asyncio.Task] = []
     purge_worker: asyncio.Task | None = None
     failed_retry_worker: asyncio.Task | None = None
@@ -478,11 +501,13 @@ async def lifespan(_api: FastAPI):
         recovered_count = await _recover_pending_media_jobs(tag_queue)
         recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(embedding_backfill_queue)
         workers = [asyncio.create_task(tagging_worker()) for _ in range(settings.tagging_worker_count)]
+        post_tag_workers = [asyncio.create_task(post_tag_worker()) for _ in range(settings.post_tag_worker_count)]
         embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
         purge_worker = asyncio.create_task(trash_purge_worker())
         failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
         update_worker = asyncio.create_task(update_check_worker())
         logger.info("Background tagging workers started count=%s", settings.tagging_worker_count)
+        logger.info("Background post-tag workers started count=%s", settings.post_tag_worker_count)
         logger.info("Background embedding backfill worker started count=1")
         if recovered_count:
             logger.info("Recovered %s pending media jobs after startup", recovered_count)
@@ -501,6 +526,8 @@ async def lifespan(_api: FastAPI):
         logger.info("Application shutdown initiated")
         for w in workers:
             w.cancel()
+        for w in post_tag_workers:
+            w.cancel()
         for w in embedding_workers:
             w.cancel()
         if purge_worker is not None:
@@ -517,6 +544,11 @@ async def lifespan(_api: FastAPI):
                 await w
             except asyncio.CancelledError:
                 pass
+        for w in post_tag_workers:
+            try:
+                await w
+            except asyncio.CancelledError:
+                pass
         for w in embedding_workers:
             try:
                 await w
@@ -524,6 +556,8 @@ async def lifespan(_api: FastAPI):
                 pass
         if workers:
             logger.info("Background tagging workers stopped count=%s", len(workers))
+        if post_tag_workers:
+            logger.info("Background post-tag workers stopped count=%s", len(post_tag_workers))
         if purge_worker is not None:
             try:
                 await purge_worker

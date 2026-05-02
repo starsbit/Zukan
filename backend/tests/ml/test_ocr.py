@@ -7,7 +7,10 @@ from unittest.mock import patch
 import pytest
 
 from backend.app.models.media import MediaType
-from backend.app.ml.ocr import TesseractOCR, _merge_ocr_chunks, _normalize_ocr_text
+from PIL import Image
+
+from backend.app.ml.ocr import TesseractOCR, _merge_ocr_chunks, _normalize_ocr_text, _prepare_ocr_variants
+from backend.app.config import settings
 
 
 def test_normalize_and_merge_ocr_chunks():
@@ -91,3 +94,26 @@ def test_ocr_load_success_and_failure_paths(monkeypatch):
     with patch("builtins.__import__", side_effect=import_fail):
         ocr.load()
     assert ocr._pytesseract is None
+
+
+def test_prepare_ocr_variants_downscales_and_uses_single_fast_pass_by_default(monkeypatch):
+    image = Image.new("RGB", (4000, 2000), color="white")
+
+    monkeypatch.setattr(settings, "ocr_max_image_dimension", 1000)
+    monkeypatch.setattr(settings, "ocr_autocontrast_variant_enabled", False)
+
+    variants = _prepare_ocr_variants(image)
+
+    assert len(variants) == 1
+    assert variants[0].size == (1000, 500)
+
+
+def test_prepare_ocr_variants_can_include_autocontrast(monkeypatch):
+    image = Image.new("RGB", (100, 50), color="white")
+
+    monkeypatch.setattr(settings, "ocr_max_image_dimension", 1000)
+    monkeypatch.setattr(settings, "ocr_autocontrast_variant_enabled", True)
+
+    variants = _prepare_ocr_variants(image)
+
+    assert len(variants) == 2

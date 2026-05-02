@@ -38,11 +38,7 @@ class TesseractOCR:
             return None
 
         with Image.open(image_path) as image:
-            grayscale = image.convert("L")
-            variants = [
-                grayscale,
-                ImageOps.autocontrast(grayscale),
-            ]
+            variants = _prepare_ocr_variants(image)
 
             best_text = ""
             for variant in variants:
@@ -103,6 +99,23 @@ def _merge_ocr_chunks(chunks: list[str]) -> str | None:
     if not merged:
         return None
     return "\n".join(merged)[: settings.ocr_max_chars]
+
+
+def _prepare_ocr_variants(image: Image.Image) -> list[Image.Image]:
+    grayscale = image.convert("L")
+    max_dimension = max(1, settings.ocr_max_image_dimension)
+    width, height = grayscale.size
+    if max(width, height) > max_dimension:
+        scale = max_dimension / max(width, height)
+        grayscale = grayscale.resize(
+            (max(1, round(width * scale)), max(1, round(height * scale))),
+            Image.Resampling.LANCZOS,
+        )
+
+    variants = [grayscale]
+    if settings.ocr_autocontrast_variant_enabled:
+        variants.append(ImageOps.autocontrast(grayscale))
+    return variants
 
 
 def create_ocr_backend() -> TesseractOCR:

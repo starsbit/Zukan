@@ -862,7 +862,7 @@ class MediaUploadService:
             batch.status = BatchStatus.done
         batch.finished_at = datetime.now(timezone.utc)
 
-        if batch.type == BatchType.upload and previous_status == BatchStatus.running:
+        if batch.type == BatchType.upload and previous_status == BatchStatus.running and batch.done_items >= 2:
             await self._auto_compute_recommendation_groups_for_batch(batch)
 
     async def _auto_compute_recommendation_groups_for_batch(self, batch: ImportBatch) -> None:

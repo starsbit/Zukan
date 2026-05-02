@@ -343,7 +343,7 @@ async def test_upload_service_marks_item_done_and_refreshes_batch(fake_db, stub_
     assert batch.done_items == 1
     assert batch.failed_items == 1
     assert batch.status == BatchStatus.partial_failed
-    auto_compute.assert_awaited_once_with(batch)
+    auto_compute.assert_not_awaited()
     fake_db.commit.assert_awaited_once()
 
 
