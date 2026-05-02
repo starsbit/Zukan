@@ -3,6 +3,7 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -23,8 +24,8 @@ from backend.app.models import collection as _collection_models  # noqa: F401
 from backend.app.models import embeddings as _embedding_models  # noqa: F401
 from backend.app.models import gacha as _gacha_models  # noqa: F401
 from backend.app.models import library_classification as _library_classification_models  # noqa: F401
-from backend.app.models.media import Media
-from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
+from backend.app.models.media import Media, TaggingStatus
+from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.models import trade as _trade_models  # noqa: F401
@@ -170,6 +171,18 @@ async def trash_purge_worker() -> None:
         await asyncio.sleep(interval_seconds)
 
 
+async def failed_tagging_retry_worker() -> None:
+    interval_seconds = max(60, settings.failed_tagging_retry_interval_seconds)
+    while True:
+        try:
+            retried = await _retry_failed_media_jobs(tag_queue)
+            if retried:
+                logger.info("Requeued %s failed media tagging jobs", retried)
+        except Exception:
+            logger.exception("Scheduled failed tagging retry run failed")
+        await asyncio.sleep(interval_seconds)
+
+
 async def _ensure_admin_user():
     async with AsyncSessionLocal() as db:
         has_admin_result = await db.execute(select(exists().where(User.is_admin.is_(True))))
@@ -253,6 +266,91 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
     return len(ordered_media_ids)
 
 
+async def _retry_failed_media_jobs(queue: asyncio.Queue) -> int:
+    async with AsyncSessionLocal() as db:
+        failed_media = (
+            (
+                await db.execute(
+                    select(Media)
+                    .where(
+                        Media.deleted_at.is_(None),
+                        Media.tagging_status == TaggingStatus.FAILED,
+                    )
+                    .order_by(
+                        Media.tagging_finished_at.asc().nullsfirst(),
+                        Media.uploaded_at.asc(),
+                        Media.id.asc(),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not failed_media:
+            return 0
+
+        media_ids = [media.id for media in failed_media]
+        failed_upload_items = (
+            (
+                await db.execute(
+                    select(ImportBatchItem)
+                    .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                    .where(
+                        ImportBatch.type == BatchType.upload,
+                        ImportBatchItem.media_id.in_(media_ids),
+                        ImportBatchItem.status == ItemStatus.failed,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        now = datetime.now(timezone.utc)
+        reset_counts_by_batch_id: dict[uuid.UUID, int] = {}
+
+        for media in failed_media:
+            media.tagging_status = TaggingStatus.PENDING
+            media.tagging_error = None
+            media.tagging_started_at = None
+            media.tagging_finished_at = None
+            media.retry_count = (media.retry_count or 0) + 1
+
+        for item in failed_upload_items:
+            item.status = ItemStatus.pending
+            item.step = ProcessingStep.tag
+            item.progress_percent = 0
+            item.error = None
+            reset_counts_by_batch_id[item.batch_id] = reset_counts_by_batch_id.get(item.batch_id, 0) + 1
+
+        if reset_counts_by_batch_id:
+            batches = (
+                (
+                    await db.execute(
+                        select(ImportBatch).where(ImportBatch.id.in_(list(reset_counts_by_batch_id)))
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for batch in batches:
+                reset_count = reset_counts_by_batch_id.get(batch.id, 0)
+                if reset_count <= 0:
+                    continue
+                batch.queued_items += reset_count
+                batch.failed_items = max(0, batch.failed_items - reset_count)
+                batch.status = BatchStatus.running
+                batch.finished_at = None
+                batch.last_heartbeat_at = now
+
+        await db.commit()
+
+    for media_id in media_ids:
+        await queue.put(media_id)
+
+    return len(media_ids)
+
+
 async def _recover_pending_embedding_backfill_jobs(queue: asyncio.Queue) -> int:
     async with AsyncSessionLocal() as db:
         pending_items = (
@@ -333,6 +431,7 @@ async def lifespan(_api: FastAPI):
     workers: list[asyncio.Task] = []
     embedding_workers: list[asyncio.Task] = []
     purge_worker: asyncio.Task | None = None
+    failed_retry_worker: asyncio.Task | None = None
     update_worker: asyncio.Task | None = None
     ml_worker: asyncio.Task | None = None
     ml_startup_state.reset()
@@ -358,6 +457,7 @@ async def lifespan(_api: FastAPI):
         workers = [asyncio.create_task(tagging_worker()) for _ in range(settings.tagging_worker_count)]
         embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
         purge_worker = asyncio.create_task(trash_purge_worker())
+        failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
         update_worker = asyncio.create_task(update_check_worker())
         logger.info("Background tagging workers started count=%s", settings.tagging_worker_count)
         logger.info("Background embedding backfill worker started count=1")
@@ -366,6 +466,7 @@ async def lifespan(_api: FastAPI):
         if recovered_embedding_count:
             logger.info("Recovered %s pending embedding backfill jobs after startup", recovered_embedding_count)
         logger.info("Background trash purge worker started")
+        logger.info("Background failed tagging retry worker started")
         logger.info("Application startup completed successfully; ML initialization continues in background")
         logger.info("Application startup duration_seconds=%.2f", time.perf_counter() - startup_started_at)
 
@@ -381,6 +482,8 @@ async def lifespan(_api: FastAPI):
             w.cancel()
         if purge_worker is not None:
             purge_worker.cancel()
+        if failed_retry_worker is not None:
+            failed_retry_worker.cancel()
         if update_worker is not None:
             update_worker.cancel()
         if ml_worker is not None:
@@ -403,6 +506,11 @@ async def lifespan(_api: FastAPI):
                 await purge_worker
             except asyncio.CancelledError:
                 logger.info("Background trash purge worker stopped")
+        if failed_retry_worker is not None:
+            try:
+                await failed_retry_worker
+            except asyncio.CancelledError:
+                logger.info("Background failed tagging retry worker stopped")
         if update_worker is not None:
             try:
                 await update_worker

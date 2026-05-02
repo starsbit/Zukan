@@ -47,7 +47,7 @@ def test_sample_media_frames_video_with_mocked_ffmpeg(tmp_path):
     vid = tmp_path / "a.mp4"
     vid.write_text("x")
 
-    def fake_run(cmd, capture_output, text):
+    def fake_run(cmd, capture_output, text, timeout):
         out = Path(cmd[-1])
         out.write_text("frame")
         return SimpleNamespace(returncode=0)

@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.config import settings
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION, EmbeddingBackend, embedding_backend
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.media import Media, TaggingStatus
@@ -27,6 +28,10 @@ _RETRYABLE_DB_SQLSTATES = {
     "40001",  # serialization_failure
     "55P03",  # lock_not_available
 }
+
+
+class EmbeddingLockUnavailableError(RuntimeError):
+    pass
 
 
 class MediaEmbeddingService:
@@ -91,35 +96,70 @@ class MediaEmbeddingService:
         if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
             return existing
 
-        await self._acquire_uploader_embedding_lock(uploader_id)
-
-        existing = await self._repo.get_by_media_id(media_id)
-        if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
-            return existing
-
-        embedding = await self._backend.compute(filepath, media_type)
+        embedding = await self._compute_embedding(filepath, media_type)
         if not embedding:
             logger.warning("Embedding compute returned empty media_id=%s", media_id)
             return existing
 
-        await self._repo.upsert(
-            media_id=media_id,
-            uploader_id=uploader_id,
-            embedding=embedding,
-            model_version=EMBEDDING_MODEL_VERSION,
-        )
-        await self._db.flush()
-        return await self._repo.get_by_media_id(media_id)
+        lock_acquired = await self._acquire_uploader_embedding_lock(uploader_id)
+        if not lock_acquired:
+            raise EmbeddingLockUnavailableError(f"Embedding lock is busy for uploader {uploader_id}")
 
-    async def _acquire_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> None:
+        try:
+            existing = await self._repo.get_by_media_id(media_id)
+            if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
+                return existing
+
+            await self._repo.upsert(
+                media_id=media_id,
+                uploader_id=uploader_id,
+                embedding=embedding,
+                model_version=EMBEDDING_MODEL_VERSION,
+            )
+            await self._db.flush()
+            return await self._repo.get_by_media_id(media_id)
+        except Exception:
+            await self._db.rollback()
+            raise
+        finally:
+            await self._release_uploader_embedding_lock(uploader_id)
+
+    async def _compute_embedding(self, filepath: str, media_type: Any) -> list[float]:
+        timeout_seconds = settings.embedding_compute_timeout_seconds
+        computation = self._backend.compute(filepath, media_type)
+        if timeout_seconds and timeout_seconds > 0:
+            return await asyncio.wait_for(computation, timeout=timeout_seconds)
+        return await computation
+
+    async def _acquire_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> bool:
+        bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
+        dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
+        if dialect_name != "postgresql":
+            return True
+        result = await self._db.execute(
+            text("SELECT pg_try_advisory_lock(:lock_key)"),
+            {"lock_key": _signed_lock_key(uploader_id)},
+        )
+        scalar_one = getattr(result, "scalar_one", None)
+        if callable(scalar_one):
+            return bool(scalar_one())
+        scalar = getattr(result, "scalar", None)
+        if callable(scalar):
+            return bool(scalar())
+        return True
+
+    async def _release_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> None:
         bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
         dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
         if dialect_name != "postgresql":
             return
-        await self._db.execute(
-            text("SELECT pg_advisory_xact_lock(:lock_key)"),
-            {"lock_key": _signed_lock_key(uploader_id)},
-        )
+        try:
+            await self._db.execute(
+                text("SELECT pg_advisory_unlock(:lock_key)"),
+                {"lock_key": _signed_lock_key(uploader_id)},
+            )
+        except Exception:
+            logger.exception("Failed to release embedding advisory lock uploader_id=%s", uploader_id)
 
     async def backfill_user_embeddings(
         self,
@@ -161,6 +201,8 @@ def _signed_lock_key(value: uuid.UUID) -> int:
 
 
 def _is_retryable_db_error(exc: Exception) -> bool:
+    if isinstance(exc, EmbeddingLockUnavailableError):
+        return True
     seen: set[int] = set()
     current: BaseException | None = exc
     while current is not None and id(current) not in seen:

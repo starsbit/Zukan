@@ -69,7 +69,7 @@ def test_generate_poster_and_thumbnail_video_mocked_ffmpeg(tmp_path):
     old = config_module.settings.storage_dir
     config_module.settings.storage_dir = tmp_path
 
-    def fake_run(cmd, capture_output, text):
+    def fake_run(cmd, capture_output, text, timeout):
         Image.new("RGB", (16, 16), color="white").save(Path(cmd[-1]), "PNG")
         return SimpleNamespace(returncode=0)
 

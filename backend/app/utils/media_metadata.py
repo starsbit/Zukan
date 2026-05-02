@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PIL import Image as PILImage, ImageSequence
 
+from backend.app.config import settings
 from backend.app.models.media import MediaType
 from backend.app.utils.storage import ffmpeg_available
 
@@ -115,20 +116,24 @@ def _extract_still_media_timestamp_from_pillow(img: PILImage.Image) -> datetime 
 def probe_media(source_path: Path) -> dict:
     if not ffmpeg_available():
         return {}
-    result = subprocess.run(
-        [
-            "ffprobe",
-            "-v",
-            "error",
-            "-show_entries",
-            "stream=codec_type,width,height,nb_frames,duration:format=duration,tags",
-            "-print_format",
-            "json",
-            str(source_path),
-        ],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=codec_type,width,height,nb_frames,duration:format=duration,tags",
+                "-print_format",
+                "json",
+                str(source_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=settings.ffmpeg_timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return {}
     if result.returncode != 0:
         return {}
     try:

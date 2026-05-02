@@ -78,9 +78,13 @@ def _extract_video_poster(source_path: Path, dest_path: Path) -> Path | None:
     duration = _safe_float(payload.get("format", {}).get("duration")) or 0.0
     timestamp = duration * 0.5 if duration > 0 else 0.0
     dest_path.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(dest_path)],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(dest_path)],
+            capture_output=True,
+            text=True,
+            timeout=settings.ffmpeg_timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return None
     return dest_path if result.returncode == 0 and dest_path.exists() else None

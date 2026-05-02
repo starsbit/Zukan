@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PIL import Image as PILImage
 
+from backend.app.config import settings
 from backend.app.models.media import MediaType
 from backend.app.utils.media_metadata import _safe_float, probe_media
 from backend.app.utils.storage import ffmpeg_available
@@ -55,11 +56,15 @@ def _sample_video_frames(source_path: Path, sample_count: int) -> list[Path]:
     frames: list[Path] = []
     for idx, timestamp in enumerate(timestamps):
         frame_path = source_path.parent / f"{source_path.stem}_frame_{idx}.png"
-        result = subprocess.run(
-            ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(frame_path)],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(frame_path)],
+                capture_output=True,
+                text=True,
+                timeout=settings.ffmpeg_timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            continue
         if result.returncode == 0 and frame_path.exists():
             frames.append(frame_path)
     return frames
