@@ -51,6 +51,31 @@ async def test_set_media_tag_links_insert_update_delete(db_session, make_user, m
 
 
 @pytest.mark.asyncio
+async def test_set_media_tag_links_reuses_existing_owner_tag(db_session, make_user, make_media):
+    user = await make_user()
+    media = await make_media(uploader_id=user.id)
+    existing = Tag(owner_user_id=user.id, name="open_mouth", category=0, media_count=0)
+    db_session.add(existing)
+    await db_session.flush()
+
+    repo = TagRepository(db_session)
+    await repo.set_media_tag_links(media, [("open_mouth", 4, 0.92)])
+    await db_session.flush()
+
+    tags = (
+        await db_session.execute(
+            select(Tag).where(Tag.owner_user_id == user.id, Tag.name == "open_mouth")
+        )
+    ).scalars().all()
+    media_tags = await repo.get_media_tags_with_tag(media.id)
+
+    assert len(tags) == 1
+    assert tags[0].id == existing.id
+    assert tags[0].category == 4
+    assert [(item.tag_id, item.confidence) for item in media_tags] == [(existing.id, 0.92)]
+
+
+@pytest.mark.asyncio
 async def test_list_accessible_counts_use_own_and_public_media_only(db_session, make_user, make_media):
     viewer = await make_user()
     public_owner = await make_user()

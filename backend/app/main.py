@@ -146,15 +146,22 @@ async def tagging_worker():
                 logger.info("Tagging worker completed media_id=%s", media_id)
 
         except Exception as exc:
-            async with AsyncSessionLocal() as err_db:
-                query = MediaQueryService(err_db)
-                processing = MediaProcessingService(err_db, query)
-                upload_service = MediaUploadService(err_db, processing, query)
-                await processing.mark_tagging_failure(media_id, exc)
-                await upload_service.mark_upload_batch_item_failed(media_id, str(exc))
+            await _mark_tagging_job_failed(media_id, exc)
             logger.exception("Tagging failed for media_id=%s", media_id)
         finally:
             tag_queue.task_done()
+
+
+async def _mark_tagging_job_failed(media_id: uuid.UUID, exc: Exception) -> None:
+    try:
+        async with AsyncSessionLocal() as err_db:
+            query = MediaQueryService(err_db)
+            processing = MediaProcessingService(err_db, query)
+            upload_service = MediaUploadService(err_db, processing, query)
+            await processing.mark_tagging_failure(media_id, exc)
+            await upload_service.mark_upload_batch_item_failed(media_id, str(exc))
+    except Exception:
+        logger.exception("Failed to record tagging failure media_id=%s", media_id)
 
 
 async def post_tag_worker():

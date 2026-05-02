@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.app.main import _recover_pending_media_jobs, _retry_failed_media_jobs
+from backend.app.main import _mark_tagging_job_failed, _recover_pending_media_jobs, _retry_failed_media_jobs
 from backend.app.models.processing import BatchStatus, ItemStatus, ProcessingStep
 
 
@@ -143,3 +143,19 @@ async def test_retry_failed_media_jobs_requeues_failed_media_and_resets_upload_i
     assert batch.last_heartbeat_at is not None
     session.commit.assert_awaited_once()
     assert [call.args[0] for call in queue.put.await_args_list] == [media_1.id, media_2.id]
+
+
+@pytest.mark.asyncio
+async def test_mark_tagging_job_failed_swallows_failure_bookkeeping_errors():
+    with (
+        patch("backend.app.main.MediaProcessingService") as processing_cls,
+        patch("backend.app.main.MediaUploadService") as upload_cls,
+        patch("backend.app.main.AsyncSessionLocal", return_value=_SessionContext(SimpleNamespace())),
+    ):
+        processing_cls.return_value.mark_tagging_failure = AsyncMock()
+        upload_cls.return_value.mark_upload_batch_item_failed = AsyncMock(side_effect=RuntimeError("batch update failed"))
+
+        await _mark_tagging_job_failed(uuid.uuid4(), RuntimeError("tagging failed"))
+
+    processing_cls.return_value.mark_tagging_failure.assert_awaited_once()
+    upload_cls.return_value.mark_upload_batch_item_failed.assert_awaited_once()

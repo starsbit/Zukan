@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.app.models.tags import MediaTag, Tag
+from backend.app.models.tags import MediaTag
 from backend.app.repositories.tags import TagRepository
 
 
@@ -21,25 +21,30 @@ class RecordingDb:
         self.added.append(obj)
 
 
+class _Rows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
 @pytest.mark.asyncio
-async def test_set_media_tag_links_retries_tag_lookup_after_insert_miss():
+async def test_set_media_tag_links_uses_upserted_tag_row():
     owner_id = uuid.uuid4()
     media_id = uuid.uuid4()
     media = SimpleNamespace(id=media_id, owner_id=owner_id, uploader_id=owner_id)
-    tag = Tag(owner_user_id=owner_id, name="incoming_gift", category=0, media_count=0)
-    tag.id = 123
+    tag_row = SimpleNamespace(id=123, name="incoming_gift", category=0)
 
     db = RecordingDb()
+    db.execute.return_value = _Rows([tag_row])
     repo = TagRepository(db)  # type: ignore[arg-type]
     repo.get_media_tags_with_tag = AsyncMock(return_value=[])  # type: ignore[method-assign]
-    repo.get_by_names = AsyncMock(  # type: ignore[method-assign]
-        side_effect=[{}, {"incoming_gift": tag}]
-    )
     repo.recount_tag_ids = AsyncMock()  # type: ignore[method-assign]
 
     await repo.set_media_tag_links(media, [("incoming_gift", 0, 0.91)])
 
-    assert db.execute.await_count == 2
+    db.execute.assert_awaited_once()
     assert len(db.added) == 1
     media_tag = db.added[0]
     assert isinstance(media_tag, MediaTag)

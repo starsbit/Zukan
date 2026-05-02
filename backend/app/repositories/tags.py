@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -179,61 +179,56 @@ class TagRepository:
             key=lambda item: item[0],
         )
         missing_names = [name for name, _ in missing_payloads]
-        existing_tags: dict[str, Tag] = {}
+        existing_tag_rows: dict[str, tuple[int, int]] = {}
         if missing_names:
-            await self.db.execute(
-                insert(Tag)
-                .values([
-                    {
-                        "owner_user_id": owner_user_id,
-                        "name": name,
-                        "category": category,
-                        "media_count": 0,
-                    }
-                    for name, category in missing_payloads
-                ])
-                .on_conflict_do_nothing(
-                    constraint="uq_tags_owner_user_id_name",
-                )
-            )
-            await self.db.flush()
-            existing_tags = await self.get_by_names(owner_user_id, missing_names)
-            unresolved_names = [name for name in missing_names if name not in existing_tags]
-            if unresolved_names:
-                missing_by_name = dict(missing_payloads)
-                unresolved_payloads = [
-                    {
-                        "owner_user_id": owner_user_id,
-                        "name": name,
-                        "category": missing_by_name[name],
-                        "media_count": 0,
-                    }
-                    for name in unresolved_names
-                ]
+            tag_insert = insert(Tag).values([
+                {
+                    "owner_user_id": owner_user_id,
+                    "name": name,
+                    "category": category,
+                    "media_count": 0,
+                }
+                for name, category in missing_payloads
+            ])
+            tag_rows = (
                 await self.db.execute(
-                    insert(Tag)
-                    .values(unresolved_payloads)
-                    .on_conflict_do_nothing(
+                    tag_insert
+                    .on_conflict_do_update(
                         constraint="uq_tags_owner_user_id_name",
+                        set_={
+                            "category": case(
+                                (
+                                    and_(
+                                        Tag.category == 0,
+                                        tag_insert.excluded.category != 0,
+                                    ),
+                                    tag_insert.excluded.category,
+                                ),
+                                else_=Tag.category,
+                            )
+                        },
                     )
+                    .returning(Tag.id, Tag.name, Tag.category)
                 )
-                await self.db.flush()
-                existing_tags.update(await self.get_by_names(owner_user_id, unresolved_names))
+            ).all()
+            existing_tag_rows = {
+                row.name: (int(row.id), int(row.category))
+                for row in tag_rows
+            }
 
         for name, category, confidence in desired_payloads:
             if name in existing_by_name:
                 continue
-            tag = existing_tags.get(name)
-            if tag is None:
+            tag_row = existing_tag_rows.get(name)
+            if tag_row is None:
                 raise RuntimeError(
                     f"Failed to create or load tag {name!r} for owner {owner_user_id}"
                 )
-            if tag.category == 0 and category != 0:
-                tag.category = category
-            touched_tag_ids.add(tag.id)
+            tag_id, _tag_category = tag_row
+            touched_tag_ids.add(tag_id)
             self.db.add(MediaTag(
                 media_id=media.id,
-                tag_id=tag.id,
+                tag_id=tag_id,
                 confidence=confidence,
                 source=source,
                 model_version=model_version,
