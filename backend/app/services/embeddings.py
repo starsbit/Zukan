@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
+from typing import Any
 
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,19 @@ from backend.app.models.media import Media, TaggingStatus
 from backend.app.repositories.embeddings import MediaEmbeddingRepository
 
 logger = logging.getLogger(__name__)
+
+_EMBEDDING_DB_RETRY_ATTEMPTS = 3
+_EMBEDDING_DB_RETRY_BACKOFF_SECONDS = 0.2
+_RETRYABLE_DB_ERROR_NAMES = {
+    "DeadlockDetectedError",
+    "LockNotAvailableError",
+    "SerializationError",
+}
+_RETRYABLE_DB_SQLSTATES = {
+    "40P01",  # deadlock_detected
+    "40001",  # serialization_failure
+    "55P03",  # lock_not_available
+}
 
 
 class MediaEmbeddingService:
@@ -33,29 +48,68 @@ class MediaEmbeddingService:
         if media is None or media.deleted_at is not None or media.uploader_id is None:
             return None
 
-        existing = await self._repo.get_by_media_id(media.id)
+        media_id = media.id
+        uploader_id = media.uploader_id
+        filepath = media.filepath
+        media_type = media.media_type
+
+        for attempt in range(1, _EMBEDDING_DB_RETRY_ATTEMPTS + 1):
+            try:
+                return await self._ensure_for_media_values(
+                    media_id=media_id,
+                    uploader_id=uploader_id,
+                    filepath=filepath,
+                    media_type=media_type,
+                    force=force,
+                )
+            except Exception as exc:
+                if not _is_retryable_db_error(exc) or attempt >= _EMBEDDING_DB_RETRY_ATTEMPTS:
+                    raise
+                await self._db.rollback()
+                logger.warning(
+                    "Embedding write retrying after transient database error "
+                    "media_id=%s attempt=%s max_attempts=%s error_type=%s error=%s",
+                    media_id,
+                    attempt,
+                    _EMBEDDING_DB_RETRY_ATTEMPTS,
+                    exc.__class__.__name__,
+                    exc,
+                )
+                await asyncio.sleep(_EMBEDDING_DB_RETRY_BACKOFF_SECONDS * attempt)
+        return None
+
+    async def _ensure_for_media_values(
+        self,
+        *,
+        media_id: uuid.UUID,
+        uploader_id: uuid.UUID,
+        filepath: str,
+        media_type: Any,
+        force: bool,
+    ) -> MediaEmbedding | None:
+        existing = await self._repo.get_by_media_id(media_id)
         if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
             return existing
 
-        await self._acquire_uploader_embedding_lock(media.uploader_id)
+        await self._acquire_uploader_embedding_lock(uploader_id)
 
-        existing = await self._repo.get_by_media_id(media.id)
+        existing = await self._repo.get_by_media_id(media_id)
         if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
             return existing
 
-        embedding = await self._backend.compute(media.filepath, media.media_type)
+        embedding = await self._backend.compute(filepath, media_type)
         if not embedding:
-            logger.warning("Embedding compute returned empty media_id=%s", getattr(media, "id", None))
+            logger.warning("Embedding compute returned empty media_id=%s", media_id)
             return existing
 
         await self._repo.upsert(
-            media_id=media.id,
-            uploader_id=media.uploader_id,
+            media_id=media_id,
+            uploader_id=uploader_id,
             embedding=embedding,
             model_version=EMBEDDING_MODEL_VERSION,
         )
         await self._db.flush()
-        return await self._repo.get_by_media_id(media.id)
+        return await self._repo.get_by_media_id(media_id)
 
     async def _acquire_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> None:
         bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
@@ -104,3 +158,24 @@ class MediaEmbeddingService:
 def _signed_lock_key(value: uuid.UUID) -> int:
     raw = int.from_bytes(value.bytes[:8], byteorder="big", signed=False)
     return raw - (1 << 64) if raw >= (1 << 63) else raw
+
+
+def _is_retryable_db_error(exc: Exception) -> bool:
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if current.__class__.__name__ in _RETRYABLE_DB_ERROR_NAMES:
+            return True
+        for attr in ("sqlstate", "pgcode", "code"):
+            if getattr(current, attr, None) in _RETRYABLE_DB_SQLSTATES:
+                return True
+        text_value = str(current)
+        if any(name in text_value for name in _RETRYABLE_DB_ERROR_NAMES):
+            return True
+        current = (
+            getattr(current, "orig", None)
+            or getattr(current, "__cause__", None)
+            or getattr(current, "__context__", None)
+        )
+    return False

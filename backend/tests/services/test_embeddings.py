@@ -10,10 +10,15 @@ from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
 from backend.app.services.embeddings import MediaEmbeddingService, _signed_lock_key
 
 
+class DeadlockDetectedError(Exception):
+    pass
+
+
 class PostgresLikeDb:
     def __init__(self) -> None:
         self.execute = AsyncMock()
         self.flush = AsyncMock()
+        self.rollback = AsyncMock()
 
     def get_bind(self):
         return SimpleNamespace(dialect=SimpleNamespace(name="postgresql"))
@@ -45,3 +50,33 @@ async def test_embedding_service_serializes_writes_and_rechecks_after_lock():
     assert params == {"lock_key": _signed_lock_key(uploader_id)}
     backend.compute.assert_not_awaited()
     service._repo.upsert.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_embedding_service_retries_transient_deadlock():
+    uploader_id = uuid.uuid4()
+    media = SimpleNamespace(
+        id=uuid.uuid4(),
+        uploader_id=uploader_id,
+        deleted_at=None,
+        filepath="/tmp/image.webp",
+        media_type="image",
+    )
+    created = SimpleNamespace(model_version=EMBEDDING_MODEL_VERSION)
+    backend = SimpleNamespace(compute=AsyncMock(return_value=[0.0] * 512))
+    db = PostgresLikeDb()
+
+    service = MediaEmbeddingService(db, backend=backend)  # type: ignore[arg-type]
+    service._repo.get_by_media_id = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[None, None, None, None, created]
+    )
+    service._repo.upsert = AsyncMock(  # type: ignore[method-assign]
+        side_effect=[DeadlockDetectedError("deadlock detected"), None]
+    )
+
+    result = await service.ensure_for_media(media)
+
+    assert result is created
+    assert db.rollback.await_count == 1
+    assert backend.compute.await_count == 2
+    assert service._repo.upsert.await_count == 2
