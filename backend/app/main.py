@@ -119,16 +119,33 @@ async def tagging_worker():
                 result = await db.execute(select(Media).where(Media.id == media_id))
                 media_item = result.scalar_one_or_none()
                 if media_item is None:
+                    logger.warning("Tagging worker skipped missing media media_id=%s", media_id)
                     continue
+                logger.info(
+                    "Tagging worker picked media_id=%s status=%s queue_depth=%s",
+                    media_id,
+                    getattr(media_item.tagging_status, "value", media_item.tagging_status),
+                    tag_queue.qsize(),
+                )
                 await ml_startup_state.wait_until_ready()
                 query = MediaQueryService(db)
                 processing = MediaProcessingService(db, query)
                 upload_service = MediaUploadService(db, processing, query)
                 if media_item.tagging_status in ("pending", "processing"):
+                    logger.info("Tagging worker running tag prediction media_id=%s", media_id)
                     await TagService(db, tagger).tag_media(media_id)
+                else:
+                    logger.info(
+                        "Tagging worker skipped tag prediction media_id=%s status=%s",
+                        media_id,
+                        getattr(media_item.tagging_status, "value", media_item.tagging_status),
+                    )
+                logger.info("Tagging worker running OCR media_id=%s", media_id)
                 await processing.run_ocr_for_media(media_id, ocr_backend)
+                logger.info("Tagging worker refreshing embedding media_id=%s", media_id)
                 await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
                 await upload_service.mark_upload_batch_item_done(media_id)
+                logger.info("Tagging worker completed media_id=%s", media_id)
 
         except Exception as exc:
             async with AsyncSessionLocal() as err_db:
@@ -175,6 +192,7 @@ async def failed_tagging_retry_worker() -> None:
     interval_seconds = max(60, settings.failed_tagging_retry_interval_seconds)
     while True:
         try:
+            await ml_startup_state.wait_until_ready()
             retried = await _retry_failed_media_jobs(tag_queue)
             if retried:
                 logger.info("Requeued %s failed media tagging jobs", retried)
@@ -208,6 +226,7 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
                         Media.deleted_at.is_(None),
                         Media.tagging_status.in_(["pending", "processing"]),
                     )
+                    .order_by(Media.uploaded_at.asc(), Media.id.asc())
                 )
             )
             .scalars()
@@ -218,11 +237,15 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
                 await db.execute(
                     select(ImportBatchItem)
                     .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+                    .join(Media, Media.id == ImportBatchItem.media_id)
                     .where(
                         ImportBatch.type == BatchType.upload,
                         ImportBatchItem.media_id.is_not(None),
                         ImportBatchItem.status.in_([ItemStatus.pending, ItemStatus.processing]),
+                        Media.deleted_at.is_(None),
+                        Media.tagging_status.in_(["pending", "processing"]),
                     )
+                    .order_by(ImportBatch.created_at.asc(), ImportBatchItem.updated_at.asc())
                 )
             )
             .scalars()
@@ -246,16 +269,16 @@ async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
     ordered_media_ids: list[uuid.UUID] = []
     seen_media_ids: set[uuid.UUID] = set()
 
-    for batch_item in pending_upload_items:
-        media_id = batch_item.media_id
-        if media_id is None or media_id in seen_media_ids:
+    for media in pending_media:
+        media_id = media.id
+        if media_id in seen_media_ids:
             continue
         seen_media_ids.add(media_id)
         ordered_media_ids.append(media_id)
 
-    for media in pending_media:
-        media_id = media.id
-        if media_id in seen_media_ids:
+    for batch_item in pending_upload_items:
+        media_id = batch_item.media_id
+        if media_id is None or media_id in seen_media_ids:
             continue
         seen_media_ids.add(media_id)
         ordered_media_ids.append(media_id)

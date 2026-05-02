@@ -823,7 +823,7 @@ async def test_library_enrichment_does_not_override_existing_entities(fake_db, u
 
 
 @pytest.mark.asyncio
-async def test_tag_media_runs_library_enrichment_only_when_enabled(fake_db, media):
+async def test_tag_media_does_not_block_on_library_enrichment(fake_db, media):
     tagger = SimpleNamespace(
         predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)),
     )
@@ -853,11 +853,7 @@ async def test_tag_media_runs_library_enrichment_only_when_enabled(fake_db, medi
         await service.tag_media(media.id)
 
     store_fn.assert_awaited_once()
-    enrichment.enrich_media.assert_awaited_once_with(
-        media.id,
-        user_id=media.uploader_id,
-        target_media=media,
-    )
+    enrichment.enrich_media.assert_not_awaited()
 
 
 @pytest.mark.asyncio

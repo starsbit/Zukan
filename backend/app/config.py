@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     ocr_enabled: bool = True
     ocr_languages: str = "eng"
     ocr_tesseract_config: str = "--psm 6"
+    ocr_timeout_seconds: float = 60.0
     ocr_max_chars: int = 4000
     ocr_sample_frames: int = 5
     ffmpeg_timeout_seconds: float = 30.0

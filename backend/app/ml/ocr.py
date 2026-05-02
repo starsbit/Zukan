@@ -50,6 +50,7 @@ class TesseractOCR:
                     variant,
                     lang=settings.ocr_languages,
                     config=settings.ocr_tesseract_config,
+                    timeout=settings.ocr_timeout_seconds,
                 )
                 cleaned = _normalize_ocr_text(raw_text)
                 if cleaned and len(cleaned) > len(best_text):

@@ -66,7 +66,7 @@ async def test_recover_pending_media_jobs_requeues_unfinished_work():
     assert batch_item_1.status == ItemStatus.pending
     session.commit.assert_awaited_once()
     enqueued_ids = [call.args[0] for call in queue.put.await_args_list]
-    assert enqueued_ids == [media_1.id, batch_item_2.media_id, media_2.id]
+    assert enqueued_ids == [media_1.id, media_2.id, batch_item_2.media_id]
 
 
 class _RetrySession:

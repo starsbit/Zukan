@@ -386,7 +386,7 @@ async def test_tag_media_full_flow_sets_processing_and_stores(fake_db, media):
 
 
 @pytest.mark.asyncio
-async def test_tag_media_passes_target_media_to_library_enrichment(fake_db, media):
+async def test_tag_media_does_not_run_library_enrichment_inline(fake_db, media):
     tagger = SimpleNamespace(predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)))
     enrichment = SimpleNamespace(enrich_media=AsyncMock())
     service = TagService(fake_db, tagger=tagger, library_enrichment=enrichment)
@@ -414,8 +414,4 @@ async def test_tag_media_passes_target_media_to_library_enrichment(fake_db, medi
         await service.tag_media(media.id)
 
     store_fn.assert_awaited_once()
-    enrichment.enrich_media.assert_awaited_once_with(
-        media.id,
-        user_id=media.uploader_id,
-        target_media=media,
-    )
+    enrichment.enrich_media.assert_not_awaited()
