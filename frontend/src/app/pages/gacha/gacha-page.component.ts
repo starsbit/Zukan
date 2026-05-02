@@ -26,8 +26,6 @@ import {
 } from '../../models/gacha';
 import { MediaEntityType } from '../../models/relations';
 import { TradeOfferItemRead, TradeOfferRead, TradeSide, TradeStatus } from '../../models/trade';
-import { MediaService } from '../../services/media.service';
-import { MediaType } from '../../models/media';
 import { UserStore } from '../../services/user.store';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { CollectionClientService } from '../../services/web/collection-client.service';
@@ -47,8 +45,8 @@ interface PullResultCard extends GachaPullItemRead {
   thumbnail_url: string | null;
 }
 
-const SINGLE_PULL_COST = 1;
-const TEN_PULL_COST = 9;
+const SINGLE_PULL_COST = 120;
+const TEN_PULL_COST = 1200;
 const GACHA_TABS: readonly GachaTab[] = ['pull', 'collection', 'collectors'];
 const RARITY_ORDER = [RarityTier.N, RarityTier.R, RarityTier.SR, RarityTier.SSR, RarityTier.UR];
 const RARITY_RANK = new Map(RARITY_ORDER.map((tier, index) => [tier, index]));
@@ -88,7 +86,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   private readonly gachaClient = inject(GachaClientService);
   private readonly collectionClient = inject(CollectionClientService);
   private readonly tradesClient = inject(TradesClientService);
-  private readonly mediaService = inject(MediaService);
   private readonly userStore = inject(UserStore);
   private readonly confirmDialog = inject(ConfirmDialogService);
   private readonly dialog = inject(MatDialog);
@@ -157,7 +154,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
 
   readonly balanceValue = computed(() => this.balance()?.balance ?? this.stats()?.currency_balance ?? 0);
   readonly dailyClaimAvailable = computed(() => this.balance()?.daily_claim_available ?? this.stats()?.daily_claim_available ?? false);
-  readonly dailyClaimAmount = computed(() => this.balance()?.daily_claim_amount ?? 10);
+  readonly dailyClaimAmount = computed(() => this.balance()?.daily_claim_amount ?? 6000);
   readonly nextDailyClaimAt = computed(() => this.balance()?.next_daily_claim_at ?? this.stats()?.next_daily_claim_at ?? null);
   readonly hideNsfw = computed(() => !this.userStore.currentUser()?.show_nsfw);
   readonly hideSensitive = computed(() => this.userStore.currentUser()?.show_sensitive === false);
@@ -259,7 +256,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       this.collectionTotal.set(response.total);
       this.collection.set(this.toCollectionCards(response.items));
       this.loadingCollection.set(false);
-      this.loadCollectionPreviews(response.items);
       this.tryOpenPendingInspector();
     });
   }
@@ -311,7 +307,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     ).subscribe((response) => {
       this.viewedCollection.set(this.toCollectionCards(response.items));
       this.loadingViewedCollection.set(false);
-      this.loadViewedCollectionPreviews(response.items);
       this.tryOpenPendingInspector();
     });
   }
@@ -330,7 +325,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       const tradeableItems = response.items.filter((item) => this.isTradeableItem(item));
       this.tradeOwnCollection.set(this.toCollectionCards(tradeableItems));
       this.loadingTradeOwnCollection.set(false);
-      this.loadTradeOwnCollectionPreviews(tradeableItems);
       this.tryOpenPendingInspector();
     });
   }
@@ -391,7 +385,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       this.applyPullBalance(pull);
       this.activePullMode.set(mode);
       this.pullResults.set(this.toResultCards(pull.items));
-      this.loadPullThumbnails(pull.items);
       this.tryOpenPendingInspector();
       this.runAnimation();
       this.loadOverview();
@@ -1036,72 +1029,6 @@ export class GachaPageComponent implements OnInit, OnDestroy {
       }
       return next;
     });
-  }
-
-  private loadPullThumbnails(items: GachaPullItemRead[]): void {
-    for (const item of items) {
-      this.mediaService.getThumbnailUrl(item.media_id).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError(() => of(null)),
-      ).subscribe((url) => {
-        if (!url) return;
-        this.pullResults.update((current) => current.map((card) => (
-          card.id === item.id ? { ...card, thumbnail_url: url } : card
-        )));
-      });
-    }
-  }
-
-  private loadCollectionPreviews(items: CollectionItemRead[]): void {
-    for (const item of items) {
-      this.collectionPreviewUrl(item).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError(() => of(null)),
-      ).subscribe((url) => {
-        if (!url) return;
-        this.collection.update((current) => current.map((card) => (
-          card.id === item.id ? { ...card, thumbnail_url: url } : card
-        )));
-      });
-    }
-  }
-
-  private loadViewedCollectionPreviews(items: CollectionItemRead[]): void {
-    for (const item of items) {
-      this.collectionPreviewUrl(item).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError(() => of(null)),
-      ).subscribe((url) => {
-        if (!url) return;
-        this.viewedCollection.update((current) => current.map((card) => (
-          card.id === item.id ? { ...card, thumbnail_url: url } : card
-        )));
-      });
-    }
-  }
-
-  private loadTradeOwnCollectionPreviews(items: CollectionItemRead[]): void {
-    for (const item of items) {
-      this.collectionPreviewUrl(item).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError(() => of(null)),
-      ).subscribe((url) => {
-        if (!url) return;
-        this.tradeOwnCollection.update((current) => current.map((card) => (
-          card.id === item.id ? { ...card, thumbnail_url: url } : card
-        )));
-      });
-    }
-  }
-
-  private collectionPreviewUrl(item: CollectionItemRead) {
-    if (item.media?.media_type === MediaType.VIDEO) {
-      return this.mediaService.getPosterUrl(item.media_id);
-    }
-    if (item.media?.media_type === MediaType.IMAGE || item.media?.media_type === MediaType.GIF) {
-      return this.mediaService.getFileUrl(item.media_id);
-    }
-    return this.mediaService.getThumbnailUrl(item.media_id);
   }
 
   private highestTier(items: Pick<GachaPullItemRead, 'rarity_tier'>[]): RarityTier | null {

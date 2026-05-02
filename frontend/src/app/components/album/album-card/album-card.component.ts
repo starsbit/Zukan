@@ -1,11 +1,11 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, input, output, signal } from '@angular/core';
-import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
-import { switchMap, tap } from 'rxjs';
+import { LazyViewportDirective } from '../../../directives/lazy-viewport.directive';
 import { AlbumAccessRole, AlbumRead } from '../../../models/albums';
 import { MediaService } from '../../../services/media.service';
 import { AlbumsClientService } from '../../../services/web/albums-client.service';
@@ -17,7 +17,7 @@ import {
 
 @Component({
   selector: 'zukan-album-card',
-  imports: [MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, RouterLink],
+  imports: [LazyViewportDirective, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, RouterLink],
   templateUrl: './album-card.component.html',
   styleUrl: './album-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,6 +35,8 @@ export class AlbumCardComponent {
   private readonly destroyRef = inject(DestroyRef);
   private readonly mediaService = inject(MediaService);
   private readonly albumsClient = inject(AlbumsClientService);
+  private lastAlbumId: string | null = null;
+  private hasRequestedPreviews = false;
 
   readonly previewUrls = signal<string[]>([]);
   readonly visiblePreviewUrls = computed(() => this.previewUrls().slice(0, 4));
@@ -55,16 +57,20 @@ export class AlbumCardComponent {
   readonly hasExplicitCover = computed(() => hasExplicitAlbumCover(this.album()));
 
   constructor() {
-    toObservable(this.album).pipe(
-      tap(() => this.previewUrls.set([])),
-      switchMap((album) => resolveAlbumPreviewUrls(album, {
-        albumsClient: this.albumsClient,
-        mediaService: this.mediaService,
-      })),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((urls) => {
-      this.previewUrls.set(urls);
+    effect(() => {
+      const album = this.album();
+      if (album.id === this.lastAlbumId) {
+        return;
+      }
+
+      this.lastAlbumId = album.id;
+      this.hasRequestedPreviews = false;
+      this.previewUrls.set([]);
     });
+  }
+
+  onViewportVisible(): void {
+    this.loadPreviewUrls();
   }
 
   onEdit(event: Event): void {
@@ -80,5 +86,25 @@ export class AlbumCardComponent {
   onInvite(event: Event): void {
     event.stopPropagation();
     this.inviteRequested.emit(this.album());
+  }
+
+  private loadPreviewUrls(): void {
+    if (this.hasRequestedPreviews) {
+      return;
+    }
+
+    const album = this.album();
+    this.hasRequestedPreviews = true;
+    resolveAlbumPreviewUrls(album, {
+      albumsClient: this.albumsClient,
+      mediaService: this.mediaService,
+    })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((urls) => {
+        if (this.album().id !== album.id) {
+          return;
+        }
+        this.previewUrls.set(urls);
+      });
   }
 }

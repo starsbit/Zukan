@@ -1,10 +1,12 @@
 <article
-  class="gacha-card {{ rarityClass() }}"
+  zukanLazyViewport
+  class="gacha-card {{ rarityClass() }} {{ starLevelClass() }}"
   [class.gacha-card--revealed]="revealed()"
   [class.gacha-card--featured]="featured()"
   [class.gacha-card--compact]="compact()"
   [style.--reveal-index]="revealIndex()"
   [style.--shine-position]="shinePosition()"
+  (zukanLazyViewportVisible)="onViewportVisible()"
   (pointermove)="onPointerMove($event)"
   (pointerleave)="resetPointer()">
   <div class="gacha-card__foil" aria-hidden="true"></div>
@@ -18,12 +20,24 @@
   }
   <div class="gacha-card__shine" aria-hidden="true"></div>
   <div class="gacha-card__media">
-    @if (thumbnailUrl()) {
-      <img [src]="thumbnailUrl()!" [alt]="title() ?? 'Gacha media'" />
+    @if (displayUrl(); as url) {
+      <img [src]="url" [alt]="title() ?? 'Gacha media'" loading="lazy" />
     } @else {
       <mat-icon aria-hidden="true">image</mat-icon>
     }
     <span class="rarity-badge">{{ rarity() }}</span>
+    @if (normalizedLevel(); as level) {
+      <div class="gacha-card__stars" [attr.aria-label]="'Level ' + level + ' of 5'">
+        @for (star of starSlots; track star) {
+          <mat-icon
+            class="gacha-card__star"
+            [class.gacha-card__star--active]="star <= level"
+            aria-hidden="true">
+            {{ star <= level ? 'star' : 'star_border' }}
+          </mat-icon>
+        }
+      </div>
+    }
   </div>
   <div class="gacha-card__content">
     @if (title()) {

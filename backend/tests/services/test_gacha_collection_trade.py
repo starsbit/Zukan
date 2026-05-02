@@ -272,9 +272,9 @@ async def test_daily_currency_claim_grants_once_per_utc_day(fake_db, user, monke
 
     claimed = await service.claim_daily_currency(user)
 
-    assert claimed.claimed == 10
-    assert claimed.balance == 10
-    assert balance.total_claimed == 10
+    assert claimed.claimed == 6000
+    assert claimed.balance == 6000
+    assert balance.total_claimed == 6000
     assert balance.last_daily_claimed_on == datetime.now(timezone.utc).date()
     fake_db.commit.assert_awaited_once()
 
@@ -303,7 +303,38 @@ async def test_pull_rejects_insufficient_gacha_currency(fake_db, user, monkeypat
 
     assert exc.value.status_code == 409
     assert exc.value.detail["code"] == "insufficient_gacha_currency"
-    assert exc.value.detail["details"] == {"balance": 0, "required": 9}
+    assert exc.value.detail["details"] == {"balance": 0, "required": 1200}
+
+
+@pytest.mark.asyncio
+async def test_ten_pull_guarantees_at_least_sr(fake_db, user, monkeypatch):
+    service = GachaService(fake_db)
+    target_tiers: list[RarityTier] = []
+    balance = SimpleNamespace(user_id=user.id, balance=1200, total_claimed=0, total_spent=0, last_daily_claimed_on=None)
+
+    async def _select_candidate(_user, target_tier, _used_media_ids):
+        target_tiers.append(target_tier)
+        return SimpleNamespace(media_id=uuid.uuid4(), rarity_tier=target_tier, rarity_score=0.5)
+
+    async def _get_or_create_balance(_user_id, *, lock=False):
+        return balance
+
+    async def _refresh(obj):
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = datetime.now(timezone.utc)
+
+    monkeypatch.setattr(service, "_roll_tier", lambda: RarityTier.N)
+    monkeypatch.setattr(service, "_select_candidate", _select_candidate)
+    monkeypatch.setattr(service._repo, "get_or_create_balance", _get_or_create_balance)
+    monkeypatch.setattr(service._collection_repo, "get_by_user_and_media", AsyncMock(return_value=None))
+    fake_db.refresh = AsyncMock(side_effect=_refresh)
+
+    pull = await service.pull(user, mode=GachaPullMode.ten_pull)
+
+    assert target_tiers[-1] == RarityTier.SR
+    assert pull.currency_spent == 1200
+    assert pull.currency_balance == 0
+    assert balance.total_spent == 1200
 
 
 @pytest.mark.asyncio

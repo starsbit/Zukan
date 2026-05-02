@@ -69,9 +69,12 @@
             (click)="inspect(item)">
             <zukan-gacha-display-card
               [rarity]="item.rarity_tier_at_acquisition"
+              [mediaId]="item.media_id"
+              [mediaType]="item.media?.media_type ?? null"
               [thumbnailUrl]="item.thumbnail_url"
               [title]="title(item)"
               [meta]="meta(item)"
+              [level]="item.level"
               [compact]="true">
             </zukan-gacha-display-card>
           </button>

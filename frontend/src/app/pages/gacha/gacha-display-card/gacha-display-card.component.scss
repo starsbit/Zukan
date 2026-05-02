@@ -6,6 +6,12 @@
 
 .gacha-card {
   --shine-position: 50% 50%;
+  --card-border-width: 1px;
+  --card-border-paint: linear-gradient(
+    var(--rarity-border, var(--mat-sys-outline-variant)),
+    var(--rarity-border, var(--mat-sys-outline-variant))
+  );
+  --star-accent: var(--mat-sys-on-surface-variant);
   position: relative;
   display: grid;
   gap: 10px;
@@ -13,10 +19,12 @@
   min-height: 220px;
   padding: 10px;
   overflow: hidden;
-  border: 1px solid var(--rarity-border, var(--mat-sys-outline-variant));
+  border: var(--card-border-width) solid transparent;
   border-radius: 8px;
-  background: linear-gradient(160deg, var(--rarity-bg, var(--mat-sys-surface-container)), var(--mat-sys-surface));
-  box-shadow: 0 10px 24px rgb(0 0 0 / 14%);
+  background:
+    var(--card-bg, linear-gradient(160deg, var(--rarity-bg, var(--mat-sys-surface-container)), var(--mat-sys-surface))) padding-box,
+    var(--card-border-paint) border-box;
+  box-shadow: var(--card-shadow, 0 10px 24px rgb(0 0 0 / 14%));
   opacity: 0;
   transform: translateY(22px) rotateY(72deg) scale(0.94);
   transform-style: preserve-3d;
@@ -34,19 +42,23 @@
 }
 
 .gacha-card:hover {
-  border-color: color-mix(in srgb, var(--rarity-border, var(--mat-sys-primary)) 82%, white 18%);
-  box-shadow:
+  --rarity-hover-border-paint: linear-gradient(
+    color-mix(in srgb, var(--rarity-border, var(--mat-sys-primary)) 82%, white 18%),
+    color-mix(in srgb, var(--rarity-border, var(--mat-sys-primary)) 82%, white 18%)
+  );
+  --card-border-paint: var(--card-hover-border-paint, var(--rarity-hover-border-paint));
+  box-shadow: var(--card-hover-shadow,
     0 16px 34px rgb(0 0 0 / 22%),
-    0 0 28px color-mix(in srgb, var(--rarity-border, var(--mat-sys-primary)) 24%, transparent);
+    0 0 28px color-mix(in srgb, var(--rarity-border, var(--mat-sys-primary)) 24%, transparent));
   filter: saturate(1.08) brightness(1.04);
   transform: translateY(-4px) scale(1.015);
 }
 
 .gacha-card--featured {
+  --card-border-width: 2px;
   min-height: 0;
   padding: 14px;
   border-radius: 12px;
-  border-width: 2px;
   opacity: 1;
   transform: none;
 }
@@ -218,6 +230,42 @@ zukan-gacha-rarity-particles {
   z-index: 4;
 }
 
+.gacha-card__stars {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--star-accent) 58%, #fff 20%);
+  border-radius: 999px;
+  color: #fff;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, #050505 74%, transparent), color-mix(in srgb, #1e1e1e 58%, transparent)),
+    var(--star-chip-material, color-mix(in srgb, var(--star-accent) 20%, transparent));
+  box-shadow:
+    0 8px 18px rgb(0 0 0 / 38%),
+    inset 0 1px 0 color-mix(in srgb, #fff 34%, transparent);
+  backdrop-filter: blur(12px);
+  z-index: 6;
+}
+
+.gacha-card__star {
+  width: 15px;
+  height: 15px;
+  color: color-mix(in srgb, #fff 42%, transparent);
+  font-size: 15px;
+  line-height: 15px;
+  text-shadow: 0 1px 3px rgb(0 0 0 / 70%);
+}
+
+.gacha-card__star--active {
+  color: var(--star-accent);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--star-accent) 68%, transparent));
+}
+
 .gacha-card__content {
   display: grid;
   gap: 8px;
@@ -262,6 +310,10 @@ zukan-gacha-rarity-particles {
   --rarity-bg: color-mix(in srgb, #eef2f3 74%, var(--mat-sys-surface));
   --rarity-chip: color-mix(in srgb, #dce4e8 72%, var(--mat-sys-surface));
   --rarity-text: #52616b;
+}
+
+.star-level-1 {
+  --star-accent: #cdd5da;
 }
 
 .rarity-r {
@@ -315,7 +367,7 @@ zukan-gacha-rarity-particles {
   --rarity-media-foil-opacity: 0;
   --rarity-media-foil-active-opacity: 0.34;
   --rarity-glint-opacity: 0.54;
-  box-shadow:
+  --card-shadow:
     0 10px 28px color-mix(in srgb, #bd55e2 32%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #fff 16%, transparent);
 }
@@ -341,10 +393,10 @@ zukan-gacha-rarity-particles {
   --rarity-media-foil: transparent;
   --rarity-media-foil-opacity: 0;
   --rarity-glint-opacity: 0.56;
-  background:
-    linear-gradient(160deg, color-mix(in srgb, #fff0be 26%, #26150a), color-mix(in srgb, #4b253f 64%, #111)),
-    conic-gradient(from 0deg, #ffda5a, #ff75c8, #72e4ff, #9dff9d, #ffda5a);
-  box-shadow:
+  --card-bg:
+    linear-gradient(160deg, color-mix(in srgb, #fff0be 26%, #26150a), color-mix(in srgb, #4b253f 64%, #111));
+  --card-border-paint: conic-gradient(from 0deg, #ffda5a, #ff75c8, #72e4ff, #9dff9d, #ffda5a);
+  --card-shadow:
     0 16px 34px color-mix(in srgb, #d98600 38%, transparent),
     0 0 34px color-mix(in srgb, #fff0be 52%, transparent),
     0 0 74px color-mix(in srgb, #ff75c8 22%, transparent),
@@ -366,11 +418,61 @@ zukan-gacha-rarity-particles {
 
 .rarity-ur.gacha-card--featured,
 .rarity-ur:hover {
-  box-shadow:
+  --card-shadow:
     0 18px 40px color-mix(in srgb, #d98600 48%, transparent),
     0 0 44px color-mix(in srgb, #fff0be 68%, transparent),
     0 0 110px color-mix(in srgb, #72e4ff 28%, transparent),
     inset 0 0 0 1px color-mix(in srgb, #fff 36%, transparent);
+}
+
+.star-level-2,
+.star-level-3 {
+  --card-border-width: 5px;
+}
+
+.star-level-4,
+.star-level-5 {
+  --card-border-width: 6px;
+}
+
+.star-level-2 {
+  --star-accent: #cd7f32;
+  --star-chip-material: linear-gradient(135deg, rgb(92 47 18 / 62%), rgb(205 127 50 / 32%));
+  --card-border-paint: conic-gradient(from 18deg, #4a2410, #b86e2f, #f0bd7a, #7a3e1b, #d8934e, #5c2d13, #f4c38a, #4a2410);
+  --card-hover-border-paint: conic-gradient(from 42deg, #5b2a10, #e48c3a, #ffd6a1, #8a451b, #f0a050, #6c3313, #ffd2a0, #5b2a10);
+  --card-shadow: 0 10px 24px rgb(0 0 0 / 16%), 0 0 30px color-mix(in srgb, #cd7f32 54%, transparent), inset 0 0 0 1px rgb(255 218 172 / 28%);
+  --card-hover-shadow: 0 16px 34px rgb(0 0 0 / 24%), 0 0 42px color-mix(in srgb, #cd7f32 72%, transparent), inset 0 0 0 1px rgb(255 224 190 / 46%);
+}
+
+.star-level-3 {
+  --star-accent: #d9e1e8;
+  --star-chip-material: linear-gradient(135deg, rgb(71 79 86 / 58%), rgb(226 235 241 / 24%));
+  --card-border-paint: conic-gradient(from 32deg, #5b6268, #f8fbff, #9ea8b1, #e9f1f7, #6f7880, #fff, #d8e0e7, #5b6268);
+  --card-hover-border-paint: conic-gradient(from 58deg, #69727a, #fff, #b6c1ca, #f6fbff, #7c8790, #fff, #e5eef6, #69727a);
+  --card-shadow: 0 10px 24px rgb(0 0 0 / 16%), 0 0 32px color-mix(in srgb, #d9e1e8 58%, transparent), inset 0 0 0 1px rgb(255 255 255 / 34%);
+  --card-hover-shadow: 0 16px 34px rgb(0 0 0 / 24%), 0 0 48px color-mix(in srgb, #eef8ff 78%, transparent), inset 0 0 0 1px rgb(255 255 255 / 56%);
+}
+
+.star-level-4 {
+  --star-accent: #ffd766;
+  --star-chip-material: linear-gradient(135deg, rgb(118 73 0 / 56%), rgb(255 215 102 / 30%));
+  --card-border-paint: conic-gradient(from 24deg, #6f4300, #f1a900, #fff2a8, #b87500, #ffd766, #8a5100, #fff7c2, #e39b00, #6f4300);
+  --card-hover-border-paint: conic-gradient(from 52deg, #875200, #ffc62f, #fff7c2, #d58900, #ffe083, #9f6100, #fffbe0, #f0a900, #875200);
+  --card-shadow: 0 12px 28px rgb(0 0 0 / 18%), 0 0 40px color-mix(in srgb, #ffd766 68%, transparent), inset 0 0 0 1px rgb(255 247 194 / 34%);
+  --card-hover-shadow: 0 18px 38px rgb(0 0 0 / 26%), 0 0 58px color-mix(in srgb, #ffd766 86%, transparent), 0 0 88px color-mix(in srgb, #fff2a8 34%, transparent), inset 0 0 0 1px rgb(255 247 194 / 58%);
+}
+
+.star-level-5 {
+  --star-accent: #b8f6ff;
+  --star-chip-material: linear-gradient(135deg, rgb(18 49 60 / 66%), rgb(184 246 255 / 28%)), conic-gradient(from 20deg, #fff, #a5f4ff, #dec8ff, #fff);
+  --card-border-paint:
+    repeating-conic-gradient(from 12deg, rgb(255 255 255 / 96%) 0 8deg, rgb(142 239 255 / 92%) 8deg 18deg, rgb(211 224 255 / 96%) 18deg 29deg, rgb(255 255 255 / 88%) 29deg 38deg),
+    linear-gradient(135deg, #fff, #75e7ff 28%, #d8c7ff 52%, #fff 74%, #8ff3ff);
+  --card-hover-border-paint:
+    repeating-conic-gradient(from 34deg, #fff 0 8deg, #7ff1ff 8deg 18deg, #e6d8ff 18deg 29deg, #fff 29deg 38deg),
+    linear-gradient(135deg, #fff, #75e7ff 28%, #d8c7ff 52%, #fff 74%, #8ff3ff);
+  --card-shadow: 0 12px 30px rgb(0 0 0 / 18%), 0 0 44px color-mix(in srgb, #75e7ff 82%, transparent), 0 0 78px color-mix(in srgb, #dec8ff 42%, transparent), inset 0 0 0 1px rgb(255 255 255 / 42%);
+  --card-hover-shadow: 0 18px 40px rgb(0 0 0 / 26%), 0 0 66px color-mix(in srgb, #75e7ff 90%, transparent), 0 0 110px color-mix(in srgb, #dec8ff 54%, transparent), inset 0 0 0 1px rgb(255 255 255 / 72%);
 }
 
 .rarity-ssr .gacha-card__media::before {

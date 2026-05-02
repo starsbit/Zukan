@@ -21,6 +21,7 @@
         [thumbnailUrl]="previewUrl()"
         [title]="title()"
         [meta]="previewMeta()"
+        [level]="data.card.level ?? null"
         [featured]="true">
       </zukan-gacha-display-card>
 
@@ -40,80 +41,82 @@
   </section>
 
   <aside class="card-inspector__details">
-    <p class="card-inspector__eyebrow">{{ data.card.contextLabel }}</p>
-    <h2>
-      <button
-        class="card-inspector__title-link"
-        type="button"
-        (click)="openMediaInspector()">
-        {{ title() }}
-        <mat-icon aria-hidden="true">open_in_new</mat-icon>
-      </button>
-    </h2>
+    <div class="card-inspector__details-inner">
+      <p class="card-inspector__eyebrow">{{ data.card.contextLabel }}</p>
+      <h2>
+        <button
+          class="card-inspector__title-link"
+          type="button"
+          (click)="openMediaInspector()">
+          {{ title() }}
+          <mat-icon aria-hidden="true">open_in_new</mat-icon>
+        </button>
+      </h2>
 
-    @if (stateChips().length > 0) {
-      <div class="card-inspector__chips" aria-label="Collection state">
-        @for (chip of stateChips(); track chip) {
-          <span class="card-inspector__state-chip">{{ chip }}</span>
-        }
-      </div>
-    }
-
-    <dl class="card-inspector__fields">
-      @for (field of fields(); track field.label) {
-        <div>
-          <dt>{{ field.label }}</dt>
-          <dd>{{ field.value }}</dd>
+      @if (stateChips().length > 0) {
+        <div class="card-inspector__chips" aria-label="Collection state">
+          @for (chip of stateChips(); track chip) {
+            <span class="card-inspector__state-chip">{{ chip }}</span>
+          }
         </div>
       }
-    </dl>
 
-    @if (characters().length > 0) {
-      <section class="card-inspector__section">
-        <h3>Characters</h3>
-        <div class="card-inspector__chips" aria-label="Characters">
-          @for (character of characters(); track character.value) {
-            <zukan-metadata-filter-chip
-              type="character"
-              [value]="character.value"
-              [display]="character.display"
-              (filtered)="filterBy($event)">
-            </zukan-metadata-filter-chip>
-          }
-        </div>
-      </section>
-    }
+      <dl class="card-inspector__fields">
+        @for (field of fields(); track field.label) {
+          <div>
+            <dt>{{ field.label }}</dt>
+            <dd>{{ field.value }}</dd>
+          </div>
+        }
+      </dl>
 
-    @if (series().length > 0) {
-      <section class="card-inspector__section">
-        <h3>Series</h3>
-        <div class="card-inspector__chips" aria-label="Series">
-          @for (item of series(); track item.value) {
-            <zukan-metadata-filter-chip
-              type="series"
-              [value]="item.value"
-              [display]="item.display"
-              (filtered)="filterBy($event)">
-            </zukan-metadata-filter-chip>
-          }
-        </div>
-      </section>
-    }
+      @if (characters().length > 0) {
+        <section class="card-inspector__section">
+          <h3>Characters</h3>
+          <div class="card-inspector__chips" aria-label="Characters">
+            @for (character of characters(); track character.value) {
+              <zukan-metadata-filter-chip
+                type="character"
+                [value]="character.value"
+                [display]="character.display"
+                (filtered)="filterBy($event)">
+              </zukan-metadata-filter-chip>
+            }
+          </div>
+        </section>
+      }
 
-    @if (tags().length > 0) {
-      <section class="card-inspector__section">
-        <h3>Tags</h3>
-        <div class="card-inspector__chips" aria-label="Tags">
-          @for (tag of tags(); track tag.value) {
-            <zukan-metadata-filter-chip
-              type="tag"
-              [value]="tag.value"
-              [display]="tag.display"
-              (filtered)="filterBy($event)">
-            </zukan-metadata-filter-chip>
-          }
-        </div>
-      </section>
-    }
+      @if (series().length > 0) {
+        <section class="card-inspector__section">
+          <h3>Series</h3>
+          <div class="card-inspector__chips" aria-label="Series">
+            @for (item of series(); track item.value) {
+              <zukan-metadata-filter-chip
+                type="series"
+                [value]="item.value"
+                [display]="item.display"
+                (filtered)="filterBy($event)">
+              </zukan-metadata-filter-chip>
+            }
+          </div>
+        </section>
+      }
+
+      @if (tags().length > 0) {
+        <section class="card-inspector__section">
+          <h3>Tags</h3>
+          <div class="card-inspector__chips" aria-label="Tags">
+            @for (tag of tags(); track tag.value) {
+              <zukan-metadata-filter-chip
+                type="tag"
+                [value]="tag.value"
+                [display]="tag.display"
+                (filtered)="filterBy($event)">
+              </zukan-metadata-filter-chip>
+            }
+          </div>
+        </section>
+      }
+    </div>
   </aside>
 </mat-dialog-content>

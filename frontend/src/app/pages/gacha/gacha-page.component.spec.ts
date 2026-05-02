@@ -132,7 +132,7 @@ describe('GachaPageComponent', () => {
       inspect?: string;
     };
   } = {}) {
-    const balance = options.balance ?? 10;
+    const balance = options.balance ?? 6000;
     const dailyAvailable = options.dailyAvailable ?? true;
     let currentBalance = balance;
     let currentDailyAvailable = dailyAvailable;
@@ -143,8 +143,8 @@ describe('GachaPageComponent', () => {
       user_id: 'u1',
       mode: GachaPullMode.TEN_PULL,
       pool: null,
-      currency_spent: 9,
-      currency_balance: Math.max(balance - 9, 0),
+      currency_spent: 1200,
+      currency_balance: Math.max(balance - 1200, 0),
       created_at: '2026-04-28T00:00:00Z',
       items: [
         {
@@ -163,10 +163,10 @@ describe('GachaPageComponent', () => {
       getBalance: vi.fn(() => of({
         user_id: 'u1',
         balance: currentBalance,
-        total_claimed: 10,
+        total_claimed: 6000,
         total_spent: 0,
         last_daily_claimed_on: currentDailyAvailable ? null : '2026-04-28',
-        daily_claim_amount: 10,
+        daily_claim_amount: 6000,
         daily_claim_available: currentDailyAvailable,
         next_daily_claim_at: currentDailyAvailable ? null : '2026-04-29T00:00:00Z',
       })),
@@ -180,10 +180,10 @@ describe('GachaPageComponent', () => {
         next_daily_claim_at: currentDailyAvailable ? null : '2026-04-29T00:00:00Z',
       })),
       claimDaily: vi.fn(() => {
-        currentBalance += 10;
+        currentBalance += 6000;
         currentDailyAvailable = false;
         return of({
-          claimed: 10,
+          claimed: 6000,
           balance: currentBalance,
           daily_claim_available: false,
           next_daily_claim_at: '2026-04-29T00:00:00Z',
@@ -339,11 +339,11 @@ describe('GachaPageComponent', () => {
     expect(gachaClient.getBalance).toHaveBeenCalledOnce();
     expect(gachaClient.getStats).toHaveBeenCalledOnce();
     expect(collectionClient.list).toHaveBeenCalledWith(expect.objectContaining({ rarity_tier: undefined, duplicates_only: undefined }));
-    expect(mediaService.getFileUrl).toHaveBeenCalledWith('m1');
+    expect(mediaService.getFileUrl).not.toHaveBeenCalled();
     expect(tradesClient.outgoing).toHaveBeenCalledOnce();
 
     const element = fixture.nativeElement as HTMLElement;
-    expect(element.textContent).toContain('10');
+    expect(element.textContent).toContain('6000');
     expect(element.textContent).toContain('Pulls');
     expect(element.textContent).toContain('Pool stats');
   });
@@ -379,14 +379,14 @@ describe('GachaPageComponent', () => {
     component.claimDaily();
 
     expect(gachaClient.claimDaily).toHaveBeenCalledOnce();
-    expect(component.balanceValue()).toBe(20);
+    expect(component.balanceValue()).toBe(12000);
     expect(component.canClaimDaily()).toBe(false);
-    expect(snackBar.open).toHaveBeenCalledWith('Claimed 10 Pulls.', 'Close', { duration: 3500 });
+    expect(snackBar.open).toHaveBeenCalledWith('Claimed 6000 Pulls.', 'Close', { duration: 3500 });
   });
 
   it('sends single and ten-pull modes', async () => {
     vi.useFakeTimers();
-    const { component, gachaClient } = await createComponent({ balance: 30 });
+    const { component, gachaClient } = await createComponent({ balance: 2400 });
 
     component.pull(GachaPullMode.SINGLE);
     component.skipAnimation();
@@ -405,15 +405,15 @@ describe('GachaPageComponent', () => {
     const buttons = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button'));
     const single = buttons.find((button) => button.textContent?.includes('Single'));
     const tenPull = buttons.find((button) => button.textContent?.includes('10 Pulls'));
-    expect(single?.textContent).toContain('1');
-    expect(tenPull?.textContent).toContain('9');
+    expect(single?.textContent).toContain('120');
+    expect(tenPull?.textContent).toContain('1200');
     expect(single?.disabled).toBe(true);
     expect(tenPull?.disabled).toBe(true);
   });
 
   it('runs and skips the cinematic reveal animation', async () => {
     vi.useFakeTimers();
-    const { component } = await createComponent({ balance: 20 });
+    const { component } = await createComponent({ balance: 1200 });
 
     component.pull(GachaPullMode.TEN_PULL);
     expect(component.animationState()).toBe('summoning');
@@ -424,7 +424,7 @@ describe('GachaPageComponent', () => {
     component.skipAnimation();
     expect(component.animationState()).toBe('complete');
     expect(component.pullResults()[0].rarity_tier).toBe(RarityTier.UR);
-    expect(component.pullResults()[0].thumbnail_url).toBe('blob:m1');
+    expect(component.pullResults()[0].thumbnail_url).toBeNull();
   });
 
   it('filters and renders collection cards', async () => {
@@ -479,7 +479,7 @@ describe('GachaPageComponent', () => {
       tone: 'warn',
     });
     expect(collectionClient.discardItem).toHaveBeenCalledWith('ci1');
-    expect(component.balanceValue()).toBe(18);
+    expect(component.balanceValue()).toBe(6008);
     expect(snackBar.open).toHaveBeenCalledWith('Destroyed 1 copy for 8 Pulls.', 'Close', { duration: 3500 });
   });
 
@@ -594,7 +594,7 @@ describe('GachaPageComponent', () => {
   });
 
   it('opens pull result cards in the inspector', async () => {
-    const { fixture, component } = await createComponent({ balance: 20 });
+    const { fixture, component } = await createComponent({ balance: 120 });
     const dialogOpenSpy = vi.spyOn((component as any).dialog, 'open').mockReturnValue({} as any);
 
     component.pull(GachaPullMode.SINGLE);
@@ -762,7 +762,7 @@ describe('GachaPageComponent', () => {
       statusText: 'Conflict',
       error: { detail: 'Not enough gacha currency' },
     });
-    const { component, snackBar } = await createComponent({ balance: 10, pullError: error });
+    const { component, snackBar } = await createComponent({ balance: 120, pullError: error });
 
     component.pull(GachaPullMode.SINGLE);
 
@@ -778,6 +778,13 @@ describe('GachaDisplayCardComponent', () => {
   it('shows triangle particle layer only for revealed UR cards', async () => {
     await TestBed.configureTestingModule({
       imports: [GachaDisplayCardComponent],
+      providers: [{
+        provide: MediaService,
+        useValue: {
+          getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+          getPosterUrl: vi.fn(() => of('blob:poster')),
+        },
+      }],
     }).compileComponents();
 
     const fixture = TestBed.createComponent(GachaDisplayCardComponent);
@@ -795,6 +802,39 @@ describe('GachaDisplayCardComponent', () => {
     fixture.componentRef.setInput('rarity', RarityTier.SR);
     fixture.detectChanges();
     expect(element.querySelector('zukan-gacha-rarity-particles')).toBeNull();
+  });
+
+  it('renders the current upgrade level as stars and material class', async () => {
+    await TestBed.configureTestingModule({
+      imports: [GachaDisplayCardComponent],
+      providers: [{
+        provide: MediaService,
+        useValue: {
+          getThumbnailUrl: vi.fn(() => of('blob:thumb')),
+          getPosterUrl: vi.fn(() => of('blob:poster')),
+        },
+      }],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(GachaDisplayCardComponent);
+    fixture.componentRef.setInput('rarity', RarityTier.SR);
+    fixture.componentRef.setInput('level', 4);
+    fixture.detectChanges();
+
+    const element = fixture.nativeElement as HTMLElement;
+    const card = element.querySelector('.gacha-card');
+    const stars = element.querySelectorAll('.gacha-card__star');
+
+    expect(card?.classList.contains('star-level-4')).toBe(true);
+    expect(element.querySelector('.gacha-card__stars')?.getAttribute('aria-label')).toBe('Level 4 of 5');
+    expect(stars.length).toBe(5);
+    expect(element.querySelectorAll('.gacha-card__star--active').length).toBe(4);
+
+    fixture.componentRef.setInput('level', 8);
+    fixture.detectChanges();
+
+    expect(element.querySelector('.gacha-card')?.classList.contains('star-level-5')).toBe(true);
+    expect(element.querySelector('.gacha-card__stars')?.getAttribute('aria-label')).toBe('Level 5 of 5');
   });
 });
 

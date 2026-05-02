@@ -54,11 +54,13 @@ TIER_MIN_PERCENTILE = {
     RarityTier.UR: 0.985,
 }
 DOWNGRADE_MARGIN = 0.03
-DAILY_CURRENCY_AMOUNT = 10
+SINGLE_PULL_CURRENCY_COST = 120
+TEN_PULL_CURRENCY_COST = 1200
+DAILY_CURRENCY_AMOUNT = SINGLE_PULL_CURRENCY_COST * 50
 PULL_CURRENCY_COSTS = {
-    GachaPullMode.single: 1,
-    GachaPullMode.daily: 1,
-    GachaPullMode.ten_pull: 9,
+    GachaPullMode.single: SINGLE_PULL_CURRENCY_COST,
+    GachaPullMode.daily: SINGLE_PULL_CURRENCY_COST,
+    GachaPullMode.ten_pull: TEN_PULL_CURRENCY_COST,
 }
 
 
@@ -182,8 +184,8 @@ class GachaService:
         for position in range(count):
             target_tier = self._roll_tier()
             if mode == GachaPullMode.ten_pull and position == count - 1:
-                if all(TIER_RANK[item.rarity_tier] < TIER_RANK[RarityTier.R] for item in selected):
-                    target_tier = RarityTier.R
+                if all(TIER_RANK[item.rarity_tier] < TIER_RANK[RarityTier.SR] for item in selected):
+                    target_tier = RarityTier.SR
             selected.append(await self._select_candidate(user, target_tier, used_media_ids))
             used_media_ids.add(selected[-1].media_id)
 

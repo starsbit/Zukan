@@ -10,7 +10,7 @@
         <mat-icon aria-hidden="true">token</mat-icon>
         <div>
           <span class="balance-value">{{ balanceValue() }}</span>
-          <span class="balance-label">Pulls</span>
+          <span class="balance-label">Coins</span>
         </div>
       </div>
     </header>
@@ -68,6 +68,7 @@
                     (click)="inspectPullResult(item)">
                     <zukan-gacha-display-card
                       [rarity]="item.rarity_tier"
+                      [mediaId]="item.media_id"
                       [thumbnailUrl]="item.thumbnail_url"
                       [title]="pullTitle(item)"
                       [meta]="pullMeta(item)"
@@ -89,7 +90,7 @@
                 <mat-card-subtitle>{{ nextDailyLabel(nextDailyClaimAt()) }}</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
-                <p>Claim {{ dailyClaimAmount() }} Pulls once per day.</p>
+                <p>Claim {{ dailyClaimAmount() }} Coins once per day.</p>
               </mat-card-content>
               <mat-card-actions align="end">
                 <button mat-flat-button type="button" color="primary" [disabled]="!canClaimDaily()" (click)="claimDaily()">
@@ -105,7 +106,7 @@
             <mat-card class="pull-controls-card" appearance="outlined">
               <mat-card-header>
                 <mat-card-title>Pull banner</mat-card-title>
-                <mat-card-subtitle>Ten-pull guarantees at least R when needed.</mat-card-subtitle>
+                <mat-card-subtitle>Ten-pull guarantees at least SR when needed.</mat-card-subtitle>
               </mat-card-header>
               <mat-card-content>
                 <div class="pull-actions">

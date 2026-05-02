@@ -7,10 +7,12 @@
           type="button"
           [attr.aria-label]="'Open memory from ' + group.yearsAgoLabel"
           (click)="openStory(group.yearsAgo)"
+          zukanLazyViewport
+          (zukanLazyViewportVisible)="loadPreview(group.coverItem)"
         >
           <span class="today-stories__media">
             @if (previewUrls()[group.coverItem.id]; as previewUrl) {
-              <img [src]="previewUrl" [alt]="group.coverItem.original_filename ?? group.coverItem.filename">
+              <img [src]="previewUrl" [alt]="group.coverItem.original_filename ?? group.coverItem.filename" loading="lazy">
             } @else {
               <span class="today-stories__fallback">{{ initials() }}</span>
             }

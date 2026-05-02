@@ -94,14 +94,17 @@ const uploadTrackerMock = {
   registerRetagging: vi.fn(),
 };
 
+const mediaServiceMock = {
+  get: vi.fn((id: string) => of(makeMedia(id, 100, 100))),
+  getThumbnailUrl: () => of('blob:thumb'),
+  getPosterUrl: () => of('blob:poster'),
+  getFileUrl: () => of('blob:file'),
+};
+
 const sharedProviders = [
   {
     provide: MediaService,
-    useValue: {
-      getThumbnailUrl: () => of('blob:thumb'),
-      getPosterUrl: () => of('blob:poster'),
-      getFileUrl: () => of('blob:file'),
-    },
+    useValue: mediaServiceMock,
   },
   {
     provide: MediaClientService,
@@ -175,6 +178,7 @@ describe('MediaBrowserComponent', () => {
     galleryStoreMock.batchUpdateVisibility.mockClear();
     galleryStoreMock.hasMore.mockClear();
     galleryStoreMock.toggleFavorite.mockClear();
+    mediaServiceMock.get.mockClear();
     albumStoreMock.addMedia.mockClear();
     albumStoreMock.load.mockClear();
     confirmDialogMock.open.mockClear();
@@ -803,6 +807,56 @@ describe('MediaBrowserComponent', () => {
         MediaInspectorDialogComponent,
         expect.objectContaining({
           data: expect.objectContaining({ activeMediaId: 'm1' }),
+        }),
+      );
+    });
+
+    it('waits for the requested inspect id instead of opening the first loaded item', async () => {
+      const querySubject = new BehaviorSubject(makeParamMap('m2'));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const m1 = makeMedia('m1', 100, 100);
+      const m2 = makeMedia('m2', 100, 100);
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [m1] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).not.toHaveBeenCalled();
+
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [m1, m2] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      expect(dialogMock.open).toHaveBeenCalledWith(
+        MediaInspectorDialogComponent,
+        expect.objectContaining({
+          data: { items: [m1, m2], activeMediaId: 'm2' },
+        }),
+      );
+    });
+
+    it('fetches and opens the requested inspect id when it is outside the loaded list', async () => {
+      galleryStoreMock.hasMore.mockReturnValue(false);
+      const querySubject = new BehaviorSubject(makeParamMap('m2'));
+      await configureBrowserTestingModuleWithRoute(querySubject);
+
+      const fixture = TestBed.createComponent(MediaBrowserComponent);
+      const m1 = makeMedia('m1', 100, 100);
+      const m2 = makeMedia('m2', 100, 100);
+      mediaServiceMock.get.mockReturnValueOnce(of(m2));
+      fixture.componentRef.setInput('dayGroups', [
+        { date: '2026-03-28', label: 'March 28, 2026', items: [m1] },
+      ] satisfies DayGroup[]);
+      fixture.detectChanges();
+
+      expect(mediaServiceMock.get).toHaveBeenCalledWith('m2');
+      expect(dialogMock.open).toHaveBeenCalledWith(
+        MediaInspectorDialogComponent,
+        expect.objectContaining({
+          data: { items: [m2, m1], activeMediaId: 'm2' },
         }),
       );
     });

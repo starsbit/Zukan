@@ -24,6 +24,7 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
+import { EMPTY, catchError } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead, MediaVisibility } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
@@ -179,6 +180,7 @@ export class MediaBrowserComponent {
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
   private pendingInspectId: string | null = null;
+  private pendingInspectLookupId: string | null = null;
   private currentInspectId: string | null = null;
   private closingInspectorFromRoute = false;
   private closingInspectorFromMetadataFilter = false;
@@ -223,6 +225,7 @@ export class MediaBrowserComponent {
           this.openInspectorForId(inspectId);
         } else {
           this.pendingInspectId = null;
+          this.pendingInspectLookupId = null;
           if (this.inspectorRef) {
             this.closingInspectorFromRoute = true;
             this.inspectorRef.close();
@@ -281,9 +284,22 @@ export class MediaBrowserComponent {
       return;
     }
 
+    if (!items.some((item) => item.id === id)) {
+      this.pendingInspectId = id;
+      if (this.loading() || this.galleryStore.hasMore()) {
+        return;
+      }
+      this.fetchInspectItem(id, items);
+      return;
+    }
+
     this.pendingInspectId = null;
+    this.openInspector(items, id);
+  }
+
+  private openInspector(items: MediaRead[], activeMediaId: string): void {
     this.inspectorRef = this.dialog.open(MediaInspectorDialogComponent, {
-      data: { items, activeMediaId: id },
+      data: { items, activeMediaId },
       width: '100vw',
       maxWidth: '100vw',
       height: '100vh',
@@ -329,6 +345,36 @@ export class MediaBrowserComponent {
         queryParams: { inspect: null },
         queryParamsHandling: 'merge',
       });
+    });
+  }
+
+  private fetchInspectItem(id: string, currentItems: MediaRead[]): void {
+    if (this.pendingInspectLookupId === id) {
+      return;
+    }
+
+    this.pendingInspectLookupId = id;
+    this.mediaService.get(id).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      catchError(() => {
+        if (this.pendingInspectId === id) {
+          this.pendingInspectId = null;
+        }
+        this.pendingInspectLookupId = null;
+        return EMPTY;
+      }),
+    ).subscribe((detail) => {
+      this.pendingInspectLookupId = null;
+      if (this.currentInspectId !== id || this.inspectorRef) {
+        return;
+      }
+
+      this.pendingInspectId = null;
+      const latestItems = this.dayGroups().flatMap((group) => group.items);
+      const items = latestItems.some((item) => item.id === id)
+        ? latestItems
+        : [detail, ...currentItems.filter((item) => item.id !== id)];
+      this.openInspector(items, id);
     });
   }
 

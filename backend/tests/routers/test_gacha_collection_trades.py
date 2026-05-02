@@ -70,8 +70,8 @@ def test_gacha_pull_contract(api_client, monkeypatch):
 def test_gacha_daily_claim_contract(api_client, monkeypatch):
     fake_claim = AsyncMock(
         return_value={
-            "claimed": 10,
-            "balance": 10,
+            "claimed": 6000,
+            "balance": 6000,
             "daily_claim_available": False,
             "next_daily_claim_at": datetime.now(timezone.utc),
         }
@@ -81,8 +81,8 @@ def test_gacha_daily_claim_contract(api_client, monkeypatch):
     response = api_client.post("/api/v1/gacha/daily-claim")
 
     assert response.status_code == 200
-    assert response.json()["claimed"] == 10
-    assert response.json()["balance"] == 10
+    assert response.json()["claimed"] == 6000
+    assert response.json()["balance"] == 6000
     fake_claim.assert_awaited_once()
 
 
@@ -91,10 +91,10 @@ def test_gacha_balance_contract(api_client, monkeypatch):
         return_value={
             "user_id": uuid.uuid4(),
             "balance": 8,
-            "total_claimed": 10,
+            "total_claimed": 6000,
             "total_spent": 2,
             "last_daily_claimed_on": datetime.now(timezone.utc).date(),
-            "daily_claim_amount": 10,
+            "daily_claim_amount": 6000,
             "daily_claim_available": False,
             "next_daily_claim_at": datetime.now(timezone.utc),
         }

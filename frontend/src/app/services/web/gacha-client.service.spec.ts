@@ -31,8 +31,8 @@ describe('GachaClientService', () => {
       user_id: 'u1',
       mode: GachaPullMode.TEN_PULL,
       pool: 'default',
-      currency_spent: 9,
-      currency_balance: 1,
+      currency_spent: 1200,
+      currency_balance: 4800,
       created_at: '2026-04-28T00:00:00Z',
       items: [
         {
@@ -59,11 +59,11 @@ describe('GachaClientService', () => {
   it('getBalance sends GET /api/v1/gacha/balance', () => {
     const response = {
       user_id: 'u1',
-      balance: 10,
-      total_claimed: 10,
+      balance: 6000,
+      total_claimed: 6000,
       total_spent: 0,
       last_daily_claimed_on: '2026-04-28',
-      daily_claim_amount: 10,
+      daily_claim_amount: 6000,
       daily_claim_available: false,
       next_daily_claim_at: '2026-04-29T00:00:00Z',
     };
@@ -77,8 +77,8 @@ describe('GachaClientService', () => {
 
   it('claimDaily sends POST /api/v1/gacha/daily-claim', () => {
     const response = {
-      claimed: 10,
-      balance: 10,
+      claimed: 6000,
+      balance: 6000,
       daily_claim_available: false,
       next_daily_claim_at: '2026-04-29T00:00:00Z',
     };

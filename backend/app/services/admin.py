@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import json
 import logging
 import math
 import uuid
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Awaitable, Callable
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.database import AsyncSessionLocal
 from backend.app.config import settings
 from backend.app.errors.auth import duplicate_username, forbidden, user_not_found
 from backend.app.errors.error import AppError
@@ -58,6 +65,205 @@ from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.passwords import hash_password
 
 logger = logging.getLogger("backend.app.admin")
+
+_EMBEDDING_CLUSTER_CACHE_TTL = timedelta(hours=24)
+
+
+@dataclass
+class _EmbeddingClusterCacheEntry:
+    generated_at: datetime
+    payload: Any
+
+
+def _embedding_cluster_cache_key(*, kind: str, parts: dict[str, Any]) -> str:
+    encoded = json.dumps(parts, sort_keys=True, separators=(",", ":"))
+    digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+    return f"{kind}-{digest}"
+
+
+class _EmbeddingClusterCache:
+    def __init__(self, root: Path, ttl: timedelta) -> None:
+        self._root = root
+        self._ttl = ttl
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._refresh_tasks: set[asyncio.Task[None]] = set()
+        self._refreshing_keys: set[str] = set()
+
+    def _cache_dir(self, kind: str) -> Path:
+        return self._root / kind
+
+    def _response_path(self, key: str) -> Path:
+        return self._cache_dir("responses") / f"{key}.json"
+
+    def _plot_path(self, key: str) -> Path:
+        return self._cache_dir("plots") / f"{key}.png"
+
+    def _plot_meta_path(self, key: str) -> Path:
+        return self._cache_dir("plots") / f"{key}.meta.json"
+
+    def _lock_for(self, key: str) -> asyncio.Lock:
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
+        return lock
+
+    def _is_fresh(self, generated_at: datetime) -> bool:
+        return datetime.now(timezone.utc) - generated_at < self._ttl
+
+    def _load_response_entry(self, path: Path) -> _EmbeddingClusterCacheEntry | None:
+        if not path.exists():
+            return None
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return _EmbeddingClusterCacheEntry(
+            generated_at=datetime.fromisoformat(raw["generated_at"]),
+            payload=AdminEmbeddingClusterListResponse.model_validate(raw["response"]),
+        )
+
+    def _write_response_entry(self, path: Path, response: AdminEmbeddingClusterListResponse) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "response": response.model_dump(mode="json"),
+        }
+        path.write_text(json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+
+    def _load_plot_entry(self, key: str) -> _EmbeddingClusterCacheEntry | None:
+        meta_path = self._plot_meta_path(key)
+        plot_path = self._plot_path(key)
+        if not meta_path.exists() or not plot_path.exists():
+            return None
+        raw = json.loads(meta_path.read_text(encoding="utf-8"))
+        return _EmbeddingClusterCacheEntry(
+            generated_at=datetime.fromisoformat(raw["generated_at"]),
+            payload=plot_path.read_bytes(),
+        )
+
+    def _write_plot_entry(self, key: str, image: bytes) -> None:
+        meta_path = self._plot_meta_path(key)
+        plot_path = self._plot_path(key)
+        plot_path.parent.mkdir(parents=True, exist_ok=True)
+        plot_path.write_bytes(image)
+        meta_path.write_text(
+            json.dumps({"generated_at": datetime.now(timezone.utc).isoformat()}, sort_keys=True, separators=(",", ":")),
+            encoding="utf-8",
+        )
+
+    def _track_refresh_task(self, task: asyncio.Task[None]) -> None:
+        self._refresh_tasks.add(task)
+
+        def _cleanup(done_task: asyncio.Task[None]) -> None:
+            self._refresh_tasks.discard(done_task)
+
+        task.add_done_callback(_cleanup)
+
+    async def get_cluster_response(
+        self,
+        *,
+        key: str,
+        build: Callable[["AdminService"], Awaitable[AdminEmbeddingClusterListResponse]],
+    ) -> AdminEmbeddingClusterListResponse:
+        path = self._response_path(key)
+        cached = self._load_response_entry(path)
+        if cached is not None:
+            if not self._is_fresh(cached.generated_at):
+                self._schedule_response_refresh(key=key, build=build)
+            return cached.payload
+
+        async with self._lock_for(key):
+            cached = self._load_response_entry(path)
+            if cached is not None:
+                if not self._is_fresh(cached.generated_at):
+                    self._schedule_response_refresh(key=key, build=build)
+                return cached.payload
+
+            response = await self._build_response(build)
+            self._write_response_entry(path, response)
+            return response
+
+    async def get_plot(
+        self,
+        *,
+        key: str,
+        build: Callable[["AdminService"], Awaitable[bytes]],
+    ) -> bytes:
+        cached = self._load_plot_entry(key)
+        if cached is not None:
+            if not self._is_fresh(cached.generated_at):
+                self._schedule_plot_refresh(key=key, build=build)
+            return cached.payload
+
+        async with self._lock_for(key):
+            cached = self._load_plot_entry(key)
+            if cached is not None:
+                if not self._is_fresh(cached.generated_at):
+                    self._schedule_plot_refresh(key=key, build=build)
+                return cached.payload
+
+            image = await self._build_plot(build)
+            self._write_plot_entry(key, image)
+            return image
+
+    def _schedule_response_refresh(
+        self,
+        *,
+        key: str,
+        build: Callable[["AdminService"], Awaitable[AdminEmbeddingClusterListResponse]],
+    ) -> None:
+        if key in self._refreshing_keys:
+            return
+        self._refreshing_keys.add(key)
+
+        async def _refresh() -> None:
+            try:
+                async with AsyncSessionLocal() as db:
+                    response = await build(AdminService(db))
+                    self._write_response_entry(self._response_path(key), response)
+            except Exception:
+                logger.exception("Embedding cluster response refresh failed key=%s", key)
+            finally:
+                self._refreshing_keys.discard(key)
+
+        self._track_refresh_task(asyncio.create_task(_refresh()))
+
+    def _schedule_plot_refresh(
+        self,
+        *,
+        key: str,
+        build: Callable[["AdminService"], Awaitable[bytes]],
+    ) -> None:
+        if key in self._refreshing_keys:
+            return
+        self._refreshing_keys.add(key)
+
+        async def _refresh() -> None:
+            try:
+                async with AsyncSessionLocal() as db:
+                    image = await build(AdminService(db))
+                    self._write_plot_entry(key, image)
+            except Exception:
+                logger.exception("Embedding cluster plot refresh failed key=%s", key)
+            finally:
+                self._refreshing_keys.discard(key)
+
+        self._track_refresh_task(asyncio.create_task(_refresh()))
+
+    async def _build_response(
+        self,
+        build: Callable[["AdminService"], Awaitable[AdminEmbeddingClusterListResponse]],
+    ) -> AdminEmbeddingClusterListResponse:
+        async with AsyncSessionLocal() as db:
+            return await build(AdminService(db))
+
+    async def _build_plot(
+        self,
+        build: Callable[["AdminService"], Awaitable[bytes]],
+    ) -> bytes:
+        async with AsyncSessionLocal() as db:
+            return await build(AdminService(db))
+
+
+_embedding_cluster_cache = _EmbeddingClusterCache(settings.storage_dir / "admin_embedding_clusters", _EMBEDDING_CLUSTER_CACHE_TTL)
 
 
 class AdminService:
@@ -331,7 +537,7 @@ class AdminService:
         await self._refresh_batch_counts(batch_id)
         await self._db.commit()
 
-    async def get_embedding_clusters(
+    async def _build_embedding_clusters_response(
         self,
         user_id: uuid.UUID,
         *,
@@ -371,7 +577,7 @@ class AdminService:
             clusters=clusters,
         )
 
-    async def get_embedding_cluster_plot(
+    async def _build_embedding_cluster_plot_image(
         self,
         user_id: uuid.UUID,
         *,
@@ -388,6 +594,66 @@ class AdminService:
             mode=mode,
             min_cluster_size=min_cluster_size,
             discovery_mode=discovery_mode,
+        )
+
+    async def get_embedding_clusters(
+        self,
+        user_id: uuid.UUID,
+        *,
+        mode: str,
+        limit: int | None,
+        sample_size: int,
+        min_cluster_size: int,
+        discovery_mode: bool = False,
+    ) -> AdminEmbeddingClusterListResponse:
+        cache_key = _embedding_cluster_cache_key(
+            kind="cluster-response",
+            parts={
+                "user_id": str(user_id),
+                "mode": mode,
+                "limit": limit,
+                "sample_size": sample_size,
+                "min_cluster_size": min_cluster_size,
+                "discovery_mode": discovery_mode,
+            },
+        )
+        return await _embedding_cluster_cache.get_cluster_response(
+            key=cache_key,
+            build=lambda service: service._build_embedding_clusters_response(
+                user_id,
+                mode=mode,
+                limit=limit,
+                sample_size=sample_size,
+                min_cluster_size=min_cluster_size,
+                discovery_mode=discovery_mode,
+            ),
+        )
+
+    async def get_embedding_cluster_plot(
+        self,
+        user_id: uuid.UUID,
+        *,
+        mode: str,
+        min_cluster_size: int,
+        discovery_mode: bool = False,
+    ) -> bytes:
+        cache_key = _embedding_cluster_cache_key(
+            kind="cluster-plot",
+            parts={
+                "user_id": str(user_id),
+                "mode": mode,
+                "min_cluster_size": min_cluster_size,
+                "discovery_mode": discovery_mode,
+            },
+        )
+        return await _embedding_cluster_cache.get_plot(
+            key=cache_key,
+            build=lambda service: service._build_embedding_cluster_plot_image(
+                user_id,
+                mode=mode,
+                min_cluster_size=min_cluster_size,
+                discovery_mode=discovery_mode,
+            ),
         )
 
     async def get_library_classification_metrics(

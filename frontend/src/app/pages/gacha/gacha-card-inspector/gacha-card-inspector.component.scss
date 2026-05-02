@@ -7,7 +7,13 @@
   padding: 0;
 }
 
+:host ::ng-deep .mat-mdc-dialog-content {
+  max-height: none;
+  overflow: hidden;
+}
+
 :host ::ng-deep .mat-mdc-dialog-surface {
+  max-height: 92vh;
   overflow: hidden;
   border-radius: 16px;
   background:
@@ -20,8 +26,10 @@
   display: grid;
   grid-template-columns: minmax(300px, 1fr) minmax(300px, 380px);
   gap: 0;
+  box-sizing: border-box;
   width: min(1000px, 94vw);
-  max-height: min(760px, 92vh);
+  height: min(760px, 92vh);
+  min-height: 0;
   overflow: hidden;
   color: var(--mat-sys-on-surface);
 }
@@ -105,13 +113,27 @@
 
 .card-inspector__details {
   display: grid;
+  align-self: stretch;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 72px;
+  scrollbar-gutter: stable;
+  line-height: 1.45;
+}
+
+.card-inspector__details-inner {
+  display: grid;
   align-content: start;
   gap: 18px;
+  box-sizing: border-box;
   min-width: 0;
-  max-height: min(760px, 92vh);
-  padding: 28px;
-  overflow: auto;
-  line-height: 1.45;
+  padding: 28px 28px max(72px, calc(44px + env(safe-area-inset-bottom)));
 }
 
 .card-inspector__eyebrow {
@@ -231,8 +253,10 @@
 @media (max-width: 780px) {
   .card-inspector {
     grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
     width: 94vw;
-    max-height: 92vh;
+    height: 92vh;
+    overflow: auto;
   }
 
   .card-inspector__stage {
@@ -241,8 +265,15 @@
   }
 
   .card-inspector__details {
+    height: auto;
     max-height: none;
-    padding: 22px;
+    min-height: 0;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .card-inspector__details-inner {
+    padding: 22px 22px max(72px, calc(40px + env(safe-area-inset-bottom)));
   }
 }
 

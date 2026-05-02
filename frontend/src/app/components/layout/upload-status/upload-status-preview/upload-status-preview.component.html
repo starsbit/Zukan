@@ -1,6 +1,10 @@
-<div class="preview-shell">
+<div
+  class="preview-shell"
+  zukanLazyViewport
+  (zukanLazyViewportVisible)="onViewportVisible()"
+>
   @if (hasPreview()) {
-    <img [src]="previewUrl()" alt="" class="preview-image" />
+    <img [src]="previewUrl()" alt="" class="preview-image" loading="lazy" />
   } @else {
     <mat-icon>image</mat-icon>
   }

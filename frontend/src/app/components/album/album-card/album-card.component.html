@@ -1,4 +1,10 @@
-<mat-card class="album-card" appearance="outlined" [routerLink]="['/album', album().id]">
+<mat-card
+  class="album-card"
+  appearance="outlined"
+  [routerLink]="['/album', album().id]"
+  zukanLazyViewport
+  (zukanLazyViewportVisible)="onViewportVisible()"
+>
   <div class="album-card__preview" aria-hidden="true">
     @if (previewUrls().length > 0) {
       <div class="album-card__preview-grid" [attr.data-layout]="previewLayout()">
