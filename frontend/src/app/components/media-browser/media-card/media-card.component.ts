@@ -106,6 +106,8 @@ export class MediaCardComponent {
   private hasRequestedPreview = false;
   private hasRequestedAnimatedPreview = false;
   private lastMediaId: string | null = null;
+  private ownedPrimaryPreviewUrl: string | null = null;
+  private ownedAnimatedPreviewUrl: string | null = null;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
   private pressedPointerId: number | null = null;
   private pressStartX = 0;
@@ -120,6 +122,7 @@ export class MediaCardComponent {
         this.lastMediaId = media.id;
         this.hasRequestedPreview = false;
         this.hasRequestedAnimatedPreview = false;
+        this.revokeOwnedPreviewUrls();
         this.previewUrl.set(null);
         this.animatedPreviewUrl.set(null);
         this.failed.set(false);
@@ -169,6 +172,7 @@ export class MediaCardComponent {
   ngOnDestroy(): void {
     this.previewObserver?.disconnect();
     this.clearLongPress();
+    this.revokeOwnedPreviewUrls();
   }
 
   onSelect(): void {
@@ -312,6 +316,10 @@ export class MediaCardComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (url) => {
+          if (this.usesOwnedPrimaryPreviewUrl()) {
+            this.revokeOwnedPrimaryPreviewUrl();
+            this.ownedPrimaryPreviewUrl = url;
+          }
           this.previewUrl.set(url);
           this.loading.set(false);
         },
@@ -338,9 +346,32 @@ export class MediaCardComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (url) => {
+          this.revokeOwnedAnimatedPreviewUrl();
+          this.ownedAnimatedPreviewUrl = url;
           this.animatedPreviewUrl.set(url);
         },
       });
+  }
+
+  private revokeOwnedPreviewUrls(): void {
+    this.revokeOwnedPrimaryPreviewUrl();
+    this.revokeOwnedAnimatedPreviewUrl();
+  }
+
+  private revokeOwnedPrimaryPreviewUrl(): void {
+    if (!this.ownedPrimaryPreviewUrl) {
+      return;
+    }
+    URL.revokeObjectURL(this.ownedPrimaryPreviewUrl);
+    this.ownedPrimaryPreviewUrl = null;
+  }
+
+  private revokeOwnedAnimatedPreviewUrl(): void {
+    if (!this.ownedAnimatedPreviewUrl) {
+      return;
+    }
+    URL.revokeObjectURL(this.ownedAnimatedPreviewUrl);
+    this.ownedAnimatedPreviewUrl = null;
   }
 
   private primaryPreviewRequest() {
@@ -359,6 +390,11 @@ export class MediaCardComponent {
     }
 
     return null;
+  }
+
+  private usesOwnedPrimaryPreviewUrl(): boolean {
+    const media = this.media();
+    return media.media_type === MediaType.GIF && media.thumbnail_status !== ProcessingStatus.DONE;
   }
 
   private safePlay(element: HTMLVideoElement): void {

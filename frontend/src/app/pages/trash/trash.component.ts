@@ -2,7 +2,6 @@ import { Component, DestroyRef, computed, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { EMPTY, catchError } from 'rxjs';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { MediaListState } from '../../models/media';
@@ -38,16 +37,7 @@ export class TrashComponent {
         state: MediaListState.TRASHED,
       };
       this.galleryStore.setParams(params);
-      this.galleryStore.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-      this.galleryStore.loadTimeline().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    });
-
-    effect(() => {
-      if (this.galleryStore.hasMore() && !this.galleryStore.loading()) {
-        this.galleryStore.loadMore()
-          .pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
-          .subscribe();
-      }
+      this.galleryStore.loadInitial().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     });
   }
 

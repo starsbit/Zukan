@@ -70,6 +70,7 @@ describe('AlbumDetailComponent', () => {
     };
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -166,6 +167,11 @@ describe('AlbumDetailComponent', () => {
       setParams: vi.fn((params: Record<string, unknown>) => {
         paramsState.set(params);
       }),
+      loadInitial: vi.fn(() => {
+        paramsState();
+        loading.set(false);
+        return of({ timeline: { buckets: [] }, page: null });
+      }),
       load: vi.fn(() => {
         paramsState();
         loading.set(true);
@@ -244,8 +250,9 @@ describe('AlbumDetailComponent', () => {
     routeParamMap.next(convertToParamMap({ albumId: 'album-empty' }));
     await fixture.whenStable();
 
-    expect(galleryStore.load).toHaveBeenCalledTimes(1);
-    expect(galleryStore.loadTimeline).toHaveBeenCalledTimes(1);
+    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
+    expect(galleryStore.load).not.toHaveBeenCalled();
+    expect(galleryStore.loadTimeline).not.toHaveBeenCalled();
     expect(galleryStore.loadMore).not.toHaveBeenCalled();
   });
 
@@ -253,6 +260,7 @@ describe('AlbumDetailComponent', () => {
     const albumsClient = createAlbumsClient();
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -344,6 +352,7 @@ describe('AlbumDetailComponent', () => {
     };
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -434,6 +443,7 @@ describe('AlbumDetailComponent', () => {
     };
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -528,6 +538,7 @@ describe('AlbumDetailComponent', () => {
     };
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -621,6 +632,7 @@ describe('AlbumDetailComponent', () => {
     };
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -712,14 +724,14 @@ describe('AlbumDetailComponent', () => {
       cover_media_id: 'uploaded-1',
       version: 2,
     });
-    expect(galleryStore.load).toHaveBeenCalledTimes(2);
-    expect(galleryStore.loadTimeline).toHaveBeenCalledTimes(2);
+    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(2);
   });
 
   it('redirects to /album when the album fetch returns a 404 (pending invite, no accepted share)', async () => {
     const albumsClient = createAlbumsClient();
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),

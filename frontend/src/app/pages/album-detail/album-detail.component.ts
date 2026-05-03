@@ -1,4 +1,4 @@
-import { Component, DestroyRef, computed, effect, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -130,19 +130,10 @@ export class AlbumDetailComponent {
               return of(null);
             }),
           ),
-          page: this.galleryStore.load(),
-          timeline: this.galleryStore.loadTimeline(),
+          gallery: this.galleryStore.loadInitial(),
         });
       }),
     ).subscribe();
-
-    effect(() => {
-      if (this.galleryStore.hasMore() && !this.galleryStore.loading()) {
-        this.galleryStore.loadMore()
-          .pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
-          .subscribe();
-      }
-    });
 
     toObservable(this.album).pipe(
       tap((album) => {
@@ -332,7 +323,6 @@ export class AlbumDetailComponent {
   }
 
   private refreshAlbumMedia(): void {
-    this.galleryStore.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    this.galleryStore.loadTimeline().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+    this.galleryStore.loadInitial().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
 }

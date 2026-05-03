@@ -26,8 +26,8 @@ export class MediaService implements OnDestroy {
 
   private _activeParams: MediaSearchParams = {};
 
-  private readonly thumbnailCache = new BlobUrlCache();
-  private readonly posterCache = new BlobUrlCache();
+  private readonly thumbnailCache = new BlobUrlCache(300);
+  private readonly posterCache = new BlobUrlCache(120);
   private readonly thumbnailRequests = new Map<string, Observable<string>>();
   private readonly posterRequests = new Map<string, Observable<string>>();
 

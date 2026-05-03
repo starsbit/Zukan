@@ -5,11 +5,34 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from backend.app.models.media import MediaVisibility
+from backend.app.models.media import Media, MediaVisibility
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.repositories import media_filters
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
+
+
+def test_media_date_part_filters_use_range_predicates_when_year_is_present():
+    captured_stmt = media_filters.apply_captured_at_filters(
+        select(Media),
+        MediaMetadataFilter(captured_year=2026, captured_month=3, captured_day=29),
+    )
+    uploaded_stmt = media_filters.apply_uploaded_at_filters(
+        select(Media),
+        MediaMetadataFilter(uploaded_year=2026, uploaded_month=3),
+    )
+
+    captured_sql = str(captured_stmt).upper()
+    uploaded_sql = str(uploaded_stmt).upper()
+    assert "EXTRACT(YEAR" not in captured_sql
+    assert "EXTRACT(MONTH" not in captured_sql
+    assert "EXTRACT(DAY" not in captured_sql
+    assert "COALESCE(MEDIA.CAPTURED_AT, MEDIA.UPLOADED_AT) >=" in captured_sql
+    assert "COALESCE(MEDIA.CAPTURED_AT, MEDIA.UPLOADED_AT) <" in captured_sql
+    assert "EXTRACT(YEAR" not in uploaded_sql
+    assert "EXTRACT(MONTH" not in uploaded_sql
+    assert "MEDIA.UPLOADED_AT >=" in uploaded_sql
+    assert "MEDIA.UPLOADED_AT <" in uploaded_sql
 
 
 @pytest.mark.asyncio

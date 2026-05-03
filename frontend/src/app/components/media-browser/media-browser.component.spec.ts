@@ -55,6 +55,9 @@ const galleryStoreMock = {
   batchQueueTaggingJobs: vi.fn(() => of({ queued: 1 })),
   batchUpdateVisibility: vi.fn(() => of({ processed: 1, skipped: 0 })),
   hasMore: vi.fn(() => true),
+  monthMap: vi.fn(() => new Map()),
+  ensureMonthWindow: vi.fn(() => of(null)),
+  loadMoreForMonth: vi.fn(() => of({ items: [], total: null, next_cursor: null, has_more: false, page_size: 160 })),
   toggleFavorite: vi.fn((media) => of({ ...media, is_favorited: !media.is_favorited })),
 };
 
@@ -177,6 +180,9 @@ describe('MediaBrowserComponent', () => {
     galleryStoreMock.batchQueueTaggingJobs.mockClear();
     galleryStoreMock.batchUpdateVisibility.mockClear();
     galleryStoreMock.hasMore.mockClear();
+    galleryStoreMock.monthMap.mockClear();
+    galleryStoreMock.ensureMonthWindow.mockClear();
+    galleryStoreMock.loadMoreForMonth.mockClear();
     galleryStoreMock.toggleFavorite.mockClear();
     mediaServiceMock.get.mockClear();
     albumStoreMock.addMedia.mockClear();
@@ -415,10 +421,10 @@ describe('MediaBrowserComponent', () => {
       writable: true,
       configurable: true,
     });
-    fixture.componentInstance.monthMetrics.set([
-      { key: '2026-03', year: 2026, month: 3, offset: 0, height: 300 },
-      { key: '2026-02', year: 2026, month: 2, offset: 250, height: 300 },
-    ]);
+    (fixture.componentInstance as any).measuredMonthHeights.set({
+      '2026-03': 250,
+      '2026-02': 300,
+    });
     fixture.componentInstance.maxScrollTop.set(500);
 
     const measureOffsetSpy = vi.spyOn(
@@ -449,11 +455,11 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
-    fixture.componentInstance.monthMetrics.set([
-      { key: '2026-03', year: 2026, month: 3, offset: 0, height: 280 },
-      { key: '2026-02', year: 2026, month: 2, offset: 250, height: 240 },
-      { key: '2026-01', year: 2026, month: 1, offset: 900, height: 360 },
-    ]);
+    (fixture.componentInstance as any).measuredMonthHeights.set({
+      '2026-03': 250,
+      '2026-02': 250,
+      '2026-01': 250,
+    });
     fixture.componentInstance.maxScrollTop.set(500);
 
     const months = fixture.componentInstance.timelineEntries()[0]?.months ?? [];

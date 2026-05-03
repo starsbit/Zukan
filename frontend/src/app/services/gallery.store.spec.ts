@@ -154,6 +154,50 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('loadInitial()', () => {
+    it('loads timeline and only the newest month page', () => {
+      store.loadInitial().subscribe();
+
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [
+          { year: 2026, month: 3, count: 220 },
+          { year: 2026, month: 2, count: 180 },
+        ],
+      });
+      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(req.request.params.get('captured_year')).toBe('2026');
+      expect(req.request.params.get('captured_month')).toBe('3');
+      expect(req.request.params.get('page_size')).toBe('160');
+      expect(req.request.params.get('include_total')).toBe('false');
+      req.flush(makePage([makeMedia('m1')], true, 'cur1', null));
+
+      expect(store.items().map((item) => item.id)).toEqual(['m1']);
+      expect(store.total()).toBe(400);
+      expect(store.monthMap().has('2026-02')).toBe(false);
+    });
+
+    it('loads a jumped month directly without fetching intervening months', () => {
+      store.loadTimeline().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [
+          { year: 2026, month: 3, count: 220 },
+          { year: 2026, month: 2, count: 180 },
+          { year: 2026, month: 1, count: 90 },
+        ],
+      });
+
+      store.ensureMonthWindow('2026-01').subscribe();
+      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(req.request.params.get('captured_year')).toBe('2026');
+      expect(req.request.params.get('captured_month')).toBe('1');
+      req.flush(makePage([makeMedia('old', '2026-01-05T12:00:00Z')]));
+
+      expect(store.items().map((item) => item.id)).toEqual(['old']);
+      expect(store.monthMap().has('2026-03')).toBe(false);
+      expect(store.monthMap().has('2026-02')).toBe(false);
+    });
+  });
+
   describe('setParams()', () => {
     it('updates params and resets list state', () => {
       store.load().subscribe();
@@ -405,10 +449,10 @@ describe('GalleryStore', () => {
         result = value;
       });
       http.expectOne('/api/v1/media/actions/delete').flush({ processed: 1, skipped: 0 });
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m2')], false, null, 1));
       http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
         buckets: [{ year: 2026, month: 3, count: 1 }],
       });
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m2')], false, null, 1));
 
       expect(store.items()).toHaveLength(1);
       expect(store.items()[0].id).toBe('m2');
@@ -429,13 +473,13 @@ describe('GalleryStore', () => {
       const req = http.expectOne('/api/v1/media');
       expect(req.request.body).toEqual({ media_ids: ['m2'], visibility: MediaVisibility.PUBLIC });
       req.flush({ processed: 1, skipped: 0 });
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: 2 }],
+      });
       http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
         makeMedia('m1'),
         { ...makeMedia('m2'), visibility: MediaVisibility.PUBLIC },
       ]));
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: 2 }],
-      });
 
       expect(store.items()[0].visibility).toBe(MediaVisibility.PRIVATE);
       expect(store.items()[1].visibility).toBe(MediaVisibility.PUBLIC);
@@ -472,15 +516,15 @@ describe('GalleryStore', () => {
       });
       secondReq.flush({ processed: 1, skipped: 0 });
 
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: ids.length }],
+      });
       http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(
         ids.map((id) => ({ ...makeMedia(id), visibility: MediaVisibility.PUBLIC })),
         false,
         null,
         ids.length,
       ));
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: ids.length }],
-      });
 
       expect(result).toEqual({ processed: 501, skipped: 0 });
       expect(store.items().every((item) => item.visibility === MediaVisibility.PUBLIC)).toBe(true);
@@ -504,13 +548,13 @@ describe('GalleryStore', () => {
       expect(req.request.body).toEqual({ media_ids: ['m1', 'm3'] });
       req.flush({ queued: 2 });
       intermediateStatuses = store.items().map((item) => item.tagging_status);
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: 2 }],
+      });
       http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
         { ...makeMedia('m1'), tagging_status: TaggingStatus.PENDING },
         { ...makeMedia('m3'), tagging_status: TaggingStatus.PENDING },
       ]));
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: 2 }],
-      });
 
       expect(intermediateStatuses).toEqual([TaggingStatus.PENDING, TaggingStatus.PENDING]);
       expect(store.items()[0].tagging_status).toBe(TaggingStatus.PENDING);
@@ -535,10 +579,10 @@ describe('GalleryStore', () => {
       expect(req.request.method).toBe('PATCH');
       expect(req.request.body).toEqual({ media_ids: ['m1'], deleted: false });
       req.flush({ processed: 1, skipped: 0 });
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m2')], false, null, 1));
       http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
         buckets: [{ year: 2026, month: 3, count: 1 }],
       });
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m2')], false, null, 1));
 
       expect(store.items()).toHaveLength(1);
       expect(store.items()[0].id).toBe('m2');
@@ -560,7 +604,6 @@ describe('GalleryStore', () => {
       const req = http.expectOne('/api/v1/media/actions/empty-trash');
       expect(req.request.method).toBe('POST');
       req.flush(null);
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([], false, null, 0));
       http.expectOne(r => r.url === '/api/v1/media/timeline').flush({ buckets: [] });
 
       expect(store.items()).toHaveLength(0);

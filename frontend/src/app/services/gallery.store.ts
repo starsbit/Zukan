@@ -15,31 +15,45 @@ import { MediaTimeline, TimelineBucket } from '../models/timeline';
 const GIF_EXTENSIONS = new Set(['.gif']);
 const VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v', '.mkv', '.avi']);
 
+export interface GalleryMonthState {
+  key: string;
+  year: number;
+  month: number;
+  items: MediaRead[];
+  cursor: string | null;
+  hasMore: boolean;
+  loading: boolean;
+  loaded: boolean;
+  estimatedCount: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class GalleryStore {
   static readonly PAGE_SIZE = 1000;
+  static readonly MONTH_PAGE_SIZE = 160;
   static readonly BULK_MUTATION_CHUNK_SIZE = 500;
   private readonly client = inject(MediaClientService);
 
   private readonly _params = signal<MediaSearchParams>({});
-  private readonly _items = signal<MediaRead[]>([]);
+  private readonly _months = signal<Map<string, GalleryMonthState>>(new Map());
   private readonly _optimisticItems = signal<MediaRead[]>([]);
-  private readonly _cursor = signal<string | null>(null);
-  private readonly _hasMore = signal(false);
   private readonly _total = signal<number | null>(null);
   private readonly _loading = signal(false);
   private readonly _timeline = signal<TimelineBucket[]>([]);
   private readonly _timelineLoading = signal(false);
 
   readonly params = this._params.asReadonly();
+  readonly months = computed(() => Array.from(this._months().values()));
+  readonly monthMap = this._months.asReadonly();
   readonly items = computed(() => {
     const optimistic = this._optimisticItems();
+    const loadedItems = this.loadedItems();
     if (optimistic.length === 0) {
-      return this.sortItems(this._items());
+      return this.sortItems(loadedItems);
     }
 
     const optimisticById = new Map(optimistic.map((item) => [item.id, item]));
-    const serverItems = this._items().map((item) => {
+    const serverItems = loadedItems.map((item) => {
       const optimisticMatch = optimisticById.get(item.id);
       if (!optimisticMatch || !this.isStillProcessing(item) || !optimisticMatch.client_preview_url) {
         return item;
@@ -61,14 +75,14 @@ export class GalleryStore {
       ...serverItems,
     ]);
   });
-  readonly hasMore = this._hasMore.asReadonly();
+  readonly hasMore = computed(() => this.months().some((month) => month.hasMore));
   readonly total = computed(() => {
     const total = this._total();
     if (total == null) {
       return null;
     }
 
-    const serverIds = new Set(this._items().map((item) => item.id));
+    const serverIds = new Set(this.loadedItems().map((item) => item.id));
     const unresolvedOptimisticCount = this._optimisticItems().filter((item) => !serverIds.has(item.id)).length;
     return total + unresolvedOptimisticCount;
   });
@@ -80,20 +94,20 @@ export class GalleryStore {
   readonly timelineByYear = computed(() => groupTimelineByYear(this._timeline()));
 
   setParams(params: MediaSearchParams): void {
+    this.resetForParams(params);
+  }
+
+  resetForParams(params: MediaSearchParams): void {
     this._params.set(params);
-    this._items.set([]);
-    this._cursor.set(null);
-    this._hasMore.set(false);
+    this._months.set(new Map());
     this._total.set(null);
   }
 
   load(): Observable<MediaCursorPage> {
     this._loading.set(true);
-    return this.client.search({ page_size: GalleryStore.PAGE_SIZE, ...this._params() }).pipe(
+    return this.client.search({ page_size: GalleryStore.MONTH_PAGE_SIZE, include_total: true, ...this._params() }).pipe(
       tap((page) => {
-        this._items.set(page.items);
-        this._cursor.set(page.next_cursor);
-        this._hasMore.set(page.has_more);
+        this.replaceMonthsFromPage(page);
         this._total.set(page.total);
         this._loading.set(false);
       }),
@@ -105,16 +119,26 @@ export class GalleryStore {
   }
 
   loadMore(): Observable<MediaCursorPage> {
-    if (!this._hasMore() || this._loading()) return EMPTY;
+    const month = this.months().find((candidate) => candidate.hasMore && !candidate.loading);
+    return month ? this.loadMoreForMonth(month.key) : EMPTY;
+  }
+
+  loadInitial(): Observable<{ timeline: MediaTimeline; page: MediaCursorPage | null }> {
     this._loading.set(true);
-    const params = { page_size: GalleryStore.PAGE_SIZE, ...this._params(), after: this._cursor() ?? undefined };
-    return this.client.search(params).pipe(
-      tap((page) => {
-        this._items.update((prev) => [...prev, ...page.items]);
-        this._cursor.set(page.next_cursor);
-        this._hasMore.set(page.has_more);
-        this._loading.set(false);
+    return this.loadTimeline().pipe(
+      switchMap((timeline) => {
+        this._total.set(timeline.buckets.reduce((sum, bucket) => sum + bucket.count, 0));
+        const firstBucket = timeline.buckets[0];
+        if (!firstBucket) {
+          this._loading.set(false);
+          return of({ timeline, page: null });
+        }
+
+        return this.loadMonth(firstBucket.year, firstBucket.month).pipe(
+          map((page) => ({ timeline, page })),
+        );
       }),
+      tap(() => this._loading.set(false)),
       catchError((err) => {
         this._loading.set(false);
         return throwError(() => err);
@@ -137,13 +161,118 @@ export class GalleryStore {
     );
   }
 
+  ensureMonthWindow(monthKey: string): Observable<MediaCursorPage | null> {
+    const bucket = this.bucketForMonthKey(monthKey);
+    if (!bucket) {
+      return of(null);
+    }
+
+    const current = this._months().get(monthKey);
+    if (current?.loaded || current?.loading) {
+      return of(null);
+    }
+
+    return this.loadMonth(bucket.year, bucket.month);
+  }
+
+  loadMonth(year: number, month: number): Observable<MediaCursorPage> {
+    const key = this.monthKey(year, month);
+    const existing = this._months().get(key);
+    if (existing?.loading) {
+      return EMPTY;
+    }
+
+    this.upsertMonthState(key, {
+      year,
+      month,
+      loading: true,
+      estimatedCount: this.bucketForMonthKey(key)?.count ?? existing?.estimatedCount ?? 0,
+    });
+
+    return this.client.search({
+      ...this._params(),
+      after: undefined,
+      page_size: GalleryStore.MONTH_PAGE_SIZE,
+      include_total: false,
+      captured_year: year,
+      captured_month: month,
+    }).pipe(
+      tap((page) => {
+        this.upsertMonthState(key, {
+          year,
+          month,
+          items: page.items,
+          cursor: page.next_cursor,
+          hasMore: page.has_more,
+          loading: false,
+          loaded: true,
+          estimatedCount: this.bucketForMonthKey(key)?.count ?? page.items.length,
+        });
+      }),
+      catchError((err) => {
+        this.upsertMonthState(key, { year, month, loading: false });
+        return throwError(() => err);
+      }),
+    );
+  }
+
+  loadMoreForMonth(monthKey: string): Observable<MediaCursorPage> {
+    const current = this._months().get(monthKey);
+    if (!current || current.loading || !current.hasMore || !current.cursor) {
+      return EMPTY;
+    }
+
+    this.upsertMonthState(monthKey, { loading: true });
+    return this.client.search({
+      ...this._params(),
+      after: current.cursor,
+      page_size: GalleryStore.MONTH_PAGE_SIZE,
+      include_total: false,
+      captured_year: current.year,
+      captured_month: current.month,
+    }).pipe(
+      tap((page) => {
+        this.upsertMonthState(monthKey, {
+          items: [...current.items, ...page.items],
+          cursor: page.next_cursor,
+          hasMore: page.has_more,
+          loading: false,
+          loaded: true,
+        });
+      }),
+      catchError((err) => {
+        this.upsertMonthState(monthKey, { loading: false });
+        return throwError(() => err);
+      }),
+    );
+  }
+
   patchItem(updated: MediaRead): void {
     this.dropOptimisticItems([updated.id]);
-    this._items.update((items) =>
-      items.some((item) => item.id === updated.id)
-        ? items.map((item) => item.id === updated.id ? updated : item)
-        : [updated, ...items],
-    );
+    const key = this.monthKeyForMedia(updated);
+    this._months.update((months) => {
+      const next = new Map(months);
+      let matched = false;
+      for (const [monthKey, month] of next) {
+        if (!month.items.some((item) => item.id === updated.id)) {
+          continue;
+        }
+        matched = true;
+        next.set(monthKey, {
+          ...month,
+          items: month.items.map((item) => item.id === updated.id ? updated : item),
+        });
+      }
+      if (!matched) {
+        const current = next.get(key) ?? this.emptyMonthState(key);
+        next.set(key, {
+          ...current,
+          loaded: true,
+          items: [updated, ...current.items],
+        });
+      }
+      return next;
+    });
   }
 
   toggleFavorite(media: MediaRead): Observable<MediaRead> {
@@ -188,16 +317,16 @@ export class GalleryStore {
 
   removeItem(id: string): void {
     this.dropOptimisticItems([id]);
-    this._items.update((items) => items.filter((item) => item.id !== id));
+    this.removeLoadedItems([id]);
     this._total.update((t) => t != null ? t - 1 : null);
   }
 
   removeItems(ids: string[]): void {
     this.dropOptimisticItems(ids);
     const set = new Set(ids);
-    const before = this._items().length;
-    this._items.update((items) => items.filter((item) => !set.has(item.id)));
-    const removed = before - this._items().length;
+    const before = this.loadedItems().length;
+    this.removeLoadedItems(ids);
+    const removed = before - this.loadedItems().length;
     this._total.update((t) => t != null ? t - removed : null);
   }
 
@@ -205,10 +334,7 @@ export class GalleryStore {
     return this.client.batchDelete({ media_ids: ids }).pipe(
       tap(() => this.removeItems(ids)),
       switchMap((result) =>
-        forkJoin({
-          page: this.load(),
-          timeline: this.loadTimeline(),
-        }).pipe(
+        this.refresh().pipe(
           map(() => result),
         ),
       ),
@@ -241,11 +367,9 @@ export class GalleryStore {
     return this.client.batchQueueTaggingJobs({ media_ids: ids }).pipe(
       tap(() => {
         const set = new Set(ids);
-        this._items.update((items) =>
-          items.map((item) => set.has(item.id)
-            ? { ...item, tagging_status: TaggingStatus.PENDING, tagging_error: null }
-            : item),
-        );
+        this.updateLoadedItems((item) => set.has(item.id)
+          ? { ...item, tagging_status: TaggingStatus.PENDING, tagging_error: null }
+          : item);
         this._optimisticItems.update((items) =>
           items.map((item) => set.has(item.id)
             ? { ...item, tagging_status: TaggingStatus.PENDING, tagging_error: null }
@@ -299,10 +423,26 @@ export class GalleryStore {
   }
 
   refresh(): Observable<{ page: MediaCursorPage; timeline: MediaTimeline }> {
-    return forkJoin({
-      page: this.load(),
-      timeline: this.loadTimeline(),
-    });
+    const activeKey = this.months().find((month) => month.loaded)?.key;
+    return this.loadTimeline().pipe(
+      switchMap((timeline) => {
+        this._total.set(timeline.buckets.reduce((sum, bucket) => sum + bucket.count, 0));
+        this._months.set(new Map());
+        const target = activeKey && timeline.buckets.some((bucket) => this.monthKey(bucket.year, bucket.month) === activeKey)
+          ? activeKey
+          : timeline.buckets[0] ? this.monthKey(timeline.buckets[0].year, timeline.buckets[0].month) : null;
+        if (!target) {
+          return of({
+            timeline,
+            page: { items: [], total: 0, next_cursor: null, has_more: false, page_size: GalleryStore.MONTH_PAGE_SIZE },
+          });
+        }
+        const bucket = this.bucketForMonthKey(target);
+        return this.loadMonth(bucket!.year, bucket!.month).pipe(
+          map((page) => ({ page, timeline })),
+        );
+      }),
+    );
   }
 
   clearOptimisticItems(): void {
@@ -312,10 +452,8 @@ export class GalleryStore {
 
   reset(): void {
     this._params.set({});
-    this._items.set([]);
+    this._months.set(new Map());
     this.clearOptimisticItems();
-    this._cursor.set(null);
-    this._hasMore.set(false);
     this._total.set(null);
     this._loading.set(false);
     this._timeline.set([]);
@@ -450,6 +588,105 @@ export class GalleryStore {
       const leftDate = left.metadata.captured_at || left.uploaded_at || '';
       return rightDate.localeCompare(leftDate);
     });
+  }
+
+  private loadedItems(): MediaRead[] {
+    return Array.from(this._months().values()).flatMap((month) => month.items);
+  }
+
+  private replaceMonthsFromPage(page: MediaCursorPage): void {
+    const months = new Map<string, GalleryMonthState>();
+    for (const item of page.items) {
+      const key = this.monthKeyForMedia(item);
+      const current = months.get(key) ?? this.emptyMonthState(key);
+      months.set(key, {
+        ...current,
+        loaded: true,
+        items: [...current.items, item],
+      });
+    }
+    const last = page.items[page.items.length - 1];
+    if (last) {
+      const key = this.monthKeyForMedia(last);
+      const current = months.get(key);
+      if (current) {
+        months.set(key, {
+          ...current,
+          cursor: page.next_cursor,
+          hasMore: page.has_more,
+        });
+      }
+    }
+    this._months.set(months);
+  }
+
+  private updateLoadedItems(update: (item: MediaRead) => MediaRead): void {
+    this._months.update((months) => {
+      const next = new Map(months);
+      for (const [key, month] of next) {
+        next.set(key, {
+          ...month,
+          items: month.items.map(update),
+        });
+      }
+      return next;
+    });
+  }
+
+  private removeLoadedItems(ids: string[]): void {
+    const set = new Set(ids);
+    this._months.update((months) => {
+      const next = new Map(months);
+      for (const [key, month] of next) {
+        next.set(key, {
+          ...month,
+          items: month.items.filter((item) => !set.has(item.id)),
+        });
+      }
+      return next;
+    });
+  }
+
+  private upsertMonthState(key: string, patch: Partial<GalleryMonthState>): void {
+    this._months.update((months) => {
+      const next = new Map(months);
+      const current = next.get(key) ?? this.emptyMonthState(key);
+      next.set(key, { ...current, ...patch, key });
+      return next;
+    });
+  }
+
+  private emptyMonthState(key: string): GalleryMonthState {
+    const parsed = this.parseMonthKey(key);
+    return {
+      key,
+      year: parsed.year,
+      month: parsed.month,
+      items: [],
+      cursor: null,
+      hasMore: false,
+      loading: false,
+      loaded: false,
+      estimatedCount: this.bucketForMonthKey(key)?.count ?? 0,
+    };
+  }
+
+  private bucketForMonthKey(key: string): TimelineBucket | undefined {
+    return this._timeline().find((bucket) => this.monthKey(bucket.year, bucket.month) === key);
+  }
+
+  private monthKeyForMedia(item: MediaRead): string {
+    const value = item.metadata.captured_at || item.uploaded_at || new Date().toISOString();
+    return value.slice(0, 7);
+  }
+
+  private monthKey(year: number, month: number): string {
+    return `${year}-${String(month).padStart(2, '0')}`;
+  }
+
+  private parseMonthKey(key: string): { year: number; month: number } {
+    const [year, month] = key.split('-').map(Number);
+    return { year: year || 0, month: month || 0 };
   }
 
   private shouldRemoveAfterFavoriteToggle(nextFavorited: boolean): boolean {

@@ -75,7 +75,7 @@
         preload="metadata">
       </video>
     } @else if (displayUrl(); as url) {
-      <img class="media-card__image" [src]="url" [alt]="media().original_filename ?? media().filename">
+      <img class="media-card__image" [src]="url" [alt]="media().original_filename ?? media().filename" loading="lazy" decoding="async">
     } @else {
       <div class="media-card__placeholder" [class.media-card__placeholder--loading]="loading() || isProcessing()">
         @if (loading() || isProcessing()) {

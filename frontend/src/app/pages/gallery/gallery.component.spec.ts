@@ -25,6 +25,7 @@ describe('GalleryComponent', () => {
 
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -148,7 +149,8 @@ describe('GalleryComponent', () => {
       state: MediaListState.ACTIVE,
     });
 
-    expect(galleryStore.load).toHaveBeenCalledTimes(1);
-    expect(galleryStore.loadTimeline).toHaveBeenCalledTimes(1);
+    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
+    expect(galleryStore.load).not.toHaveBeenCalled();
+    expect(galleryStore.loadTimeline).not.toHaveBeenCalled();
   });
 });

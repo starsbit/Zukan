@@ -19,6 +19,7 @@ import { TrashComponent } from './trash.component';
 describe('TrashComponent', () => {
   const galleryStore = {
     setParams: vi.fn(),
+    loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
     load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
     loadTimeline: vi.fn(() => of({ buckets: [] })),
     loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -119,6 +120,7 @@ describe('TrashComponent', () => {
 
   beforeEach(() => {
     galleryStore.setParams.mockClear();
+    galleryStore.loadInitial.mockClear();
     galleryStore.load.mockClear();
     galleryStore.loadTimeline.mockClear();
     galleryStore.batchRestore.mockClear();
@@ -193,6 +195,7 @@ describe('TrashComponent', () => {
       ocr_text: 'test text',
       state: MediaListState.TRASHED,
     });
+    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
   });
 
   it('confirms and triggers restore all from the page header', async () => {

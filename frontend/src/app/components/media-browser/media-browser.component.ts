@@ -90,6 +90,11 @@ const DEFAULT_ROW_HEIGHT = 240;
 const COMPACT_ROW_HEIGHT = 168;
 const WIDTH_FALLBACK = 1200;
 const SKELETON_ASPECT_RATIO = 4 / 3;
+const VIRTUAL_OVERSCAN_PX = 1400;
+const SKELETON_RENDER_LIMIT = 80;
+const DAY_HEADER_ESTIMATE = 42;
+const DAY_SECTION_MARGIN = 28;
+const MONTH_SECTION_MARGIN = 40;
 
 @Component({
   selector: 'zukan-media-browser',
@@ -161,6 +166,23 @@ export class MediaBrowserComponent {
     () => !this.loading() && this.dayGroups().length === 0 && this.timeline().length === 0,
   );
   readonly justifiedMonthGroups = computed(() => this.buildJustifiedMonthGroups());
+  readonly virtualMonthMetrics = computed(() => this.buildVirtualMonthMetrics());
+  readonly renderedMonthMetrics = computed(() => this.buildRenderedMonthMetrics());
+  readonly virtualMonthGroups = computed(() => this.buildVirtualMonthGroups());
+  readonly totalVirtualHeight = computed(() => {
+    const metrics = this.virtualMonthMetrics();
+    const last = metrics[metrics.length - 1];
+    return last ? last.offset + last.height : 0;
+  });
+  readonly topSpacerHeight = computed(() => this.renderedMonthMetrics()[0]?.offset ?? 0);
+  readonly bottomSpacerHeight = computed(() => {
+    const rendered = this.renderedMonthMetrics();
+    const last = rendered[rendered.length - 1];
+    if (!last) {
+      return 0;
+    }
+    return Math.max(this.totalVirtualHeight() - (last.offset + last.height), 0);
+  });
   readonly timelineEntries = computed(() => this.buildTimelineEntries());
   readonly allMediaIds = computed(() =>
     this.dayGroups().flatMap((group) => group.items.map((item) => item.id)),
@@ -184,6 +206,9 @@ export class MediaBrowserComponent {
   private currentInspectId: string | null = null;
   private closingInspectorFromRoute = false;
   private closingInspectorFromMetadataFilter = false;
+  private readonly scrollTop = signal(0);
+  private readonly viewportHeight = signal(900);
+  private readonly measuredMonthHeights = signal<Record<string, number>>({});
 
   private static readonly MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
@@ -213,6 +238,7 @@ export class MediaBrowserComponent {
         this.tryResolvePendingJump();
         this.tryOpenPendingInspector();
         this.scheduleLayoutSync();
+        this.ensureRenderedMonthsLoaded();
       });
     });
 
@@ -714,7 +740,10 @@ export class MediaBrowserComponent {
 
     this.zone.runOutsideAngular(() => {
       const onScroll = () => {
+        this.scrollTop.set(content.scrollTop);
+        this.viewportHeight.set(content.clientHeight);
         this.scheduleActiveSectionSync();
+        this.ensureRenderedMonthsLoaded();
       };
       content.addEventListener('scroll', onScroll, { passive: true });
       this.removeContentScrollListener = () => {
@@ -728,39 +757,22 @@ export class MediaBrowserComponent {
     const content = this.contentPane?.nativeElement;
     const sections = this.monthSections?.toArray() ?? [];
     if (!content || sections.length === 0) {
-      if (this.monthMetrics().length > 0) {
-        this.monthMetrics.set([]);
-      }
-      if (this.maxScrollTop() !== 0) {
-        this.maxScrollTop.set(0);
-      }
+      this.updateVirtualScrollBounds();
       return;
     }
 
-    const metrics: MonthMetric[] = [];
+    const heights: Record<string, number> = { ...this.measuredMonthHeights() };
     for (const ref of sections) {
       const el = ref.nativeElement;
       const key = el.dataset['month'];
       if (key) {
-        const parts = this.parseMonthKey(key);
-        metrics.push({
-          key,
-          year: parts.year,
-          month: parts.month,
-          height: el.offsetHeight,
-          offset: this.measureMonthSectionOffset(el, content),
-        });
+        heights[key] = el.offsetHeight + MONTH_SECTION_MARGIN;
       }
     }
 
-    if (!this.areMonthMetricsEqual(this.monthMetrics(), metrics)) {
-      this.monthMetrics.set(metrics);
-    }
-
-    const nextMaxScrollTop = Math.max(content.scrollHeight - content.clientHeight, 0);
-    if (nextMaxScrollTop !== this.maxScrollTop()) {
-      this.maxScrollTop.set(nextMaxScrollTop);
-    }
+    this.measuredMonthHeights.set(heights);
+    this.monthMetrics.set(this.renderedMonthMetrics());
+    this.updateVirtualScrollBounds();
   }
 
   private scheduleActiveSectionSync(): void {
@@ -788,7 +800,7 @@ export class MediaBrowserComponent {
 
   private syncActiveSection(): void {
     const content = this.contentPane?.nativeElement;
-    const metrics = this.monthMetrics();
+    const metrics = this.virtualMonthMetrics();
     if (!content || metrics.length === 0) {
       this.activeYear.set(null);
       this.activeMonthKey.set(null);
@@ -797,6 +809,7 @@ export class MediaBrowserComponent {
     }
 
     const scrollTop = content.scrollTop;
+    this.scrollTop.set(scrollTop);
     const activeMetric = this.findActiveMonthMetric(metrics, scrollTop);
     const maxScrollTop = this.maxScrollTop();
     const scrollProgress =
@@ -814,10 +827,10 @@ export class MediaBrowserComponent {
     }
 
     const metrics = new Map(
-      this.monthMetrics().map((metric) => [metric.key, metric] as const),
+      this.virtualMonthMetrics().map((metric) => [metric.key, metric] as const),
     );
     const maxScrollTop = this.maxScrollTop();
-    const monthGroups = this.justifiedMonthGroups();
+    const monthGroups = this.virtualMonthGroups();
 
     const renderedMonthKeys = new Set(
       monthGroups
@@ -825,15 +838,13 @@ export class MediaBrowserComponent {
         .map((mg) => this.monthKey(mg.year, mg.month)),
     );
 
-    const totalCount = buckets.reduce((sum, b) => sum + b.count, 0);
-
     let totalHeight = 0;
     const monthHeightList: { key: string; h: number; bucket: TimelineBucket }[] = [];
 
     for (const bucket of buckets) {
       const key = this.monthKey(bucket.year, bucket.month);
       const measured = metrics.get(key)?.height;
-      const estimated = totalCount > 0 ? (bucket.count / totalCount) * 1000 : 1;
+      const estimated = this.estimateBucketHeight(bucket, this.contentWidth(), this.preferredRowHeight(this.contentWidth()), this.gridGap(this.contentWidth()));
       const h = measured ?? estimated;
       monthHeightList.push({ key, h, bucket });
       totalHeight += h;
@@ -888,6 +899,10 @@ export class MediaBrowserComponent {
       return;
     }
 
+    this.galleryStore.ensureMonthWindow(targetKey)
+      .pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
+      .subscribe(() => this.scheduleLayoutSync());
+
     if (this.scrollToAnchor(target.anchorId)) {
       this.pendingJumpTargetKey = null;
       return;
@@ -914,21 +929,26 @@ export class MediaBrowserComponent {
 
   private scrollToAnchor(anchorId: string): boolean {
     const content = this.contentPane?.nativeElement;
-    const target = typeof document !== 'undefined' ? document.getElementById(anchorId) : null;
-    if (!content || !target) {
+    if (!content) {
       return false;
     }
 
-    const cachedMonthMetric = this.monthMetrics().find(
+    const cachedMonthMetric = this.virtualMonthMetrics().find(
       (metric) => this.monthSectionId(metric.year, metric.month) === anchorId,
     );
-    const nextTop = cachedMonthMetric?.offset ?? this.measureOffsetWithinContent(target, content);
+    const target = typeof document !== 'undefined' ? document.getElementById(anchorId) : null;
+    if (!cachedMonthMetric && !target) {
+      return false;
+    }
+    const nextTop = cachedMonthMetric?.offset ?? this.measureOffsetWithinContent(target!, content);
     if (typeof content.scrollTo === 'function') {
       content.scrollTo({ top: Math.max(nextTop, 0), behavior: 'auto' });
     } else {
       content.scrollTop = Math.max(nextTop, 0);
     }
+    this.scrollTop.set(content.scrollTop);
     this.scheduleActiveSectionSync();
+    this.ensureRenderedMonthsLoaded();
     return true;
   }
 
@@ -960,6 +980,88 @@ export class MediaBrowserComponent {
 
   private flattenTimelineMonths() {
     return this.timelineEntries().flatMap((entry) => entry.months);
+  }
+
+  private buildVirtualMonthGroups(): JustifiedMonthGroup[] {
+    if (this.timeline().length === 0) {
+      return this.buildJustifiedMonthGroups();
+    }
+
+    const rendered = new Set(this.renderedMonthMetrics().map((metric) => metric.key));
+    const loadedGroups = new Map(
+      this.buildJustifiedMonthGroups().map((group) => [this.monthKey(group.year, group.month), group] as const),
+    );
+    const contentWidth = this.contentWidth();
+    const rowHeight = this.preferredRowHeight(contentWidth);
+    const gap = this.gridGap(contentWidth);
+    const result: JustifiedMonthGroup[] = [];
+
+    for (const bucket of this.timeline()) {
+      const key = this.monthKey(bucket.year, bucket.month);
+      if (!rendered.has(key)) {
+        continue;
+      }
+
+      const loaded = loadedGroups.get(key);
+      if (loaded) {
+        result.push(loaded);
+        continue;
+      }
+
+      result.push({
+        year: bucket.year,
+        month: bucket.month,
+        label: this.formatMonthLabel(bucket.year, bucket.month),
+        days: [this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap)],
+      });
+    }
+
+    return result;
+  }
+
+  private buildVirtualMonthMetrics(): MonthMetric[] {
+    const buckets = this.timeline();
+    const measured = this.measuredMonthHeights();
+    const contentWidth = this.contentWidth();
+    const rowHeight = this.preferredRowHeight(contentWidth);
+    const gap = this.gridGap(contentWidth);
+
+    if (buckets.length === 0) {
+      const groups = this.buildJustifiedMonthGroups();
+      let offset = 0;
+      return groups.map((group) => {
+        const key = this.monthKey(group.year, group.month);
+        const height = measured[key] ?? this.estimateMonthGroupHeight(group);
+        const metric = { key, year: group.year, month: group.month, offset, height };
+        offset += height;
+        return metric;
+      });
+    }
+
+    const groups = new Map(
+      this.buildJustifiedMonthGroups().map((group) => [this.monthKey(group.year, group.month), group] as const),
+    );
+    let offset = 0;
+    return buckets.map((bucket) => {
+      const key = this.monthKey(bucket.year, bucket.month);
+      const group = groups.get(key);
+      const height = measured[key]
+        ?? (group ? this.estimateMonthGroupHeight(group) : this.estimateBucketHeight(bucket, contentWidth, rowHeight, gap));
+      const metric = { key, year: bucket.year, month: bucket.month, offset, height };
+      offset += height;
+      return metric;
+    });
+  }
+
+  private buildRenderedMonthMetrics(): MonthMetric[] {
+    const metrics = this.virtualMonthMetrics();
+    if (metrics.length === 0) {
+      return [];
+    }
+
+    const from = Math.max(this.scrollTop() - VIRTUAL_OVERSCAN_PX, 0);
+    const to = this.scrollTop() + this.viewportHeight() + VIRTUAL_OVERSCAN_PX;
+    return metrics.filter((metric) => metric.offset + metric.height >= from && metric.offset <= to);
   }
 
   private buildJustifiedMonthGroups(): JustifiedMonthGroup[] {
@@ -1046,7 +1148,7 @@ export class MediaBrowserComponent {
       date: this.monthKey(bucket.year, bucket.month),
       label: this.formatMonthLabel(bucket.year, bucket.month),
       itemCount: bucket.count,
-      rows: this.justifySkeletonRows(bucket.count, contentWidth, rowHeight, gap),
+      rows: this.justifySkeletonRows(Math.min(bucket.count, SKELETON_RENDER_LIMIT), contentWidth, rowHeight, gap),
       isSkeleton: true,
     };
   }
@@ -1203,7 +1305,84 @@ export class MediaBrowserComponent {
     }
 
     content.scrollTop = progress * this.maxScrollTop();
+    this.scrollTop.set(content.scrollTop);
     this.scheduleActiveSectionSync();
+    this.ensureRenderedMonthsLoaded();
+  }
+
+  private updateVirtualScrollBounds(): void {
+    const content = this.contentPane?.nativeElement;
+    if (!content) {
+      return;
+    }
+
+    this.viewportHeight.set(content.clientHeight);
+    this.scrollTop.set(content.scrollTop);
+    const nextMaxScrollTop = Math.max(this.totalVirtualHeight() - content.clientHeight, 0);
+    if (nextMaxScrollTop !== this.maxScrollTop()) {
+      this.maxScrollTop.set(nextMaxScrollTop);
+    }
+  }
+
+  private ensureRenderedMonthsLoaded(): void {
+    if (this.timeline().length === 0) {
+      return;
+    }
+
+    const visibleTo = this.scrollTop() + this.viewportHeight();
+    for (const metric of this.renderedMonthMetrics()) {
+      if (metric.offset > visibleTo) {
+        continue;
+      }
+      const monthState = this.galleryStore.monthMap().get(metric.key);
+      const request = monthState?.loaded && monthState.hasMore
+        && this.scrollTop() + this.viewportHeight() + 800 > metric.offset + metric.height
+        ? this.galleryStore.loadMoreForMonth(metric.key)
+        : this.galleryStore.ensureMonthWindow(metric.key);
+
+      request.pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
+        .subscribe(() => this.scheduleLayoutSync());
+    }
+  }
+
+  private estimateMonthGroupHeight(group: JustifiedMonthGroup): number {
+    const gap = this.gridGap(this.contentWidth());
+    const daysHeight = group.days.reduce((sum, day, dayIndex) => {
+      const rowsHeight = day.rows.reduce((rowSum, row, rowIndex) =>
+        rowSum + row.height + (rowIndex > 0 ? gap : 0), 0);
+      return sum + DAY_HEADER_ESTIMATE + rowsHeight + (dayIndex > 0 ? DAY_SECTION_MARGIN : 0);
+    }, 0);
+    return daysHeight + MONTH_SECTION_MARGIN;
+  }
+
+  private estimateBucketHeight(
+    bucket: TimelineBucket,
+    contentWidth: number,
+    rowHeight: number,
+    gap: number,
+  ): number {
+    const count = Math.max(bucket.count, 0);
+    if (count === 0) {
+      return DAY_HEADER_ESTIMATE + MONTH_SECTION_MARGIN;
+    }
+
+    const minH = contentWidth < 1024 ? MIN_ROW_HEIGHT_COMPACT : MIN_ROW_HEIGHT;
+    const maxH = contentWidth < 1024 ? MAX_ROW_HEIGHT_COMPACT : MAX_ROW_HEIGHT;
+    const itemsPerRow = Math.max(
+      1,
+      Math.floor((contentWidth + gap) / (rowHeight * SKELETON_ASPECT_RATIO + gap)),
+    );
+    const justifiedRows = Math.floor(Math.max(count - 1, 0) / itemsPerRow);
+    const totalRows = Math.ceil(count / itemsPerRow);
+    const gapWidth = gap * Math.max(itemsPerRow - 1, 0);
+    const naturalH = (contentWidth - gapWidth) / (itemsPerRow * SKELETON_ASPECT_RATIO);
+    const justifiedRowHeight = this.clamp(naturalH, minH, maxH);
+    const trailingRowHeight = Math.min(rowHeight, maxH);
+    const rowsHeight =
+      justifiedRows * justifiedRowHeight
+      + trailingRowHeight
+      + gap * Math.max(totalRows - 1, 0);
+    return DAY_HEADER_ESTIMATE + rowsHeight + MONTH_SECTION_MARGIN;
   }
 
   private measureContentWidth(content: HTMLElement): number {

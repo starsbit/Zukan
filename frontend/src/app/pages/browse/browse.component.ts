@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { EMPTY, catchError } from 'rxjs';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { GalleryStore } from '../../services/gallery.store';
@@ -33,16 +32,7 @@ export class BrowseComponent {
         visibility: MediaVisibility.PUBLIC,
       };
       this.galleryStore.setParams(params);
-      this.galleryStore.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-      this.galleryStore.loadTimeline().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    });
-
-    effect(() => {
-      if (this.galleryStore.hasMore() && !this.galleryStore.loading()) {
-        this.galleryStore.loadMore()
-          .pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
-          .subscribe();
-      }
+      this.galleryStore.loadInitial().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     });
   }
 }

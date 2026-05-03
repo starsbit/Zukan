@@ -4,6 +4,7 @@ Its in the repository domain because it relates closely to SQL related logic.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import extract, exists, func, or_, select
 from backend.app.models.auth import User
@@ -112,36 +113,66 @@ def apply_visibility_filter(stmt, visibility: MediaVisibility | None):
 
 def apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
     captured_at = captured_timestamp_expr()
-    if metadata.captured_year is not None:
-        stmt = stmt.where(extract("year", captured_at) == metadata.captured_year)
-    if metadata.captured_month is not None:
-        stmt = stmt.where(extract("month", captured_at) == metadata.captured_month)
-    if metadata.captured_day is not None:
-        stmt = stmt.where(extract("day", captured_at) == metadata.captured_day)
+    range_bounds = _date_part_range(
+        metadata.captured_year,
+        metadata.captured_month,
+        metadata.captured_day,
+    )
+    if range_bounds is not None:
+        start, end = range_bounds
+        stmt = stmt.where(captured_at >= start, captured_at < end)
+    else:
+        if metadata.captured_month is not None:
+            stmt = stmt.where(extract("month", captured_at) == metadata.captured_month)
+        if metadata.captured_day is not None:
+            stmt = stmt.where(extract("day", captured_at) == metadata.captured_day)
     if metadata.captured_after is not None:
         stmt = stmt.where(captured_at >= metadata.captured_after)
     if metadata.captured_before is not None:
         stmt = stmt.where(captured_at <= metadata.captured_before)
     if metadata.captured_before_year is not None:
-        stmt = stmt.where(extract("year", captured_at) < metadata.captured_before_year)
+        stmt = stmt.where(captured_at < datetime(metadata.captured_before_year, 1, 1, tzinfo=timezone.utc))
     return stmt
 
 
 def apply_uploaded_at_filters(stmt, metadata: MediaMetadataFilter):
     uploaded_at = uploaded_timestamp_expr()
-    if metadata.uploaded_year is not None:
-        stmt = stmt.where(extract("year", uploaded_at) == metadata.uploaded_year)
-    if metadata.uploaded_month is not None:
-        stmt = stmt.where(extract("month", uploaded_at) == metadata.uploaded_month)
-    if metadata.uploaded_day is not None:
-        stmt = stmt.where(extract("day", uploaded_at) == metadata.uploaded_day)
+    range_bounds = _date_part_range(
+        metadata.uploaded_year,
+        metadata.uploaded_month,
+        metadata.uploaded_day,
+    )
+    if range_bounds is not None:
+        start, end = range_bounds
+        stmt = stmt.where(uploaded_at >= start, uploaded_at < end)
+    else:
+        if metadata.uploaded_month is not None:
+            stmt = stmt.where(extract("month", uploaded_at) == metadata.uploaded_month)
+        if metadata.uploaded_day is not None:
+            stmt = stmt.where(extract("day", uploaded_at) == metadata.uploaded_day)
     if metadata.uploaded_after is not None:
         stmt = stmt.where(uploaded_at >= metadata.uploaded_after)
     if metadata.uploaded_before is not None:
         stmt = stmt.where(uploaded_at <= metadata.uploaded_before)
     if metadata.uploaded_before_year is not None:
-        stmt = stmt.where(extract("year", uploaded_at) < metadata.uploaded_before_year)
+        stmt = stmt.where(uploaded_at < datetime(metadata.uploaded_before_year, 1, 1, tzinfo=timezone.utc))
     return stmt
+
+
+def _date_part_range(year: int | None, month: int | None, day: int | None) -> tuple[datetime, datetime] | None:
+    if year is None:
+        return None
+
+    start_month = month or 1
+    start_day = day or 1
+    start = datetime(year, start_month, start_day, tzinfo=timezone.utc)
+    if day is not None:
+        return start, start + timedelta(days=1)
+    if month is not None:
+        if month == 12:
+            return start, datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        return start, datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    return start, datetime(year + 1, 1, 1, tzinfo=timezone.utc)
 
 def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     nsfw_expr = effective_nsfw_expr()

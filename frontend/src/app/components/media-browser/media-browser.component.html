@@ -61,7 +61,11 @@
         </mat-card-content>
       </mat-card>
     } @else {
-      @for (monthGroup of justifiedMonthGroups(); track monthKey(monthGroup.year, monthGroup.month)) {
+      @if (topSpacerHeight() > 0) {
+        <div class="media-browser__virtual-spacer" [style.height.px]="topSpacerHeight()" aria-hidden="true"></div>
+      }
+
+      @for (monthGroup of virtualMonthGroups(); track monthKey(monthGroup.year, monthGroup.month)) {
         <section
           #monthSection
           class="media-browser__month"
@@ -126,6 +130,10 @@
             </section>
           }
         </section>
+      }
+
+      @if (bottomSpacerHeight() > 0) {
+        <div class="media-browser__virtual-spacer" [style.height.px]="bottomSpacerHeight()" aria-hidden="true"></div>
       }
     }
 

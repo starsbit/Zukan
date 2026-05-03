@@ -15,6 +15,7 @@ describe('BrowseComponent', () => {
   it('uses the shared layout and reacts to applied search params', async () => {
     const galleryStore = {
       setParams: vi.fn(),
+      loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
       load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
       loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
@@ -135,5 +136,6 @@ describe('BrowseComponent', () => {
       state: MediaListState.ACTIVE,
       visibility: MediaVisibility.PUBLIC,
     });
+    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
   });
 });
