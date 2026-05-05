@@ -19,7 +19,7 @@ from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, ExternalRefCreate, UploadResult
-from backend.app.utils.media_common import build_tag_payloads, normalize_manual_entity_names, normalize_manual_tags
+from backend.app.utils.media_common import build_tag_payloads, limit_error_message, normalize_manual_entity_names, normalize_manual_tags
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
@@ -831,7 +831,7 @@ class MediaUploadService:
         item.status = ItemStatus.failed
         item.step = ProcessingStep.tag
         item.progress_percent = 100
-        item.error = error_message
+        item.error = limit_error_message(error_message)
         await self._refresh_import_batch_status(item.batch_id)
         await self._db.commit()
 

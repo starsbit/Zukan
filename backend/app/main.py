@@ -40,6 +40,7 @@ from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.admin import AdminService
 from backend.app.services.auth import AuthService
+from backend.app.services.database_repair import repair_database_after_migrations
 from backend.app.services.tags import TagService
 from backend.app.services.update_check import update_check_worker
 from backend.app.ml.tagger import tagger
@@ -492,6 +493,10 @@ async def lifespan(_api: FastAPI):
         logger.info("Startup phase: running database migrations")
         await init_db()
         logger.info("Startup phase complete: database migrations")
+
+        logger.info("Startup phase: running database auto repair")
+        await repair_database_after_migrations()
+        logger.info("Startup phase complete: database auto repair")
 
         logger.info("Startup phase: ensuring admin user")
         await _ensure_admin_user()

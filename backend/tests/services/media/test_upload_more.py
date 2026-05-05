@@ -347,6 +347,11 @@ async def test_mark_upload_batch_item_failed_and_missing_item(fake_db, stub_quer
     assert item.error == "boom"
     assert batch.status == BatchStatus.failed
 
+    long_error = "x" * 2048
+    stub_query.get_upload_batch_item_for_media.return_value = item
+    await service.mark_upload_batch_item_failed(uuid.uuid4(), long_error)
+    assert item.error == "x" * 1024
+
 
 @pytest.mark.asyncio
 async def test_refresh_import_batch_status_running_and_done_states(fake_db, stub_query):

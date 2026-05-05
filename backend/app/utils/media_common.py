@@ -48,6 +48,13 @@ def build_tag_payloads(
     return [(tag_name, default_category, default_confidence) for tag_name in normalize_manual_tags(tag_names)]
 
 
+def limit_error_message(message: str, *, max_length: int = 1024) -> str:
+    cleaned = message.strip()
+    if not cleaned:
+        cleaned = "Unknown error"
+    return cleaned[:max_length]
+
+
 def format_tagging_error(exc: Exception) -> str:
     message = str(exc).strip() or exc.__class__.__name__
-    return f"{exc.__class__.__name__}: {message}"[:1024]
+    return limit_error_message(f"{exc.__class__.__name__}: {message}")

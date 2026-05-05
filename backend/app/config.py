@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://zukan:zukan@localhost:5432/zukan"
+    database_auto_repair_enabled: bool = True
 
     storage_dir: Path = Path("storage")
 

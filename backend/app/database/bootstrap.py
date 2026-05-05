@@ -18,6 +18,9 @@ async def init_db():
 
     started_at = time.perf_counter()
     logger.info("Database migration bootstrap started")
+    from backend.app.services.database_repair import repair_database_before_migrations
+
+    await repair_database_before_migrations()
     await asyncio.to_thread(_upgrade_to_head)
     logger.info("Database migration bootstrap finished in %.2fs", time.perf_counter() - started_at)
 
