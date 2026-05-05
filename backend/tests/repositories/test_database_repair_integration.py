@@ -13,6 +13,7 @@ from backend.app.models.library_classification import (
 )
 from backend.app.models.relations import MediaEntity, OwnedEntity
 from backend.app.models.tags import MediaTag, Tag
+from backend.app.services import database_repair
 from backend.app.services.database_repair import repair_database_connection
 
 
@@ -166,3 +167,28 @@ async def test_database_repair_reindexes_and_retries_failed_tag_probe():
     assert repaired == 0
     assert probe.await_count == 2
     reindex.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_tag_repair_reindexes_lookup_indexes_before_mutating_tags():
+    order: list[str] = []
+
+    async def _has_columns(conn, table_name, columns):
+        return table_name == "tags"
+
+    async def _reindex_lookup(conn):
+        order.append("reindex")
+
+    async def _execute_rowcount(conn, sql):
+        order.append("mutate")
+        return 0
+
+    with (
+        patch("backend.app.services.database_repair._has_columns", AsyncMock(side_effect=_has_columns)),
+        patch("backend.app.services.database_repair._reindex_tag_lookup_indexes", AsyncMock(side_effect=_reindex_lookup)),
+        patch("backend.app.services.database_repair._scalar_int", AsyncMock(return_value=1)),
+        patch("backend.app.services.database_repair._execute_rowcount", AsyncMock(side_effect=_execute_rowcount)),
+    ):
+        await database_repair._repair_tags(object(), ensure_constraint=False)
+
+    assert order == ["reindex", "mutate"]

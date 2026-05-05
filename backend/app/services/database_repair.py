@@ -72,6 +72,8 @@ async def _repair_tags(conn: AsyncConnection, *, ensure_constraint: bool) -> int
     if not await _has_columns(conn, "tags", {"id", "owner_user_id", "name", "media_count"}):
         return 0
 
+    await _reindex_tag_lookup_indexes(conn)
+
     changes = 0
     duplicate_groups = await _scalar_int(
         conn,
@@ -401,6 +403,18 @@ async def _probe_tag_upsert(conn: AsyncConnection) -> None:
 async def _reindex_tag_uniqueness(conn: AsyncConnection) -> None:
     await conn.execute(text("REINDEX INDEX public.uq_tags_owner_user_id_name"))
     await conn.execute(text("REINDEX INDEX public.tags_pkey"))
+
+
+async def _reindex_tag_lookup_indexes(conn: AsyncConnection) -> None:
+    for index_name in ("ix_tags_name", "ix_tags_owner_user_id"):
+        if await _index_exists(conn, index_name):
+            logger.info("Reindexing tag lookup index before database repair index=%s", index_name)
+            await conn.execute(text(f"REINDEX INDEX public.{index_name}"))
+
+
+async def _index_exists(conn: AsyncConnection, index_name: str) -> bool:
+    result = await conn.execute(text("SELECT to_regclass(:index_name) IS NOT NULL"), {"index_name": f"public.{index_name}"})
+    return bool(result.scalar_one())
 
 
 async def _tag_constraint_exists(conn: AsyncConnection) -> bool:
