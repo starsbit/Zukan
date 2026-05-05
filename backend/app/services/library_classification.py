@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 import logging
 import math
 import re
+import time
 import uuid
 from typing import Any
 
@@ -88,6 +90,18 @@ class LibraryClassificationResult:
     applied: dict[MediaEntityType, list[str]] = field(default_factory=dict)
     suggestions: dict[MediaEntityType, list[ImportBatchRecommendationSuggestionRead]] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BatchClassificationContext:
+    target_embeddings: dict[uuid.UUID, MediaEmbedding] = field(default_factory=dict)
+    neighbors_by_media_id: dict[uuid.UUID, list[Any]] = field(default_factory=dict)
+    neighbor_media_by_id: dict[uuid.UUID, Media] = field(default_factory=dict)
+    exact_matches_by_phash: dict[str, list[Media]] = field(default_factory=dict)
+    character_feedback_stats: dict[tuple[str, ...], CharacterFeedbackStats] = field(default_factory=dict)
+    character_prototypes: list[CharacterPrototype] = field(default_factory=list)
+    rejected_character_keys_by_media_id: dict[uuid.UUID, set[tuple[str, ...]]] = field(default_factory=dict)
+    series_decisions_by_media_id: dict[uuid.UUID, dict[str, Any]] = field(default_factory=dict)
 
 
 class MediaLibraryEnrichmentService:
@@ -303,6 +317,285 @@ class MediaLibraryEnrichmentService:
 
         return result
 
+    async def enrich_media_batch(
+        self,
+        target_media: list[Media],
+        *,
+        user_id: uuid.UUID,
+        apply: bool = False,
+        compute_missing_embeddings: bool = False,
+    ) -> dict[uuid.UUID, LibraryClassificationResult]:
+        started_at = time.perf_counter()
+        if not target_media:
+            return {}
+        if apply:
+            return {
+                media.id: await self.enrich_media(media.id, user_id=user_id, apply=True, target_media=media)
+                for media in target_media
+            }
+
+        targets_by_id: dict[uuid.UUID, Media] = {}
+        reload_ids: list[uuid.UUID] = []
+        for media in target_media:
+            if not self._is_matching_media(media, media_id=media.id, uploader_id=user_id):
+                continue
+            if self._has_loaded_enrichment_relationships(media):
+                targets_by_id[media.id] = media
+            else:
+                reload_ids.append(media.id)
+
+        if reload_ids:
+            for media in await self._load_media_by_ids_for_user(reload_ids, uploader_id=user_id):
+                targets_by_id[media.id] = media
+
+        logger.info(
+            "Library classification batch started user_id=%s requested=%d eligible=%d reloaded=%d apply=%s compute_missing_embeddings=%s",
+            user_id,
+            len(target_media),
+            len(targets_by_id),
+            len(reload_ids),
+            apply,
+            compute_missing_embeddings,
+        )
+
+        if not targets_by_id:
+            return {}
+
+        target_ids = list(targets_by_id)
+        missing_types_by_id = {
+            media_id: self._missing_entity_types(media)
+            for media_id, media in targets_by_id.items()
+        }
+        results = {
+            media_id: LibraryClassificationResult(
+                suggestions={MediaEntityType.character: [], MediaEntityType.series: []},
+                metadata={},
+            )
+            for media_id in targets_by_id
+        }
+        for media_id, missing_types in missing_types_by_id.items():
+            if not missing_types:
+                results[media_id].metadata = {"reason": "no_missing_entities"}
+
+        review_ids = [media_id for media_id, missing_types in missing_types_by_id.items() if missing_types]
+        if not review_ids:
+            logger.info(
+                "Library classification batch skipped user_id=%s eligible=%d reason=no_missing_entities elapsed_ms=%.1f",
+                user_id,
+                len(targets_by_id),
+                _elapsed_ms(started_at),
+            )
+            return results
+
+        missing_character_count = sum(1 for media_id in review_ids if MediaEntityType.character in missing_types_by_id[media_id])
+        missing_series_count = sum(1 for media_id in review_ids if MediaEntityType.series in missing_types_by_id[media_id])
+        logger.info(
+            "Library classification batch review targets user_id=%s reviewable=%d missing_character=%d missing_series=%d",
+            user_id,
+            len(review_ids),
+            missing_character_count,
+            missing_series_count,
+        )
+
+        if compute_missing_embeddings:
+            embedding_started_at = time.perf_counter()
+            for media_id in review_ids:
+                await self._embeddings.ensure_for_media(targets_by_id[media_id])
+            backfilled = await self._embeddings.backfill_user_embeddings(
+                uploader_id=user_id,
+                exclude_media_id=None,
+                limit=settings.library_classification_backfill_limit,
+            )
+            logger.info(
+                "Library classification batch inline embedding refresh finished user_id=%s targets=%d backfilled=%s elapsed_ms=%.1f",
+                user_id,
+                len(review_ids),
+                backfilled,
+                _elapsed_ms(embedding_started_at),
+            )
+
+        context = await self._build_batch_context(
+            targets_by_id={media_id: targets_by_id[media_id] for media_id in review_ids},
+            user_id=user_id,
+        )
+        accepted_character_names_by_id: dict[uuid.UUID, list[str]] = {}
+        remaining_missing_types_by_id: dict[uuid.UUID, set[MediaEntityType]] = {}
+
+        for media_id in review_ids:
+            target = targets_by_id[media_id]
+            missing_types = set(missing_types_by_id[media_id])
+            exact_matches = context.exact_matches_by_phash.get(str(target.phash or ""), [])
+            result = results[media_id]
+            result.metadata = {
+                "neighbor_count": len(context.neighbors_by_media_id.get(media_id, [])),
+                "exact_match_count": len(exact_matches),
+            }
+            accepted_character_names = self._entity_names(target, MediaEntityType.character)
+
+            for entity_type in (MediaEntityType.character, MediaEntityType.series):
+                if entity_type not in missing_types:
+                    continue
+                exact = self._pick_exact_signature(exact_matches, entity_type)
+                if exact is None:
+                    continue
+                if entity_type == MediaEntityType.character:
+                    accepted_character_names = exact
+                missing_types.remove(entity_type)
+
+            if MediaEntityType.character in missing_types:
+                target_embedding = context.target_embeddings.get(media_id)
+                prototype_decision = self._score_character_prototypes_from_context(
+                    target=target,
+                    target_embedding=target_embedding.embedding if target_embedding is not None else None,
+                    feedback_stats=context.character_feedback_stats,
+                    prototypes=context.character_prototypes,
+                    rejected=context.rejected_character_keys_by_media_id.get(media_id, set()),
+                )
+                neighbor_decision = self._score_signatures(
+                    entity_type=MediaEntityType.character,
+                    neighbors=context.neighbors_by_media_id.get(media_id, []),
+                    media_by_id=context.neighbor_media_by_id,
+                    target=target,
+                    auto_apply=True,
+                    feedback_stats=context.character_feedback_stats,
+                )
+                decision = self._merge_decisions(prototype_decision, neighbor_decision)
+                result.suggestions[MediaEntityType.character] = decision["suggestions"]
+                result.metadata[MediaEntityType.character.value] = decision["metadata"]
+                if decision["auto_names"]:
+                    accepted_character_names = decision["auto_names"]
+                missing_types.remove(MediaEntityType.character)
+
+            accepted_character_names_by_id[media_id] = accepted_character_names
+            remaining_missing_types_by_id[media_id] = missing_types
+
+        context.series_decisions_by_media_id = await self._infer_series_from_character_contexts(
+            user_id=user_id,
+            target_character_names=accepted_character_names_by_id,
+        )
+
+        for media_id in review_ids:
+            target = targets_by_id[media_id]
+            if MediaEntityType.series not in remaining_missing_types_by_id.get(media_id, set()):
+                continue
+
+            result = results[media_id]
+            character_decision = context.series_decisions_by_media_id.get(media_id, self._empty_series_decision("no_character_context"))
+            if character_decision["auto_names"]:
+                result.suggestions[MediaEntityType.series] = character_decision["suggestions"]
+                result.metadata[MediaEntityType.series.value] = character_decision["metadata"]
+                continue
+
+            decision = self._score_signatures(
+                entity_type=MediaEntityType.series,
+                neighbors=context.neighbors_by_media_id.get(media_id, []),
+                media_by_id=context.neighbor_media_by_id,
+                target=target,
+                auto_apply=False,
+            )
+            result.suggestions[MediaEntityType.series] = self._merge_suggestion_lists(
+                character_decision["suggestions"],
+                decision["suggestions"],
+            )
+            if character_decision["suggestions"]:
+                metadata = dict(character_decision["metadata"])
+                metadata["fallback_neighbor_reason"] = decision["metadata"].get("reason")
+                result.metadata[MediaEntityType.series.value] = metadata
+            else:
+                result.metadata[MediaEntityType.series.value] = decision["metadata"]
+
+        character_suggestion_count = sum(
+            len(result.suggestions.get(MediaEntityType.character, []))
+            for result in results.values()
+        )
+        series_suggestion_count = sum(
+            len(result.suggestions.get(MediaEntityType.series, []))
+            for result in results.values()
+        )
+        logger.info(
+            "Library classification batch finished user_id=%s reviewable=%d character_suggestions=%d series_suggestions=%d elapsed_ms=%.1f",
+            user_id,
+            len(review_ids),
+            character_suggestion_count,
+            series_suggestion_count,
+            _elapsed_ms(started_at),
+        )
+        return results
+
+    async def _build_batch_context(
+        self,
+        *,
+        targets_by_id: dict[uuid.UUID, Media],
+        user_id: uuid.UUID,
+    ) -> BatchClassificationContext:
+        started_at = time.perf_counter()
+        target_ids = list(targets_by_id)
+        target_embeddings = await self._embedding_repo.get_current_by_media_ids(
+            media_ids=target_ids,
+            uploader_id=user_id,
+            model_version=EMBEDDING_MODEL_VERSION,
+        )
+        neighbors_by_media_id = await self._embedding_repo.nearest_neighbors_for_media_ids(
+            media_ids=list(target_embeddings),
+            uploader_id=user_id,
+            limit=settings.library_classification_neighbor_count,
+            model_version=EMBEDDING_MODEL_VERSION,
+            exclude_media_ids=target_ids,
+        )
+        neighbor_count = sum(len(neighbors) for neighbors in neighbors_by_media_id.values())
+        neighbor_ids = sorted(
+            {
+                neighbor.media_id
+                for neighbors in neighbors_by_media_id.values()
+                for neighbor in neighbors
+            },
+            key=str,
+        )
+        neighbor_media_by_id = {
+            media.id: media
+            for media in await self._load_media_by_ids(neighbor_ids)
+        }
+        missing_character_ids = [
+            media_id
+            for media_id, target in targets_by_id.items()
+            if MediaEntityType.character in self._missing_entity_types(target)
+        ]
+        character_feedback_stats = await self._load_character_feedback_stats(user_id=user_id) if missing_character_ids else {}
+        character_prototypes = await self._build_character_prototypes(
+            user_id=user_id,
+            exclude_media_ids=set(target_ids),
+        ) if missing_character_ids and target_embeddings else []
+        rejected_character_keys_by_media_id = await self._rejected_suggestion_keys_for_media(
+            user_id=user_id,
+            media_ids=missing_character_ids,
+            entity_type=MediaEntityType.character,
+        ) if missing_character_ids else {}
+        exact_matches_by_phash = await self._load_exact_matches_for_targets(list(targets_by_id.values()), uploader_id=user_id)
+
+        logger.info(
+            "Library classification batch context built user_id=%s targets=%d embeddings=%d neighbor_edges=%d neighbor_media=%d exact_phashes=%d character_feedback_signatures=%d character_prototypes=%d rejected_media=%d elapsed_ms=%.1f",
+            user_id,
+            len(target_ids),
+            len(target_embeddings),
+            neighbor_count,
+            len(neighbor_media_by_id),
+            len(exact_matches_by_phash),
+            len(character_feedback_stats),
+            len(character_prototypes),
+            len(rejected_character_keys_by_media_id),
+            _elapsed_ms(started_at),
+        )
+
+        return BatchClassificationContext(
+            target_embeddings=target_embeddings,
+            neighbors_by_media_id=neighbors_by_media_id,
+            neighbor_media_by_id=neighbor_media_by_id,
+            exact_matches_by_phash=exact_matches_by_phash,
+            character_feedback_stats=character_feedback_stats,
+            character_prototypes=character_prototypes,
+            rejected_character_keys_by_media_id=rejected_character_keys_by_media_id,
+        )
+
     async def ensure_media_embedding(self, media_id: uuid.UUID) -> None:
         try:
             await self._embeddings.ensure_media_embedding(media_id)
@@ -347,6 +640,24 @@ class MediaLibraryEnrichmentService:
         )
         return self._extract_media_list(await self._db.execute(stmt))
 
+    async def _load_media_by_ids_for_user(self, media_ids: list[uuid.UUID], *, uploader_id: uuid.UUID) -> list[Media]:
+        if not media_ids:
+            return []
+        stmt = (
+            select(Media)
+            .options(
+                selectinload(Media.entities),
+                selectinload(Media.embedding),
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
+            .where(
+                Media.id.in_(media_ids),
+                Media.uploader_id == uploader_id,
+                Media.deleted_at.is_(None),
+            )
+        )
+        return self._extract_media_list(await self._db.execute(stmt))
+
     async def _load_exact_matches(self, target: Media) -> list[Media]:
         if not target.phash or target.uploader_id is None:
             return []
@@ -362,6 +673,33 @@ class MediaLibraryEnrichmentService:
             )
         )
         return self._extract_media_list(await self._db.execute(stmt))
+
+    async def _load_exact_matches_for_targets(
+        self,
+        targets: list[Media],
+        *,
+        uploader_id: uuid.UUID,
+    ) -> dict[str, list[Media]]:
+        phashes = sorted({str(target.phash) for target in targets if target.phash})
+        if not phashes:
+            return {}
+        target_ids = {target.id for target in targets}
+        stmt = (
+            select(Media)
+            .options(selectinload(Media.entities))
+            .where(
+                Media.uploader_id == uploader_id,
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.id.not_in(target_ids),
+                Media.phash.in_(phashes),
+            )
+        )
+        matches: dict[str, list[Media]] = {}
+        for media in self._extract_media_list(await self._db.execute(stmt)):
+            if media.phash:
+                matches.setdefault(str(media.phash), []).append(media)
+        return matches
 
     def _missing_entity_types(self, media: Media) -> list[MediaEntityType]:
         return [
@@ -550,12 +888,38 @@ class MediaLibraryEnrichmentService:
             user_id=user_id,
             target_media_id=target.id,
         )
+        return self._score_character_prototypes_from_context(
+            target=target,
+            target_embedding=target_embedding,
+            feedback_stats=feedback_stats,
+            prototypes=prototypes,
+            rejected=rejected,
+        )
+
+    def _score_character_prototypes_from_context(
+        self,
+        *,
+        target: Media,
+        target_embedding: list[float] | None,
+        feedback_stats: dict[tuple[str, ...], CharacterFeedbackStats] | None = None,
+        prototypes: list[CharacterPrototype] | None = None,
+        rejected: set[tuple[str, ...]] | None = None,
+    ) -> dict[str, Any]:
+        if not target_embedding:
+            return {
+                "auto_names": [],
+                "confidence": None,
+                "suggestions": [],
+                "metadata": {"reason": "no_target_embedding"},
+            }
+
         ranked: list[SignatureVote] = []
-        for prototype in prototypes:
+        target_profile = self._hybrid_similarity.media_profile(target, _normalized(target_embedding))
+        target_profile.support_count = 10
+        rejected = rejected or set()
+        for prototype in prototypes or []:
             if prototype.normalized_signature in rejected:
                 continue
-            target_profile = self._hybrid_similarity.media_profile(target, _normalized(target_embedding))
-            target_profile.support_count = 10
             prototype_profile = _profile_from_character_prototype(prototype)
             hybrid = self._hybrid_similarity.score(target_profile, prototype_profile)
             evidence_score = self._character_evidence_score(
@@ -625,8 +989,12 @@ class MediaLibraryEnrichmentService:
         self,
         *,
         user_id: uuid.UUID,
-        target_media_id: uuid.UUID,
+        target_media_id: uuid.UUID | None = None,
+        exclude_media_ids: set[uuid.UUID] | None = None,
     ) -> list[CharacterPrototype]:
+        excluded_media_ids = set(exclude_media_ids or set())
+        if target_media_id is not None:
+            excluded_media_ids.add(target_media_id)
         stmt = (
             select(
                 MediaEntity.name,
@@ -644,7 +1012,6 @@ class MediaLibraryEnrichmentService:
                 Media.uploader_id == user_id,
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
-                Media.id != target_media_id,
                 MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
                 MediaEntity.entity_type == MediaEntityType.character,
                 MediaEntity.source == "manual",
@@ -652,6 +1019,8 @@ class MediaLibraryEnrichmentService:
             )
             .order_by(Media.uploaded_at.desc(), Media.id.desc())
         )
+        if excluded_media_ids:
+            stmt = stmt.where(Media.id.not_in(excluded_media_ids))
         rows = (await self._db.execute(stmt)).all()
         prototypes_by_signature: dict[tuple[str, ...], list[CharacterPrototype]] = {}
         used_support_keys: dict[tuple[str, ...], set[str]] = {}
@@ -796,13 +1165,111 @@ class MediaLibraryEnrichmentService:
             if row.name and row.name.strip() and int(row.media_count or 0) > 0
         ]
         ranked.sort(key=lambda item: (-item[1], item[0].casefold()))
+        return self._series_decision_from_ranked(normalized_character_names, ranked)
+
+    async def _infer_series_from_character_contexts(
+        self,
+        *,
+        user_id: uuid.UUID,
+        target_character_names: dict[uuid.UUID, list[str]],
+    ) -> dict[uuid.UUID, dict[str, Any]]:
+        started_at = time.perf_counter()
+        normalized_by_media_id = {
+            media_id: self._unique_clean_names(names)
+            for media_id, names in target_character_names.items()
+        }
+        all_character_names = sorted({
+            name
+            for names in normalized_by_media_id.values()
+            for name in names
+        }, key=str.casefold)
+        decisions = {
+            media_id: self._empty_series_decision("no_character_context")
+            for media_id, names in normalized_by_media_id.items()
+            if not names
+        }
+        if not all_character_names:
+            logger.info(
+                "Library classification batch series inference skipped user_id=%s targets=%d reason=no_character_context elapsed_ms=%.1f",
+                user_id,
+                len(target_character_names),
+                _elapsed_ms(started_at),
+            )
+            return decisions
+
+        target_media_ids = list(normalized_by_media_id)
+        character_model = aliased(MediaEntity)
+        series_model = aliased(MediaEntity)
+        count_expr = func.count(series_model.media_id.distinct())
+        stmt = (
+            select(
+                character_model.name.label("character_name"),
+                series_model.name.label("series_name"),
+                count_expr.label("media_count"),
+            )
+            .join(character_model, character_model.media_id == series_model.media_id)
+            .join(Media, Media.id == series_model.media_id)
+            .where(
+                series_model.entity_type == MediaEntityType.series,
+                character_model.entity_type == MediaEntityType.character,
+                character_model.name.in_(all_character_names),
+                _trusted_entity_sql_filter(character_model),
+                _trusted_entity_sql_filter(series_model),
+                series_model.name != "",
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.uploader_id == user_id,
+                Media.id.not_in(target_media_ids),
+            )
+            .group_by(character_model.name, series_model.name)
+        )
+        rows = (await self._db.execute(stmt)).all()
+        rows_by_character: dict[str, list[tuple[str, int]]] = defaultdict(list)
+        for row in rows:
+            character_name = str(getattr(row, "character_name", "") or "").strip()
+            series_name = str(getattr(row, "series_name", "") or "").strip()
+            media_count = int(getattr(row, "media_count", 0) or 0)
+            if character_name and series_name and media_count > 0:
+                rows_by_character[character_name].append((series_name, media_count))
+
+        for media_id, character_names in normalized_by_media_id.items():
+            if not character_names:
+                continue
+            series_counts: dict[str, int] = defaultdict(int)
+            for character_name in character_names:
+                for series_name, media_count in rows_by_character.get(character_name, []):
+                    series_counts[series_name] += media_count
+            ranked = sorted(series_counts.items(), key=lambda item: (-item[1], item[0].casefold()))
+            decisions[media_id] = self._series_decision_from_ranked(character_names, ranked)
+        suggestion_count = sum(len(decision.get("suggestions", [])) for decision in decisions.values())
+        auto_apply_count = sum(1 for decision in decisions.values() if decision.get("auto_names"))
+        logger.info(
+            "Library classification batch series inference finished user_id=%s targets=%d unique_characters=%d library_rows=%d suggestions=%d auto_candidates=%d elapsed_ms=%.1f",
+            user_id,
+            len(target_character_names),
+            len(all_character_names),
+            len(rows),
+            suggestion_count,
+            auto_apply_count,
+            _elapsed_ms(started_at),
+        )
+        return decisions
+
+    def _empty_series_decision(self, reason: str) -> dict[str, Any]:
+        return {
+            "auto_names": [],
+            "confidence": None,
+            "suggestions": [],
+            "metadata": {"reason": reason},
+        }
+
+    def _series_decision_from_ranked(
+        self,
+        normalized_character_names: list[str],
+        ranked: list[tuple[str, int]],
+    ) -> dict[str, Any]:
         if not ranked:
-            return {
-                "auto_names": [],
-                "confidence": None,
-                "suggestions": [],
-                "metadata": {"reason": "no_character_series_matches"},
-            }
+            return self._empty_series_decision("no_character_series_matches")
 
         max_count = ranked[0][1] or 1
         suggestions = [
@@ -1078,6 +1545,37 @@ class MediaLibraryEnrichmentService:
             if self._normalize_name(row.suggested_name)
         }
 
+    async def _rejected_suggestion_keys_for_media(
+        self,
+        *,
+        user_id: uuid.UUID,
+        media_ids: list[uuid.UUID],
+        entity_type: MediaEntityType,
+    ) -> dict[uuid.UUID, set[tuple[str, ...]]]:
+        if not media_ids:
+            return {}
+        rows = (
+            await self._db.execute(
+                select(
+                    LibraryClassificationFeedback.media_id,
+                    LibraryClassificationFeedback.suggested_name,
+                    LibraryClassificationFeedback.suggested_entity_id,
+                ).where(
+                    LibraryClassificationFeedback.user_id == user_id,
+                    LibraryClassificationFeedback.media_id.in_(media_ids),
+                    LibraryClassificationFeedback.entity_type == entity_type.value,
+                    LibraryClassificationFeedback.action == LibraryClassificationFeedbackAction.rejected,
+                )
+            )
+        ).all()
+        rejected_by_media_id: dict[uuid.UUID, set[tuple[str, ...]]] = {}
+        for row in rows:
+            media_id = getattr(row, "media_id", None)
+            normalized = self._normalize_name(getattr(row, "suggested_name", None))
+            if isinstance(media_id, uuid.UUID) and normalized:
+                rejected_by_media_id.setdefault(media_id, set()).add((normalized,))
+        return rejected_by_media_id
+
     async def _record_feedback(
         self,
         *,
@@ -1260,3 +1758,7 @@ def _trusted_entity_sql_filter(model):
             model.confidence >= settings.library_classification_trusted_tagger_min_confidence,
         ),
     )
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return (time.perf_counter() - started_at) * 1000

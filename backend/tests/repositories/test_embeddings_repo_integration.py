@@ -88,3 +88,50 @@ async def test_embedding_repository_nearest_neighbors_scopes_to_uploader_and_exc
 
     assert [neighbor.media_id for neighbor in neighbors] == [close_match.id, distant_match.id]
     assert neighbors[0].similarity > neighbors[1].similarity
+
+
+@pytest.mark.asyncio
+async def test_embedding_repository_bulk_nearest_neighbors_scopes_and_excludes_targets(db_session, make_user, make_media):
+    user = await make_user(username="bulk-owner", email="bulk-owner@example.com")
+    target_one = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    target_two = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    neighbor_one = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    neighbor_two = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    repo = MediaEmbeddingRepository(db_session)
+
+    await repo.upsert(
+        media_id=target_one.id,
+        uploader_id=user.id,
+        embedding=_vector(1.0, 0.0, 0.0),
+        model_version="test_v1",
+    )
+    await repo.upsert(
+        media_id=target_two.id,
+        uploader_id=user.id,
+        embedding=_vector(0.0, 1.0, 0.0),
+        model_version="test_v1",
+    )
+    await repo.upsert(
+        media_id=neighbor_one.id,
+        uploader_id=user.id,
+        embedding=_vector(0.99, 0.01, 0.0),
+        model_version="test_v1",
+    )
+    await repo.upsert(
+        media_id=neighbor_two.id,
+        uploader_id=user.id,
+        embedding=_vector(0.01, 0.99, 0.0),
+        model_version="test_v1",
+    )
+    await db_session.flush()
+
+    neighbors = await repo.nearest_neighbors_for_media_ids(
+        media_ids=[target_one.id, target_two.id],
+        uploader_id=user.id,
+        limit=1,
+        model_version="test_v1",
+        exclude_media_ids=[target_one.id, target_two.id],
+    )
+
+    assert [neighbor.media_id for neighbor in neighbors[target_one.id]] == [neighbor_one.id]
+    assert [neighbor.media_id for neighbor in neighbors[target_two.id]] == [neighbor_two.id]

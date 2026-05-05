@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -11,9 +14,12 @@ from backend.app.main import (
     _augment_openapi_security,
     _ensure_admin_user,
     _initialize_ml_services,
+    _run_library_enrichment_after_post_tag,
     ml_startup_state,
 )
 from backend.app.logging_config import configure_logging
+from backend.app.models.auth import User
+from backend.app.models.media import Media, MediaType, ProcessingStatus, TaggingStatus
 
 
 class _FakeResult:
@@ -186,3 +192,78 @@ def test_configure_logging_wires_backend_and_uvicorn_loggers_to_console():
     assert uvicorn_access_logger.level == __import__("logging").WARNING
     assert uvicorn_access_logger.propagate is False
     assert uvicorn_access_logger.handlers
+
+
+@pytest.mark.anyio
+async def test_post_tag_library_enrichment_applies_for_enabled_user(monkeypatch):
+    user_id = __import__("uuid").uuid4()
+    media_id = __import__("uuid").uuid4()
+    now = datetime.now(timezone.utc)
+    media = Media(
+        id=media_id,
+        uploader_id=user_id,
+        owner_id=user_id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=now,
+        uploaded_at=now,
+        version=1,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        deleted_at=None,
+    )
+    user = User(
+        id=user_id,
+        username="enabled",
+        email="enabled@example.com",
+        hashed_password="x",
+        library_classification_enabled=True,
+    )
+    db = SimpleNamespace(get=AsyncMock(side_effect=[media, user]))
+    enrichment = SimpleNamespace(enrich_media=AsyncMock(return_value=SimpleNamespace(applied={})))
+    enrichment_cls = Mock(return_value=enrichment)
+    monkeypatch.setattr("backend.app.main.MediaLibraryEnrichmentService", enrichment_cls)
+
+    await _run_library_enrichment_after_post_tag(db, media_id)
+
+    enrichment.enrich_media.assert_awaited_once_with(media_id, user_id=user_id, apply=True)
+
+
+@pytest.mark.anyio
+async def test_post_tag_library_enrichment_skips_disabled_user(monkeypatch):
+    user_id = __import__("uuid").uuid4()
+    media_id = __import__("uuid").uuid4()
+    now = datetime.now(timezone.utc)
+    media = Media(
+        id=media_id,
+        uploader_id=user_id,
+        owner_id=user_id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=now,
+        uploaded_at=now,
+        version=1,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        deleted_at=None,
+    )
+    user = User(
+        id=user_id,
+        username="disabled",
+        email="disabled@example.com",
+        hashed_password="x",
+        library_classification_enabled=False,
+    )
+    db = SimpleNamespace(get=AsyncMock(side_effect=[media, user]))
+    enrichment_cls = Mock()
+    monkeypatch.setattr("backend.app.main.MediaLibraryEnrichmentService", enrichment_cls)
+
+    await _run_library_enrichment_after_post_tag(db, media_id)
+
+    enrichment_cls.assert_not_called()

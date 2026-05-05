@@ -868,6 +868,37 @@ async def test_library_enrichment_does_not_override_existing_entities(fake_db, u
 
 
 @pytest.mark.asyncio
+async def test_library_enrichment_batch_does_not_compute_missing_embeddings(fake_db, user):
+    target = make_media(user.id, "target.webp")
+    target.media_tags = []
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._embeddings.ensure_for_media = AsyncMock()
+    service._embeddings.backfill_user_embeddings = AsyncMock()
+    service._embedding_repo.get_current_by_media_ids = AsyncMock(return_value={})
+    service._embedding_repo.nearest_neighbors_for_media_ids = AsyncMock(return_value={})
+    service._load_media_by_ids = AsyncMock(return_value=[])
+    service._load_exact_matches_for_targets = AsyncMock(return_value={})
+    service._load_character_feedback_stats = AsyncMock(return_value={})
+    service._build_character_prototypes = AsyncMock(return_value=[])
+    service._rejected_suggestion_keys_for_media = AsyncMock(return_value={})
+    service._infer_series_from_character_contexts = AsyncMock(return_value={target.id: service._empty_series_decision("no_character_context")})
+
+    result = await service.enrich_media_batch(
+        [target],
+        user_id=user.id,
+        apply=False,
+        compute_missing_embeddings=False,
+    )
+
+    assert result[target.id].suggestions[MediaEntityType.character] == []
+    assert result[target.id].suggestions[MediaEntityType.series] == []
+    service._embeddings.ensure_for_media.assert_not_awaited()
+    service._embeddings.backfill_user_embeddings.assert_not_awaited()
+    service._embedding_repo.get_current_by_media_ids.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_tag_media_does_not_block_on_library_enrichment(fake_db, media):
     tagger = SimpleNamespace(
         predict=AsyncMock(return_value=TaggingResult(predictions=[TagPrediction("safe", 0, 0.9)], is_nsfw=False)),

@@ -182,11 +182,33 @@ async def post_tag_worker():
                 await processing.run_ocr_for_media(media_id, ocr_backend)
                 logger.info("Post-tag worker refreshing embedding media_id=%s", media_id)
                 await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
+                await _run_library_enrichment_after_post_tag(db, media_id)
                 logger.info("Post-tag worker completed media_id=%s", media_id)
         except Exception:
             logger.exception("Post-tag processing failed for media_id=%s", media_id)
         finally:
             post_tag_queue.task_done()
+
+
+async def _run_library_enrichment_after_post_tag(db, media_id: uuid.UUID) -> None:
+    media = await db.get(Media, media_id)
+    if media is None or media.deleted_at is not None or media.uploader_id is None:
+        return
+    user = await db.get(User, media.uploader_id)
+    if not isinstance(user, User) or not user.library_classification_enabled:
+        return
+    logger.info("Post-tag worker running library classification enrichment media_id=%s", media_id)
+    result = await MediaLibraryEnrichmentService(db).enrich_media(
+        media_id,
+        user_id=media.uploader_id,
+        apply=True,
+    )
+    if result.applied:
+        logger.info(
+            "Post-tag worker applied library classification media_id=%s applied=%s",
+            media_id,
+            {entity_type.value: names for entity_type, names in result.applied.items()},
+        )
 
 
 async def embedding_backfill_worker():

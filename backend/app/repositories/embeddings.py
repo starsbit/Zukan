@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import uuid
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.models.embeddings import MediaEmbedding
@@ -22,6 +22,26 @@ class MediaEmbeddingRepository:
 
     async def get_by_media_id(self, media_id: uuid.UUID) -> MediaEmbedding | None:
         return await self._db.get(MediaEmbedding, media_id)
+
+    async def get_current_by_media_ids(
+        self,
+        *,
+        media_ids: list[uuid.UUID],
+        uploader_id: uuid.UUID,
+        model_version: str,
+    ) -> dict[uuid.UUID, MediaEmbedding]:
+        if not media_ids:
+            return {}
+        rows = (
+            await self._db.execute(
+                select(MediaEmbedding).where(
+                    MediaEmbedding.media_id.in_(media_ids),
+                    MediaEmbedding.uploader_id == uploader_id,
+                    MediaEmbedding.model_version == model_version,
+                )
+            )
+        ).scalars().all()
+        return {row.media_id: row for row in rows}
 
     async def upsert(
         self,
@@ -87,3 +107,60 @@ class MediaEmbeddingRepository:
             MediaNeighbor(media_id=row["media_id"], similarity=float(row["similarity"] or 0.0))
             for row in rows
         ]
+
+    async def nearest_neighbors_for_media_ids(
+        self,
+        *,
+        media_ids: list[uuid.UUID],
+        uploader_id: uuid.UUID,
+        limit: int,
+        model_version: str,
+        exclude_media_ids: list[uuid.UUID] | None = None,
+    ) -> dict[uuid.UUID, list[MediaNeighbor]]:
+        if not media_ids:
+            return {}
+        excluded = exclude_media_ids or media_ids
+        rows = (
+            await self._db.execute(
+                text(
+                    """
+                    WITH targets AS (
+                        SELECT media_id AS target_media_id, embedding
+                        FROM media_embeddings
+                        WHERE uploader_id = :uploader_id
+                          AND model_version = :model_version
+                          AND media_id = ANY(CAST(:media_ids AS uuid[]))
+                    )
+                    SELECT
+                        targets.target_media_id AS target_media_id,
+                        neighbors.media_id AS media_id,
+                        1 - (neighbors.embedding <=> targets.embedding) AS similarity
+                    FROM targets
+                    CROSS JOIN LATERAL (
+                        SELECT media_id, embedding
+                        FROM media_embeddings
+                        WHERE uploader_id = :uploader_id
+                          AND model_version = :model_version
+                          AND media_id != ALL(CAST(:excluded_media_ids AS uuid[]))
+                        ORDER BY embedding <=> targets.embedding
+                        LIMIT :limit
+                    ) AS neighbors
+                    """
+                ),
+                {
+                    "media_ids": media_ids,
+                    "uploader_id": uploader_id,
+                    "limit": limit,
+                    "model_version": model_version,
+                    "excluded_media_ids": excluded,
+                },
+            )
+        ).mappings().all()
+
+        grouped: dict[uuid.UUID, list[MediaNeighbor]] = {media_id: [] for media_id in media_ids}
+        for row in rows:
+            target_media_id = row["target_media_id"]
+            grouped.setdefault(target_media_id, []).append(
+                MediaNeighbor(media_id=row["media_id"], similarity=float(row["similarity"] or 0.0))
+            )
+        return grouped

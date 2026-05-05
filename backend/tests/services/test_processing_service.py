@@ -273,12 +273,15 @@ async def test_list_batch_review_items_populates_library_suggestions_when_enable
     review_item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename="one.webp", status=ItemStatus.done)
     review_item.id = uuid.uuid4()
     review_item.media = media
-    service._library_enrichment.enrich_media = AsyncMock(return_value=SimpleNamespace(
-        suggestions={
-            MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
-            MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
-        },
-    ))
+    service._library_enrichment.enrich_media = AsyncMock()
+    service._library_enrichment.enrich_media_batch = AsyncMock(return_value={
+        media.id: SimpleNamespace(
+            suggestions={
+                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
+                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
+            },
+        )
+    })
     fake_db.get = AsyncMock(return_value=User(
         id=user.id,
         username=user.username,
@@ -306,11 +309,12 @@ async def test_list_batch_review_items_populates_library_suggestions_when_enable
 
     assert [suggestion.name for suggestion in result.items[0].suggested_characters] == ["Saber"]
     assert [suggestion.name for suggestion in result.items[0].suggested_series] == ["Fate/stay night"]
-    service._library_enrichment.enrich_media.assert_awaited_once_with(
-        media.id,
+    service._library_enrichment.enrich_media.assert_not_awaited()
+    service._library_enrichment.enrich_media_batch.assert_awaited_once_with(
+        [media],
         user_id=user.id,
         apply=False,
-        target_media=media,
+        compute_missing_embeddings=False,
     )
 
 
@@ -369,6 +373,131 @@ async def test_list_batch_review_items_skips_library_suggestions_when_flag_disab
     assert result.items[0].suggested_characters == []
     assert result.items[0].suggested_series == []
     service._library_enrichment.enrich_media.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_similarity_groups_only_score_indexed_signal_pairs(fake_db, user):
+    service = ProcessingService(fake_db)
+    now = datetime.now(timezone.utc)
+    candidates: list[ImportBatchItem] = []
+    review_item_by_media_id = {}
+
+    for index in range(80):
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=f"{index}.webp",
+            original_filename=f"{index}.webp",
+            filepath=f"/tmp/{index}.webp",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            uploaded_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+            ocr_text=None,
+            phash=None,
+        )
+        media.entities = []
+        tag_name = "rare-shared" if index < 2 else f"unique-{index}"
+        tag = Tag(id=index + 1, owner_user_id=user.id, name=tag_name, category=0)
+        media_tag = MediaTag(media_id=media.id, tag_id=tag.id, confidence=0.9)
+        media_tag.tag = tag
+        media.media_tags = [media_tag]
+        item = ImportBatchItem(batch_id=uuid.uuid4(), media_id=media.id, source_filename=media.filename, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        candidates.append(item)
+        review_item_by_media_id[media.id] = SimpleNamespace(missing_character=True, missing_series=True)
+
+    expected_group = ImportBatchRecommendationGroupRead(
+        id="batch-group-1",
+        media_ids=[candidates[0].media.id, candidates[1].media.id],
+        item_count=2,
+        missing_character_count=2,
+        missing_series_count=2,
+        suggested_characters=[],
+        suggested_series=[],
+        shared_signals=[],
+        confidence=0.5,
+    )
+
+    with patch.object(service, "_pair_similarity", return_value=0.5) as pair_similarity, \
+         patch.object(service, "_build_recommendation_group", AsyncMock(return_value=expected_group)):
+        groups = await service._build_similarity_groups(candidates, review_item_by_media_id, 0, user.id)
+
+    assert len(groups) == 1
+    assert pair_similarity.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_list_batch_review_items_batches_library_suggestions_once(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    review_items = []
+    for index in range(3):
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=f"{index}.webp",
+            original_filename=f"{index}.webp",
+            filepath=f"/tmp/{index}.webp",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            uploaded_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.entities = []
+        media.media_tags = []
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=media.filename, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        review_items.append(item)
+
+    service._library_enrichment.enrich_media = AsyncMock()
+    service._library_enrichment.enrich_media_batch = AsyncMock(return_value={})
+    fake_db.get = AsyncMock(return_value=User(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password,
+        is_admin=user.is_admin,
+        show_nsfw=user.show_nsfw,
+        show_sensitive=user.show_sensitive,
+        tag_confidence_threshold=user.tag_confidence_threshold,
+        library_classification_enabled=True,
+        version=user.version,
+        storage_quota_mb=user.storage_quota_mb,
+        created_at=user.created_at,
+    ))
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=[])), \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=review_items)
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert result.total == 3
+    service._library_enrichment.enrich_media.assert_not_awaited()
+    service._library_enrichment.enrich_media_batch.assert_awaited_once()
 
 
 @pytest.mark.asyncio

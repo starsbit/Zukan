@@ -373,4 +373,4 @@ async def test_refresh_import_batch_status_running_and_done_states(fake_db, stub
         await service._refresh_import_batch_status(batch_id)
         assert done_batch.status == BatchStatus.done
         assert done_batch.finished_at is not None
-        auto_compute.assert_awaited_once_with(done_batch)
+        auto_compute.assert_not_awaited()
