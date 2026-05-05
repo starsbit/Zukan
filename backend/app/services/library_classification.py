@@ -120,28 +120,24 @@ class MediaLibraryEnrichmentService:
         if target is None:
             return LibraryClassificationResult(metadata={"reason": "media_not_found"})
 
-        missing_types = [
-            entity_type
-            for entity_type in (MediaEntityType.character, MediaEntityType.series)
-            if not self._has_non_empty_entities(target, entity_type)
-        ]
+        target_media_id = target.id
+        missing_types = self._missing_entity_types(target)
         if not missing_types:
             return LibraryClassificationResult(metadata={"reason": "no_missing_entities"})
 
-        exact_matches = await self._load_exact_matches(target)
         neighbors = []
         target_embedding = None
         try:
             await self._embeddings.ensure_for_media(target)
             await self._embeddings.backfill_user_embeddings(
                 uploader_id=user_id,
-                exclude_media_id=target.id,
+                exclude_media_id=target_media_id,
                 limit=settings.library_classification_backfill_limit,
             )
-            target_embedding = await self._embedding_repo.get_by_media_id(target.id)
+            target_embedding = await self._embedding_repo.get_by_media_id(target_media_id)
             if target_embedding is not None and getattr(target_embedding, "model_version", EMBEDDING_MODEL_VERSION) == EMBEDDING_MODEL_VERSION:
                 neighbors = await self._embedding_repo.nearest_neighbors(
-                    media_id=target.id,
+                    media_id=target_media_id,
                     uploader_id=user_id,
                     embedding=target_embedding.embedding,
                     limit=settings.library_classification_neighbor_count,
@@ -150,7 +146,15 @@ class MediaLibraryEnrichmentService:
             else:
                 target_embedding = None
         except Exception as exc:  # pragma: no cover - best-effort fallback for optional enrichment
-            logger.warning("Library classification embedding lookup failed media_id=%s error=%s", target.id, exc)
+            logger.warning("Library classification embedding lookup failed media_id=%s error=%s", target_media_id, exc)
+            target = await self._load_media(target_media_id, uploader_id=user_id)
+            if target is None:
+                return LibraryClassificationResult(metadata={"reason": "media_not_found"})
+            missing_types = self._missing_entity_types(target)
+            if not missing_types:
+                return LibraryClassificationResult(metadata={"reason": "no_missing_entities"})
+
+        exact_matches = await self._load_exact_matches(target)
 
         neighbor_media = await self._load_media_by_ids([neighbor.media_id for neighbor in neighbors])
         media_by_id = {media.id: media for media in neighbor_media}
@@ -184,7 +188,7 @@ class MediaLibraryEnrichmentService:
                 )
                 await self._record_feedback(
                     user_id=user_id,
-                    media_id=target.id,
+                    media_id=target_media_id,
                     entity_type=entity_type,
                     names=exact,
                     action=LibraryClassificationFeedbackAction.auto_applied,
@@ -231,7 +235,7 @@ class MediaLibraryEnrichmentService:
                 )
                 await self._record_feedback(
                     user_id=user_id,
-                    media_id=target.id,
+                    media_id=target_media_id,
                     entity_type=MediaEntityType.character,
                     names=auto_names,
                     action=LibraryClassificationFeedbackAction.auto_applied,
@@ -245,7 +249,7 @@ class MediaLibraryEnrichmentService:
         if MediaEntityType.series in remaining_missing_types:
             character_decision = await self._infer_series_from_characters(
                 user_id=user_id,
-                target_media_id=target.id,
+                target_media_id=target_media_id,
                 character_names=accepted_character_names,
             )
             if character_decision["auto_names"]:
@@ -358,6 +362,13 @@ class MediaLibraryEnrichmentService:
             )
         )
         return self._extract_media_list(await self._db.execute(stmt))
+
+    def _missing_entity_types(self, media: Media) -> list[MediaEntityType]:
+        return [
+            entity_type
+            for entity_type in (MediaEntityType.character, MediaEntityType.series)
+            if not self._has_non_empty_entities(media, entity_type)
+        ]
 
     def _is_matching_media(self, media: Media | None, *, media_id: uuid.UUID, uploader_id: uuid.UUID) -> bool:
         return bool(

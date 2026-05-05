@@ -189,6 +189,51 @@ async def test_library_enrichment_reloads_when_passed_target_media_is_not_ready(
 
 
 @pytest.mark.asyncio
+async def test_library_enrichment_recovers_when_embedding_failure_expires_target(fake_db, user):
+    class ExpiringMedia:
+        def __init__(self, media_id: uuid.UUID, *, expired: bool = False) -> None:
+            self._id = media_id
+            self.expired = expired
+            self.uploader_id = user.id
+            self.deleted_at = None
+            self.entities = []
+            self.media_tags = []
+            self.phash = None
+
+        @property
+        def id(self) -> uuid.UUID:
+            if self.expired:
+                raise AssertionError("expired media id should not be read")
+            return self._id
+
+    target_id = uuid.uuid4()
+    target = ExpiringMedia(target_id)
+    reloaded_target = ExpiringMedia(target_id)
+
+    async def fail_and_expire(media):
+        media.expired = True
+        raise RuntimeError("Embedding lock is busy")
+
+    service = MediaLibraryEnrichmentService(fake_db)
+    service._load_media = AsyncMock(side_effect=[target, reloaded_target])
+    service._load_exact_matches = AsyncMock(return_value=[])
+    service._load_media_by_ids = AsyncMock(return_value=[])
+    service._embeddings.ensure_for_media = AsyncMock(side_effect=fail_and_expire)
+    service._embeddings.backfill_user_embeddings = AsyncMock()
+    service._embedding_repo.get_by_media_id = AsyncMock()
+    service._embedding_repo.nearest_neighbors = AsyncMock()
+
+    result = await service.enrich_media(target_id, user_id=user.id, apply=False)
+
+    assert result.applied == {}
+    assert result.metadata["neighbor_count"] == 0
+    service._load_media.assert_any_await(target_id, uploader_id=user.id)
+    assert service._load_media.await_count == 2
+    service._load_exact_matches.assert_awaited_once_with(reloaded_target)
+    service._embeddings.backfill_user_embeddings.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_character_prototype_auto_apply_requires_positive_feedback_history(fake_db, user):
     target = make_media(user.id, "target.webp")
     service = MediaLibraryEnrichmentService(fake_db)
