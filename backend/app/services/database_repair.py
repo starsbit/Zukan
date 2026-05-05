@@ -220,6 +220,8 @@ async def _repair_tags(conn: AsyncConnection, *, ensure_constraint: bool) -> int
             """,
         )
 
+    await _reindex_existing_tag_uniqueness_indexes(conn)
+
     if ensure_constraint:
         await conn.execute(
             text(
@@ -401,8 +403,14 @@ async def _probe_tag_upsert(conn: AsyncConnection) -> None:
 
 
 async def _reindex_tag_uniqueness(conn: AsyncConnection) -> None:
-    await conn.execute(text("REINDEX INDEX public.uq_tags_owner_user_id_name"))
+    await _reindex_existing_tag_uniqueness_indexes(conn)
     await conn.execute(text("REINDEX INDEX public.tags_pkey"))
+
+
+async def _reindex_existing_tag_uniqueness_indexes(conn: AsyncConnection) -> None:
+    if await _index_exists(conn, "uq_tags_owner_user_id_name"):
+        logger.info("Reindexing tag uniqueness index after database repair index=uq_tags_owner_user_id_name")
+        await conn.execute(text("REINDEX INDEX public.uq_tags_owner_user_id_name"))
 
 
 async def _reindex_tag_lookup_indexes(conn: AsyncConnection) -> None:

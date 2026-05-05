@@ -188,7 +188,34 @@ async def test_tag_repair_reindexes_lookup_indexes_before_mutating_tags():
         patch("backend.app.services.database_repair._reindex_tag_lookup_indexes", AsyncMock(side_effect=_reindex_lookup)),
         patch("backend.app.services.database_repair._scalar_int", AsyncMock(return_value=1)),
         patch("backend.app.services.database_repair._execute_rowcount", AsyncMock(side_effect=_execute_rowcount)),
+        patch("backend.app.services.database_repair._reindex_existing_tag_uniqueness_indexes", AsyncMock()),
     ):
         await database_repair._repair_tags(object(), ensure_constraint=False)
 
     assert order == ["reindex", "mutate"]
+
+
+@pytest.mark.asyncio
+async def test_tag_repair_reindexes_unique_index_after_dedupe():
+    order: list[str] = []
+
+    async def _has_columns(conn, table_name, columns):
+        return table_name == "tags"
+
+    async def _execute_rowcount(conn, sql):
+        order.append("dedupe")
+        return 0
+
+    async def _reindex_unique(conn):
+        order.append("reindex_unique")
+
+    with (
+        patch("backend.app.services.database_repair._has_columns", AsyncMock(side_effect=_has_columns)),
+        patch("backend.app.services.database_repair._reindex_tag_lookup_indexes", AsyncMock()),
+        patch("backend.app.services.database_repair._scalar_int", AsyncMock(return_value=1)),
+        patch("backend.app.services.database_repair._execute_rowcount", AsyncMock(side_effect=_execute_rowcount)),
+        patch("backend.app.services.database_repair._reindex_existing_tag_uniqueness_indexes", AsyncMock(side_effect=_reindex_unique)),
+    ):
+        await database_repair._repair_tags(object(), ensure_constraint=False)
+
+    assert order == ["dedupe", "reindex_unique"]
