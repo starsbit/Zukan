@@ -548,6 +548,9 @@ class ProcessingService:
         user_id: uuid.UUID,
     ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
         series_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
+        series_names_by_key: dict[str, str] = {}
+        series_character_buckets: dict[tuple[str, str], list[ImportBatchItem]] = defaultdict(list)
+        character_names_by_key: dict[tuple[str, str], str] = {}
         character_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
 
         for candidate in candidates:
@@ -558,7 +561,14 @@ class ProcessingService:
                     None,
                 )
                 if series_name is not None:
-                    series_buckets[series_name.casefold()].append(candidate)
+                    series_key = series_name.casefold()
+                    series_buckets[series_key].append(candidate)
+                    series_names_by_key.setdefault(series_key, series_name)
+                    suggested_character = self._best_suggested_entity_name(review_item.suggested_characters)
+                    if suggested_character is not None:
+                        bucket_key = (series_key, suggested_character.casefold())
+                        series_character_buckets[bucket_key].append(candidate)
+                        character_names_by_key.setdefault(bucket_key, suggested_character)
             elif review_item.missing_series and not review_item.missing_character:
                 char_name = next(
                     (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
@@ -576,19 +586,41 @@ class ProcessingService:
         groups: list[ImportBatchRecommendationGroupRead] = []
         grouped_ids: set[uuid.UUID] = set()
 
-        for bucket_candidates in series_buckets.values():
+        for bucket_key, bucket_candidates in sorted(series_character_buckets.items(), key=lambda item: len(item[1]), reverse=True):
             if len(bucket_candidates) < 2:
                 continue
+            series_name = series_names_by_key.get(bucket_key[0])
+            character_name = character_names_by_key.get(bucket_key)
             group = await self._build_recommendation_group(
                 bucket_candidates,
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
                 user_id,
-                confidence_override=0.90,
+                extra_character_suggestions=self._build_named_suggestions([character_name] if character_name else []),
+                extra_series_suggestions=self._build_named_suggestions([series_name] if series_name else []),
+                confidence_override=0.92,
             )
             groups.append(group)
             grouped_ids.update(c.media.id for c in bucket_candidates)
+
+        for series_key, bucket_candidates in series_buckets.items():
+            ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
+            if len(ungrouped) < 2:
+                continue
+            series_name = series_names_by_key.get(series_key)
+            extra_series_suggestions = self._build_named_suggestions([series_name] if series_name else [])
+            group = await self._build_recommendation_group(
+                ungrouped,
+                review_item_by_media_id,
+                {},
+                group_index_start + len(groups),
+                user_id,
+                extra_series_suggestions=extra_series_suggestions,
+                confidence_override=0.90,
+            )
+            groups.append(group)
+            grouped_ids.update(c.media.id for c in ungrouped)
 
         for bucket_candidates in sorted(character_buckets.values(), key=len, reverse=True):
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
@@ -722,6 +754,7 @@ class ProcessingService:
         group_index: int,
         user_id: uuid.UUID,
         *,
+        extra_character_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
         extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
         confidence_override: float | None = None,
     ) -> ImportBatchRecommendationGroupRead:
@@ -738,10 +771,14 @@ class ProcessingService:
         missing_character_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_character)
         missing_series_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_series)
 
-        suggested_characters = await self._collect_suggestions([
+        character_sources: list[SuggestionSource] = []
+        if extra_character_suggestions:
+            character_sources.append(_resolved(extra_character_suggestions))
+        character_sources.extend([
             self._build_name_suggestions(candidates, MediaEntityType.character),
             self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.character),
         ])
+        suggested_characters = await self._collect_suggestions(character_sources)
 
         series_sources: list[SuggestionSource] = []
         if extra_series_suggestions:
@@ -958,6 +995,23 @@ class ProcessingService:
             )
             for index, name in enumerate(limited)
         ]
+
+    def _best_suggested_entity_name(
+        self,
+        suggestions: list[ImportBatchRecommendationSuggestionRead],
+        *,
+        min_confidence: float = 0.5,
+    ) -> str | None:
+        best: ImportBatchRecommendationSuggestionRead | None = None
+        for suggestion in suggestions:
+            if not suggestion.name.strip():
+                continue
+            confidence = suggestion.confidence or 0.0
+            if confidence < min_confidence:
+                continue
+            if best is None or confidence > (best.confidence or 0.0):
+                best = suggestion
+        return best.name.strip() if best is not None else None
 
     def _build_shared_signals(self, candidates: list[ImportBatchItem]) -> list[ImportBatchRecommendationSignalRead]:
         tag_scores: dict[str, float] = defaultdict(float)

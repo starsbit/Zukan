@@ -21,6 +21,10 @@ ZUKAN_API_BASE_URL = "http://zukan.home.arpa/api/v1"
 DEFAULT_USERNAME = "stars"
 FEEDBACK_BATCH_SIZE = 100
 DEFAULT_INPUT = ".metadata-review/missing-metadata-entity-updates.json"
+ENTITY_NAME_FIELDS = {
+    "character_names": "character",
+    "series_names": "series",
+}
 
 
 class ApiError(RuntimeError):
@@ -112,7 +116,7 @@ def main() -> int:
     request_count = len(requests)
     media_count = sum(len(request["body"].get("media_ids", [])) for request in requests)
     feedback_count = sum(len(build_feedback_items_for_request(request, feedback_lookup)) for request in requests)
-    normalized_change_count = sum(len(request.get("normalized_series_names", [])) for request in requests)
+    normalized_change_count = sum(len(request.get("normalized_entity_names", [])) for request in requests)
 
     if args.dry_run:
         print(
@@ -120,7 +124,7 @@ def main() -> int:
             f"{media_count} media item reference(s)."
         )
         if normalized_change_count:
-            print(f"Dry run: would normalize {normalized_change_count} series name value(s).")
+            print(f"Dry run: would normalize {normalized_change_count} entity name value(s).")
         if not args.skip_feedback:
             print(f"Dry run: would post {feedback_count} accepted feedback item(s).")
         return 0
@@ -253,25 +257,39 @@ def parse_entity_requests(payload: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(body, dict):
             raise ValueError(f"request {index} body must be an object")
         media_ids = body.get("media_ids")
-        series_names = body.get("series_names")
-        if not valid_string_list(media_ids) or not valid_string_list(series_names):
-            raise ValueError(f"request {index} must include media_ids and series_names lists")
+        if not valid_string_list(media_ids):
+            raise ValueError(f"request {index} must include a media_ids list")
 
-        normalized_names, normalized_changes = normalize_entity_names(series_names)
-        if not normalized_names:
-            raise ValueError(f"request {index} must include at least one non-empty normalized series name")
-        normalized_body = {**body, "series_names": normalized_names}
+        normalized_body: dict[str, Any] = {"media_ids": media_ids}
+        normalized_changes: list[dict[str, str]] = []
+        entity_field_count = 0
+        for field in ENTITY_NAME_FIELDS:
+            names = body.get(field)
+            if names is None:
+                continue
+            if not valid_string_list(names):
+                raise ValueError(f"request {index} {field} must be a list of non-empty strings")
+            normalized_names, changes = normalize_entity_names(names)
+            if not normalized_names:
+                raise ValueError(f"request {index} must include at least one non-empty normalized {field} value")
+            normalized_body[field] = normalized_names
+            normalized_changes.extend({"field": field, **change} for change in changes)
+            entity_field_count += 1
+
+        if entity_field_count == 0:
+            raise ValueError(f"request {index} must include character_names or series_names")
+
         parsed.append({
             "method": method,
             "path": path,
             "body": normalized_body,
-            "normalized_series_names": normalized_changes,
+            "normalized_entity_names": normalized_changes,
         })
     return parsed
 
 
-def build_assignment_feedback_lookup(payload: dict[str, Any]) -> dict[tuple[str, str], dict[str, Any]]:
-    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+def build_assignment_feedback_lookup(payload: dict[str, Any]) -> dict[tuple[str, str, str], dict[str, Any]]:
+    lookup: dict[tuple[str, str, str], dict[str, Any]] = {}
     assignments = payload.get("assignments")
     if not isinstance(assignments, list):
         return lookup
@@ -280,50 +298,54 @@ def build_assignment_feedback_lookup(payload: dict[str, Any]) -> dict[tuple[str,
         if not isinstance(assignment, dict):
             continue
         media_id = assignment.get("media_id")
-        series_names = assignment.get("series_names")
-        if not isinstance(media_id, str) or not valid_string_list(series_names):
+        if not isinstance(media_id, str):
             continue
         prompt_key = assignment.get("prompt_key")
         reason = assignment.get("reason")
-        for series_name in series_names:
-            normalized_name = normalize_entity_name(series_name)
-            if not normalized_name:
+        source = "missing_metadata_regex" if reason == "regex_rule" else "missing_metadata_resolver"
+        for field, entity_type in ENTITY_NAME_FIELDS.items():
+            names = assignment.get(field)
+            if not valid_string_list(names):
                 continue
-            lookup[(media_id, normalized_name)] = {
-                "source": "missing_metadata_resolver",
-                "explanation": build_feedback_explanation(reason, prompt_key),
-            }
+            for name in names:
+                normalized_name = normalize_entity_name(name)
+                if not normalized_name:
+                    continue
+                lookup[(media_id, entity_type, normalized_name)] = {
+                    "source": source,
+                    "explanation": build_feedback_explanation(reason, prompt_key),
+                }
     return lookup
 
 
 def build_feedback_items_for_request(
     request: dict[str, Any],
-    feedback_lookup: dict[tuple[str, str], dict[str, Any]],
+    feedback_lookup: dict[tuple[str, str, str], dict[str, Any]],
 ) -> list[dict[str, Any]]:
     body = request["body"]
     media_ids = body.get("media_ids", [])
-    series_names = body.get("series_names", [])
     feedback_items: list[dict[str, Any]] = []
 
     for media_id in media_ids:
-        for series_name in series_names:
-            extra = feedback_lookup.get(
-                (media_id, series_name),
-                {
-                    "source": "missing_metadata_resolver",
-                    "explanation": "Accepted from generated missing metadata entity update file.",
-                },
-            )
-            feedback_items.append(
-                {
-                    "media_id": media_id,
-                    "entity_type": "series",
-                    "suggested_name": series_name,
-                    "action": "accepted",
-                    "source": extra["source"],
-                    "explanation": extra["explanation"],
-                }
-            )
+        for field, entity_type in ENTITY_NAME_FIELDS.items():
+            for entity_name in body.get(field, []):
+                extra = feedback_lookup.get(
+                    (media_id, entity_type, entity_name),
+                    {
+                        "source": "missing_metadata_resolver",
+                        "explanation": "Accepted from generated missing metadata entity update file.",
+                    },
+                )
+                feedback_items.append(
+                    {
+                        "media_id": media_id,
+                        "entity_type": entity_type,
+                        "suggested_name": entity_name,
+                        "action": "accepted",
+                        "source": extra["source"],
+                        "explanation": extra["explanation"],
+                    }
+                )
     return feedback_items
 
 

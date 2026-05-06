@@ -887,6 +887,76 @@ async def test_list_batch_review_items_uses_historical_tagged_library_for_entity
 
 
 @pytest.mark.asyncio
+async def test_series_name_groups_split_by_suggested_character(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    def make_item(name: str) -> ImportBatchItem:
+        media = Media(
+            id=uuid.uuid4(),
+            uploader_id=user.id,
+            owner_id=user.id,
+            filename=name,
+            original_filename=name,
+            filepath=f"/tmp/{name}",
+            media_type=MediaType.IMAGE,
+            captured_at=now,
+            uploaded_at=now,
+            visibility=MediaVisibility.private,
+            version=1,
+            is_nsfw=False,
+            tagging_status=TaggingStatus.DONE,
+            thumbnail_status=ProcessingStatus.DONE,
+            poster_status=ProcessingStatus.NOT_APPLICABLE,
+            metadata_review_dismissed=False,
+        )
+        media.media_tags = []
+        media.entities = [
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.series, name="Fate", role="primary", source="tagger", confidence=0.9),
+        ]
+        item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename=name, status=ItemStatus.done)
+        item.id = uuid.uuid4()
+        item.media = media
+        return item
+
+    saber_one = make_item("saber-one.webp")
+    saber_two = make_item("saber-two.webp")
+    rin_one = make_item("rin-one.webp")
+    review_item_by_media_id = {
+        saber_one.media.id: SimpleNamespace(
+            missing_character=True,
+            missing_series=False,
+            suggested_characters=[ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.93)],
+        ),
+        saber_two.media.id: SimpleNamespace(
+            missing_character=True,
+            missing_series=False,
+            suggested_characters=[ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.91)],
+        ),
+        rin_one.media.id: SimpleNamespace(
+            missing_character=True,
+            missing_series=False,
+            suggested_characters=[ImportBatchRecommendationSuggestionRead(name="Rin", confidence=0.9)],
+        ),
+    }
+    fake_db.execute = AsyncMock(side_effect=[RowResult(rows=[]), RowResult(rows=[]), RowResult(rows=[])])
+
+    groups, grouped_ids = await service._build_entity_name_groups(
+        [saber_one, saber_two, rin_one],
+        review_item_by_media_id,
+        0,
+        user.id,
+    )
+
+    assert len(groups) == 1
+    assert set(groups[0].media_ids) == {saber_one.media.id, saber_two.media.id}
+    assert grouped_ids == {saber_one.media.id, saber_two.media.id}
+    assert groups[0].suggested_characters[0].name == "Saber"
+    assert groups[0].suggested_series[0].name == "Fate"
+
+
+@pytest.mark.asyncio
 async def test_character_name_groups_case_insensitive_bucketing(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
