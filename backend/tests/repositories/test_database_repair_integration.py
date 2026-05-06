@@ -179,24 +179,27 @@ async def test_tag_repair_reindexes_lookup_indexes_before_mutating_tags():
     async def _reindex_lookup(conn):
         order.append("reindex")
 
+    async def _drop_unique(conn):
+        order.append("drop_unique")
+
     async def _execute_rowcount(conn, sql):
         order.append("mutate")
         return 0
 
     with (
         patch("backend.app.services.database_repair._has_columns", AsyncMock(side_effect=_has_columns)),
+        patch("backend.app.services.database_repair._drop_tag_uniqueness_constraint", AsyncMock(side_effect=_drop_unique)),
         patch("backend.app.services.database_repair._reindex_tag_lookup_indexes", AsyncMock(side_effect=_reindex_lookup)),
         patch("backend.app.services.database_repair._scalar_int", AsyncMock(return_value=1)),
         patch("backend.app.services.database_repair._execute_rowcount", AsyncMock(side_effect=_execute_rowcount)),
-        patch("backend.app.services.database_repair._reindex_existing_tag_uniqueness_indexes", AsyncMock()),
     ):
         await database_repair._repair_tags(object(), ensure_constraint=False)
 
-    assert order == ["reindex", "mutate"]
+    assert order == ["drop_unique", "reindex", "mutate"]
 
 
 @pytest.mark.asyncio
-async def test_tag_repair_reindexes_unique_index_after_dedupe():
+async def test_tag_repair_drops_unique_index_before_dedupe():
     order: list[str] = []
 
     async def _has_columns(conn, table_name, columns):
@@ -206,16 +209,16 @@ async def test_tag_repair_reindexes_unique_index_after_dedupe():
         order.append("dedupe")
         return 0
 
-    async def _reindex_unique(conn):
-        order.append("reindex_unique")
+    async def _drop_unique(conn):
+        order.append("drop_unique")
 
     with (
         patch("backend.app.services.database_repair._has_columns", AsyncMock(side_effect=_has_columns)),
+        patch("backend.app.services.database_repair._drop_tag_uniqueness_constraint", AsyncMock(side_effect=_drop_unique)),
         patch("backend.app.services.database_repair._reindex_tag_lookup_indexes", AsyncMock()),
         patch("backend.app.services.database_repair._scalar_int", AsyncMock(return_value=1)),
         patch("backend.app.services.database_repair._execute_rowcount", AsyncMock(side_effect=_execute_rowcount)),
-        patch("backend.app.services.database_repair._reindex_existing_tag_uniqueness_indexes", AsyncMock(side_effect=_reindex_unique)),
     ):
         await database_repair._repair_tags(object(), ensure_constraint=False)
 
-    assert order == ["dedupe", "reindex_unique"]
+    assert order == ["drop_unique", "dedupe"]

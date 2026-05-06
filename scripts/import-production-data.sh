@@ -8,6 +8,9 @@
 set -euo pipefail
 
 ARCHIVE=""
+SSH_TARGET=""
+PCT_ID=""
+REMOTE_DIR="/opt/zukan"
 COMPOSE_FILE=""
 ENV_FILE=""
 PROJECT_NAME="${COMPOSE_PROJECT_NAME:-zukan}"
@@ -15,6 +18,7 @@ YES=0
 REPLACE_STORAGE=0
 NO_START=0
 TARGET_STORAGE_DIR="${ZUKAN_IMPORT_STORAGE_DIR:-}"
+REMOTE_RUN=0
 TEMP_DIR=""
 
 info() { printf '  [INFO]  %s\n' "$*"; }
@@ -34,11 +38,19 @@ usage() {
     cat <<USAGE
 Usage:
   $0 ARCHIVE [options]
+  $0 ARCHIVE --ssh user@host [options]
+  $0 ARCHIVE --ssh user@proxmox --pct CTID [options]
+  $0 ARCHIVE --pct CTID [options]
 
 Import a Zukan archive into the current Docker Compose install. Database data is
-replaced. Media files are copied into the target storage volume.
+replaced. Media files are copied into the target storage volume. With --ssh,
+the archive and this script are streamed to the remote target first. Add --pct
+when SSH lands on a Proxmox host and Zukan runs inside an LXC.
 
 Options:
+  --ssh TARGET            SSH target, for example root@zukan.example.com
+  --pct CTID              Proxmox LXC container ID to enter with pct exec
+  --remote-dir PATH       Remote install directory. Default: /opt/zukan
   --compose-file PATH       Compose file. Default: auto-detect
   --env-file PATH           Compose env file. Default: auto-detect
   --project-name NAME       Docker Compose project name. Default: zukan
@@ -51,7 +63,13 @@ Options:
 Examples:
   $0 ./prod-data.tar.gz --yes
   $0 ./prod-data.tar.gz --compose-file docker-compose.yml --replace-storage
+  $0 ./prod-data.tar.gz --ssh root@prod --yes
+  $0 ./prod-data.tar.gz --ssh root@proxmox --pct 112 --yes
 USAGE
+}
+
+shell_quote() {
+    printf "'%s'" "$(printf "%s" "$1" | sed "s/'/'\\\\''/g")"
 }
 
 detect_compose_file() {
@@ -459,7 +477,7 @@ SQL
         < "$sql_file"
 }
 
-run_import() {
+run_import_on_host() {
     local compose_file
     local env_file
     local manifest
@@ -517,8 +535,103 @@ run_import() {
     fi
 }
 
+remote_import_args() {
+    printf " --remote-run"
+    printf " --project-name %s" "$(shell_quote "$PROJECT_NAME")"
+    if [ -n "$COMPOSE_FILE" ]; then
+        printf " --compose-file %s" "$(shell_quote "$COMPOSE_FILE")"
+    fi
+    if [ -n "$ENV_FILE" ]; then
+        printf " --env-file %s" "$(shell_quote "$ENV_FILE")"
+    fi
+    if [ -n "$TARGET_STORAGE_DIR" ]; then
+        printf " --target-storage-dir %s" "$(shell_quote "$TARGET_STORAGE_DIR")"
+    fi
+    if [ "$REPLACE_STORAGE" = "1" ]; then
+        printf " --replace-storage"
+    fi
+    if [ "$YES" = "1" ]; then
+        printf " --yes"
+    fi
+    if [ "$NO_START" = "1" ]; then
+        printf " --no-start"
+    fi
+}
+
+stream_import_bundle() {
+    local script_path
+    local stage_dir
+
+    [ -n "$ARCHIVE" ] || fail "Archive path is required."
+    [ -f "$ARCHIVE" ] || fail "Archive not found: $ARCHIVE"
+
+    script_path="${BASH_SOURCE[0]:-$0}"
+    [ -f "$script_path" ] || fail "Could not find script path for remote import: $script_path"
+
+    stage_dir="$(mktemp -d)"
+    ln -s "$(cd "$(dirname "$script_path")" && pwd)/$(basename "$script_path")" "${stage_dir}/import-production-data.sh"
+    ln -s "$(cd "$(dirname "$ARCHIVE")" && pwd)/$(basename "$ARCHIVE")" "${stage_dir}/archive.tar.gz"
+    tar -h -C "$stage_dir" -czf - import-production-data.sh archive.tar.gz
+    rm -rf "$stage_dir"
+}
+
+remote_import_command() {
+    local args
+    args="$(remote_import_args)"
+    printf 'set -euo pipefail; tmp=$(mktemp -d); trap '\''rm -rf "$tmp"'\'' EXIT; tar -xzf - -C "$tmp"; cd %s; bash "$tmp/import-production-data.sh" "$tmp/archive.tar.gz"%s' \
+        "$(shell_quote "$REMOTE_DIR")" \
+        "$args"
+}
+
+run_import_over_ssh() {
+    local remote_cmd
+
+    command -v ssh >/dev/null 2>&1 || fail "ssh is required."
+    if [ "$YES" != "1" ]; then
+        fail "Remote imports are non-interactive. Re-run with --yes."
+    fi
+
+    if [ -n "$PCT_ID" ]; then
+        remote_cmd="pct exec $(shell_quote "$PCT_ID") -- bash -lc $(shell_quote "$(remote_import_command)")"
+        warn "This will replace the database on $SSH_TARGET LXC $PCT_ID:$REMOTE_DIR"
+        info "Streaming archive to $SSH_TARGET and importing inside LXC $PCT_ID."
+    else
+        remote_cmd="bash -lc $(shell_quote "$(remote_import_command)")"
+        warn "This will replace the database on $SSH_TARGET:$REMOTE_DIR"
+        info "Streaming archive to $SSH_TARGET and importing."
+    fi
+
+    stream_import_bundle | ssh "$SSH_TARGET" "$remote_cmd"
+}
+
+run_import_over_pct() {
+    local inner_cmd
+
+    command -v pct >/dev/null 2>&1 || fail "pct is required on the Proxmox host."
+    if [ "$YES" != "1" ]; then
+        fail "LXC imports are non-interactive. Re-run with --yes."
+    fi
+
+    inner_cmd="$(remote_import_command)"
+    warn "This will replace the database in local LXC $PCT_ID:$REMOTE_DIR"
+    info "Streaming archive to local LXC $PCT_ID and importing."
+    stream_import_bundle | pct exec "$PCT_ID" -- bash -lc "$inner_cmd"
+}
+
 while [ "$#" -gt 0 ]; do
     case "$1" in
+        --ssh)
+            SSH_TARGET="$2"
+            shift 2
+            ;;
+        --pct)
+            PCT_ID="$2"
+            shift 2
+            ;;
+        --remote-dir)
+            REMOTE_DIR="$2"
+            shift 2
+            ;;
         --compose-file)
             COMPOSE_FILE="$2"
             shift 2
@@ -547,6 +660,10 @@ while [ "$#" -gt 0 ]; do
             NO_START=1
             shift
             ;;
+        --remote-run)
+            REMOTE_RUN=1
+            shift
+            ;;
         -h|--help)
             usage
             exit 0
@@ -565,4 +682,12 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-run_import
+if [ "$REMOTE_RUN" = "1" ]; then
+    run_import_on_host
+elif [ -n "$SSH_TARGET" ]; then
+    run_import_over_ssh
+elif [ -n "$PCT_ID" ]; then
+    run_import_over_pct
+else
+    run_import_on_host
+fi

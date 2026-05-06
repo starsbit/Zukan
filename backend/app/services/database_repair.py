@@ -72,6 +72,7 @@ async def _repair_tags(conn: AsyncConnection, *, ensure_constraint: bool) -> int
     if not await _has_columns(conn, "tags", {"id", "owner_user_id", "name", "media_count"}):
         return 0
 
+    await _drop_tag_uniqueness_constraint(conn)
     await _reindex_tag_lookup_indexes(conn)
 
     changes = 0
@@ -219,8 +220,6 @@ async def _repair_tags(conn: AsyncConnection, *, ensure_constraint: bool) -> int
               AND t.media_count IS DISTINCT FROM counts.media_count
             """,
         )
-
-    await _reindex_existing_tag_uniqueness_indexes(conn)
 
     if ensure_constraint:
         await conn.execute(
@@ -403,14 +402,19 @@ async def _probe_tag_upsert(conn: AsyncConnection) -> None:
 
 
 async def _reindex_tag_uniqueness(conn: AsyncConnection) -> None:
-    await _reindex_existing_tag_uniqueness_indexes(conn)
-    await conn.execute(text("REINDEX INDEX public.tags_pkey"))
-
-
-async def _reindex_existing_tag_uniqueness_indexes(conn: AsyncConnection) -> None:
     if await _index_exists(conn, "uq_tags_owner_user_id_name"):
         logger.info("Reindexing tag uniqueness index after database repair index=uq_tags_owner_user_id_name")
         await conn.execute(text("REINDEX INDEX public.uq_tags_owner_user_id_name"))
+    await conn.execute(text("REINDEX INDEX public.tags_pkey"))
+
+
+async def _drop_tag_uniqueness_constraint(conn: AsyncConnection) -> None:
+    if await _tag_constraint_exists(conn):
+        logger.warning("Dropping tag uniqueness constraint before database repair")
+        await conn.execute(text("ALTER TABLE tags DROP CONSTRAINT uq_tags_owner_user_id_name"))
+    if await _index_exists(conn, "uq_tags_owner_user_id_name"):
+        logger.warning("Dropping standalone tag uniqueness index before database repair")
+        await conn.execute(text("DROP INDEX public.uq_tags_owner_user_id_name"))
 
 
 async def _reindex_tag_lookup_indexes(conn: AsyncConnection) -> None:

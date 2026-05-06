@@ -18,6 +18,7 @@ from typing import Any
 
 ZUKAN_API_BASE_URL = "http://zukan.home.arpa/api/v1"
 DEFAULT_USERNAME = "stars"
+DEFAULT_OUTPUT = ".metadata-review/missing-metadata-items.json"
 
 
 class ApiError(RuntimeError):
@@ -59,8 +60,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output",
-        default="missing-metadata-items.json",
-        help="JSON file to write. Default: missing-metadata-items.json",
+        default=DEFAULT_OUTPUT,
+        help=f"JSON file to write. Default: {DEFAULT_OUTPUT}",
     )
     parser.add_argument(
         "--timeout",
