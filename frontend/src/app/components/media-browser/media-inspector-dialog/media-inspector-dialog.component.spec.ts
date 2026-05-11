@@ -2,9 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
-import { of, throwError } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MediaDetail, MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import { LibraryClassificationSuggestionResponse } from '../../../models/processing';
 import { MediaEntityType } from '../../../models/relations';
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
@@ -212,6 +213,7 @@ describe('MediaInspectorDialogComponent', () => {
 
     expect(mediaService.get).toHaveBeenCalledWith('m1');
     expect(mediaService.getFileUrl).toHaveBeenCalledWith('m1');
+    expect(mediaService.getLibraryClassificationSuggestions).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Summary');
     expect(fixture.nativeElement.textContent).toContain('Upload');
     expect(fixture.nativeElement.textContent).toContain('Uploaded at');
@@ -268,6 +270,78 @@ describe('MediaInspectorDialogComponent', () => {
     expect(
       fixture.nativeElement.querySelector('button[aria-label="Remove tag White Hair"]'),
     ).not.toBeNull();
+  });
+
+  it('loads library classification suggestions only when editing begins', async () => {
+    const getLibraryClassificationSuggestions = vi.fn(() =>
+      of({
+        suggested_characters: [
+          {
+            name: 'Saber Alter',
+            confidence: 0.9,
+            explanation: 'Matched trusted examples.',
+          },
+        ],
+        suggested_series: [
+          {
+            name: 'Fate/stay night',
+            confidence: 0.82,
+            explanation: 'Common series for the matched character.',
+          },
+        ],
+      }),
+    );
+    const { fixture, mediaService } = await createComponent({ getLibraryClassificationSuggestions });
+
+    expect(mediaService.getLibraryClassificationSuggestions).not.toHaveBeenCalled();
+
+    fixture.componentInstance.beginEdit();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(mediaService.getLibraryClassificationSuggestions).toHaveBeenCalledTimes(1);
+    expect(mediaService.getLibraryClassificationSuggestions).toHaveBeenCalledWith('m1');
+    expect(fixture.nativeElement.textContent).toContain('Would detect');
+    expect(fixture.nativeElement.textContent).toContain('Saber Alter');
+    expect(fixture.nativeElement.textContent).toContain('Fate/Stay Night');
+  });
+
+  it('clears edit suggestions and ignores stale lazy responses after navigation', async () => {
+    const firstSuggestions = new Subject<LibraryClassificationSuggestionResponse>();
+    const secondSuggestions = new Subject<LibraryClassificationSuggestionResponse>();
+    const getLibraryClassificationSuggestions = vi.fn((id: string) =>
+      id === 'm1' ? firstSuggestions.asObservable() : secondSuggestions.asObservable(),
+    );
+    const { fixture } = await createComponent({ getLibraryClassificationSuggestions });
+
+    fixture.componentInstance.beginEdit();
+    expect(getLibraryClassificationSuggestions).toHaveBeenCalledWith('m1');
+
+    fixture.componentInstance.next();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    firstSuggestions.next({
+      suggested_characters: [{ name: 'Stale Character', confidence: 0.91 }],
+      suggested_series: [],
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.fallbackCharacterSuggestions()).toEqual([]);
+
+    fixture.componentInstance.beginEdit();
+    secondSuggestions.next({
+      suggested_characters: [{ name: 'Rin Tohsaka', confidence: 0.84 }],
+      suggested_series: [],
+    });
+    fixture.detectChanges();
+
+    expect(getLibraryClassificationSuggestions).toHaveBeenCalledWith('m2');
+    expect(fixture.componentInstance.fallbackCharacterSuggestions()).toEqual([
+      { name: 'Rin Tohsaka', confidence: 0.84 },
+    ]);
   });
 
   it('renders videos with native controls', async () => {

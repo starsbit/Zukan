@@ -259,6 +259,9 @@ export class MediaInspectorDialogComponent {
 
   private objectUrl: string | null = null;
   private loadRequestId = 0;
+  private classificationSuggestionsRequestId = 0;
+  private classificationSuggestionsMediaId: string | null = null;
+  private loadingClassificationSuggestionsMediaId: string | null = null;
   private pointerStartX = 0;
   private pointerStartY = 0;
   private panStartX = 0;
@@ -384,6 +387,7 @@ export class MediaInspectorDialogComponent {
   beginEdit(): void {
     this.resetDraftFromCurrentMedia();
     this.editing.set(true);
+    this.loadFallbackClassificationSuggestionsForActiveItem();
     if (this.isMobile()) {
       this.mobileDetailsOpen.set(true);
     }
@@ -392,6 +396,7 @@ export class MediaInspectorDialogComponent {
   cancelEdit(): void {
     this.resetDraftFromCurrentMedia();
     this.editing.set(false);
+    this.clearFallbackClassificationSuggestions();
   }
 
   toggleMobileDetails(): void {
@@ -584,6 +589,7 @@ export class MediaInspectorDialogComponent {
           this.recordCharacterFeedbackForSave(media.id, draft.characterNames);
           this.resetDraftFromMedia(updated);
           this.editing.set(false);
+          this.clearFallbackClassificationSuggestions();
           this.saving.set(false);
           this.snackBar.open('Media metadata updated.', 'Close', { duration: 3000 });
         },
@@ -898,8 +904,7 @@ export class MediaInspectorDialogComponent {
     this.fileError.set('');
     this.loadingDetail.set(true);
     this.loadingFile.set(true);
-    this.fallbackCharacterSuggestions.set([]);
-    this.fallbackSeriesSuggestions.set([]);
+    this.clearFallbackClassificationSuggestions();
     this.revokeObjectUrl();
 
     this.mediaService
@@ -924,28 +929,6 @@ export class MediaInspectorDialogComponent {
         },
       });
 
-    const getClassificationSuggestions = this.mediaService.getLibraryClassificationSuggestions?.bind(this.mediaService);
-    if (getClassificationSuggestions) {
-      getClassificationSuggestions(media.id)
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe({
-          next: (response) => {
-            if (requestId !== this.loadRequestId) {
-              return;
-            }
-            this.fallbackCharacterSuggestions.set(response.suggested_characters ?? []);
-            this.fallbackSeriesSuggestions.set(response.suggested_series ?? []);
-          },
-          error: () => {
-            if (requestId !== this.loadRequestId) {
-              return;
-            }
-            this.fallbackCharacterSuggestions.set([]);
-            this.fallbackSeriesSuggestions.set([]);
-          },
-        });
-    }
-
     this.mediaService
       .getFileUrl(media.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -968,6 +951,69 @@ export class MediaInspectorDialogComponent {
           this.loadingFile.set(false);
         },
       });
+  }
+
+  private loadFallbackClassificationSuggestionsForActiveItem(): void {
+    const media = this.activeItem();
+    if (!media) {
+      return;
+    }
+
+    if (
+      this.classificationSuggestionsMediaId === media.id ||
+      this.loadingClassificationSuggestionsMediaId === media.id
+    ) {
+      return;
+    }
+
+    const getClassificationSuggestions =
+      this.mediaService.getLibraryClassificationSuggestions?.bind(this.mediaService);
+    if (!getClassificationSuggestions) {
+      return;
+    }
+
+    const loadRequestId = this.loadRequestId;
+    const suggestionRequestId = ++this.classificationSuggestionsRequestId;
+    this.loadingClassificationSuggestionsMediaId = media.id;
+
+    getClassificationSuggestions(media.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (response) => {
+          if (
+            loadRequestId !== this.loadRequestId ||
+            suggestionRequestId !== this.classificationSuggestionsRequestId ||
+            media.id !== this.activeItem()?.id
+          ) {
+            return;
+          }
+          this.fallbackCharacterSuggestions.set(response.suggested_characters ?? []);
+          this.fallbackSeriesSuggestions.set(response.suggested_series ?? []);
+          this.classificationSuggestionsMediaId = media.id;
+          this.loadingClassificationSuggestionsMediaId = null;
+        },
+        error: () => {
+          if (
+            loadRequestId !== this.loadRequestId ||
+            suggestionRequestId !== this.classificationSuggestionsRequestId ||
+            media.id !== this.activeItem()?.id
+          ) {
+            return;
+          }
+          this.fallbackCharacterSuggestions.set([]);
+          this.fallbackSeriesSuggestions.set([]);
+          this.classificationSuggestionsMediaId = media.id;
+          this.loadingClassificationSuggestionsMediaId = null;
+        },
+      });
+  }
+
+  private clearFallbackClassificationSuggestions(): void {
+    this.classificationSuggestionsRequestId++;
+    this.classificationSuggestionsMediaId = null;
+    this.loadingClassificationSuggestionsMediaId = null;
+    this.fallbackCharacterSuggestions.set([]);
+    this.fallbackSeriesSuggestions.set([]);
   }
 
   private replaceActiveItem(updated: MediaRead): void {
