@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
+from backend.app.models.media import TaggingStatus
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
 
 
@@ -52,24 +54,38 @@ async def test_import_batch_item_repository_queries(db_session, make_user, make_
 async def test_list_all_review_candidates_for_user_includes_multiple_batches(db_session, make_user, make_media):
     user = await make_user()
     other = await make_user()
-    media_one = await make_media(uploader_id=user.id)
-    media_two = await make_media(uploader_id=user.id)
-    foreign_media = await make_media(uploader_id=other.id)
+    media_one = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    media_two = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    complete_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    dismissed_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    pending_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.PENDING)
+    foreign_media = await make_media(uploader_id=other.id, tagging_status=TaggingStatus.DONE)
+    db_session.add_all([
+        MediaEntity(media_id=complete_media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="manual"),
+        MediaEntity(media_id=complete_media.id, entity_type=MediaEntityType.series, name="Fate", role="primary", source="manual"),
+    ])
+    dismissed_media.metadata_review_dismissed = True
 
     batch_one = ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.done, total_items=1, queued_items=0, processing_items=0, done_items=1, failed_items=0)
-    batch_two = ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.done, total_items=2, queued_items=0, processing_items=0, done_items=2, failed_items=0)
+    batch_two = ImportBatch(user_id=user.id, type=BatchType.upload, status=BatchStatus.done, total_items=5, queued_items=0, processing_items=0, done_items=5, failed_items=0)
     foreign_batch = ImportBatch(user_id=other.id, type=BatchType.upload, status=BatchStatus.done, total_items=1, queued_items=0, processing_items=0, done_items=1, failed_items=0)
     db_session.add_all([batch_one, batch_two, foreign_batch])
     await db_session.flush()
 
     item_one = ImportBatchItem(batch_id=batch_one.id, media_id=media_one.id, source_filename="one.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     item_two = ImportBatchItem(batch_id=batch_two.id, media_id=media_two.id, source_filename="two.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
+    complete_item = ImportBatchItem(batch_id=batch_two.id, media_id=complete_media.id, source_filename="complete.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
+    dismissed_item = ImportBatchItem(batch_id=batch_two.id, media_id=dismissed_media.id, source_filename="dismissed.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
+    pending_item = ImportBatchItem(batch_id=batch_two.id, media_id=pending_media.id, source_filename="pending.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     item_without_media = ImportBatchItem(batch_id=batch_two.id, source_filename="skip.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     foreign_item = ImportBatchItem(batch_id=foreign_batch.id, media_id=foreign_media.id, source_filename="foreign.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
-    db_session.add_all([item_one, item_two, item_without_media, foreign_item])
+    db_session.add_all([item_one, item_two, complete_item, dismissed_item, pending_item, item_without_media, foreign_item])
     await db_session.flush()
 
     repo = ImportBatchItemRepository(db_session)
     results = await repo.list_all_review_candidates_for_user(user.id)
 
     assert {item.id for item in results} == {item_one.id, item_two.id}
+
+    batch_results = await repo.list_review_candidates_for_batch(batch_two.id)
+    assert {item.id for item in batch_results} == {item_two.id}

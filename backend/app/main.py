@@ -38,6 +38,7 @@ from backend.app.services.media.lifecycle import MediaLifecycleService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.services.processing import ProcessingService
 from backend.app.services.admin import AdminService
 from backend.app.services.auth import AuthService
 from backend.app.services.database_repair import repair_database_after_migrations
@@ -142,6 +143,10 @@ async def tagging_worker():
                         getattr(media_item.tagging_status, "value", media_item.tagging_status),
                     )
                 await upload_service.mark_upload_batch_item_done(media_id)
+                try:
+                    await ProcessingService(db).precompute_review_suggestions_for_media(media_id)
+                except Exception:
+                    logger.exception("Failed to precompute missing-name review suggestions media_id=%s", media_id)
                 if settings.post_tag_worker_count > 0:
                     await post_tag_queue.put(media_id)
                 logger.info("Tagging worker completed media_id=%s", media_id)

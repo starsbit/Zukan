@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Enum, Float, ForeignKey, Index, Integer, String, Text, func, text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.database import Base
@@ -100,6 +100,9 @@ class Media(Base):
         server_default="false",
         index=True,
     )
+    review_suggested_characters: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    review_suggested_series: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    review_suggestions_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Lifecycle
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

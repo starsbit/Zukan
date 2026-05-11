@@ -195,7 +195,7 @@ async def test_list_batch_review_items_skips_recommendations_when_not_requested(
 
 
 @pytest.mark.asyncio
-async def test_list_batch_review_items_builds_recommendations_when_requested(fake_db, user):
+async def test_list_batch_review_items_builds_recommendations_when_force_refreshed(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
     media = Media(
@@ -240,7 +240,7 @@ async def test_list_batch_review_items_builds_recommendations_when_requested(fak
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     build_groups.assert_awaited_once()
     assert len(result.recommendation_groups) == 1
@@ -248,7 +248,7 @@ async def test_list_batch_review_items_builds_recommendations_when_requested(fak
 
 
 @pytest.mark.asyncio
-async def test_list_batch_review_items_populates_library_suggestions_when_enabled(fake_db, user):
+async def test_list_batch_review_items_refreshes_and_persists_library_suggestions_when_forced(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
     media = Media(
@@ -305,10 +305,13 @@ async def test_list_batch_review_items_populates_library_suggestions_when_enable
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert [suggestion.name for suggestion in result.items[0].suggested_characters] == ["Saber"]
     assert [suggestion.name for suggestion in result.items[0].suggested_series] == ["Fate/stay night"]
+    assert media.review_suggested_characters[0]["name"] == "Saber"
+    assert media.review_suggested_series[0]["name"] == "Fate/stay night"
+    assert media.review_suggestions_computed_at is not None
     service._library_enrichment.enrich_media.assert_not_awaited()
     service._library_enrichment.enrich_media_batch.assert_awaited_once_with(
         [media],
@@ -368,11 +371,121 @@ async def test_list_batch_review_items_skips_library_suggestions_when_flag_disab
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.items[0].suggested_characters == []
     assert result.items[0].suggested_series == []
     service._library_enrichment.enrich_media.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_batch_review_items_uses_cached_suggestions_without_library_refresh(fake_db, user):
+    service = ProcessingService(fake_db)
+    batch_id = uuid.uuid4()
+    media = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        uploaded_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        metadata_review_dismissed=False,
+        review_suggested_characters=[{"name": "Saber", "confidence": 0.95}],
+        review_suggested_series=[{"name": "Fate/stay night", "confidence": 0.91}],
+    )
+    media.entities = []
+    review_item = ImportBatchItem(batch_id=batch_id, media_id=media.id, source_filename="one.webp", status=ItemStatus.done)
+    review_item.id = uuid.uuid4()
+    review_item.media = media
+    service._library_enrichment.enrich_media = AsyncMock()
+    service._library_enrichment.enrich_media_batch = AsyncMock()
+
+    with patch.object(service, "get_batch_for_user", AsyncMock()), \
+         patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=[])) as build_groups, \
+         patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
+         patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
+        items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[review_item])
+        favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
+        favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
+
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+
+    assert [suggestion.name for suggestion in result.items[0].suggested_characters] == ["Saber"]
+    assert [suggestion.name for suggestion in result.items[0].suggested_series] == ["Fate/stay night"]
+    service._library_enrichment.enrich_media.assert_not_awaited()
+    service._library_enrichment.enrich_media_batch.assert_not_awaited()
+    build_groups.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_precompute_review_suggestions_for_media_persists_missing_name_cache(fake_db, user):
+    service = ProcessingService(fake_db)
+    media = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        uploaded_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        metadata_review_dismissed=False,
+    )
+    media.entities = []
+    media.media_tags = []
+    fake_db.execute = AsyncMock(return_value=ScalarResult(one=media))
+    fake_db.get = AsyncMock(return_value=User(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password,
+        is_admin=user.is_admin,
+        show_nsfw=user.show_nsfw,
+        show_sensitive=user.show_sensitive,
+        tag_confidence_threshold=user.tag_confidence_threshold,
+        library_classification_enabled=True,
+        version=user.version,
+        storage_quota_mb=user.storage_quota_mb,
+        created_at=user.created_at,
+    ))
+    service._library_enrichment.enrich_media_batch = AsyncMock(return_value={
+        media.id: SimpleNamespace(
+            suggestions={
+                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
+                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
+            },
+        )
+    })
+
+    refreshed = await service.precompute_review_suggestions_for_media(media.id)
+
+    assert refreshed is True
+    assert media.review_suggested_characters[0]["name"] == "Saber"
+    assert media.review_suggested_series[0]["name"] == "Fate/stay night"
+    assert media.review_suggestions_computed_at is not None
+    service._library_enrichment.enrich_media_batch.assert_awaited_once_with(
+        [media],
+        user_id=user.id,
+        apply=False,
+        compute_missing_embeddings=False,
+    )
+    fake_db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -493,7 +606,7 @@ async def test_list_batch_review_items_batches_library_suggestions_once(fake_db,
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.total == 3
     service._library_enrichment.enrich_media.assert_not_awaited()
@@ -630,7 +743,7 @@ async def test_list_batch_review_items_skips_dismissed_review_media(fake_db, use
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.total == 0
     assert result.items == []
@@ -718,7 +831,7 @@ async def test_list_batch_review_items_groups_related_media_and_suggests_names(f
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.total == 3
     assert len(result.recommendation_groups) == 1
@@ -795,7 +908,7 @@ async def test_list_batch_review_items_infers_series_from_character_history(fake
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert len(result.recommendation_groups) == 1
     assert result.recommendation_groups[0].suggested_series[0].name == "Steins;Gate"
@@ -878,7 +991,7 @@ async def test_list_batch_review_items_uses_historical_tagged_library_for_entity
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert len(result.recommendation_groups) == 1
     group = result.recommendation_groups[0]
@@ -1002,7 +1115,7 @@ async def test_character_name_groups_case_insensitive_bucketing(fake_db, user):
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert len(result.recommendation_groups) == 1
     assert set(result.recommendation_groups[0].media_ids) == {item_one.media.id, item_two.media.id}
@@ -1052,7 +1165,7 @@ async def test_character_name_groups_skip_single_item_buckets(fake_db, user):
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.recommendation_groups == []
 
@@ -1106,7 +1219,7 @@ async def test_character_name_groups_only_apply_to_missing_series_items(fake_db,
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert result.recommendation_groups == []
 
@@ -1159,7 +1272,7 @@ async def test_character_name_groups_not_duplicated_in_similarity_groups(fake_db
         favorite_repo_cls.return_value.get_favorited_ids = AsyncMock(return_value=set())
         favorite_repo_cls.return_value.get_favorite_counts = AsyncMock(return_value={})
 
-        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True)
+        result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
     assert len(result.recommendation_groups) == 1
     all_media_ids = [mid for group in result.recommendation_groups for mid in group.media_ids]

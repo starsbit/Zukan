@@ -30,12 +30,12 @@ const graphMocks = vi.hoisted(() => {
   return { forceAtlas2, SigmaMock };
 });
 
-vi.mock(import('graphology-layout-forceatlas2'), () => ({
+vi.mock('graphology-layout-forceatlas2', () => ({
   default: graphMocks.forceAtlas2 as unknown as typeof forceAtlas2Default,
   inferSettings: graphMocks.forceAtlas2.inferSettings,
 }));
 
-vi.mock(import('sigma'), () => ({
+vi.mock('sigma', () => ({
   default: graphMocks.SigmaMock as unknown as typeof SigmaDefault,
 }));
 

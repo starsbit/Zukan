@@ -13,7 +13,7 @@ from typing import Any
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
+from sqlalchemy.orm import aliased, selectinload
 
 from backend.app.errors.error import AppError
 from backend.app.models.auth import User
@@ -281,17 +281,8 @@ class ProcessingService:
 
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
-            if not force_refresh and isinstance(batch.recommendation_groups, list):
-                logger.info(
-                    "Recommendations served from cache batch_id=%s group_count=%d",
-                    batch_id,
-                    len(batch.recommendation_groups),
-                )
-                recommendation_groups = [
-                    ImportBatchRecommendationGroupRead.model_validate(g)
-                    for g in batch.recommendation_groups
-                ]
-            else:
+            if force_refresh:
+                await self._refresh_review_suggestions_for_items(items, review_candidates, user_id)
                 logger.info(
                     "Building recommendations batch_id=%s review_item_count=%d force_refresh=%s",
                     batch_id,
@@ -317,6 +308,23 @@ class ProcessingService:
                     len(recommendation_groups),
                     force_refresh,
                     _elapsed_ms(groups_started_at),
+                )
+            elif isinstance(batch.recommendation_groups, list):
+                logger.info(
+                    "Recommendations served from cache batch_id=%s group_count=%d",
+                    batch_id,
+                    len(batch.recommendation_groups),
+                )
+                recommendation_groups = [
+                    ImportBatchRecommendationGroupRead.model_validate(g)
+                    for g in batch.recommendation_groups
+                ]
+            else:
+                logger.info(
+                    "Recommendations cache miss batch_id=%s review_item_count=%d force_refresh=%s",
+                    batch_id,
+                    len(items),
+                    force_refresh,
                 )
 
         logger.info(
@@ -349,11 +357,9 @@ class ProcessingService:
         favorite_repo = UserFavoriteRepository(self._db)
         favorited = await favorite_repo.get_favorited_ids(user_id, media_ids)
         favorite_counts = await favorite_repo.get_favorite_counts(media_ids)
-        library_suggestions_enabled = include_suggestions and await self._is_library_classification_enabled(user_id)
 
         items: list[ImportBatchReviewItemRead] = []
         review_candidates: list[ImportBatchItem] = []
-        item_media_ids_for_library_suggestions: list[uuid.UUID] = []
         for item in candidates:
             media = item.media
             if media is None or media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
@@ -368,6 +374,9 @@ class ProcessingService:
 
             suggested_characters: list[ImportBatchRecommendationSuggestionRead] = []
             suggested_series: list[ImportBatchRecommendationSuggestionRead] = []
+            if include_suggestions:
+                suggested_characters = self._cached_review_suggestions(media.review_suggested_characters)
+                suggested_series = self._cached_review_suggestions(media.review_suggested_series)
 
             items.append(
                 ImportBatchReviewItemRead(
@@ -393,45 +402,135 @@ class ProcessingService:
                 )
             )
             review_candidates.append(item)
-            if library_suggestions_enabled and media.uploader_id == user_id:
-                item_media_ids_for_library_suggestions.append(media.id)
-
-        if item_media_ids_for_library_suggestions:
-            suggestion_media_ids = set(item_media_ids_for_library_suggestions)
-            target_media = [
-                candidate.media
-                for candidate in review_candidates
-                if candidate.media is not None and candidate.media.id in suggestion_media_ids
-            ]
-            library_results = await self._library_enrichment.enrich_media_batch(
-                target_media,
-                user_id=user_id,
-                apply=False,
-                compute_missing_embeddings=False,
-            )
-            for item in items:
-                result = library_results.get(item.media.id)
-                if result is None:
-                    continue
-                item.suggested_characters = result.suggestions.get(MediaEntityType.character, [])
-                item.suggested_series = result.suggestions.get(MediaEntityType.series, [])
 
         logger.info(
-            "Built review items user_id=%s raw_candidates=%d active_media=%d review_items=%d include_suggestions=%s library_suggestions_enabled=%s library_targets=%d elapsed_ms=%.1f",
+            "Built review items user_id=%s raw_candidates=%d active_media=%d review_items=%d include_suggestions=%s elapsed_ms=%.1f",
             user_id,
             len(candidates),
             len(media_ids),
             len(items),
             include_suggestions,
-            library_suggestions_enabled,
-            len(item_media_ids_for_library_suggestions),
             _elapsed_ms(started_at),
         )
         return items, review_candidates
 
+    async def precompute_review_suggestions_for_media(self, media_id: uuid.UUID) -> bool:
+        media = (
+            await self._db.execute(
+                select(Media)
+                .options(
+                    selectinload(Media.uploader),
+                    selectinload(Media.owner),
+                    selectinload(Media.entities),
+                    selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                )
+                .where(Media.id == media_id)
+            )
+        ).scalar_one_or_none()
+        if media is None or media.uploader_id is None:
+            return False
+        if not self._media_needs_missing_name_review(media):
+            return False
+
+        await self._refresh_review_suggestions_for_media([media], media.uploader_id)
+        await self._invalidate_recommendation_groups_for_media(media.id)
+        await self._db.commit()
+        return True
+
     async def _is_library_classification_enabled(self, user_id: uuid.UUID) -> bool:
         user = await self._db.get(User, user_id)
         return isinstance(user, User) and bool(user.library_classification_enabled)
+
+    async def _refresh_review_suggestions_for_items(
+        self,
+        items: list[ImportBatchReviewItemRead],
+        candidates: list[ImportBatchItem],
+        user_id: uuid.UUID,
+    ) -> None:
+        if not items:
+            return
+        media_by_id = {
+            candidate.media.id: candidate.media
+            for candidate in candidates
+            if candidate.media is not None
+        }
+        target_media = [
+            media_by_id[item.media.id]
+            for item in items
+            if item.media.id in media_by_id
+        ]
+        suggestions_by_media_id = await self._refresh_review_suggestions_for_media(target_media, user_id)
+        for item in items:
+            suggested_characters, suggested_series = suggestions_by_media_id.get(item.media.id, ([], []))
+            item.suggested_characters = suggested_characters
+            item.suggested_series = suggested_series
+
+    async def _refresh_review_suggestions_for_media(
+        self,
+        target_media: list[Media],
+        user_id: uuid.UUID,
+    ) -> dict[uuid.UUID, tuple[list[ImportBatchRecommendationSuggestionRead], list[ImportBatchRecommendationSuggestionRead]]]:
+        now = datetime.now(timezone.utc)
+        suggestions_by_media_id: dict[
+            uuid.UUID,
+            tuple[list[ImportBatchRecommendationSuggestionRead], list[ImportBatchRecommendationSuggestionRead]],
+        ] = {}
+        owned_review_media = [
+            media
+            for media in target_media
+            if media.uploader_id == user_id and self._media_needs_missing_name_review(media)
+        ]
+
+        library_results = {}
+        if owned_review_media and await self._is_library_classification_enabled(user_id):
+            library_results = await self._library_enrichment.enrich_media_batch(
+                owned_review_media,
+                user_id=user_id,
+                apply=False,
+                compute_missing_embeddings=False,
+            )
+
+        for media in owned_review_media:
+            result = library_results.get(media.id)
+            suggested_characters = result.suggestions.get(MediaEntityType.character, []) if result is not None else []
+            suggested_series = result.suggestions.get(MediaEntityType.series, []) if result is not None else []
+            media.review_suggested_characters = [suggestion.model_dump(mode="json") for suggestion in suggested_characters]
+            media.review_suggested_series = [suggestion.model_dump(mode="json") for suggestion in suggested_series]
+            media.review_suggestions_computed_at = now
+            suggestions_by_media_id[media.id] = (suggested_characters, suggested_series)
+
+        return suggestions_by_media_id
+
+    def _media_needs_missing_name_review(self, media: Media) -> bool:
+        if media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
+            return False
+        if media.metadata_review_dismissed:
+            return False
+        has_character = any(entity.entity_type == MediaEntityType.character and entity.name.strip() for entity in media.entities)
+        has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
+        return not (has_character and has_series)
+
+    def _cached_review_suggestions(self, raw: object) -> list[ImportBatchRecommendationSuggestionRead]:
+        if not isinstance(raw, list):
+            return []
+        suggestions: list[ImportBatchRecommendationSuggestionRead] = []
+        for entry in raw:
+            try:
+                suggestions.append(ImportBatchRecommendationSuggestionRead.model_validate(entry))
+            except Exception:
+                logger.warning("Skipping invalid cached review suggestion entry=%r", entry)
+        return suggestions
+
+    async def _invalidate_recommendation_groups_for_media(self, media_id: uuid.UUID) -> None:
+        batch_ids = (
+            select(ImportBatchItem.batch_id)
+            .where(ImportBatchItem.media_id == media_id)
+        )
+        await self._db.execute(
+            update(ImportBatch)
+            .where(ImportBatch.id.in_(batch_ids))
+            .values(recommendation_groups=None, recommendations_computed_at=None)
+        )
 
     async def _load_deduped_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
         candidates = await ImportBatchItemRepository(self._db).list_all_review_candidates_for_user(

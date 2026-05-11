@@ -115,9 +115,12 @@ class ImportBatchItemRepository:
         *,
         batch_types: list[BatchType] | None = None,
     ) -> list[ImportBatchItem]:
+        has_character = _media_has_named_entity(MediaEntityType.character)
+        has_series = _media_has_named_entity(MediaEntityType.series)
         stmt = (
             select(ImportBatchItem)
             .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+            .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
                 selectinload(ImportBatchItem.media).selectinload(Media.uploader),
                 selectinload(ImportBatchItem.media).selectinload(Media.owner),
@@ -128,6 +131,10 @@ class ImportBatchItemRepository:
             .where(
                 ImportBatch.user_id == user_id,
                 ImportBatchItem.media_id.is_not(None),
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.metadata_review_dismissed.is_(False),
+                or_(~has_character, ~has_series),
             )
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
         )
@@ -136,15 +143,25 @@ class ImportBatchItemRepository:
         return (await self.db.execute(stmt)).scalars().all()
 
     async def list_review_candidates_for_batch(self, batch_id: uuid.UUID) -> list[ImportBatchItem]:
+        has_character = _media_has_named_entity(MediaEntityType.character)
+        has_series = _media_has_named_entity(MediaEntityType.series)
         stmt = (
             select(ImportBatchItem)
+            .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
                 selectinload(ImportBatchItem.media).selectinload(Media.uploader),
                 selectinload(ImportBatchItem.media).selectinload(Media.owner),
                 selectinload(ImportBatchItem.media).selectinload(Media.entities),
                 selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
             )
-            .where(ImportBatchItem.batch_id == batch_id, ImportBatchItem.media_id.is_not(None))
+            .where(
+                ImportBatchItem.batch_id == batch_id,
+                ImportBatchItem.media_id.is_not(None),
+                Media.deleted_at.is_(None),
+                Media.tagging_status == TaggingStatus.DONE,
+                Media.metadata_review_dismissed.is_(False),
+                or_(~has_character, ~has_series),
+            )
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
         )
         return (await self.db.execute(stmt)).scalars().all()
@@ -194,3 +211,16 @@ class ImportBatchItemRepository:
             (row.id, row.created_at, int(row.unresolved_count))
             for row in (await self.db.execute(stmt)).all()
         ]
+
+
+def _media_has_named_entity(entity_type: MediaEntityType):
+    return (
+        select(MediaEntity.id)
+        .where(
+            MediaEntity.media_id == Media.id,
+            MediaEntity.entity_type == entity_type,
+            func.length(func.btrim(MediaEntity.name)) > 0,
+        )
+        .limit(1)
+        .exists()
+    )

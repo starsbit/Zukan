@@ -575,7 +575,7 @@ export class UploadReviewDialogComponent {
       }
 
       this.remoteRecommendationsRefreshing.set(true);
-      this.batchesClient.listReviewItems(batchId, { include_recommendations: true, force_refresh: false })
+      this.batchesClient.listReviewItems(batchId, { include_recommendations: true, force_refresh: forceRefresh })
         .pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
           next: (response) => {
             this.remoteItems.set(response.items);
@@ -773,12 +773,8 @@ export class UploadReviewDialogComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: () => {
+          this.removeReviewItemsLocally(mediaIds);
           this.discarding.set(false);
-          if (this.scope() === 'merged_batch') {
-            this.refreshRecommendations();
-          } else {
-            this.refreshCurrentScope();
-          }
           this.snackBar.open(successMessage, 'Close', { duration: 3000 });
         },
         error: () => {
@@ -787,6 +783,20 @@ export class UploadReviewDialogComponent {
           this.snackBar.open('Could not discard those items from review.', 'Close', { duration: 4000 });
         },
       });
+  }
+
+  private removeReviewItemsLocally(mediaIds: string[]): void {
+    const dismissedIds = new Set(mediaIds);
+    this.selectedIds.update((ids) => ids.filter((id) => !dismissedIds.has(id)));
+    this.remoteItems.update((items) => items.filter((item) => !dismissedIds.has(item.media.id)));
+    this.remoteRecommendationGroups.update((groups) =>
+      refreshRecommendationGroupsForItems(groups, this.remoteItems()),
+    );
+
+    const batchId = this.activeBatchId();
+    if (this.scope() === 'batch' && batchId) {
+      this.tracker.dismissReviewItems?.(batchId, mediaIds);
+    }
   }
 
   private refreshCurrentScope(): void {

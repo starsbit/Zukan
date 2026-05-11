@@ -564,6 +564,27 @@ export class UploadTrackerService implements OnDestroy {
     });
   }
 
+  dismissReviewItems(batchId: string, mediaIds: string[]): void {
+    const batch = this.trackedBatches()[batchId];
+    if (!batch || mediaIds.length === 0) {
+      return;
+    }
+
+    const dismissedIds = new Set(mediaIds);
+    const nextItems = batch.reviewItems.filter((item) => !dismissedIds.has(item.media.id));
+    const dismissedCount = batch.reviewItems.length - nextItems.length;
+    if (dismissedCount === 0) {
+      return;
+    }
+
+    this.patchBatch(batchId, {
+      reviewItems: nextItems,
+      recommendationGroups: refreshRecommendationGroupsForItems(batch.recommendationGroups, nextItems),
+      reviewTotal: Math.max(batch.reviewTotal - dismissedCount, 0),
+      reviewRefreshing: false,
+    });
+  }
+
   reset(): void {
     for (const timerId of this.pollTimers.values()) {
       clearTimeout(timerId);

@@ -759,6 +759,7 @@ describe('UploadReviewDialogComponent', () => {
   it('discards an entire group from review', async () => {
     const refreshBatchReview = vi.fn();
     const refreshBatchRecommendations = vi.fn();
+    const dismissReviewItems = vi.fn();
     const batchDismissMetadataReview = vi.fn(() => of({ processed: 2, skipped: 0 }));
     const tracker = {
       getBatchReview: signal({
@@ -875,6 +876,7 @@ describe('UploadReviewDialogComponent', () => {
             getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
+            dismissReviewItems,
           },
         },
         {
@@ -899,11 +901,13 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     const component = fixture.componentInstance;
+    refreshBatchReview.mockClear();
     component.discardGroup(component.recommendationGroups()[0]);
     await Promise.resolve();
 
     expect(batchDismissMetadataReview).toHaveBeenCalledWith(['m1', 'm2'], true);
-    expect(refreshBatchReview).toHaveBeenCalledWith('b1');
+    expect(dismissReviewItems).toHaveBeenCalledWith('b1', ['m1', 'm2']);
+    expect(refreshBatchReview).not.toHaveBeenCalled();
   });
 
   it('loads recommendations in the background without blocking visible items', async () => {
@@ -1302,7 +1306,7 @@ describe('UploadReviewDialogComponent', () => {
     refreshButton.click();
     fixture.detectChanges();
 
-    expect(listReviewItems).toHaveBeenLastCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
+    expect(listReviewItems).toHaveBeenLastCalledWith('merged-1', { include_recommendations: true, force_refresh: true });
     expect(refreshBatchRecommendations).not.toHaveBeenCalled();
     expect(listReviewItems).toHaveBeenCalledTimes(3);
   });
@@ -1516,7 +1520,7 @@ describe('UploadReviewDialogComponent', () => {
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 
-  it('re-fetches merged-batch groups after discarding in merged-batch mode', async () => {
+  it('removes merged-batch groups locally after discarding in merged-batch mode', async () => {
     const baseMedia = {
       uploader_id: 'u1',
       uploader_username: 'uploader',
@@ -1646,7 +1650,7 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     expect(batchDismissMetadataReview).toHaveBeenCalledWith(['m1', 'm2'], true);
-    expect(listReviewItems).toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
+    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 

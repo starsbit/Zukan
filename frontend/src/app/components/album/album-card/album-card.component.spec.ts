@@ -45,6 +45,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
@@ -94,6 +95,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
@@ -144,6 +146,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
@@ -192,6 +195,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
@@ -246,6 +250,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
@@ -290,6 +295,7 @@ describe('AlbumCardComponent', () => {
       updated_at: '2026-03-21T00:00:00Z',
     });
     fixture.detectChanges();
+    fixture.componentInstance.onViewportVisible();
 
     await fixture.whenStable();
     fixture.detectChanges();
