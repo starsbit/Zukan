@@ -15,7 +15,6 @@ import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatTableModule } from '@angular/material/table';
 import { interval, startWith, switchMap, finalize, takeWhile } from 'rxjs';
 import type { EChartsCoreOption } from 'echarts/core';
-import { AdminEmbeddingClustersDialogComponent } from '../../components/admin/admin-embedding-clusters-dialog/admin-embedding-clusters-dialog.component';
 import { AdminUserEditDialogComponent } from '../../components/admin/admin-user-edit-dialog/admin-user-edit-dialog.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { EchartPanelComponent } from '../../components/shared/echart-panel/echart-panel.component';
@@ -271,14 +270,6 @@ export class AdminDashboardPageComponent {
           this.snackBar.open(err.error?.detail ?? 'Unable to queue embedding backfill.', 'Close');
         },
       });
-    });
-  }
-
-  viewEmbeddingClusters(user: AdminUserSummary): void {
-    this.dialog.open(AdminEmbeddingClustersDialogComponent, {
-      data: { user },
-      width: 'min(66rem, 94vw)',
-      maxWidth: '94vw',
     });
   }
 

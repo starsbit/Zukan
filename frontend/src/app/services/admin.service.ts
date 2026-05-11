@@ -6,8 +6,6 @@ import { UserRead } from '../models/auth';
 import {
   AdminEmbeddingBackfillResponse,
   AdminEmbeddingBackfillStatus,
-  AdminEmbeddingClusterListResponse,
-  EmbeddingClusterMode,
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
@@ -69,22 +67,6 @@ export class AdminService {
 
   getEmbeddingBackfillStatus(batchId: string): Observable<AdminEmbeddingBackfillStatus> {
     return this.guard(() => this.client.getEmbeddingBackfillStatus(batchId));
-  }
-
-  getEmbeddingClusters(
-    userId: string,
-    mode: EmbeddingClusterMode,
-    options?: { limit?: number; sample_size?: number; min_cluster_size?: number; discovery_mode?: boolean },
-  ): Observable<AdminEmbeddingClusterListResponse> {
-    return this.guard(() => this.client.getEmbeddingClusters(userId, mode, options));
-  }
-
-  getEmbeddingClusterPlot(
-    userId: string,
-    mode: EmbeddingClusterMode,
-    options?: { min_cluster_size?: number; discovery_mode?: boolean },
-  ): Observable<Blob> {
-    return this.guard(() => this.client.getEmbeddingClusterPlot(userId, mode, options));
   }
 
   getLibraryClassificationMetrics(

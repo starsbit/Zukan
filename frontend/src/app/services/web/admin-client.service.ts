@@ -6,8 +6,6 @@ import { UserRead } from '../../models/auth';
 import {
   AdminEmbeddingBackfillResponse,
   AdminEmbeddingBackfillStatus,
-  AdminEmbeddingClusterListResponse,
-  EmbeddingClusterMode,
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
@@ -83,36 +81,6 @@ export class AdminClientService {
   getEmbeddingBackfillStatus(batchId: string): Observable<AdminEmbeddingBackfillStatus> {
     return this.http.get<AdminEmbeddingBackfillStatus>(
       `${this.base}/api/v1/admin/embedding-backfills/${batchId}`,
-    );
-  }
-
-  getEmbeddingClusters(
-    userId: string,
-    mode: EmbeddingClusterMode,
-    options: { limit?: number; sample_size?: number; min_cluster_size?: number; discovery_mode?: boolean } = {},
-  ): Observable<AdminEmbeddingClusterListResponse> {
-    let params = new HttpParams().set('mode', mode);
-    if (options.limit != null) params = params.set('limit', options.limit);
-    if (options.sample_size != null) params = params.set('sample_size', options.sample_size);
-    if (options.min_cluster_size != null) params = params.set('min_cluster_size', options.min_cluster_size);
-    if (options.discovery_mode != null) params = params.set('discovery_mode', options.discovery_mode);
-    return this.http.get<AdminEmbeddingClusterListResponse>(
-      `${this.base}/api/v1/admin/users/${userId}/embedding-clusters`,
-      { params },
-    );
-  }
-
-  getEmbeddingClusterPlot(
-    userId: string,
-    mode: EmbeddingClusterMode,
-    options: { min_cluster_size?: number; discovery_mode?: boolean } = {},
-  ): Observable<Blob> {
-    let params = new HttpParams().set('mode', mode);
-    if (options.min_cluster_size != null) params = params.set('min_cluster_size', options.min_cluster_size);
-    if (options.discovery_mode != null) params = params.set('discovery_mode', options.discovery_mode);
-    return this.http.get(
-      `${this.base}/api/v1/admin/users/${userId}/embedding-clusters/plot`,
-      { params, responseType: 'blob' },
     );
   }
 

@@ -121,8 +121,6 @@ describe('AdminDashboardPageComponent', () => {
               error_summary: null,
               recent_failed_items: [],
             }),
-            getEmbeddingClusters: () => of({ mode: 'label', discovery_mode: false, model_version: 'clip_onnx_v1', total_embeddings: 0, clusters: [] }),
-            getEmbeddingClusterPlot: () => of(new Blob(['png'], { type: 'image/png' })),
             getLibraryClassificationMetrics: () => of({
               user_id: 'u2',
               model_version: 'clip_onnx_v1',
@@ -176,7 +174,6 @@ describe('AdminDashboardPageComponent', () => {
     expect(text).toContain('Maintenance');
     expect(text).toContain('alice@example.com');
     expect(text).toContain('Backfill Embeddings');
-    expect(text).toContain('View Clusters');
     expect(text).toContain('Delete Media');
     expect(text).toContain('Gacha Pool');
     expect(text).toContain('Refresh pool');
