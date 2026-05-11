@@ -51,7 +51,7 @@ from .auth import (
     UserUpdate,
 )
 from .base import ADMIN_ERROR_RESPONSES, AUTHENTICATED_ERROR_RESPONSES, ERROR_RESPONSES, ErrorResponse, error_responses
-from .bulk import BulkResult, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
+from .bulk import BulkResult, MediaAnnotationBatchUpdate, MediaBatchUpdate, MediaEntityBatchUpdate, MediaIdsRequest, TaggingJobQueuedResponse
 from .collection import (
     CollectionDiscardResponse,
     CollectionFilters,
@@ -260,6 +260,7 @@ __all__ = [
     "ImportBatchReviewListResponse",
     "ImportBatchReviewSummaryResponse",
     "MediaIdsRequest",
+    "MediaAnnotationBatchUpdate",
     "MediaBatchUpdate",
     "MediaAnnotatedUploadRequest",
     "MediaEntityBatchUpdate",

@@ -17,7 +17,6 @@ class GachaPullItemRead(BaseModel):
     rarity_tier: RarityTier
     rarity_score: float
     was_duplicate: bool
-    upgrade_material_granted: int
     position: int
     collection_item_id: uuid.UUID | None = None
 

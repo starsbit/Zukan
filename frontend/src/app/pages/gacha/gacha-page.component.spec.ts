@@ -49,7 +49,6 @@ const collectionItem: CollectionItemRead = {
   media_id: 'm1',
   rarity_tier_at_acquisition: RarityTier.SR,
   level: 2,
-  upgrade_xp: 4,
   copies_pulled: 3,
   locked: true,
   tradeable: true,
@@ -153,7 +152,6 @@ describe('GachaPageComponent', () => {
           rarity_tier: RarityTier.UR,
           rarity_score: 0.99,
           was_duplicate: false,
-          upgrade_material_granted: 0,
           position: 0,
           collection_item_id: 'ci1',
         },
@@ -198,6 +196,17 @@ describe('GachaPageComponent', () => {
         items: [{ user_id: 'u2', username: 'sakura', allow_trade_requests: true, show_stats: true }],
       })),
       listUser: vi.fn(() => of({ total: collectionItems.length, items: collectionItems.map((item) => ({ ...item, user_id: 'u2', id: `${item.id}-their` })) })),
+      upgradeItem: vi.fn((id: string) => {
+        const current = collectionItems.find((item) => item.id === id) ?? collectionItems[0];
+        const requiredCopies = current.level + 1;
+        const updated = {
+          ...current,
+          level: current.level + 1,
+          copies_pulled: current.copies_pulled - (requiredCopies - 1),
+        };
+        collectionItems = collectionItems.map((item) => item.id === id ? updated : item);
+        return of(updated);
+      }),
       discardItem: vi.fn((id: string) => {
         const current = collectionItems.find((item) => item.id === id) ?? collectionItems[0];
         const remaining = Math.max(current.copies_pulled - 1, 0);
@@ -205,12 +214,12 @@ describe('GachaPageComponent', () => {
         collectionItems = updated
           ? collectionItems.map((item) => item.id === id ? updated : item)
           : collectionItems.filter((item) => item.id !== id);
-        currentBalance += 8;
+        currentBalance += 360;
         return of({
           item_id: id,
           media_id: current.media_id,
           copies_discarded: 1,
-          pulls_awarded: 8,
+          pulls_awarded: 360,
           currency_balance: currentBalance,
           remaining_copies: remaining,
           item: updated,
@@ -425,6 +434,7 @@ describe('GachaPageComponent', () => {
     expect(component.animationState()).toBe('complete');
     expect(component.pullResults()[0].rarity_tier).toBe(RarityTier.UR);
     expect(component.pullResults()[0].thumbnail_url).toBeNull();
+    expect(component.pullMeta(component.pullResults()[0])).toEqual(['New']);
   });
 
   it('filters and renders collection cards', async () => {
@@ -469,21 +479,48 @@ describe('GachaPageComponent', () => {
     fixture.detectChanges();
 
     const discardButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-discard-button');
-    expect(discardButton?.getAttribute('aria-label')).toContain('+8 Pulls');
+    expect(discardButton?.getAttribute('aria-label')).toContain('+360 Pulls');
     discardButton?.click();
 
     expect(confirmDialog.open).toHaveBeenCalledWith({
       title: 'Destroy card?',
-      message: 'Destroy one copy of this card. You will receive 8 Pulls.',
-      confirmLabel: 'Destroy for 8 Pulls',
+      message: 'Destroy one copy of this card. You will receive 360 Pulls.',
+      confirmLabel: 'Destroy for 360 Pulls',
       tone: 'warn',
     });
     expect(collectionClient.discardItem).toHaveBeenCalledWith('ci1');
-    expect(component.balanceValue()).toBe(6008);
-    expect(snackBar.open).toHaveBeenCalledWith('Destroyed 1 copy for 8 Pulls.', 'Close', { duration: 3500 });
+    expect(component.balanceValue()).toBe(6360);
+    expect(snackBar.open).toHaveBeenCalledWith('Destroyed 1 copy for 360 Pulls.', 'Close', { duration: 3500 });
   });
 
-  it('does not show destroy actions in collector trade panes', async () => {
+  it('upgrades a collection card by combining duplicate copies', async () => {
+    const { fixture, component, collectionClient, confirmDialog, snackBar } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false, level: 2, copies_pulled: 3 }],
+    });
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const upgradeButton = (fixture.nativeElement as HTMLElement).querySelector<HTMLButtonElement>('.collection-upgrade-button');
+    expect(upgradeButton?.getAttribute('aria-label')).toContain('uses 2 duplicate copies');
+    upgradeButton?.click();
+
+    expect(confirmDialog.open).toHaveBeenCalledWith({
+      title: 'Upgrade card?',
+      message: 'Upgrade this card to level 3. This will combine 2 duplicate copies.',
+      confirmLabel: 'Upgrade to level 3',
+      tone: 'default',
+    });
+    expect(collectionClient.upgradeItem).toHaveBeenCalledWith('ci1');
+    expect(component.collection()[0].level).toBe(3);
+    expect(component.collection()[0].copies_pulled).toBe(1);
+    expect(snackBar.open).toHaveBeenCalledWith('Upgraded card to level 3.', 'Close', { duration: 3500 });
+  });
+
+  it('does not show collection management actions in collector trade panes', async () => {
     const { fixture, component } = await createComponent({
       collectionItems: [{ ...collectionItem, locked: false }],
     });
@@ -496,6 +533,7 @@ describe('GachaPageComponent', () => {
     fixture.detectChanges();
 
     expect((fixture.nativeElement as HTMLElement).querySelector('.collection-discard-button')).toBeNull();
+    expect((fixture.nativeElement as HTMLElement).querySelector('.collection-upgrade-button')).toBeNull();
   });
 
   it('renders compact collection cards without metadata chips', async () => {

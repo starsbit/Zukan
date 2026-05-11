@@ -115,15 +115,13 @@
   background: color-mix(in srgb, var(--mat-sys-surface-container-high) 86%, transparent);
 }
 
+.collection-upgrade-button,
 .collection-discard-button {
   position: absolute;
   top: 10px;
-  right: 10px;
   z-index: 5;
   opacity: 0;
   transform: translateY(-4px) scale(0.94);
-  color: var(--mat-sys-error);
-  background: color-mix(in srgb, var(--mat-sys-error-container) 92%, transparent);
   box-shadow: 0 8px 18px rgb(0 0 0 / 28%);
   transition:
     opacity 160ms ease,
@@ -131,11 +129,30 @@
     background 160ms ease;
 }
 
+.collection-upgrade-button {
+  left: 10px;
+  color: var(--mat-sys-primary);
+  background: color-mix(in srgb, var(--mat-sys-primary-container) 92%, transparent);
+}
+
+.collection-discard-button {
+  right: 10px;
+  color: var(--mat-sys-error);
+  background: color-mix(in srgb, var(--mat-sys-error-container) 92%, transparent);
+}
+
+.collection-card-shell:hover .collection-upgrade-button,
+.collection-card-shell:focus-within .collection-upgrade-button,
+.collection-upgrade-button:disabled,
 .collection-card-shell:hover .collection-discard-button,
 .collection-card-shell:focus-within .collection-discard-button,
 .collection-discard-button:disabled {
   opacity: 1;
   transform: none;
+}
+
+.collection-upgrade-button:hover {
+  background: var(--mat-sys-primary-container);
 }
 
 .collection-discard-button:hover {
@@ -148,6 +165,7 @@
   font-size: 18px;
 }
 
+.collection-upgrade-button mat-spinner,
 .collection-discard-button mat-spinner {
   display: inline-flex;
 }

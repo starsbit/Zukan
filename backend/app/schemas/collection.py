@@ -51,7 +51,6 @@ class CollectionItemRead(BaseModel):
     media_id: uuid.UUID
     rarity_tier_at_acquisition: RarityTier
     level: int
-    upgrade_xp: int
     copies_pulled: int
     locked: bool
     tradeable: bool

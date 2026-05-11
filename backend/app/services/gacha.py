@@ -33,9 +33,6 @@ from backend.app.schemas.gacha import (
     GachaStatsResponse,
     RarityRecalculationResponse,
 )
-from backend.app.services.collection import duplicate_xp_for_tier
-
-
 RARITY_SCORE_VERSION = "v1"
 TIER_ORDER = [RarityTier.N, RarityTier.R, RarityTier.SR, RarityTier.SSR, RarityTier.UR]
 TIER_RANK = {tier: idx for idx, tier in enumerate(TIER_ORDER)}
@@ -218,23 +215,19 @@ class GachaService:
         for position, rarity in enumerate(selected):
             collection_item = await self._collection_repo.get_by_user_and_media(user.id, rarity.media_id)
             was_duplicate = collection_item is not None
-            xp = 0
             if collection_item is None:
                 collection_item = UserCollectionItem(
                     user_id=user.id,
                     media_id=rarity.media_id,
                     rarity_tier_at_acquisition=rarity.rarity_tier,
                     level=1,
-                    upgrade_xp=0,
                     copies_pulled=1,
                     locked=False,
                     tradeable=True,
                 )
                 self._db.add(collection_item)
             else:
-                xp = duplicate_xp_for_tier(rarity.rarity_tier)
                 collection_item.copies_pulled += 1
-                collection_item.upgrade_xp += xp
 
             pull_item = GachaPullItem(
                 pull_id=pull.id,
@@ -242,7 +235,6 @@ class GachaService:
                 rarity_tier=rarity.rarity_tier,
                 rarity_score=rarity.rarity_score,
                 was_duplicate=was_duplicate,
-                upgrade_material_granted=xp,
                 position=position,
             )
             self._db.add(pull_item)
@@ -254,7 +246,6 @@ class GachaService:
                     rarity_tier=rarity.rarity_tier,
                     rarity_score=rarity.rarity_score,
                     was_duplicate=was_duplicate,
-                    upgrade_material_granted=xp,
                     position=position,
                     collection_item_id=collection_item.id,
                 )

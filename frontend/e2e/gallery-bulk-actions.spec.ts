@@ -154,6 +154,23 @@ async function fetchAlbumMediaIds(
   }, { authToken: token, targetAlbumId: albumId });
 }
 
+async function fetchMediaDetails(
+  page: Page,
+  token: string,
+  mediaIds: string[],
+): Promise<Array<{ id: string; tags: string[]; entities: Array<{ entity_type: string; name: string }> }>> {
+  return page.evaluate(async ({ authToken, ids }) => {
+    return await Promise.all(ids.map(async (id) => {
+      const response = await fetch(`/api/v1/media/${id}`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
+      return await response.json() as { id: string; tags: string[]; entities: Array<{ entity_type: string; name: string }> };
+    }));
+  }, { authToken: token, ids: mediaIds });
+}
+
 async function waitForTaggedMedia(
   page: Page,
   token: string,
@@ -420,6 +437,114 @@ test.describe.serial('Gallery bulk actions', () => {
     await expect.poll(async () => {
       const ids = await fetchAlbumMediaIds(page, token, album.id);
       return uploadedIds.every((id) => ids.includes(id));
+    }, { timeout: 15000 }).toBe(true);
+
+    await deleteMediaIds(page, token, uploadedIds);
+  });
+
+  test('adds and removes metadata for selected media from the gallery selection bar', async ({ page }) => {
+    test.setTimeout(90000);
+
+    await ensureAdminAuthenticated(page);
+    await expect(page).toHaveURL('/');
+    const token = await getAccessToken(page);
+    const tag = `bulk_metadata_${Date.now()}`;
+    const addedTag = `${tag}_added`;
+
+    const upload = await uploadTaggedMedia(page, token, tag, 'private');
+    const uploadedIds = upload.body.results
+      .map((result) => result.id)
+      .filter((id): id is string => !!id);
+    expect(uploadedIds.length).toBe(2);
+    await waitForTaggedMedia(page, token, tag, 2);
+
+    await page.route('**/api/v1/media/search**', async (route) => {
+      await route.fulfill({
+        json: {
+          items: uploadedIds.map((id, index) => ({
+            id,
+            uploader_id: 'u1',
+            owner_id: 'u1',
+            visibility: 'private',
+            filename: `${tag}-${index + 1}.png`,
+            original_filename: null,
+            media_type: 'image',
+            metadata: {
+              file_size: 128,
+              width: 16,
+              height: 16,
+              duration_seconds: null,
+              frame_count: null,
+              mime_type: 'image/png',
+              captured_at: `2026-03-30T13:0${index}:00Z`,
+            },
+            version: 1,
+            uploaded_at: `2026-03-30T13:0${index}:00Z`,
+            deleted_at: null,
+            tags: [tag],
+            ocr_text_override: null,
+            is_nsfw: false,
+            tagging_status: 'done',
+            tagging_error: null,
+            thumbnail_status: 'done',
+            poster_status: 'not_applicable',
+            ocr_text: null,
+            is_favorited: false,
+          })),
+          total: uploadedIds.length,
+          next_cursor: null,
+          has_more: false,
+          page_size: 20,
+        },
+      });
+    });
+
+    await page.route('**/api/v1/media/timeline**', async (route) => {
+      await route.fulfill({
+        json: {
+          buckets: [{ year: 2026, month: 3, count: uploadedIds.length }],
+        },
+      });
+    });
+
+    await page.route('**/api/v1/media/*/thumbnail', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="#5f8f6f"/></svg>',
+      });
+    });
+
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
+    await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBeGreaterThanOrEqual(2);
+
+    await selectAllVisibleMedia(page);
+    await page.getByRole('button', { name: 'Edit metadata' }).click();
+
+    const dialog = page.locator('mat-dialog-container');
+    await expect(dialog).toBeVisible();
+    await dialog.getByPlaceholder('Add tags...').fill(addedTag);
+    await dialog.getByPlaceholder('Add tags...').press('Enter');
+    await dialog.getByPlaceholder('Remove tags...').fill(tag);
+    await dialog.getByPlaceholder('Remove tags...').press('Enter');
+    await dialog.getByPlaceholder('Add character names...').fill('Saber');
+    await dialog.getByPlaceholder('Add character names...').press('Enter');
+    await dialog.getByPlaceholder('Add series names...').fill('Fate/stay night');
+    await dialog.getByPlaceholder('Add series names...').press('Enter');
+    await dialog.getByRole('button', { name: 'Apply' }).click();
+
+    await expect(page.locator('.media-browser__action-bar')).toHaveCount(0, { timeout: 15000 });
+    await expect(page.getByText('Updated metadata for 2 items.')).toBeVisible({ timeout: 15000 });
+
+    await expect.poll(async () => {
+      const details = await fetchMediaDetails(page, token, uploadedIds);
+      return details.every((item) =>
+        item.tags.includes(addedTag)
+        && !item.tags.includes(tag)
+        && item.entities.some((entity) => entity.entity_type === 'character' && entity.name === 'Saber')
+        && item.entities.some((entity) => entity.entity_type === 'series' && entity.name === 'Fate/stay night'),
+      );
     }, { timeout: 15000 }).toBe(true);
 
     await deleteMediaIds(page, token, uploadedIds);

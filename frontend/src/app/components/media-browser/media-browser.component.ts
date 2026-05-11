@@ -42,6 +42,10 @@ import {
   AlbumPickerDialogValue,
 } from '../album/album-picker-dialog/album-picker-dialog.component';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
+import {
+  BulkMetadataDialogComponent,
+  BulkMetadataDialogResult,
+} from './bulk-metadata-dialog/bulk-metadata-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 import { MediaService } from '../../services/media.service';
 import { NavbarSearchService } from '../../services/navbar-search.service';
@@ -565,6 +569,39 @@ export class MediaBrowserComponent {
             this.clearSelection();
             this.snackBar.open(
               `Added ${result.processed} item${result.processed === 1 ? '' : 's'} to ${value.albumName}.`,
+              'Close',
+              { duration: 4000 },
+            );
+          });
+      });
+  }
+
+  editSelectionMetadata(): void {
+    const ids = this.selectedIds();
+    if (ids.length === 0) {
+      return;
+    }
+
+    this.dialog
+      .open(BulkMetadataDialogComponent, {
+        data: { selectedCount: ids.length },
+        maxWidth: '760px',
+        width: '100%',
+      })
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((value: BulkMetadataDialogResult | undefined) => {
+        if (!value) {
+          return;
+        }
+
+        this.galleryStore
+          .batchUpdateAnnotations({ media_ids: ids, ...value })
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe((result) => {
+            this.clearSelection();
+            this.snackBar.open(
+              `Updated metadata for ${result.processed} item${result.processed === 1 ? '' : 's'}.`,
               'Close',
               { duration: 4000 },
             );

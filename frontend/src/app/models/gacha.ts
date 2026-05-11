@@ -23,7 +23,6 @@ export interface GachaPullItemRead {
   rarity_tier: RarityTier;
   rarity_score: number;
   was_duplicate: boolean;
-  upgrade_material_granted: number;
   position: number;
   collection_item_id: string | null;
 }

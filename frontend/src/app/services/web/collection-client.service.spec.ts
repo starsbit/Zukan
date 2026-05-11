@@ -13,7 +13,6 @@ const collectionItem = {
   media_id: 'm1',
   rarity_tier_at_acquisition: RarityTier.SR,
   level: 2,
-  upgrade_xp: 4,
   copies_pulled: 3,
   locked: false,
   tradeable: true,
@@ -102,8 +101,8 @@ describe('CollectionClientService', () => {
       item_id: 'ci1',
       media_id: 'm1',
       copies_discarded: 1,
-      pulls_awarded: 8,
-      currency_balance: 18,
+      pulls_awarded: 360,
+      currency_balance: 370,
       remaining_copies: 2,
       item: collectionItem,
     };

@@ -600,6 +600,44 @@ def test_batch_update_entities_contract(api_client, monkeypatch):
     assert response.json() == {"processed": 2, "skipped": 0}
 
 
+def test_batch_update_annotations_contract(api_client, monkeypatch):
+    async def _fake_bulk_annotations(self, body, user):
+        assert body.add_tags == ["safe"]
+        assert body.remove_tags == ["old_tag"]
+        assert body.add_character_names == ["Saber"]
+        assert body.remove_character_names == ["Rin"]
+        assert body.add_series_names == ["Fate/stay night"]
+        assert body.remove_series_names == ["Tsukihime"]
+        return {"processed": 2, "skipped": 0}
+
+    monkeypatch.setattr(MediaMetadataService, "bulk_update_annotations", _fake_bulk_annotations)
+
+    response = api_client.patch(
+        "/api/v1/media/annotations",
+        json={
+            "media_ids": [str(uuid.uuid4())],
+            "add_tags": ["safe"],
+            "remove_tags": ["old_tag"],
+            "add_character_names": ["Saber"],
+            "remove_character_names": ["Rin"],
+            "add_series_names": ["Fate/stay night"],
+            "remove_series_names": ["Tsukihime"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"processed": 2, "skipped": 0}
+
+
+def test_batch_update_annotations_rejects_empty_mutation(api_client):
+    response = api_client.patch(
+        "/api/v1/media/annotations",
+        json={"media_ids": [str(uuid.uuid4())]},
+    )
+
+    assert response.status_code == 422
+
+
 def test_batch_delete_command_contract(api_client, monkeypatch):
     async def _fake_delete(self, body, user):
         return {"processed": 2, "skipped": 1}

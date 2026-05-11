@@ -41,7 +41,6 @@ describe('GachaClientService', () => {
           rarity_tier: RarityTier.R,
           rarity_score: 0.6,
           was_duplicate: false,
-          upgrade_material_granted: 0,
           position: 0,
           collection_item_id: 'ci1',
         },

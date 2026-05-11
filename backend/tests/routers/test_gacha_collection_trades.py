@@ -31,7 +31,6 @@ def _pull_payload():
                 "rarity_tier": RarityTier.R,
                 "rarity_score": 0.62,
                 "was_duplicate": False,
-                "upgrade_material_granted": 0,
                 "position": 0,
                 "collection_item_id": uuid.uuid4(),
             }
@@ -64,6 +63,7 @@ def test_gacha_pull_contract(api_client, monkeypatch):
     payload = response.json()
     assert payload["mode"] == "single"
     assert payload["items"][0]["rarity_tier"] == "R"
+    assert "upgrade_material_granted" not in payload["items"][0]
     fake_pull.assert_awaited_once()
 
 
@@ -176,8 +176,8 @@ def test_collection_discard_contract(api_client, monkeypatch):
             "item_id": item_id,
             "media_id": media_id,
             "copies_discarded": 1,
-            "pulls_awarded": 8,
-            "currency_balance": 18,
+            "pulls_awarded": 360,
+            "currency_balance": 370,
             "remaining_copies": 2,
             "item": None,
         }
@@ -187,10 +187,41 @@ def test_collection_discard_contract(api_client, monkeypatch):
     response = api_client.post(f"/api/v1/collection/items/{item_id}/discard")
 
     assert response.status_code == 200
-    assert response.json()["pulls_awarded"] == 8
-    assert response.json()["currency_balance"] == 18
+    assert response.json()["pulls_awarded"] == 360
+    assert response.json()["currency_balance"] == 370
     assert response.json()["item"] is None
     fake_discard.assert_awaited_once()
+
+
+def test_collection_upgrade_contract_omits_upgrade_xp(api_client, monkeypatch):
+    item_id = uuid.uuid4()
+    media_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+    fake_upgrade = AsyncMock(
+        return_value={
+            "id": item_id,
+            "user_id": uuid.uuid4(),
+            "media_id": media_id,
+            "rarity_tier_at_acquisition": RarityTier.SR,
+            "level": 3,
+            "copies_pulled": 1,
+            "locked": False,
+            "tradeable": True,
+            "acquired_at": now,
+            "updated_at": now,
+            "media": None,
+        }
+    )
+    monkeypatch.setattr(CollectionService, "upgrade_item", fake_upgrade)
+
+    response = api_client.post(f"/api/v1/collection/items/{item_id}/upgrade")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["level"] == 3
+    assert payload["copies_pulled"] == 1
+    assert "upgrade_xp" not in payload
+    fake_upgrade.assert_awaited_once()
 
 
 def test_trade_create_requires_requested_items(api_client):

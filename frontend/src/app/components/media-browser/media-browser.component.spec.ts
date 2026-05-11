@@ -52,6 +52,7 @@ function makeMedia(id: string, width: number, height: number) {
 
 const galleryStoreMock = {
   batchDelete: vi.fn(() => of({ processed: 1, skipped: 0 })),
+  batchUpdateAnnotations: vi.fn(() => of({ processed: 1, skipped: 0 })),
   batchQueueTaggingJobs: vi.fn(() => of({ queued: 1 })),
   batchUpdateVisibility: vi.fn(() => of({ processed: 1, skipped: 0 })),
   hasMore: vi.fn(() => true),
@@ -177,6 +178,7 @@ describe('MediaBrowserComponent', () => {
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     galleryStoreMock.batchDelete.mockClear();
+    galleryStoreMock.batchUpdateAnnotations.mockClear();
     galleryStoreMock.batchQueueTaggingJobs.mockClear();
     galleryStoreMock.batchUpdateVisibility.mockClear();
     galleryStoreMock.hasMore.mockClear();
@@ -688,6 +690,44 @@ describe('MediaBrowserComponent', () => {
 
     expect(dialogMock.open).toHaveBeenCalledTimes(1);
     expect(albumStoreMock.addMedia).toHaveBeenCalledWith('album-1', ['m1']);
+    expect(fixture.componentInstance.selectionCount()).toBe(0);
+  });
+
+  it('edits metadata for the selected media from the action bar', async () => {
+    const dialogValue = {
+      add_tags: ['safe'],
+      remove_tags: ['old'],
+      add_character_names: ['Saber'],
+      remove_character_names: [],
+      add_series_names: [],
+      remove_series_names: [],
+    };
+    dialogMock.open.mockReturnValueOnce(
+      makeDialogRefMock({
+        afterClosed: () => of(dialogValue as unknown),
+      }),
+    );
+    galleryStoreMock.batchUpdateAnnotations.mockReturnValueOnce(of({ processed: 1, skipped: 0 }));
+
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', [
+      {
+        date: '2026-03-28',
+        label: 'March 28, 2026',
+        items: [makeMedia('m1', 100, 100)],
+      },
+    ] satisfies DayGroup[]);
+    fixture.detectChanges();
+    fixture.componentInstance.onMediaSelectionToggled(makeMedia('m1', 100, 100));
+
+    fixture.componentInstance.editSelectionMetadata();
+
+    expect(galleryStoreMock.batchUpdateAnnotations).toHaveBeenCalledWith({
+      media_ids: ['m1'],
+      ...dialogValue,
+    });
     expect(fixture.componentInstance.selectionCount()).toBe(0);
   });
 

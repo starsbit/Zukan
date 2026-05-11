@@ -13,10 +13,11 @@ from backend.app.models.relations import MediaEntityType
 from backend.app.models.relations import MediaEntity, MediaExternalRef
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
-from backend.app.schemas import BulkResult, MediaDetail, MediaEntityBatchUpdate, MediaUpdate
+from backend.app.schemas import BulkResult, MediaAnnotationBatchUpdate, MediaDetail, MediaEntityBatchUpdate, MediaUpdate
 from backend.app.services.media.interactions import MediaInteractionService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.utils.media_common import build_tag_payloads, normalize_manual_entity_names, normalize_manual_tags
+from backend.app.utils.search import normalize_metadata_search
 from backend.app.utils.tagging import tag_names_mark_sensitive, tag_names_mark_nsfw
 
 logger = logging.getLogger(__name__)
@@ -208,5 +209,125 @@ class MediaMetadataService:
         )
         return BulkResult(processed=processed, skipped=skipped)
 
+    async def bulk_update_annotations(self, payload: MediaAnnotationBatchUpdate, user: User) -> BulkResult:
+        rows = await self._query.get_media_by_ids(payload.media_ids)
+        found_ids = {row.id for row in rows}
+        skipped = len(payload.media_ids) - len(found_ids)
+        processed = 0
+
+        add_tags, remove_tag_keys = self._normalize_tag_mutation(payload.add_tags, payload.remove_tags)
+        add_characters, remove_character_names = self._normalize_entity_mutation(
+            payload.add_character_names,
+            payload.remove_character_names,
+        )
+        add_series, remove_series_names = self._normalize_entity_mutation(
+            payload.add_series_names,
+            payload.remove_series_names,
+        )
+        tags_repo = TagRepository(self._db)
+        entities_repo = MediaEntityRepository(self._db)
+
+        for media in rows:
+            if media.uploader_id != user.id and not user.is_admin:
+                skipped += 1
+                continue
+
+            if add_tags or remove_tag_keys:
+                await self._mutate_media_tags(
+                    media,
+                    tags_repo=tags_repo,
+                    add_tags=add_tags,
+                    remove_tag_keys=remove_tag_keys,
+                )
+            if add_characters or remove_character_names:
+                await entities_repo.mutate_media_entities(
+                    media,
+                    entity_type=MediaEntityType.character,
+                    add_names=add_characters,
+                    remove_names=remove_character_names,
+                    source="manual",
+                )
+            if add_series or remove_series_names:
+                await entities_repo.mutate_media_entities(
+                    media,
+                    entity_type=MediaEntityType.series,
+                    add_names=add_series,
+                    remove_names=remove_series_names,
+                    source="manual",
+                )
+
+            processed += 1
+
+        await self._db.commit()
+        logger.info(
+            "Bulk updated annotations user_id=%s processed=%s skipped=%s add_tags=%s remove_tags=%s add_characters=%s remove_characters=%s add_series=%s remove_series=%s",
+            user.id,
+            processed,
+            skipped,
+            len(add_tags),
+            len(remove_tag_keys),
+            len(add_characters),
+            len(remove_character_names),
+            len(add_series),
+            len(remove_series_names),
+        )
+        return BulkResult(processed=processed, skipped=skipped)
+
     def _normalize_entity_names(self, names: list[str] | None) -> list[str]:
         return normalize_manual_entity_names(names)
+
+    def _normalize_tag_mutation(self, add_tags: list[str], remove_tags: list[str]) -> tuple[list[str], set[str]]:
+        normalized_add_tags = normalize_manual_tags(add_tags)
+        normalized_remove_tags = normalize_manual_tags(remove_tags)
+        remove_keys = {self._metadata_key(tag) for tag in normalized_remove_tags}
+        add_after_removal = [
+            tag
+            for tag in normalized_add_tags
+            if self._metadata_key(tag) not in remove_keys
+        ]
+        return add_after_removal, remove_keys
+
+    def _normalize_entity_mutation(self, add_names: list[str], remove_names: list[str]) -> tuple[list[str], list[str]]:
+        normalized_add_names = normalize_manual_entity_names(add_names)
+        normalized_remove_names = normalize_manual_entity_names(remove_names)
+        remove_keys = {self._metadata_key(name) for name in normalized_remove_names}
+        add_after_removal = [
+            name
+            for name in normalized_add_names
+            if self._metadata_key(name) not in remove_keys
+        ]
+        return add_after_removal, normalized_remove_names
+
+    async def _mutate_media_tags(
+        self,
+        media,
+        *,
+        tags_repo: TagRepository,
+        add_tags: list[str],
+        remove_tag_keys: set[str],
+    ) -> None:
+        existing_tags = await tags_repo.get_media_tags_with_tag(media.id)
+        desired_payload_by_key: dict[str, tuple[str, int, float]] = {}
+
+        for media_tag in existing_tags:
+            tag = media_tag.tag
+            key = self._metadata_key(tag.name)
+            if key in remove_tag_keys or key in desired_payload_by_key:
+                continue
+            desired_payload_by_key[key] = (tag.name, tag.category, media_tag.confidence)
+
+        for tag_name in add_tags:
+            key = self._metadata_key(tag_name)
+            if key in remove_tag_keys or key in desired_payload_by_key:
+                continue
+            desired_payload_by_key[key] = (tag_name, 0, 1.0)
+
+        desired_payloads = list(desired_payload_by_key.values())
+        desired_names = [name for name, _, _ in desired_payloads]
+        await tags_repo.set_media_tag_links(media, desired_payloads, source="manual")
+        media.is_nsfw = tag_names_mark_nsfw(desired_names)
+        media.is_sensitive = tag_names_mark_sensitive(desired_names)
+
+    def _metadata_key(self, value: str) -> str:
+        cleaned = value.strip()
+        return normalize_metadata_search(cleaned) or cleaned.casefold()

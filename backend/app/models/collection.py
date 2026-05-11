@@ -42,7 +42,6 @@ class UserCollectionItem(Base):
         index=True,
     )
     level: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
-    upgrade_xp: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     copies_pulled: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     tradeable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")

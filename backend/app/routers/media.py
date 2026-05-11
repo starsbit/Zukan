@@ -36,6 +36,7 @@ from backend.app.schemas import (
     LibraryClassificationFeedbackRead,
     LibraryClassificationSuggestionResponse,
     MetadataListScope,
+    MediaAnnotationBatchUpdate,
     MediaUploadRequest,
     MediaUpdate,
     UrlIngestRequest,
@@ -639,6 +640,22 @@ async def batch_update_media_entities(
 ):
     _, _, _, _, _, metadata = _media_services(db)
     return await metadata.bulk_update_entities(body, user)
+
+
+@router.patch(
+    "/annotations",
+    response_model=BulkResult,
+    summary="Batch Add Or Remove Media Tags And Entities",
+    description="Add and/or remove tags, character names, and series names on selected media items without replacing unrelated annotations.",
+    responses=error_responses(422),
+)
+async def batch_update_media_annotations(
+    body: MediaAnnotationBatchUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    _, _, _, _, _, metadata = _media_services(db)
+    return await metadata.bulk_update_annotations(body, user)
 
 
 @router.post(

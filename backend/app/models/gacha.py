@@ -116,7 +116,6 @@ class GachaPullItem(Base):
     rarity_tier: Mapped[RarityTier] = mapped_column(Enum(RarityTier, name="gacha_rarity_tier_enum"), nullable=False)
     rarity_score: Mapped[float] = mapped_column(Float, nullable=False)
     was_duplicate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
-    upgrade_material_granted: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
     pull: Mapped[GachaPull] = relationship("GachaPull", back_populates="items")

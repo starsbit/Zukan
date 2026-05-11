@@ -1,0 +1,78 @@
+<h2 mat-dialog-title>Edit metadata for {{ selectedCount }} item{{ selectedCount === 1 ? '' : 's' }}</h2>
+
+<mat-dialog-content class="bulk-metadata-dialog">
+  <section class="bulk-metadata-dialog__section">
+    <h3>Add</h3>
+    @for (field of addFields; track field.key) {
+      <mat-form-field appearance="outline">
+        <mat-label>{{ field.label }}</mat-label>
+        <mat-chip-grid #chipGrid>
+          @for (chip of chipsFor(field.key); track chip) {
+            <mat-chip-row (removed)="removeChip(field.key, chip)">
+              {{ field.key.endsWith('tags') ? displayMetadataName(chip) : chip }}
+              <button matChipRemove [attr.aria-label]="'Remove ' + chip">
+                <mat-icon aria-hidden="true">cancel</mat-icon>
+              </button>
+            </mat-chip-row>
+          }
+        </mat-chip-grid>
+        <input
+          [formControl]="controlFor(field.key)"
+          [matChipInputFor]="chipGrid"
+          [matAutocomplete]="autocomplete"
+          [placeholder]="field.placeholder"
+          (keydown.enter)="onInputEnter(field.key)"
+        />
+        <mat-autocomplete #autocomplete="matAutocomplete" (optionSelected)="onOptionSelected(field.key, $event)">
+          @for (suggestion of suggestionsFor(field.key); track suggestion) {
+            <mat-option [value]="suggestion">
+              {{ field.key.endsWith('tags') ? displayMetadataName(suggestion) : suggestion }}
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+    }
+  </section>
+
+  <section class="bulk-metadata-dialog__section">
+    <h3>Remove</h3>
+    @for (field of removeFields; track field.key) {
+      <mat-form-field appearance="outline">
+        <mat-label>{{ field.label }}</mat-label>
+        <mat-chip-grid #chipGrid>
+          @for (chip of chipsFor(field.key); track chip) {
+            <mat-chip-row (removed)="removeChip(field.key, chip)">
+              {{ field.key.endsWith('tags') ? displayMetadataName(chip) : chip }}
+              <button matChipRemove [attr.aria-label]="'Remove ' + chip">
+                <mat-icon aria-hidden="true">cancel</mat-icon>
+              </button>
+            </mat-chip-row>
+          }
+        </mat-chip-grid>
+        <input
+          [formControl]="controlFor(field.key)"
+          [matChipInputFor]="chipGrid"
+          [matAutocomplete]="autocomplete"
+          [placeholder]="field.placeholder"
+          (keydown.enter)="onInputEnter(field.key)"
+        />
+        <mat-autocomplete #autocomplete="matAutocomplete" (optionSelected)="onOptionSelected(field.key, $event)">
+          @for (suggestion of suggestionsFor(field.key); track suggestion) {
+            <mat-option [value]="suggestion">
+              {{ field.key.endsWith('tags') ? displayMetadataName(suggestion) : suggestion }}
+            </mat-option>
+          }
+        </mat-autocomplete>
+      </mat-form-field>
+    }
+  </section>
+
+  @if (hasConflicts()) {
+    <p class="bulk-metadata-dialog__error">The same value cannot be added and removed in one update.</p>
+  }
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button type="button" (click)="cancel()">Cancel</button>
+  <button mat-flat-button type="button" [disabled]="!canApply()" (click)="apply()">Apply</button>
+</mat-dialog-actions>

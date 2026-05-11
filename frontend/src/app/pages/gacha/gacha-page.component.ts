@@ -51,11 +51,18 @@ const GACHA_TABS: readonly GachaTab[] = ['pull', 'collection', 'collectors'];
 const RARITY_ORDER = [RarityTier.N, RarityTier.R, RarityTier.SR, RarityTier.SSR, RarityTier.UR];
 const RARITY_RANK = new Map(RARITY_ORDER.map((tier, index) => [tier, index]));
 const PULL_PAYOUT_BY_RARITY: Record<RarityTier, number> = {
-  [RarityTier.N]: 1,
-  [RarityTier.R]: 2,
-  [RarityTier.SR]: 4,
-  [RarityTier.SSR]: 7,
-  [RarityTier.UR]: 10,
+  [RarityTier.N]: 24,
+  [RarityTier.R]: 60,
+  [RarityTier.SR]: 180,
+  [RarityTier.SSR]: 480,
+  [RarityTier.UR]: 1200,
+};
+const MAX_COLLECTION_LEVEL = 5;
+const UPGRADE_COPY_REQUIREMENTS: Record<number, number> = {
+  1: 2,
+  2: 3,
+  3: 4,
+  4: 5,
 };
 
 @Component({
@@ -145,6 +152,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   readonly loadingCollection = signal(false);
   readonly collectionError = signal<string | null>(null);
   readonly discardLoadingIds = signal<ReadonlySet<string>>(new Set());
+  readonly upgradeLoadingIds = signal<ReadonlySet<string>>(new Set());
   readonly claimLoading = signal(false);
   readonly pullLoading = signal(false);
   readonly animationState = signal<AnimationState>('idle');
@@ -510,6 +518,14 @@ export class GachaPageComponent implements OnInit, OnDestroy {
 
   discardPreview = (item: GachaCollectionCard): number => this.discardPullValue(item);
 
+  canUpgradeCollectionItem = (item: GachaCollectionCard): boolean => (
+    !item.locked
+      && item.level < MAX_COLLECTION_LEVEL
+      && item.copies_pulled >= this.upgradeCopyRequirement(item)
+  );
+
+  upgradeRequirement = (item: GachaCollectionCard): number => this.upgradeCopyRequirement(item);
+
   onTradeMessageChange(value: string): void {
     this.tradeMessage.set(value);
   }
@@ -618,6 +634,50 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     });
   }
 
+  upgradeCollectionItem(item: GachaCollectionCard): void {
+    if (!this.canUpgradeCollectionItem(item) || this.upgradeLoadingIds().has(item.id)) {
+      return;
+    }
+
+    const requiredCopies = this.upgradeCopyRequirement(item);
+    const duplicateCopies = Math.max(requiredCopies - 1, 0);
+    const copyText = duplicateCopies === 1 ? 'duplicate copy' : 'duplicate copies';
+    const nextLevel = Math.min(item.level + 1, MAX_COLLECTION_LEVEL);
+    this.confirmDialog.open({
+      title: 'Upgrade card?',
+      message: `Upgrade this card to level ${nextLevel}. This will combine ${duplicateCopies} ${copyText}.`,
+      confirmLabel: `Upgrade to level ${nextLevel}`,
+      tone: 'default',
+    }).pipe(
+      takeUntilDestroyed(this.destroyRef),
+      switchMap((confirmed) => {
+        if (!confirmed) {
+          return EMPTY;
+        }
+        this.upgradeLoadingIds.update((current) => new Set(current).add(item.id));
+        return this.collectionClient.upgradeItem(item.id).pipe(
+          finalize(() => {
+            this.upgradeLoadingIds.update((current) => {
+              const next = new Set(current);
+              next.delete(item.id);
+              return next;
+            });
+          }),
+          catchError((err) => {
+            this.snackBar.open(extractApiError(err, 'Unable to upgrade this card.'), 'Close', { duration: 5000 });
+            return EMPTY;
+          }),
+        );
+      }),
+    ).subscribe((updated) => {
+      this.applyCollectionItemUpdate(updated);
+      this.snackBar.open(`Upgraded card to level ${updated.level}.`, 'Close', { duration: 3500 });
+      this.loadOverview();
+      this.loadCollection();
+      this.loadTradeOwnCollection();
+    });
+  }
+
   tierCount(tier: RarityTier): number {
     return this.stats()?.tier_counts?.[tier] ?? 0;
   }
@@ -668,9 +728,7 @@ export class GachaPageComponent implements OnInit, OnDestroy {
   }
 
   pullMeta(item: PullResultCard): string[] {
-    return item.upgrade_material_granted > 0
-      ? [item.was_duplicate ? 'Duplicate' : 'New', `+${item.upgrade_material_granted} XP`]
-      : [item.was_duplicate ? 'Duplicate' : 'New'];
+    return [item.was_duplicate ? 'Duplicate' : 'New'];
   }
 
   inspectPullResult(item: PullResultCard): void {
@@ -760,11 +818,19 @@ export class GachaPageComponent implements OnInit, OnDestroy {
     this.balance.update((current) => current ? { ...current, balance: currencyBalance } : current);
     this.stats.update((current) => current ? { ...current, currency_balance: currencyBalance } : current);
     if (item) {
-      this.collection.update((current) => current.map((card) => (
-        card.id === item.id ? { ...item, thumbnail_url: card.thumbnail_url } : card
-      )));
+      this.applyCollectionItemUpdate(item);
       return;
     }
+  }
+
+  private applyCollectionItemUpdate(item: CollectionItemRead): void {
+    this.collection.update((current) => current.map((card) => (
+      card.id === item.id ? { ...item, thumbnail_url: card.thumbnail_url } : card
+    )));
+  }
+
+  private upgradeCopyRequirement(item: CollectionItemRead): number {
+    return UPGRADE_COPY_REQUIREMENTS[item.level] ?? Number.POSITIVE_INFINITY;
   }
 
   private runAnimation(): void {

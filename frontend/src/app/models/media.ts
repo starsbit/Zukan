@@ -168,3 +168,13 @@ export interface MediaEntityBatchUpdate {
   character_names?: string[] | null;
   series_names?: string[] | null;
 }
+
+export interface MediaAnnotationBatchUpdate {
+  media_ids: string[];
+  add_tags?: string[];
+  remove_tags?: string[];
+  add_character_names?: string[];
+  remove_character_names?: string[];
+  add_series_names?: string[];
+  remove_series_names?: string[];
+}

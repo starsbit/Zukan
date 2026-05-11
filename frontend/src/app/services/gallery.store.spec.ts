@@ -6,7 +6,7 @@ import { GalleryStore } from './gallery.store';
 import { API_BASE_URL } from './web/api.config';
 import { MediaRead, MediaType, TaggingStatus, ProcessingStatus, MediaVisibility } from '../models/media';
 
-function makeMedia(id: string, captured_at = '2026-03-28T12:00:00Z') {
+function makeMedia(id: string, captured_at = '2026-03-28T12:00:00Z'): MediaRead {
   return {
     id,
     uploader_id: 'u1', owner_id: 'u1', visibility: MediaVisibility.PRIVATE,
@@ -528,6 +528,52 @@ describe('GalleryStore', () => {
 
       expect(result).toEqual({ processed: 501, skipped: 0 });
       expect(store.items().every((item) => item.visibility === MediaVisibility.PUBLIC)).toBe(true);
+    });
+
+    it('batchUpdateAnnotations splits large selections and refreshes the gallery', () => {
+      const ids = Array.from({ length: 501 }, (_, index) => `m${index + 1}`);
+
+      store.load().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(ids.map((id) => makeMedia(id)), false, null, ids.length));
+      store.loadTimeline().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: ids.length }],
+      });
+
+      let result: { processed: number; skipped: number } | null = null;
+      store.batchUpdateAnnotations({
+        media_ids: ids,
+        add_tags: ['safe'],
+        remove_tags: ['old'],
+        add_character_names: ['Saber'],
+        remove_character_names: [],
+        add_series_names: [],
+        remove_series_names: [],
+      }).subscribe((value) => {
+        result = value;
+      });
+
+      const firstReq = http.expectOne('/api/v1/media/annotations');
+      expect(firstReq.request.method).toBe('PATCH');
+      expect(firstReq.request.body.media_ids).toEqual(ids.slice(0, 500));
+      firstReq.flush({ processed: 500, skipped: 0 });
+
+      const secondReq = http.expectOne('/api/v1/media/annotations');
+      expect(secondReq.request.body.media_ids).toEqual(ids.slice(500));
+      secondReq.flush({ processed: 1, skipped: 0 });
+
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [{ year: 2026, month: 3, count: ids.length }],
+      });
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(
+        ids.map((id) => ({ ...makeMedia(id), tags: ['safe'] })),
+        false,
+        null,
+        ids.length,
+      ));
+
+      expect(result).toEqual({ processed: 501, skipped: 0 });
+      expect(store.items()[0].tags).toEqual(['safe']);
     });
 
     it('batchQueueTaggingJobs refreshes the gallery list and timeline after queuing jobs', () => {

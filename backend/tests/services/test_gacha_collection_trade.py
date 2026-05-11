@@ -13,23 +13,15 @@ from backend.app.models.gacha import GachaCurrencyLedger, GachaCurrencyLedgerRea
 from backend.app.models.notifications import Notification
 from backend.app.models.trade import TradeStatus
 from backend.app.schemas.collection import CollectionFilters
-from backend.app.services.collection import CollectionService, collection_item_pull_value, duplicate_xp_for_tier
+from backend.app.services.collection import CollectionService, collection_item_pull_value
 from backend.app.services.gacha import GachaService
 from backend.app.services.media.lifecycle import MediaLifecycleService
-
-
-def test_duplicate_xp_by_rarity_tier():
-    assert duplicate_xp_for_tier(RarityTier.N) == 1
-    assert duplicate_xp_for_tier(RarityTier.R) == 3
-    assert duplicate_xp_for_tier(RarityTier.SR) == 10
-    assert duplicate_xp_for_tier(RarityTier.SSR) == 25
-    assert duplicate_xp_for_tier(RarityTier.UR) == 75
 
 
 def test_collection_item_pull_value_uses_rarity_and_level():
     item = SimpleNamespace(rarity_tier_at_acquisition=RarityTier.SSR, level=3)
 
-    assert collection_item_pull_value(item) == 21
+    assert collection_item_pull_value(item) == 1440
 
 
 def test_stable_tier_requires_repeated_downgrade(fake_db):
@@ -49,14 +41,13 @@ def test_stable_tier_requires_repeated_downgrade(fake_db):
 
 
 @pytest.mark.asyncio
-async def test_upgrade_item_spends_xp(fake_db, user, monkeypatch):
+async def test_upgrade_item_spends_duplicate_copies(fake_db, user, monkeypatch):
     item = UserCollectionItem(
         id=uuid.uuid4(),
         user_id=user.id,
         media_id=uuid.uuid4(),
         rarity_tier_at_acquisition=RarityTier.R,
         level=1,
-        upgrade_xp=5,
         copies_pulled=3,
         locked=False,
         tradeable=True,
@@ -67,11 +58,12 @@ async def test_upgrade_item_spends_xp(fake_db, user, monkeypatch):
         return item
 
     monkeypatch.setattr(service, "get_item", _get_item)
+    monkeypatch.setattr("backend.app.services.collection.TradeRepository.active_item_ids", AsyncMock(return_value=set()))
 
     upgraded = await service.upgrade_item(item.id, user)
 
     assert upgraded.level == 2
-    assert upgraded.upgrade_xp == 0
+    assert upgraded.copies_pulled == 2
     fake_db.commit.assert_awaited_once()
 
 
@@ -83,7 +75,6 @@ async def test_discard_item_decrements_one_copy_and_awards_pulls(fake_db, user, 
         media_id=uuid.uuid4(),
         rarity_tier_at_acquisition=RarityTier.SR,
         level=2,
-        upgrade_xp=0,
         copies_pulled=2,
         locked=False,
         tradeable=True,
@@ -102,13 +93,13 @@ async def test_discard_item_decrements_one_copy_and_awards_pulls(fake_db, user, 
     response = await service.discard_item(item.id, user)
 
     assert item.copies_pulled == 1
-    assert response.pulls_awarded == 8
-    assert response.currency_balance == 13
+    assert response.pulls_awarded == 360
+    assert response.currency_balance == 365
     assert response.remaining_copies == 1
     assert response.item is not None
     assert response.item.id == item.id
     assert response.item.copies_pulled == 1
-    assert balance.total_claimed == 8
+    assert balance.total_claimed == 360
     ledger = next(added for added in fake_db.added if isinstance(added, GachaCurrencyLedger))
     assert ledger.reason == GachaCurrencyLedgerReason.collection_discard
     fake_db.commit.assert_awaited_once()
@@ -122,7 +113,6 @@ async def test_discard_item_deletes_final_copy(fake_db, user, monkeypatch):
         media_id=uuid.uuid4(),
         rarity_tier_at_acquisition=RarityTier.N,
         level=3,
-        upgrade_xp=0,
         copies_pulled=1,
         locked=False,
         tradeable=True,
@@ -138,7 +128,7 @@ async def test_discard_item_deletes_final_copy(fake_db, user, monkeypatch):
 
     response = await service.discard_item(item.id, user)
 
-    assert response.pulls_awarded == 3
+    assert response.pulls_awarded == 72
     assert response.remaining_copies == 0
     assert response.item is None
     assert item in fake_db.deleted
@@ -152,7 +142,6 @@ async def test_discard_item_rejects_locked_or_active_trade_items(fake_db, user, 
         media_id=uuid.uuid4(),
         rarity_tier_at_acquisition=RarityTier.R,
         level=1,
-        upgrade_xp=0,
         copies_pulled=1,
         locked=True,
         tradeable=True,
@@ -176,15 +165,14 @@ async def test_discard_item_rejects_locked_or_active_trade_items(fake_db, user, 
 
 
 @pytest.mark.asyncio
-async def test_upgrade_item_rejects_insufficient_xp(fake_db, user, monkeypatch):
+async def test_upgrade_item_rejects_insufficient_copies(fake_db, user, monkeypatch):
     item = UserCollectionItem(
         id=uuid.uuid4(),
         user_id=user.id,
         media_id=uuid.uuid4(),
         rarity_tier_at_acquisition=RarityTier.R,
         level=2,
-        upgrade_xp=14,
-        copies_pulled=3,
+        copies_pulled=2,
         locked=False,
         tradeable=True,
     )
@@ -194,12 +182,49 @@ async def test_upgrade_item_rejects_insufficient_xp(fake_db, user, monkeypatch):
         return item
 
     monkeypatch.setattr(service, "get_item", _get_item)
+    monkeypatch.setattr("backend.app.services.collection.TradeRepository.active_item_ids", AsyncMock(return_value=set()))
 
     with pytest.raises(AppError) as exc:
         await service.upgrade_item(item.id, user)
 
     assert exc.value.status_code == 409
-    assert exc.value.detail["code"] == "insufficient_upgrade_xp"
+    assert exc.value.detail["code"] == "insufficient_collection_copies"
+
+
+@pytest.mark.asyncio
+async def test_upgrade_item_rejects_max_level_locked_or_active_trade(fake_db, user, monkeypatch):
+    item = UserCollectionItem(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        media_id=uuid.uuid4(),
+        rarity_tier_at_acquisition=RarityTier.R,
+        level=5,
+        copies_pulled=5,
+        locked=False,
+        tradeable=True,
+    )
+    service = CollectionService(fake_db)
+    monkeypatch.setattr(service, "get_item", AsyncMock(return_value=item))
+
+    with pytest.raises(AppError) as max_exc:
+        await service.upgrade_item(item.id, user)
+
+    assert max_exc.value.detail["code"] == "collection_item_max_level"
+
+    item.level = 1
+    item.locked = True
+    with pytest.raises(AppError) as locked_exc:
+        await service.upgrade_item(item.id, user)
+
+    assert locked_exc.value.detail["code"] == "collection_item_locked"
+
+    item.locked = False
+    monkeypatch.setattr("backend.app.services.collection.TradeRepository.active_item_ids", AsyncMock(return_value={item.id}))
+    with pytest.raises(AppError) as trade_exc:
+        await service.upgrade_item(item.id, user)
+
+    assert trade_exc.value.detail["code"] == "collection_item_in_active_trade"
+    fake_db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -338,6 +363,45 @@ async def test_ten_pull_guarantees_at_least_sr(fake_db, user, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_duplicate_pull_increments_copies_without_upgrade_material(fake_db, user, monkeypatch):
+    service = GachaService(fake_db)
+    media_id = uuid.uuid4()
+    existing = UserCollectionItem(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        media_id=media_id,
+        rarity_tier_at_acquisition=RarityTier.SR,
+        level=1,
+        copies_pulled=1,
+        locked=False,
+        tradeable=True,
+    )
+    balance = SimpleNamespace(user_id=user.id, balance=120, total_claimed=0, total_spent=0, last_daily_claimed_on=None)
+
+    async def _select_candidate(_user, _target_tier, _used_media_ids):
+        return SimpleNamespace(media_id=media_id, rarity_tier=RarityTier.SR, rarity_score=0.8)
+
+    async def _get_or_create_balance(_user_id, *, lock=False):
+        return balance
+
+    async def _refresh(obj):
+        if getattr(obj, "created_at", None) is None:
+            obj.created_at = datetime.now(timezone.utc)
+
+    monkeypatch.setattr(service, "_select_candidate", _select_candidate)
+    monkeypatch.setattr(service._repo, "get_or_create_balance", _get_or_create_balance)
+    monkeypatch.setattr(service._collection_repo, "get_by_user_and_media", AsyncMock(return_value=existing))
+    fake_db.refresh = AsyncMock(side_effect=_refresh)
+
+    pull = await service.pull(user, mode=GachaPullMode.single)
+
+    assert existing.copies_pulled == 2
+    assert pull.items[0].was_duplicate is True
+    assert not hasattr(pull.items[0], "upgrade_material_granted")
+    assert balance.total_spent == 120
+
+
+@pytest.mark.asyncio
 async def test_gacha_stats_honors_viewer_content_settings(fake_db, user, monkeypatch):
     service = GachaService(fake_db)
     monkeypatch.setattr(service._repo, "snapshot_count", AsyncMock(return_value=4))
@@ -368,7 +432,6 @@ async def test_media_purge_reimburses_collection_items_and_cancels_trades(fake_d
         media_id=media.id,
         rarity_tier_at_acquisition=RarityTier.UR,
         level=2,
-        upgrade_xp=0,
         copies_pulled=3,
         locked=False,
         tradeable=True,
@@ -395,7 +458,7 @@ async def test_media_purge_reimburses_collection_items_and_cancels_trades(fake_d
 
     await MediaLifecycleService(fake_db, SimpleNamespace())._reimburse_collection_items_for_media(media)
 
-    assert balance.balance == 61
+    assert balance.balance == 7201
     assert trade.status == TradeStatus.cancelled
     assert item in fake_db.deleted
     ledgers = [added for added in fake_db.added if isinstance(added, GachaCurrencyLedger)]

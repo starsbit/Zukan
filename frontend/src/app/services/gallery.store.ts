@@ -4,6 +4,7 @@ import { MediaClientService, MediaSearchParams } from './web/media-client.servic
 import { groupByDay, groupTimelineByYear } from '../utils/gallery-grouping.utils';
 import {
   MediaCursorPage,
+  MediaAnnotationBatchUpdate,
   MediaRead,
   MediaType,
   MediaVisibility,
@@ -348,6 +349,28 @@ export class GalleryStore {
 
     return from(this.chunkIds(ids, GalleryStore.BULK_MUTATION_CHUNK_SIZE)).pipe(
       concatMap((chunk) => this.client.batchUpdate({ media_ids: chunk, visibility })),
+      reduce(
+        (acc, result) => ({
+          processed: acc.processed + result.processed,
+          skipped: acc.skipped + result.skipped,
+        }),
+        { processed: 0, skipped: 0 },
+      ),
+      switchMap((result) =>
+        this.refresh().pipe(
+          map(() => result),
+        ),
+      ),
+    );
+  }
+
+  batchUpdateAnnotations(body: MediaAnnotationBatchUpdate): Observable<{ processed: number; skipped: number }> {
+    if (body.media_ids.length === 0) {
+      return of({ processed: 0, skipped: 0 });
+    }
+
+    return from(this.chunkIds(body.media_ids, GalleryStore.BULK_MUTATION_CHUNK_SIZE)).pipe(
+      concatMap((chunk) => this.client.batchUpdateAnnotations({ ...body, media_ids: chunk })),
       reduce(
         (acc, result) => ({
           processed: acc.processed + result.processed,

@@ -1,0 +1,34 @@
+.bulk-metadata-dialog {
+  display: grid;
+  gap: 20px;
+  min-width: min(680px, 82vw);
+  padding-top: 4px;
+}
+
+.bulk-metadata-dialog__section {
+  display: grid;
+  gap: 12px;
+}
+
+.bulk-metadata-dialog__section h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.bulk-metadata-dialog mat-form-field {
+  width: 100%;
+}
+
+.bulk-metadata-dialog__error {
+  color: var(--mat-sys-error);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .bulk-metadata-dialog {
+    min-width: 0;
+    width: 100%;
+  }
+}

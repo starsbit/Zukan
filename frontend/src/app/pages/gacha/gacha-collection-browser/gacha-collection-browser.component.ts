@@ -57,6 +57,10 @@ export class GachaCollectionBrowserComponent {
   readonly discardLoadingIds = input<ReadonlySet<string>>(new Set<string>());
   readonly discardPreview = input<(item: GachaCollectionCard) => number>(() => 0);
   readonly canDiscardItem = input<(item: GachaCollectionCard) => boolean>(() => true);
+  readonly upgradeable = input(false);
+  readonly upgradeLoadingIds = input<ReadonlySet<string>>(new Set<string>());
+  readonly upgradeRequirement = input<(item: GachaCollectionCard) => number>(() => 0);
+  readonly canUpgradeItem = input<(item: GachaCollectionCard) => boolean>(() => true);
   readonly emptyMessage = input('No collection items match these filters.');
   readonly ariaLabel = input('Collection items');
   readonly canSelectItem = input<(item: GachaCollectionCard) => boolean>(() => true);
@@ -70,6 +74,7 @@ export class GachaCollectionBrowserComponent {
   readonly itemToggled = output<GachaCollectionCard>();
   readonly itemInspected = output<GachaCollectionCard>();
   readonly itemDiscarded = output<GachaCollectionCard>();
+  readonly itemUpgraded = output<GachaCollectionCard>();
 
   readonly visibleItems = computed(() => this.items().filter((item) => {
     if (this.hideNsfw() && item.media?.is_nsfw) return false;
@@ -120,12 +125,30 @@ export class GachaCollectionBrowserComponent {
     return this.discardLoadingIds().has(item.id) || !this.canDiscardItem()(item);
   }
 
+  upgradeDisabled(item: GachaCollectionCard): boolean {
+    return this.upgradeLoadingIds().has(item.id) || !this.canUpgradeItem()(item);
+  }
+
   selectionLabel(item: GachaCollectionCard): string {
     return this.isSelected(item) ? this.selectedLabel() : this.selectLabel();
   }
 
   discardLabel(item: GachaCollectionCard): string {
     return `Destroy · +${this.discardPreview()(item)} Pulls`;
+  }
+
+  upgradeLabel(item: GachaCollectionCard): string {
+    const requiredCopies = this.upgradeRequirement()(item);
+    if (!Number.isFinite(requiredCopies)) {
+      return 'Max level';
+    }
+    if (item.copies_pulled < requiredCopies) {
+      const copyText = requiredCopies === 1 ? 'copy' : 'copies';
+      return `Upgrade · needs ${requiredCopies} ${copyText}`;
+    }
+    const duplicateCopies = Math.max(requiredCopies - 1, 0);
+    const copyText = duplicateCopies === 1 ? 'duplicate copy' : 'duplicate copies';
+    return `Upgrade · uses ${duplicateCopies} ${copyText}`;
   }
 
   inspect(item: GachaCollectionCard): void {
@@ -146,6 +169,14 @@ export class GachaCollectionBrowserComponent {
       return;
     }
     this.itemDiscarded.emit(item);
+  }
+
+  upgrade(event: Event, item: GachaCollectionCard): void {
+    event.stopPropagation();
+    if (this.upgradeDisabled(item)) {
+      return;
+    }
+    this.itemUpgraded.emit(item);
   }
 
   private entityNames(item: GachaCollectionCard, type: MediaEntityType): string[] {

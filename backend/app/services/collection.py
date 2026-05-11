@@ -19,19 +19,19 @@ from backend.app.schemas.collection import (
 )
 
 
-UPGRADE_COSTS = {
-    1: 5,
-    2: 15,
-    3: 30,
-    4: 60,
+UPGRADE_COPY_REQUIREMENTS = {
+    1: 2,
+    2: 3,
+    3: 4,
+    4: 5,
 }
 MAX_COLLECTION_LEVEL = 5
 PULL_PAYOUT_BY_RARITY = {
-    RarityTier.N: 1,
-    RarityTier.R: 2,
-    RarityTier.SR: 4,
-    RarityTier.SSR: 7,
-    RarityTier.UR: 10,
+    RarityTier.N: 24,
+    RarityTier.R: 60,
+    RarityTier.SR: 180,
+    RarityTier.SSR: 480,
+    RarityTier.UR: 1200,
 }
 
 
@@ -98,10 +98,16 @@ class CollectionService:
         item = await self.get_item(item_id, user)
         if item.level >= MAX_COLLECTION_LEVEL:
             raise AppError(status_code=409, code="collection_item_max_level", detail="Collection item is already max level")
-        cost = UPGRADE_COSTS[item.level]
-        if item.upgrade_xp < cost:
-            raise AppError(status_code=409, code="insufficient_upgrade_xp", detail="Not enough upgrade XP")
-        item.upgrade_xp -= cost
+        if item.locked:
+            raise AppError(status_code=409, code="collection_item_locked", detail="Locked collection items cannot be upgraded")
+        active_item_ids = await TradeRepository(self._db).active_item_ids([item.id])
+        if item.id in active_item_ids:
+            raise AppError(status_code=409, code="collection_item_in_active_trade", detail="Collection item is in an active trade")
+
+        required_copies = UPGRADE_COPY_REQUIREMENTS[item.level]
+        if item.copies_pulled < required_copies:
+            raise AppError(status_code=409, code="insufficient_collection_copies", detail="Not enough duplicate copies")
+        item.copies_pulled -= required_copies - 1
         item.level += 1
         await self._db.commit()
         await self._db.refresh(item)
@@ -201,16 +207,6 @@ class CollectionService:
             return
         if privacy.visibility != CollectionVisibility.public:
             raise AppError(status_code=403, code="collection_private", detail="Collection is private")
-
-
-def duplicate_xp_for_tier(tier: RarityTier) -> int:
-    return {
-        RarityTier.N: 1,
-        RarityTier.R: 3,
-        RarityTier.SR: 10,
-        RarityTier.SSR: 25,
-        RarityTier.UR: 75,
-    }[tier]
 
 
 def collection_item_pull_value(item: UserCollectionItem) -> int:

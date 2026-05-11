@@ -24,7 +24,6 @@ export interface CollectionItemRead {
   media_id: string;
   rarity_tier_at_acquisition: RarityTier;
   level: number;
-  upgrade_xp: number;
   copies_pulled: number;
   locked: boolean;
   tradeable: boolean;

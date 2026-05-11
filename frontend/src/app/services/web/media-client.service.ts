@@ -6,6 +6,7 @@ import {
   MediaCursorPage,
   MediaDetail,
   MediaUpdate,
+  MediaAnnotationBatchUpdate,
   MediaBatchUpdate,
   MediaEntityBatchUpdate,
   MediaListState,
@@ -171,6 +172,18 @@ export class MediaClientService {
       ...body,
       character_names: body.character_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name),
       series_names: body.series_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name),
+    });
+  }
+
+  batchUpdateAnnotations(body: MediaAnnotationBatchUpdate): Observable<BulkResult> {
+    return this.http.patch<BulkResult>(`${this.base}/api/v1/media/annotations`, {
+      media_ids: body.media_ids,
+      add_tags: body.add_tags?.map((tag) => normalizeMetadataValue(tag)).filter((tag) => !!tag) ?? [],
+      remove_tags: body.remove_tags?.map((tag) => normalizeMetadataValue(tag)).filter((tag) => !!tag) ?? [],
+      add_character_names: body.add_character_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name) ?? [],
+      remove_character_names: body.remove_character_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name) ?? [],
+      add_series_names: body.add_series_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name) ?? [],
+      remove_series_names: body.remove_series_names?.map((name) => normalizeEntityValue(name)).filter((name) => !!name) ?? [],
     });
   }
 

@@ -338,6 +338,33 @@ describe('MediaClientService', () => {
     req.flush(mock);
   });
 
+  it('batchUpdateAnnotations sends PATCH /api/v1/media/annotations with normalized body', () => {
+    const mock = { processed: 2, skipped: 0 };
+
+    service.batchUpdateAnnotations({
+      media_ids: ['m1', 'm2'],
+      add_tags: ['Saber Alter'],
+      remove_tags: ['Old Tag'],
+      add_character_names: ["Jeanne D'Arc"],
+      remove_character_names: ['Rin'],
+      add_series_names: ['Fate stay night'],
+      remove_series_names: ['Tsukihime'],
+    }).subscribe(res => expect(res).toEqual(mock));
+
+    const req = http.expectOne('/api/v1/media/annotations');
+    expect(req.request.method).toBe('PATCH');
+    expect(req.request.body).toEqual({
+      media_ids: ['m1', 'm2'],
+      add_tags: ['saber_alter'],
+      remove_tags: ['old_tag'],
+      add_character_names: ["Jeanne D'Arc"],
+      remove_character_names: ['Rin'],
+      add_series_names: ['Fate stay night'],
+      remove_series_names: ['Tsukihime'],
+    });
+    req.flush(mock);
+  });
+
   it('batchDelete sends POST /api/v1/media/actions/delete', () => {
     const body = { media_ids: ['m1'] };
     const mock = { processed: 1, skipped: 0 };

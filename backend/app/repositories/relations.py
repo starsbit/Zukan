@@ -210,6 +210,81 @@ class MediaEntityRepository:
         await self.db.flush()
         await owned_repo.recount_entity_ids(touched_entity_ids | created_entity_ids)
 
+    async def mutate_media_entities(
+        self,
+        media: Media,
+        *,
+        entity_type: MediaEntityType,
+        add_names: list[str],
+        remove_names: list[str],
+        source: str,
+        confidence: float | None = None,
+    ) -> bool:
+        normalized_add_names = normalize_manual_entity_names(add_names)
+        normalized_remove_names = normalize_manual_entity_names(remove_names)
+        remove_keys = {
+            normalize_metadata_search(name) or name.casefold()
+            for name in normalized_remove_names
+        }
+        add_names_after_removal = [
+            name
+            for name in normalized_add_names
+            if (normalize_metadata_search(name) or name.casefold()) not in remove_keys
+        ]
+
+        existing = (
+            await self.db.execute(
+                select(MediaEntity).where(
+                    MediaEntity.media_id == media.id,
+                    MediaEntity.entity_type == entity_type,
+                )
+            )
+        ).scalars().all()
+        touched_entity_ids = {entity.entity_id for entity in existing if entity.entity_id is not None}
+        existing_keys: set[str] = set()
+        changed = False
+
+        for entity in existing:
+            key = normalize_metadata_search(entity.name) or entity.name.casefold()
+            if key in remove_keys:
+                await self.db.delete(entity)
+                changed = True
+            else:
+                existing_keys.add(key)
+
+        if changed:
+            await self.db.flush()
+
+        owner_user_id = _effective_media_owner_id(media)
+        owned_repo = OwnedEntityRepository(self.db)
+        created_entity_ids: set[uuid.UUID] = set()
+        for name in add_names_after_removal:
+            key = normalize_metadata_search(name) or name.casefold()
+            if key in existing_keys:
+                continue
+            owned_entity = await owned_repo.get_or_create(
+                owner_user_id=owner_user_id,
+                entity_type=entity_type,
+                name=name,
+            )
+            created_entity_ids.add(owned_entity.id)
+            existing_keys.add(key)
+            self.db.add(MediaEntity(
+                media_id=media.id,
+                entity_type=entity_type,
+                entity_id=owned_entity.id,
+                name=owned_entity.name,
+                role="primary",
+                source=source,
+                confidence=confidence,
+            ))
+            changed = True
+
+        if changed:
+            await self.db.flush()
+        await owned_repo.recount_entity_ids(touched_entity_ids | created_entity_ids)
+        return changed
+
     async def list_character_suggestions(
         self,
         *,

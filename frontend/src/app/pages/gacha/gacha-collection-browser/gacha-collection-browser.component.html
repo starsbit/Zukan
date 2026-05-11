@@ -93,6 +93,24 @@
             </button>
           }
 
+          @if (upgradeable()) {
+            <button
+              mat-icon-button
+              color="primary"
+              class="collection-upgrade-button"
+              type="button"
+              [disabled]="upgradeDisabled(item)"
+              [matTooltip]="upgradeLabel(item)"
+              [attr.aria-label]="upgradeLabel(item)"
+              (click)="upgrade($event, item)">
+              @if (upgradeLoadingIds().has(item.id)) {
+                <mat-spinner diameter="16"></mat-spinner>
+              } @else {
+                <mat-icon aria-hidden="true">upgrade</mat-icon>
+              }
+            </button>
+          }
+
           @if (discardable()) {
             <button
               mat-icon-button
