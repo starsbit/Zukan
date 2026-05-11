@@ -248,7 +248,7 @@ async def test_list_batch_review_items_builds_recommendations_when_force_refresh
 
 
 @pytest.mark.asyncio
-async def test_list_batch_review_items_refreshes_and_persists_library_suggestions_when_forced(fake_db, user):
+async def test_list_batch_review_items_force_refresh_does_not_recompute_library_suggestions(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
     media = Media(
@@ -274,31 +274,10 @@ async def test_list_batch_review_items_refreshes_and_persists_library_suggestion
     review_item.id = uuid.uuid4()
     review_item.media = media
     service._library_enrichment.enrich_media = AsyncMock()
-    service._library_enrichment.enrich_media_batch = AsyncMock(return_value={
-        media.id: SimpleNamespace(
-            suggestions={
-                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
-                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
-            },
-        )
-    })
-    fake_db.get = AsyncMock(return_value=User(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        hashed_password=user.hashed_password,
-        is_admin=user.is_admin,
-        show_nsfw=user.show_nsfw,
-        show_sensitive=user.show_sensitive,
-        tag_confidence_threshold=user.tag_confidence_threshold,
-        library_classification_enabled=True,
-        version=user.version,
-        storage_quota_mb=user.storage_quota_mb,
-        created_at=user.created_at,
-    ))
+    service._library_enrichment.enrich_media_batch = AsyncMock()
 
     with patch.object(service, "get_batch_for_user", AsyncMock()), \
-         patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=[])), \
+         patch.object(service, "_build_recommendation_groups", AsyncMock(return_value=[])) as build_groups, \
          patch("backend.app.services.processing.ImportBatchItemRepository") as items_repo_cls, \
          patch("backend.app.services.processing.UserFavoriteRepository") as favorite_repo_cls:
         items_repo_cls.return_value.list_review_candidates_for_batch = AsyncMock(return_value=[review_item])
@@ -307,18 +286,11 @@ async def test_list_batch_review_items_refreshes_and_persists_library_suggestion
 
         result = await service.list_batch_review_items(batch_id, user.id, include_recommendations=True, force_refresh=True)
 
-    assert [suggestion.name for suggestion in result.items[0].suggested_characters] == ["Saber"]
-    assert [suggestion.name for suggestion in result.items[0].suggested_series] == ["Fate/stay night"]
-    assert media.review_suggested_characters[0]["name"] == "Saber"
-    assert media.review_suggested_series[0]["name"] == "Fate/stay night"
-    assert media.review_suggestions_computed_at is not None
+    assert result.items[0].suggested_characters == []
+    assert result.items[0].suggested_series == []
     service._library_enrichment.enrich_media.assert_not_awaited()
-    service._library_enrichment.enrich_media_batch.assert_awaited_once_with(
-        [media],
-        user_id=user.id,
-        apply=False,
-        compute_missing_embeddings=False,
-    )
+    service._library_enrichment.enrich_media_batch.assert_not_awaited()
+    build_groups.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -464,14 +436,13 @@ async def test_precompute_review_suggestions_for_media_persists_missing_name_cac
         storage_quota_mb=user.storage_quota_mb,
         created_at=user.created_at,
     ))
-    service._library_enrichment.enrich_media_batch = AsyncMock(return_value={
-        media.id: SimpleNamespace(
-            suggestions={
-                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
-                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
-            },
-        )
-    })
+    service._library_enrichment.enrich_media = AsyncMock(return_value=SimpleNamespace(
+        applied={},
+        suggestions={
+            MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
+            MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.91)],
+        },
+    ))
 
     refreshed = await service.precompute_review_suggestions_for_media(media.id)
 
@@ -479,12 +450,138 @@ async def test_precompute_review_suggestions_for_media_persists_missing_name_cac
     assert media.review_suggested_characters[0]["name"] == "Saber"
     assert media.review_suggested_series[0]["name"] == "Fate/stay night"
     assert media.review_suggestions_computed_at is not None
-    service._library_enrichment.enrich_media_batch.assert_awaited_once_with(
-        [media],
+    service._library_enrichment.enrich_media.assert_awaited_once_with(
+        media.id,
         user_id=user.id,
-        apply=False,
-        compute_missing_embeddings=False,
+        apply=True,
     )
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_precompute_review_suggestions_clears_cache_when_fallback_resolves_all_names(fake_db, user):
+    service = ProcessingService(fake_db)
+    media = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        uploaded_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        metadata_review_dismissed=False,
+        review_suggested_characters=[{"name": "Old", "confidence": 0.4}],
+        review_suggested_series=[{"name": "Old Series", "confidence": 0.4}],
+    )
+    media.entities = []
+    media.media_tags = []
+    fake_db.execute = AsyncMock(return_value=ScalarResult(one=media))
+    fake_db.get = AsyncMock(return_value=User(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password,
+        is_admin=user.is_admin,
+        show_nsfw=user.show_nsfw,
+        show_sensitive=user.show_sensitive,
+        tag_confidence_threshold=user.tag_confidence_threshold,
+        library_classification_enabled=True,
+        version=user.version,
+        storage_quota_mb=user.storage_quota_mb,
+        created_at=user.created_at,
+    ))
+
+    async def _enrich(*args, **kwargs):
+        media.entities = [
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="library_match"),
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.series, name="Fate", role="primary", source="library_match"),
+        ]
+        return SimpleNamespace(
+            applied={MediaEntityType.character: ["Saber"], MediaEntityType.series: ["Fate"]},
+            suggestions={
+                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
+                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate", confidence=0.91)],
+            },
+        )
+
+    service._library_enrichment.enrich_media = AsyncMock(side_effect=_enrich)
+
+    refreshed = await service.precompute_review_suggestions_for_media(media.id)
+
+    assert refreshed is True
+    assert media.review_suggested_characters is None
+    assert media.review_suggested_series is None
+    assert media.review_suggestions_computed_at is not None
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_precompute_review_suggestions_caches_only_remaining_missing_names(fake_db, user):
+    service = ProcessingService(fake_db)
+    media = Media(
+        id=uuid.uuid4(),
+        uploader_id=user.id,
+        owner_id=user.id,
+        filename="one.webp",
+        original_filename="one.webp",
+        filepath="/tmp/one.webp",
+        media_type=MediaType.IMAGE,
+        captured_at=datetime.now(timezone.utc),
+        uploaded_at=datetime.now(timezone.utc),
+        visibility=MediaVisibility.private,
+        version=1,
+        is_nsfw=False,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        metadata_review_dismissed=False,
+    )
+    media.entities = []
+    media.media_tags = []
+    fake_db.execute = AsyncMock(return_value=ScalarResult(one=media))
+    fake_db.get = AsyncMock(return_value=User(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        hashed_password=user.hashed_password,
+        is_admin=user.is_admin,
+        show_nsfw=user.show_nsfw,
+        show_sensitive=user.show_sensitive,
+        tag_confidence_threshold=user.tag_confidence_threshold,
+        library_classification_enabled=True,
+        version=user.version,
+        storage_quota_mb=user.storage_quota_mb,
+        created_at=user.created_at,
+    ))
+
+    async def _enrich(*args, **kwargs):
+        media.entities = [
+            MediaEntity(id=uuid.uuid4(), media_id=media.id, entity_type=MediaEntityType.character, name="Saber", role="primary", source="library_match"),
+        ]
+        return SimpleNamespace(
+            applied={MediaEntityType.character: ["Saber"]},
+            suggestions={
+                MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name="Saber", confidence=0.95)],
+                MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name="Fate", confidence=0.91)],
+            },
+        )
+
+    service._library_enrichment.enrich_media = AsyncMock(side_effect=_enrich)
+
+    refreshed = await service.precompute_review_suggestions_for_media(media.id)
+
+    assert refreshed is True
+    assert media.review_suggested_characters == []
+    assert media.review_suggested_series[0]["name"] == "Fate"
+    assert media.review_suggestions_computed_at is not None
     fake_db.commit.assert_awaited_once()
 
 
@@ -549,7 +646,7 @@ async def test_similarity_groups_only_score_indexed_signal_pairs(fake_db, user):
 
 
 @pytest.mark.asyncio
-async def test_list_batch_review_items_batches_library_suggestions_once(fake_db, user):
+async def test_list_batch_review_items_force_refresh_does_not_batch_library_suggestions(fake_db, user):
     service = ProcessingService(fake_db)
     batch_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
@@ -610,7 +707,7 @@ async def test_list_batch_review_items_batches_library_suggestions_once(fake_db,
 
     assert result.total == 3
     service._library_enrichment.enrich_media.assert_not_awaited()
-    service._library_enrichment.enrich_media_batch.assert_awaited_once()
+    service._library_enrichment.enrich_media_batch.assert_not_awaited()
 
 
 @pytest.mark.asyncio

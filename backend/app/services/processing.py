@@ -282,7 +282,6 @@ class ProcessingService:
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
             if force_refresh:
-                await self._refresh_review_suggestions_for_items(items, review_candidates, user_id)
                 logger.info(
                     "Building recommendations batch_id=%s review_item_count=%d force_refresh=%s",
                     batch_id,
@@ -415,7 +414,31 @@ class ProcessingService:
         return items, review_candidates
 
     async def precompute_review_suggestions_for_media(self, media_id: uuid.UUID) -> bool:
-        media = (
+        media = await self._load_review_media(media_id)
+        if media is None or media.uploader_id is None:
+            return False
+        if not self._media_needs_missing_name_review(media):
+            return False
+        if not await self._is_library_classification_enabled(media.uploader_id):
+            return False
+
+        result = await self._library_enrichment.enrich_media(
+            media.id,
+            user_id=media.uploader_id,
+            apply=True,
+        )
+        refreshed_media = await self._load_review_media(media.id) or media
+        self._store_review_suggestions_from_result(refreshed_media, result)
+        await self._invalidate_recommendation_groups_for_media(refreshed_media.id)
+        await self._db.commit()
+        return True
+
+    async def _is_library_classification_enabled(self, user_id: uuid.UUID) -> bool:
+        user = await self._db.get(User, user_id)
+        return isinstance(user, User) and bool(user.library_classification_enabled)
+
+    async def _load_review_media(self, media_id: uuid.UUID) -> Media | None:
+        return (
             await self._db.execute(
                 select(Media)
                 .options(
@@ -427,79 +450,23 @@ class ProcessingService:
                 .where(Media.id == media_id)
             )
         ).scalar_one_or_none()
-        if media is None or media.uploader_id is None:
-            return False
-        if not self._media_needs_missing_name_review(media):
-            return False
 
-        await self._refresh_review_suggestions_for_media([media], media.uploader_id)
-        await self._invalidate_recommendation_groups_for_media(media.id)
-        await self._db.commit()
-        return True
-
-    async def _is_library_classification_enabled(self, user_id: uuid.UUID) -> bool:
-        user = await self._db.get(User, user_id)
-        return isinstance(user, User) and bool(user.library_classification_enabled)
-
-    async def _refresh_review_suggestions_for_items(
-        self,
-        items: list[ImportBatchReviewItemRead],
-        candidates: list[ImportBatchItem],
-        user_id: uuid.UUID,
-    ) -> None:
-        if not items:
-            return
-        media_by_id = {
-            candidate.media.id: candidate.media
-            for candidate in candidates
-            if candidate.media is not None
-        }
-        target_media = [
-            media_by_id[item.media.id]
-            for item in items
-            if item.media.id in media_by_id
-        ]
-        suggestions_by_media_id = await self._refresh_review_suggestions_for_media(target_media, user_id)
-        for item in items:
-            suggested_characters, suggested_series = suggestions_by_media_id.get(item.media.id, ([], []))
-            item.suggested_characters = suggested_characters
-            item.suggested_series = suggested_series
-
-    async def _refresh_review_suggestions_for_media(
-        self,
-        target_media: list[Media],
-        user_id: uuid.UUID,
-    ) -> dict[uuid.UUID, tuple[list[ImportBatchRecommendationSuggestionRead], list[ImportBatchRecommendationSuggestionRead]]]:
+    def _store_review_suggestions_from_result(self, media: Media, result: Any) -> None:
         now = datetime.now(timezone.utc)
-        suggestions_by_media_id: dict[
-            uuid.UUID,
-            tuple[list[ImportBatchRecommendationSuggestionRead], list[ImportBatchRecommendationSuggestionRead]],
-        ] = {}
-        owned_review_media = [
-            media
-            for media in target_media
-            if media.uploader_id == user_id and self._media_needs_missing_name_review(media)
-        ]
-
-        library_results = {}
-        if owned_review_media and await self._is_library_classification_enabled(user_id):
-            library_results = await self._library_enrichment.enrich_media_batch(
-                owned_review_media,
-                user_id=user_id,
-                apply=False,
-                compute_missing_embeddings=False,
-            )
-
-        for media in owned_review_media:
-            result = library_results.get(media.id)
-            suggested_characters = result.suggestions.get(MediaEntityType.character, []) if result is not None else []
-            suggested_series = result.suggestions.get(MediaEntityType.series, []) if result is not None else []
-            media.review_suggested_characters = [suggestion.model_dump(mode="json") for suggestion in suggested_characters]
-            media.review_suggested_series = [suggestion.model_dump(mode="json") for suggestion in suggested_series]
+        if not self._media_needs_missing_name_review(media):
+            media.review_suggested_characters = None
+            media.review_suggested_series = None
             media.review_suggestions_computed_at = now
-            suggestions_by_media_id[media.id] = (suggested_characters, suggested_series)
+            return
 
-        return suggestions_by_media_id
+        suggestions = getattr(result, "suggestions", {}) or {}
+        has_character = any(entity.entity_type == MediaEntityType.character and entity.name.strip() for entity in media.entities)
+        has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
+        suggested_characters = [] if has_character else suggestions.get(MediaEntityType.character, [])
+        suggested_series = [] if has_series else suggestions.get(MediaEntityType.series, [])
+        media.review_suggested_characters = [suggestion.model_dump(mode="json") for suggestion in suggested_characters]
+        media.review_suggested_series = [suggestion.model_dump(mode="json") for suggestion in suggested_series]
+        media.review_suggestions_computed_at = now
 
     def _media_needs_missing_name_review(self, media: Media) -> bool:
         if media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:

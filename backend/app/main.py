@@ -187,7 +187,6 @@ async def post_tag_worker():
                 await processing.run_ocr_for_media(media_id, ocr_backend)
                 logger.info("Post-tag worker refreshing embedding media_id=%s", media_id)
                 await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
-                await _run_library_enrichment_after_post_tag(db, media_id)
                 logger.info("Post-tag worker completed media_id=%s", media_id)
         except Exception:
             logger.exception("Post-tag processing failed for media_id=%s", media_id)
