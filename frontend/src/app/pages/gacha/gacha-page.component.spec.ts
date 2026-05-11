@@ -520,6 +520,20 @@ describe('GachaPageComponent', () => {
     expect(snackBar.open).toHaveBeenCalledWith('Upgraded card to level 3.', 'Close', { duration: 3500 });
   });
 
+  it('hides upgrade actions for cards that cannot be upgraded', async () => {
+    const { fixture } = await createComponent({
+      collectionItems: [{ ...collectionItem, locked: false, level: 2, copies_pulled: 2 }],
+    });
+
+    const tabGroup = fixture.debugElement.query(By.directive(MatTabGroup)).componentInstance as MatTabGroup;
+    tabGroup.selectedIndex = 1;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement as HTMLElement).querySelector('.collection-upgrade-button')).toBeNull();
+  });
+
   it('does not show collection management actions in collector trade panes', async () => {
     const { fixture, component } = await createComponent({
       collectionItems: [{ ...collectionItem, locked: false }],

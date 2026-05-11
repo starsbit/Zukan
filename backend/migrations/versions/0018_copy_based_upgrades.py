@@ -1,6 +1,6 @@
 """Use copy-based collection upgrades.
 
-Revision ID: 0018_copy_based_collection_upgrades
+Revision ID: 0018_copy_based_upgrades
 Revises: 0017_gallery_scaling_indexes
 Create Date: 2026-05-11 00:00:00
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0018_copy_based_collection_upgrades"
+revision = "0018_copy_based_upgrades"
 down_revision = "0017_gallery_scaling_indexes"
 branch_labels = None
 depends_on = None

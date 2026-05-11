@@ -93,7 +93,7 @@
             </button>
           }
 
-          @if (upgradeable()) {
+          @if (upgradeable() && (canUpgradeItem()(item) || upgradeLoadingIds().has(item.id))) {
             <button
               mat-icon-button
               color="primary"
