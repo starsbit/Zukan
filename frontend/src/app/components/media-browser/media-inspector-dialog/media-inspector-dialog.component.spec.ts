@@ -12,6 +12,15 @@ import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog.component';
 
+function makePasteEvent(text: string): ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {
+  return {
+    clipboardData: {
+      getData: vi.fn(() => text),
+    },
+    preventDefault: vi.fn(),
+  } as unknown as ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> };
+}
+
 function makeMedia(id = 'm1', overrides: Partial<MediaRead> = {}): MediaRead {
   return {
     id,
@@ -822,6 +831,32 @@ describe('MediaInspectorDialogComponent', () => {
         entities: [{ entity_type: MediaEntityType.CHARACTER, name: "Jeanne D'Arc (Fate)" }],
       }),
     );
+  });
+
+  it('adds comma-separated tags, characters, and series only on paste', async () => {
+    const { fixture } = await createComponent();
+    const component = fixture.componentInstance;
+
+    component.beginEdit();
+    const tagPaste = makePasteEvent('hero, moonlight, Saber');
+    const characterPaste = makePasteEvent('Rin Tohsaka, Archer');
+    const seriesPaste = makePasteEvent('Fate/zero, Tsukihime');
+    component.onTagPaste(tagPaste);
+    component.onCharacterPaste(characterPaste);
+    component.onSeriesPaste(seriesPaste);
+
+    expect(tagPaste.preventDefault).toHaveBeenCalled();
+    expect(characterPaste.preventDefault).toHaveBeenCalled();
+    expect(seriesPaste.preventDefault).toHaveBeenCalled();
+    expect(component.editableTags()).toEqual(['Saber', 'white hair', 'hero', 'moonlight']);
+    expect(component.editableCharacters()).toEqual(['Saber Alter', 'Rin Tohsaka', 'Archer']);
+    expect(component.editableSeries()).toEqual(['Fate/stay night', 'Fate/zero', 'Tsukihime']);
+
+    const plainPaste = makePasteEvent('single value');
+    component.onTagPaste(plainPaste);
+
+    expect(plainPaste.preventDefault).not.toHaveBeenCalled();
+    expect(component.editableTags()).toEqual(['Saber', 'white hair', 'hero', 'moonlight']);
   });
 
   it('renders content safety controls in edit mode and saves manual overrides', async () => {

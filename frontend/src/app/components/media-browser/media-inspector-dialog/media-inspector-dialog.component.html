@@ -270,6 +270,7 @@
                   [matAutocomplete]="characterAutocomplete"
                   placeholder="Type or choose a character"
                   (keydown.enter)="addTypedCharacterFromEvent($event)"
+                  (paste)="onCharacterPaste($event)"
                 />
                 <button
                   mat-icon-button
@@ -365,6 +366,7 @@
                   [matAutocomplete]="seriesAutocomplete"
                   placeholder="Type or choose a series"
                   (keydown.enter)="addTypedSeriesFromEvent($event)"
+                  (paste)="onSeriesPaste($event)"
                 />
                 <button
                   mat-icon-button
@@ -494,6 +496,7 @@
                   [matAutocomplete]="tagAutocomplete"
                   placeholder="Type or choose a tag"
                   (keydown.enter)="addTypedTagFromEvent($event)"
+                  (paste)="onTagPaste($event)"
                 />
                 <button
                   mat-icon-button

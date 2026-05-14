@@ -7,6 +7,15 @@ import { MediaClientService } from '../../../services/web/media-client.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
 import { BulkMetadataDialogComponent } from './bulk-metadata-dialog.component';
 
+function makePasteEvent(text: string): ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {
+  return {
+    clipboardData: {
+      getData: vi.fn(() => text),
+    },
+    preventDefault: vi.fn(),
+  } as unknown as ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> };
+}
+
 describe('BulkMetadataDialogComponent', () => {
   async function createComponent() {
     const close = vi.fn();
@@ -90,5 +99,27 @@ describe('BulkMetadataDialogComponent', () => {
     expect(component.suggestionsFor('add_tags')).toEqual(['safe']);
     expect(component.suggestionsFor('add_character_names')).toEqual(['Saber']);
     expect(component.suggestionsFor('add_series_names')).toEqual(['Fate/stay night']);
+  });
+
+  it('adds comma-separated pasted values to metadata chips', async () => {
+    const { fixture } = await createComponent();
+    const component = fixture.componentInstance;
+
+    const tagPaste = makePasteEvent('Safe Tag, night sky, safe_tag');
+    const characterPaste = makePasteEvent('Saber, Rin Tohsaka');
+    component.onInputPaste('add_tags', tagPaste);
+    component.onInputPaste('remove_character_names', characterPaste);
+    fixture.detectChanges();
+
+    expect(tagPaste.preventDefault).toHaveBeenCalled();
+    expect(characterPaste.preventDefault).toHaveBeenCalled();
+    expect(component.chipsFor('add_tags')).toEqual(['Safe Tag', 'night sky']);
+    expect(component.chipsFor('remove_character_names')).toEqual(['Saber', 'Rin Tohsaka']);
+
+    const plainPaste = makePasteEvent('Fate/stay night');
+    component.onInputPaste('add_series_names', plainPaste);
+
+    expect(plainPaste.preventDefault).not.toHaveBeenCalled();
+    expect(component.chipsFor('add_series_names')).toEqual([]);
   });
 });

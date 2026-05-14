@@ -32,6 +32,7 @@ import {
   applyReviewEntityUpdateToItems,
   refreshRecommendationGroupsForItems,
 } from '../../../../utils/review-items.utils';
+import { commaSeparatedPasteValues } from '../../../../utils/comma-separated-paste.utils';
 
 type ReviewFilter = 'all' | 'missing_character' | 'missing_series' | 'missing_both';
 type ReviewView = 'groups' | 'items';
@@ -334,6 +335,28 @@ export class UploadReviewDialogComponent {
 
   addSeries(value?: string): void {
     this.commitName(this.seriesNames, value ?? this.seriesInputControl.getRawValue());
+    this.seriesInputControl.setValue('', { emitEvent: false });
+    this.seriesSuggestions.set([]);
+  }
+
+  onCharacterPaste(event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.commitName(this.characterNames, value));
+    this.characterInputControl.setValue('', { emitEvent: false });
+    this.characterSuggestions.set([]);
+  }
+
+  onSeriesPaste(event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.commitName(this.seriesNames, value));
     this.seriesInputControl.setValue('', { emitEvent: false });
     this.seriesSuggestions.set([]);
   }

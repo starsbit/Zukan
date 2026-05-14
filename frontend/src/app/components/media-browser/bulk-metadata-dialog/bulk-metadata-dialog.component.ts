@@ -12,6 +12,7 @@ import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
 import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/tags';
 import { MediaClientService } from '../../../services/web/media-client.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
+import { commaSeparatedPasteValues } from '../../../utils/comma-separated-paste.utils';
 import { formatMetadataName, normalizeMetadataNameForSubmission } from '../../../utils/media-display.utils';
 
 export interface BulkMetadataDialogData {
@@ -153,6 +154,17 @@ export class BulkMetadataDialogComponent {
 
   onInputEnter(key: BulkMetadataFieldKey): void {
     this.addChip(key, this.controls[key].value);
+  }
+
+  onInputPaste(key: BulkMetadataFieldKey, event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.addChip(key, value));
+    this.controls[key].reset('', { emitEvent: false });
+    this.suggestions.update((current) => ({ ...current, [key]: [] }));
   }
 
   onOptionSelected(key: BulkMetadataFieldKey, event: MatAutocompleteSelectedEvent): void {

@@ -22,6 +22,7 @@
           [matAutocomplete]="autocomplete"
           [placeholder]="field.placeholder"
           (keydown.enter)="onInputEnter(field.key)"
+          (paste)="onInputPaste(field.key, $event)"
         />
         <mat-autocomplete #autocomplete="matAutocomplete" (optionSelected)="onOptionSelected(field.key, $event)">
           @for (suggestion of suggestionsFor(field.key); track suggestion) {
@@ -55,6 +56,7 @@
           [matAutocomplete]="autocomplete"
           [placeholder]="field.placeholder"
           (keydown.enter)="onInputEnter(field.key)"
+          (paste)="onInputPaste(field.key, $event)"
         />
         <mat-autocomplete #autocomplete="matAutocomplete" (optionSelected)="onOptionSelected(field.key, $event)">
           @for (suggestion of suggestionsFor(field.key); track suggestion) {

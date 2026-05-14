@@ -83,6 +83,7 @@
           [formControl]="characterInputControl"
           [matAutocomplete]="characterAutocomplete"
           (keydown.enter)="$event.preventDefault(); addCharacter()"
+          (paste)="onCharacterPaste($event)"
         />
       </mat-form-field>
 
@@ -104,6 +105,7 @@
           [formControl]="seriesInputControl"
           [matAutocomplete]="seriesAutocomplete"
           (keydown.enter)="$event.preventDefault(); addSeries()"
+          (paste)="onSeriesPaste($event)"
         />
       </mat-form-field>
 

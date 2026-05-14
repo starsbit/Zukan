@@ -11,6 +11,15 @@ import { MediaService } from '../../../../services/media.service';
 import { BatchesClientService } from '../../../../services/web/batches-client.service';
 import { UploadReviewDialogComponent } from './upload-review-dialog.component';
 
+function makePasteEvent(text: string): ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {
+  return {
+    clipboardData: {
+      getData: vi.fn(() => text),
+    },
+    preventDefault: vi.fn(),
+  } as unknown as ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> };
+}
+
 function makeReviewItem(
   id: string,
   state: 'character' | 'series' | 'both' = 'both',
@@ -173,19 +182,23 @@ describe('UploadReviewDialogComponent', () => {
     refreshBatchReview.mockClear();
     refreshBatchRecommendations.mockClear();
     component.toggleSelected('m1');
-    component.addCharacter("Jeanne D'Arc (Fate)");
-    component.addSeries('Little Busters');
+    const characterPaste = makePasteEvent("Jeanne D'Arc (Fate), Rin Tohsaka");
+    const seriesPaste = makePasteEvent('Little Busters, Fate/stay night');
+    component.onCharacterPaste(characterPaste);
+    component.onSeriesPaste(seriesPaste);
     component.applySelected();
 
+    expect(characterPaste.preventDefault).toHaveBeenCalled();
+    expect(seriesPaste.preventDefault).toHaveBeenCalled();
     expect(batchUpdateEntities).toHaveBeenCalledWith({
       media_ids: ['m1'],
-      character_names: ["Jeanne D'Arc (Fate)"],
-      series_names: ['Little Busters'],
+      character_names: ["Jeanne D'Arc (Fate)", 'Rin Tohsaka'],
+      series_names: ['Little Busters', 'Fate/stay night'],
     });
     expect(tracker.applyReviewEntityUpdate).toHaveBeenCalledWith('b1', {
       mediaIds: ['m1'],
-      characterNames: ["Jeanne D'Arc (Fate)"],
-      seriesNames: ['Little Busters'],
+      characterNames: ["Jeanne D'Arc (Fate)", 'Rin Tohsaka'],
+      seriesNames: ['Little Busters', 'Fate/stay night'],
     });
     expect(recordLibraryClassificationFeedbackBulk).toHaveBeenCalledWith({
       items: expect.arrayContaining([

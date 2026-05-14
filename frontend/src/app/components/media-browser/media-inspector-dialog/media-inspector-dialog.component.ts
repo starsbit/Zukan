@@ -51,6 +51,7 @@ import {
   formatVisibility,
   humanizeBackendLabel,
 } from '../../../utils/media-display.utils';
+import { commaSeparatedPasteValues } from '../../../utils/comma-separated-paste.utils';
 
 export interface MediaInspectorDialogData {
   items: MediaRead[];
@@ -492,6 +493,39 @@ export class MediaInspectorDialogComponent {
   addTypedSeriesFromEvent(event: Event): void {
     event.preventDefault();
     this.addTypedSeries();
+  }
+
+  onTagPaste(event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.commitTag(value));
+    this.tagInputControl.setValue('', { emitEvent: false });
+    this.tagSuggestions.set([]);
+  }
+
+  onCharacterPaste(event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.commitCharacter(value));
+    this.characterInputControl.setValue('', { emitEvent: false });
+    this.characterSuggestions.set([]);
+  }
+
+  onSeriesPaste(event: ClipboardEvent): void {
+    const values = commaSeparatedPasteValues(event);
+    if (values === null) {
+      return;
+    }
+    event.preventDefault();
+    values.forEach((value) => this.commitSeries(value));
+    this.seriesInputControl.setValue('', { emitEvent: false });
+    this.seriesSuggestions.set([]);
   }
 
   selectTag(tagName: string): void {
