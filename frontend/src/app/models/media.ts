@@ -105,6 +105,11 @@ export interface MediaDetail extends MediaRead {
   tag_details: TagWithConfidence[];
   external_refs: ExternalRefRead[];
   entities: EntityRead[];
+  related_posts: RelatedMediaRead[];
+}
+
+export interface RelatedMediaRead extends MediaRead {
+  similarity: number;
 }
 
 export interface MediaMetadataUpdate {

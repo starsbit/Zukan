@@ -16,7 +16,7 @@ const mockMedia = {
   is_nsfw_override: null, is_sensitive_override: null, tagging_status: 'done' as const,
   tagging_error: null, thumbnail_status: 'done' as const, poster_status: 'pending' as const,
   ocr_text: null, is_favorited: false,
-  tag_details: [], external_refs: [], entities: [],
+  tag_details: [], external_refs: [], entities: [], related_posts: [],
 };
 
 describe('MediaClientService', () => {

@@ -89,6 +89,7 @@ from .media import (
     MediaRead,
     MediaTimeline,
     MediaUpdate,
+    RelatedMediaRead,
     TimelineBucket,
 )
 from .notifications import (

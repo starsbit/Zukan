@@ -28,7 +28,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
-import { MediaDetail, MediaRead, MediaType } from '../../../models/media';
+import { MediaDetail, MediaRead, MediaType, ProcessingStatus, RelatedMediaRead } from '../../../models/media';
 import {
   ImportBatchRecommendationSuggestionRead,
   LibraryClassificationFeedbackCreate,
@@ -171,6 +171,8 @@ export class MediaInspectorDialogComponent {
   readonly seriesSuggestions = signal<SeriesSuggestion[]>([]);
   readonly fallbackCharacterSuggestions = signal<ImportBatchRecommendationSuggestionRead[]>([]);
   readonly fallbackSeriesSuggestions = signal<ImportBatchRecommendationSuggestionRead[]>([]);
+  readonly relatedPreviewUrls = signal<Record<string, string>>({});
+  readonly relatedPreviewFailed = signal<Record<string, boolean>>({});
   readonly draft = signal<MetadataDraft>({
     tags: [],
     characterNames: [],
@@ -263,9 +265,11 @@ export class MediaInspectorDialogComponent {
   readonly editableTags = computed(() => this.draft().tags);
   readonly editableCharacters = computed(() => this.draft().characterNames);
   readonly editableSeries = computed(() => this.draft().seriesNames);
+  readonly relatedPosts = computed(() => this.detail()?.related_posts ?? []);
 
   private objectUrl: string | null = null;
   private loadRequestId = 0;
+  private relatedPreviewRequestId = 0;
   private classificationSuggestionsRequestId = 0;
   private classificationSuggestionsMediaId: string | null = null;
   private loadingClassificationSuggestionsMediaId: string | null = null;
@@ -806,6 +810,41 @@ export class MediaInspectorDialogComponent {
     return suggestion.explanation || `${Math.round(suggestion.confidence * 100)}% confidence`;
   }
 
+  relatedPostTitle(post: RelatedMediaRead): string {
+    return post.original_filename ?? post.filename;
+  }
+
+  relatedPostSubtitle(post: RelatedMediaRead): string {
+    return [
+      formatMediaType(post.media_type),
+      formatDateTime(post.metadata.captured_at),
+    ].filter(Boolean).join(' • ');
+  }
+
+  relatedPostSimilarity(post: RelatedMediaRead): string {
+    return `${Math.round(post.similarity * 100)}%`;
+  }
+
+  relatedPostPreviewUrl(post: RelatedMediaRead): string | null {
+    return this.relatedPreviewUrls()[post.id] ?? null;
+  }
+
+  relatedPostPreviewFailed(post: RelatedMediaRead): boolean {
+    return !!this.relatedPreviewFailed()[post.id];
+  }
+
+  openRelatedPost(post: RelatedMediaRead): void {
+    const existingIndex = this.items().findIndex((item) => item.id === post.id);
+    if (existingIndex >= 0) {
+      this.navigateTo(existingIndex);
+      return;
+    }
+
+    const nextIndex = this.items().length;
+    this.items.update((items) => [...items, post]);
+    this.navigateTo(nextIndex);
+  }
+
   onMetadataFilterSelected(selection: MetadataFilterSelection): void {
     this.metadataFilterSelected.emit(selection);
   }
@@ -965,6 +1004,7 @@ export class MediaInspectorDialogComponent {
     this.loadingDetail.set(true);
     this.loadingFile.set(true);
     this.clearFallbackClassificationSuggestions();
+    this.clearRelatedPreviews();
     this.revokeObjectUrl();
 
     this.mediaService
@@ -978,6 +1018,7 @@ export class MediaInspectorDialogComponent {
           this.detail.set(detail);
           this.replaceActiveItem(detail);
           this.resetDraftFromMedia(detail);
+          this.loadRelatedPreviews(detail.related_posts ?? []);
           this.loadingDetail.set(false);
         },
         error: () => {
@@ -1074,6 +1115,58 @@ export class MediaInspectorDialogComponent {
     this.loadingClassificationSuggestionsMediaId = null;
     this.fallbackCharacterSuggestions.set([]);
     this.fallbackSeriesSuggestions.set([]);
+  }
+
+  private loadRelatedPreviews(posts: RelatedMediaRead[]): void {
+    const requestId = ++this.relatedPreviewRequestId;
+    this.relatedPreviewUrls.set({});
+    this.relatedPreviewFailed.set({});
+
+    for (const post of posts) {
+      const preview$ = this.relatedPreviewSource(post);
+      if (!preview$) {
+        this.markRelatedPreviewFailed(post.id, requestId);
+        continue;
+      }
+
+      preview$
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (url) => {
+            if (requestId !== this.relatedPreviewRequestId) {
+              return;
+            }
+            this.relatedPreviewUrls.update((urls) => ({ ...urls, [post.id]: url }));
+          },
+          error: () => this.markRelatedPreviewFailed(post.id, requestId),
+        });
+    }
+  }
+
+  private relatedPreviewSource(post: RelatedMediaRead) {
+    if (
+      post.media_type !== MediaType.IMAGE &&
+      post.poster_status === ProcessingStatus.DONE
+    ) {
+      return this.mediaService.getPosterUrl(post.id);
+    }
+    if (post.thumbnail_status === ProcessingStatus.DONE) {
+      return this.mediaService.getThumbnailUrl(post.id);
+    }
+    return null;
+  }
+
+  private markRelatedPreviewFailed(mediaId: string, requestId: number): void {
+    if (requestId !== this.relatedPreviewRequestId) {
+      return;
+    }
+    this.relatedPreviewFailed.update((failed) => ({ ...failed, [mediaId]: true }));
+  }
+
+  private clearRelatedPreviews(): void {
+    this.relatedPreviewRequestId++;
+    this.relatedPreviewUrls.set({});
+    this.relatedPreviewFailed.set({});
   }
 
   private replaceActiveItem(updated: MediaRead): void {

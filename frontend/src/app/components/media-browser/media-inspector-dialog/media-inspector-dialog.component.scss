@@ -351,6 +351,61 @@ video.inspector-media {
   align-items: center;
 }
 
+.inspector-related-posts {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.inspector-related-post {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  min-height: 4rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 0.6rem;
+  background: var(--mat-sys-surface-container-high);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inspector-related-post__preview {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: 0.55rem;
+  background: var(--mat-sys-surface-container-highest);
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.inspector-related-post__preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.inspector-related-post__body {
+  display: grid;
+  min-width: 0;
+}
+
+.inspector-related-post__title,
+.inspector-related-post__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-related-post__score {
+  font-weight: 700;
+}
+
 .inspector-chips mat-chip,
 .inspector-chips mat-chip-row {
   --mdc-chip-elevated-container-color: color-mix(

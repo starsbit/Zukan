@@ -161,7 +161,7 @@ describe('MediaService', () => {
       http.expectOne(r => r.url === '/api/v1/media/search')
         .flush(makePage([makeMedia('m1'), makeMedia('m2')]));
 
-      const updated = { ...makeMedia('m1'), tags: ['cat'], tag_details: [], external_refs: [], entities: [] };
+      const updated = { ...makeMedia('m1'), tags: ['cat'], tag_details: [], external_refs: [], entities: [], related_posts: [] };
       service.update('m1', { tags: ['cat'] }).subscribe();
       http.expectOne('/api/v1/media/m1').flush(updated);
 
@@ -399,7 +399,7 @@ describe('MediaService', () => {
 
   describe('get()', () => {
     it('sends GET /api/v1/media/{id}', () => {
-      const detail = { ...makeMedia('m1'), tag_details: [], external_refs: [], entities: [] };
+      const detail = { ...makeMedia('m1'), tag_details: [], external_refs: [], entities: [], related_posts: [] };
       service.get('m1').subscribe(res => expect(res).toEqual(detail));
       const req = http.expectOne('/api/v1/media/m1');
       expect(req.request.method).toBe('GET');

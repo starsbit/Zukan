@@ -47,12 +47,16 @@ def _media_read_payload(media_id: str) -> dict:
         "tags": ["safe"],
         "ocr_text_override": None,
         "is_nsfw": False,
+        "is_sensitive": False,
+        "is_nsfw_override": None,
+        "is_sensitive_override": None,
         "tagging_status": "done",
         "tagging_error": None,
         "thumbnail_status": "done",
         "poster_status": "not_applicable",
         "ocr_text": None,
         "is_favorited": False,
+        "favorite_count": 0,
     }
 
 
@@ -791,6 +795,12 @@ def test_get_media_contract(api_client, monkeypatch):
         payload["tag_details"] = []
         payload["external_refs"] = []
         payload["entities"] = []
+        payload["related_posts"] = [
+            {
+                **_media_read_payload(str(uuid.uuid4())),
+                "similarity": 0.87,
+            }
+        ]
         return payload
 
     monkeypatch.setattr(MediaQueryService, "get_media_detail", _fake_get)
@@ -799,6 +809,7 @@ def test_get_media_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["id"] == str(media_id)
+    assert response.json()["related_posts"][0]["similarity"] == 0.87
 
 
 def test_update_media_contract(api_client, monkeypatch):
@@ -809,6 +820,7 @@ def test_update_media_contract(api_client, monkeypatch):
         payload["tag_details"] = []
         payload["external_refs"] = []
         payload["entities"] = []
+        payload["related_posts"] = []
         return payload
 
     monkeypatch.setattr(MediaMetadataService, "update_media_metadata", _fake_update)

@@ -124,6 +124,10 @@ class MediaRead(BaseModel):
     favorite_count: int = Field(default=0, description="Number of users who have favorited this media.")
 
 
+class RelatedMediaRead(MediaRead):
+    similarity: float = Field(ge=0.0, le=1.0, description="Cosine similarity score relative to the inspected media.")
+
+
 class MediaDetail(MediaRead):
     tag_details: list[TagWithConfidence] = Field(
         default_factory=list,
@@ -136,6 +140,10 @@ class MediaDetail(MediaRead):
     entities: list[EntityRead] = Field(
         default_factory=list,
         description="Entity annotations for this media (e.g. identified characters).",
+    )
+    related_posts: list[RelatedMediaRead] = Field(
+        default_factory=list,
+        description="Accessible media items related to this item by persisted embedding similarity.",
     )
 
     model_config = {
@@ -199,7 +207,8 @@ class MediaDetail(MediaRead):
                         "source": "manual",
                         "confidence": 0.93
                     }
-                ]
+                ],
+                "related_posts": []
             }
         }
     }

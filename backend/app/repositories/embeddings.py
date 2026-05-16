@@ -6,6 +6,7 @@ import uuid
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.app.models.auth import User
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.database.vector import _vector_literal
 
@@ -164,3 +165,90 @@ class MediaEmbeddingRepository:
                 MediaNeighbor(media_id=row["media_id"], similarity=float(row["similarity"] or 0.0))
             )
         return grouped
+
+    async def nearest_accessible_neighbors(
+        self,
+        *,
+        media_id: uuid.UUID,
+        user: User,
+        limit: int,
+        model_version: str,
+    ) -> list[MediaNeighbor]:
+        rows = (
+            await self._db.execute(
+                text(
+                    """
+                    WITH target AS (
+                        SELECT embedding
+                        FROM media_embeddings
+                        WHERE media_id = :media_id
+                          AND model_version = :model_version
+                    )
+                    SELECT
+                        neighbors.media_id AS media_id,
+                        1 - (neighbors.embedding <=> target.embedding) AS similarity
+                    FROM target
+                    JOIN media_embeddings AS neighbors
+                      ON neighbors.model_version = :model_version
+                     AND neighbors.media_id != :media_id
+                    JOIN media AS candidate
+                      ON candidate.id = neighbors.media_id
+                    WHERE candidate.deleted_at IS NULL
+                      AND (
+                        :is_admin
+                        OR candidate.uploader_id = :user_id
+                        OR candidate.owner_id = :user_id
+                        OR (
+                          candidate.visibility = 'public'
+                          AND candidate.tagging_status::text NOT IN ('PENDING', 'PROCESSING')
+                          AND candidate.thumbnail_status::text NOT IN ('PENDING', 'PROCESSING')
+                          AND candidate.poster_status::text NOT IN ('PENDING', 'PROCESSING')
+                        )
+                        OR (
+                          EXISTS (
+                            SELECT 1
+                            FROM album_media AS album_item
+                            JOIN albums AS album ON album.id = album_item.album_id
+                            LEFT JOIN album_shares AS album_share
+                              ON album_share.album_id = album.id
+                             AND album_share.user_id = :user_id
+                            WHERE album_item.media_id = candidate.id
+                              AND (
+                                album.owner_id = :user_id
+                                OR album_share.user_id = :user_id
+                              )
+                          )
+                          AND candidate.tagging_status::text NOT IN ('PENDING', 'PROCESSING')
+                          AND candidate.thumbnail_status::text NOT IN ('PENDING', 'PROCESSING')
+                          AND candidate.poster_status::text NOT IN ('PENDING', 'PROCESSING')
+                        )
+                      )
+                      AND (
+                        :is_admin
+                        OR :show_nsfw
+                        OR COALESCE(candidate.is_nsfw_override, candidate.is_nsfw) IS FALSE
+                      )
+                      AND (
+                        :is_admin
+                        OR :show_sensitive
+                        OR COALESCE(candidate.is_sensitive_override, candidate.is_sensitive) IS FALSE
+                      )
+                    ORDER BY neighbors.embedding <=> target.embedding
+                    LIMIT :limit
+                    """
+                ),
+                {
+                    "media_id": media_id,
+                    "user_id": user.id,
+                    "is_admin": bool(user.is_admin),
+                    "show_nsfw": bool(user.show_nsfw),
+                    "show_sensitive": bool(user.show_sensitive),
+                    "limit": limit,
+                    "model_version": model_version,
+                },
+            )
+        ).mappings().all()
+        return [
+            MediaNeighbor(media_id=row["media_id"], similarity=float(row["similarity"] or 0.0))
+            for row in rows
+        ]

@@ -93,6 +93,7 @@ function makeDetail(id = 'm1', overrides: Partial<MediaDetail> = {}): MediaDetai
         confidence: 0.88,
       },
     ],
+    related_posts: [],
     ...overrides,
   };
 }
@@ -108,6 +109,8 @@ describe('MediaInspectorDialogComponent', () => {
     update?: ReturnType<typeof vi.fn>;
     getLibraryClassificationSuggestions?: ReturnType<typeof vi.fn>;
     recordLibraryClassificationFeedbackBulk?: ReturnType<typeof vi.fn>;
+    getThumbnailUrl?: ReturnType<typeof vi.fn>;
+    getPosterUrl?: ReturnType<typeof vi.fn>;
     toggleFavorite?: ReturnType<typeof vi.fn>;
     items?: MediaRead[];
     isMobile?: boolean;
@@ -118,6 +121,8 @@ describe('MediaInspectorDialogComponent', () => {
       update: overrides?.update ?? vi.fn((id: string, body: unknown) => of(makeDetail(id, body as Partial<MediaDetail>))),
       getCharacterSuggestions: vi.fn(() => of([{ name: 'Rin Tohsaka', media_count: 7 }])),
       getSeriesSuggestions: vi.fn(() => of([{ name: 'Fate/zero', media_count: 5 }])),
+      getThumbnailUrl: overrides?.getThumbnailUrl ?? vi.fn((id: string) => of(`blob:thumb:${id}`)),
+      getPosterUrl: overrides?.getPosterUrl ?? vi.fn((id: string) => of(`blob:poster:${id}`)),
       getLibraryClassificationSuggestions: overrides?.getLibraryClassificationSuggestions ?? vi.fn(() => of({
         suggested_characters: [],
         suggested_series: [],
@@ -234,6 +239,65 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('White Hair');
     expect(fixture.nativeElement.textContent).toContain('Detected text');
     expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
+  });
+
+  it('renders related posts with previews and opens them from the inspector', async () => {
+    const related = {
+      ...makeMedia('m3', {
+        filename: 'related.jpg',
+        original_filename: 'Related Original.jpg',
+        tags: ['archer'],
+      }),
+      similarity: 0.876,
+    };
+    const get = vi.fn((id: string) => of(id === 'm1'
+      ? makeDetail('m1', { related_posts: [related] })
+      : makeDetail(id)));
+    const { fixture, mediaService } = await createComponent({ get });
+    const changedIds: string[] = [];
+    fixture.componentInstance.activeMediaChanged.subscribe((id) => changedIds.push(id));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(mediaService.getThumbnailUrl).toHaveBeenCalledWith('m3');
+    expect(fixture.nativeElement.textContent).toContain('Related Posts');
+    expect(fixture.nativeElement.textContent).toContain('Related Original.jpg');
+    expect(fixture.nativeElement.textContent).toContain('88%');
+    expect(
+      fixture.nativeElement.querySelector('.inspector-related-post__preview img')?.getAttribute('src'),
+    ).toBe('blob:thumb:m3');
+
+    const relatedButton = fixture.nativeElement.querySelector(
+      'button[aria-label="Open related post Related Original.jpg"]',
+    ) as HTMLButtonElement | null;
+    relatedButton?.click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(changedIds).toEqual(['m3']);
+    expect(mediaService.get).toHaveBeenCalledWith('m3');
+    expect(fixture.componentInstance.activeItem()?.id).toBe('m3');
+  });
+
+  it('keeps related posts usable when thumbnail loading fails', async () => {
+    const related = {
+      ...makeMedia('m3', { filename: 'related.jpg', original_filename: null }),
+      similarity: 0.74,
+    };
+    const { fixture } = await createComponent({
+      get: vi.fn(() => of(makeDetail('m1', { related_posts: [related] }))),
+      getThumbnailUrl: vi.fn(() => throwError(() => new Error('missing thumbnail'))),
+    });
+
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain('Related Posts');
+    expect(
+      fixture.nativeElement.querySelector('.inspector-related-post mat-icon')?.textContent,
+    ).toContain('image_not_supported');
   });
 
   it('emits filter selections from read-only character, series, and tag metadata chips', async () => {

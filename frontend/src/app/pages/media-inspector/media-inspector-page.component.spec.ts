@@ -51,6 +51,7 @@ function makeMedia(id: string) {
     tag_details: [],
     external_refs: [],
     entities: [],
+    related_posts: [],
   };
 }
 
@@ -59,6 +60,8 @@ async function configure(routeMediaId = 'm1') {
   const mediaService = {
     get: vi.fn((id: string) => of(makeMedia(id))),
     getFileUrl: vi.fn((id: string) => of(`blob:${id}`)),
+    getThumbnailUrl: vi.fn((id: string) => of(`blob:thumb:${id}`)),
+    getPosterUrl: vi.fn((id: string) => of(`blob:poster:${id}`)),
     update: vi.fn((id: string, body: unknown) => of({ ...makeMedia(id), ...(body as object) })),
     getCharacterSuggestions: vi.fn(() => of([])),
     getSeriesSuggestions: vi.fn(() => of([])),

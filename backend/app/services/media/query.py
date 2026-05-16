@@ -18,6 +18,7 @@ from backend.app.models.tags import Tag
 from backend.app.models.media_interactions import UserFavorite
 from backend.app.models.processing import BatchType, ImportBatch, ImportBatchItem, ItemStatus
 from backend.app.repositories import media_filters
+from backend.app.repositories.embeddings import MediaEmbeddingRepository, MediaNeighbor
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.repositories.relations import MediaEntityRepository, MediaExternalRefRepository
@@ -32,6 +33,7 @@ from backend.app.schemas import (
     MediaTimeline,
     MetadataListScope,
     NsfwFilter,
+    RelatedMediaRead,
     SensitiveFilter,
     TagFilterMode,
     TagWithConfidence,
@@ -49,6 +51,8 @@ from backend.app.utils.pagination import (
 
 
 class MediaQueryService:
+    RELATED_POST_LIMIT = 8
+
     SORT_FIELDS: dict[str, Any] = {
         "captured_at": captured_timestamp_expr(),
         "uploaded_at": Media.uploaded_at,
@@ -59,6 +63,7 @@ class MediaQueryService:
     def __init__(self, db: AsyncSession) -> None:
         self._db = db
         self._media_repo = MediaRepository(db)
+        self._embedding_repo = MediaEmbeddingRepository(db)
         self._favorite_repo = UserFavoriteRepository(db)
         self._entity_repo = MediaEntityRepository(db)
         self._external_ref_repo = MediaExternalRefRepository(db)
@@ -177,9 +182,16 @@ class MediaQueryService:
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
 
         await self._assert_media_visible_to_user(media, user)
-        return await self.build_media_detail(media, user.id)
+        related_posts = await self.get_related_posts(media.id, user, limit=self.RELATED_POST_LIMIT)
+        return await self.build_media_detail(media, user.id, related_posts=related_posts)
 
-    async def build_media_detail(self, media: Media, user_id: uuid.UUID) -> MediaDetail:
+    async def build_media_detail(
+        self,
+        media: Media,
+        user_id: uuid.UUID,
+        *,
+        related_posts: list[RelatedMediaRead] | None = None,
+    ) -> MediaDetail:
         is_favorited = await self._favorite_repo.get(media.id, user_id) is not None
         counts = await self._favorite_repo.get_favorite_counts([media.id])
         favorite_count = counts.get(media.id, 0)
@@ -224,7 +236,66 @@ class MediaQueryService:
             tag_details=tag_details,
             external_refs=external_refs,
             entities=entities,
+            related_posts=related_posts or [],
         )
+
+    async def get_related_posts(
+        self,
+        media_id: uuid.UUID,
+        user: User,
+        *,
+        limit: int = RELATED_POST_LIMIT,
+    ) -> list[RelatedMediaRead]:
+        from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
+
+        neighbors = await self._embedding_repo.nearest_accessible_neighbors(
+            media_id=media_id,
+            user=user,
+            limit=limit,
+            model_version=EMBEDDING_MODEL_VERSION,
+        )
+        return await self._build_related_media(neighbors, user.id)
+
+    async def _build_related_media(
+        self,
+        neighbors: list[MediaNeighbor],
+        user_id: uuid.UUID,
+    ) -> list[RelatedMediaRead]:
+        media_ids = [neighbor.media_id for neighbor in neighbors]
+        if not media_ids:
+            return []
+
+        stmt = (
+            select(Media)
+            .options(
+                selectinload(Media.uploader),
+                selectinload(Media.owner),
+                selectinload(Media.media_tags).selectinload(MediaTag.tag),
+            )
+            .where(Media.id.in_(media_ids), Media.deleted_at.is_(None))
+        )
+        rows = (await self._db.execute(stmt)).scalars().all()
+        media_by_id = {media.id: media for media in rows}
+        favorite_ids = await self._favorite_repo.get_favorited_ids(user_id, media_ids)
+        favorite_counts = await self._favorite_repo.get_favorite_counts(media_ids)
+
+        related: list[RelatedMediaRead] = []
+        for neighbor in neighbors:
+            media = media_by_id.get(neighbor.media_id)
+            if media is None:
+                continue
+            base = build_media_read(
+                media,
+                media.id in favorite_ids,
+                favorite_counts.get(media.id, 0),
+            )
+            related.append(
+                RelatedMediaRead(
+                    **base.model_dump(),
+                    similarity=max(0.0, min(1.0, neighbor.similarity)),
+                )
+            )
+        return related
 
     async def list_media(
         self,

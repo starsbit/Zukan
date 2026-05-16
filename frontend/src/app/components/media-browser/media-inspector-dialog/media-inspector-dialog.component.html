@@ -544,6 +544,39 @@
           </mat-card-content>
         </mat-card>
 
+        @if (relatedPosts().length > 0) {
+          <mat-card appearance="outlined">
+            <mat-card-header>
+              <mat-card-title>Related Posts</mat-card-title>
+            </mat-card-header>
+            <mat-card-content class="inspector-related-posts">
+              @for (post of relatedPosts(); track post.id) {
+                <button
+                  class="inspector-related-post"
+                  type="button"
+                  (click)="openRelatedPost(post)"
+                  [attr.aria-label]="'Open related post ' + relatedPostTitle(post)"
+                >
+                  <span class="inspector-related-post__preview">
+                    @if (relatedPostPreviewUrl(post); as previewUrl) {
+                      <img [src]="previewUrl" [alt]="relatedPostTitle(post)" loading="lazy" />
+                    } @else {
+                      <mat-icon aria-hidden="true">{{
+                        relatedPostPreviewFailed(post) ? 'image_not_supported' : 'image'
+                      }}</mat-icon>
+                    }
+                  </span>
+                  <span class="inspector-related-post__body">
+                    <span class="inspector-related-post__title">{{ relatedPostTitle(post) }}</span>
+                    <span class="inspector-related-post__meta">{{ relatedPostSubtitle(post) }}</span>
+                  </span>
+                  <span class="inspector-related-post__score">{{ relatedPostSimilarity(post) }}</span>
+                </button>
+              }
+            </mat-card-content>
+          </mat-card>
+        }
+
         @if (authorFields().length > 0 || externalRefs().length > 0) {
           <mat-card appearance="outlined">
             <mat-card-header>

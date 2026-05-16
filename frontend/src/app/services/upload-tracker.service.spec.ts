@@ -507,6 +507,7 @@ describe('UploadTrackerService', () => {
         tag_details: [],
         external_refs: [],
         entities: [],
+        related_posts: [],
       })),
     };
 
@@ -598,6 +599,7 @@ describe('UploadTrackerService', () => {
           tag_details: [],
           external_refs: [],
           entities: [],
+          related_posts: [],
         }))
         .mockReturnValueOnce(of({
           id: 'm1',
@@ -631,6 +633,7 @@ describe('UploadTrackerService', () => {
           tag_details: [],
           external_refs: [],
           entities: [],
+          related_posts: [],
         })),
     };
 
