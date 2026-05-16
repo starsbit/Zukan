@@ -18,12 +18,12 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
-import { MatDialog, MatDialogRef } from '@angular/material/dialog';
+import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { EMPTY, catchError } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead, MediaVisibility } from '../../models/media';
@@ -41,14 +41,13 @@ import {
   AlbumPickerDialogComponent,
   AlbumPickerDialogValue,
 } from '../album/album-picker-dialog/album-picker-dialog.component';
-import { MediaInspectorDialogComponent } from './media-inspector-dialog/media-inspector-dialog.component';
 import {
   BulkMetadataDialogComponent,
   BulkMetadataDialogResult,
 } from './bulk-metadata-dialog/bulk-metadata-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 import { MediaService } from '../../services/media.service';
-import { NavbarSearchService } from '../../services/navbar-search.service';
+import { MediaInspectionContextService } from '../../services/media-inspection-context.service';
 
 interface JustifiedRowItem {
   media: MediaRead | null;
@@ -145,11 +144,9 @@ export class MediaBrowserComponent {
   private readonly uploadTracker = inject(UploadTrackerService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly router = inject(Router);
-  private readonly route = inject(ActivatedRoute);
   private readonly zone = inject(NgZone);
   private readonly mediaService = inject(MediaService);
-  private readonly searchService = inject(NavbarSearchService);
-  private inspectorRef: MatDialogRef<MediaInspectorDialogComponent> | null = null;
+  private readonly inspectionContext = inject(MediaInspectionContextService);
 
   @ViewChildren('monthSection', { read: ElementRef })
   private readonly monthSections?: QueryList<ElementRef<HTMLElement>>;
@@ -205,11 +202,6 @@ export class MediaBrowserComponent {
   private metricsFrameId: number | null = null;
   private frameId: number | null = null;
   private pendingJumpTargetKey: string | null = null;
-  private pendingInspectId: string | null = null;
-  private pendingInspectLookupId: string | null = null;
-  private currentInspectId: string | null = null;
-  private closingInspectorFromRoute = false;
-  private closingInspectorFromMetadataFilter = false;
   private readonly scrollTop = signal(0);
   private readonly viewportHeight = signal(900);
   private readonly measuredMonthHeights = signal<Record<string, number>>({});
@@ -240,28 +232,10 @@ export class MediaBrowserComponent {
       this.loading();
       untracked(() => {
         this.tryResolvePendingJump();
-        this.tryOpenPendingInspector();
         this.scheduleLayoutSync();
         this.ensureRenderedMonthsLoaded();
       });
     });
-
-    this.route.queryParamMap
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((params) => {
-        const inspectId = params.get('inspect');
-        this.currentInspectId = inspectId;
-        if (inspectId) {
-          this.openInspectorForId(inspectId);
-        } else {
-          this.pendingInspectId = null;
-          this.pendingInspectLookupId = null;
-          if (this.inspectorRef) {
-            this.closingInspectorFromRoute = true;
-            this.inspectorRef.close();
-          }
-        }
-      });
   }
 
   ngAfterViewInit(): void {
@@ -297,128 +271,9 @@ export class MediaBrowserComponent {
 
   onMediaActivated(media: MediaRead): void {
     this.mediaSelected.emit(media);
-    this.router.navigate([], {
-      relativeTo: this.route,
-      queryParams: { inspect: media.id },
-      queryParamsHandling: 'merge',
-    });
-  }
-
-  private openInspectorForId(id: string): void {
-    if (this.inspectorRef) {
-      return;
-    }
     const items = this.dayGroups().flatMap((group) => group.items);
-    if (items.length === 0) {
-      this.pendingInspectId = id;
-      return;
-    }
-
-    if (!items.some((item) => item.id === id)) {
-      this.pendingInspectId = id;
-      if (this.loading() || this.galleryStore.hasMore()) {
-        return;
-      }
-      this.fetchInspectItem(id, items);
-      return;
-    }
-
-    this.pendingInspectId = null;
-    this.openInspector(items, id);
-  }
-
-  private openInspector(items: MediaRead[], activeMediaId: string): void {
-    this.inspectorRef = this.dialog.open(MediaInspectorDialogComponent, {
-      data: { items, activeMediaId },
-      width: '100vw',
-      maxWidth: '100vw',
-      height: '100vh',
-      maxHeight: '100vh',
-      autoFocus: false,
-      panelClass: 'media-inspector-dialog-panel',
-    });
-    this.inspectorRef.componentInstance?.activeMediaChanged.subscribe((mediaId) => {
-      this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: { inspect: mediaId },
-        queryParamsHandling: 'merge',
-      });
-    });
-    this.inspectorRef.componentInstance?.metadataFilterSelected.subscribe((selection) => {
-      this.closingInspectorFromMetadataFilter = true;
-      this.searchService.suppressNextUrlSync();
-      this.searchService.addMetadataFilter(selection.type, selection.value);
-      this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: {
-          ...this.searchService.toQueryParamsWithClears(),
-          inspect: null,
-        },
-        queryParamsHandling: 'merge',
-      });
-      this.inspectorRef?.close();
-    });
-    this.inspectorRef.afterClosed().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.inspectorRef = null;
-      if (this.closingInspectorFromRoute || this.closingInspectorFromMetadataFilter) {
-        this.closingInspectorFromRoute = false;
-        this.closingInspectorFromMetadataFilter = false;
-        return;
-      }
-
-      if (!this.currentInspectId) {
-        return;
-      }
-
-      this.router.navigate([], {
-        relativeTo: this.route,
-        queryParams: { inspect: null },
-        queryParamsHandling: 'merge',
-      });
-    });
-  }
-
-  private fetchInspectItem(id: string, currentItems: MediaRead[]): void {
-    if (this.pendingInspectLookupId === id) {
-      return;
-    }
-
-    this.pendingInspectLookupId = id;
-    this.mediaService.get(id).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      catchError(() => {
-        if (this.pendingInspectId === id) {
-          this.pendingInspectId = null;
-        }
-        this.pendingInspectLookupId = null;
-        return EMPTY;
-      }),
-    ).subscribe((detail) => {
-      this.pendingInspectLookupId = null;
-      if (this.currentInspectId !== id || this.inspectorRef) {
-        return;
-      }
-
-      this.pendingInspectId = null;
-      const latestItems = this.dayGroups().flatMap((group) => group.items);
-      const items = latestItems.some((item) => item.id === id)
-        ? latestItems
-        : [detail, ...currentItems.filter((item) => item.id !== id)];
-      this.openInspector(items, id);
-    });
-  }
-
-  private tryOpenPendingInspector(): void {
-    if (!this.pendingInspectId || this.inspectorRef) {
-      return;
-    }
-
-    const items = this.dayGroups().flatMap((group) => group.items);
-    if (items.length === 0) {
-      return;
-    }
-
-    this.openInspectorForId(this.pendingInspectId);
+    this.inspectionContext.setContext(items, this.router.url);
+    void this.router.navigate(['/media', media.id]);
   }
 
   onFavoriteToggled(media: MediaRead): void {

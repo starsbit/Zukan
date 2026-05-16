@@ -1,0 +1,23 @@
+@if (loading()) {
+  <div class="media-inspector-page__state">
+    <mat-spinner diameter="44"></mat-spinner>
+    <p>Loading media...</p>
+  </div>
+} @else if (error()) {
+  <div class="media-inspector-page__state">
+    <mat-icon aria-hidden="true">broken_image</mat-icon>
+    <p>{{ error() }}</p>
+    <button mat-stroked-button type="button" (click)="goToGallery()">
+      <mat-icon aria-hidden="true">arrow_back</mat-icon>
+      <span>Back</span>
+    </button>
+  </div>
+} @else {
+  <zukan-media-inspector-dialog
+    [items]="items()"
+    [activeMediaId]="activeMediaId()"
+    (activeMediaChanged)="onActiveMediaChanged($event)"
+    (metadataFilterSelected)="onMetadataFilterSelected($event)"
+    (mediaUpdated)="onMediaUpdated($event)">
+  </zukan-media-inspector-dialog>
+}

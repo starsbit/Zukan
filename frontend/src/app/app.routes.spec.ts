@@ -20,7 +20,7 @@ describe('routes', () => {
   });
 
   it('protects the authenticated pages', () => {
-    const protectedPaths = ['browse', 'graph/characters', 'album', 'album/:albumId', 'favorites', 'gacha', 'gacha/:tab', 'tags', 'trash'];
+    const protectedPaths = ['browse', 'media/:mediaId', 'graph/characters', 'album', 'album/:albumId', 'favorites', 'gacha', 'gacha/:tab', 'tags', 'trash'];
 
     for (const path of protectedPaths) {
       const route = routes.find((candidate) => candidate.path === path);

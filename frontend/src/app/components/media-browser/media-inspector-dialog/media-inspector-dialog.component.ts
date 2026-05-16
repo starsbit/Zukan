@@ -5,9 +5,12 @@ import {
   ElementRef,
   HostListener,
   computed,
+  effect,
   inject,
+  input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { BreakpointObserver } from '@angular/cdk/layout';
@@ -131,15 +134,18 @@ export class MediaInspectorDialogComponent {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly breakpointObserver = inject(BreakpointObserver);
-  private readonly dialogRef = inject(MatDialogRef<MediaInspectorDialogComponent>);
-  protected readonly data = inject<MediaInspectorDialogData>(MAT_DIALOG_DATA);
+  private readonly dialogRef = inject(MatDialogRef<MediaInspectorDialogComponent>, { optional: true });
+  protected readonly data = inject<MediaInspectorDialogData | null>(MAT_DIALOG_DATA, { optional: true });
   private readonly galleryStore = inject(GalleryStore);
   private readonly mediaService = inject(MediaService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly tagsClient = inject(TagsClientService);
   private readonly zoomStage = viewChild<ElementRef<HTMLElement>>('zoomStage');
+  readonly activeMediaId = input<string | null>(null);
+  readonly initialItems = input<MediaRead[] | null>(null, { alias: 'items' });
   readonly activeMediaChanged = output<string>();
   readonly metadataFilterSelected = output<MetadataFilterSelection>();
+  readonly mediaUpdated = output<MediaRead>();
 
   readonly items = signal<MediaRead[]>([]);
   readonly activeIndex = signal(0);
@@ -282,18 +288,14 @@ export class MediaInspectorDialogComponent {
   private lastMediaTapAt = 0;
   private favoriteFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private favoriteFeedbackId = 0;
+  private configuredKey = '';
 
   constructor() {
-    const items = this.data.items.length > 0 ? [...this.data.items] : [];
-    this.items.set(items);
-    const initialIndex = Math.max(
-      0,
-      items.findIndex((item) => item.id === this.data.activeMediaId),
-    );
-    this.activeIndex.set(initialIndex);
-    this.beginLoadForActiveItem();
-    this.resetDraftFromCurrentMedia();
-    this.revealChrome();
+    effect(() => {
+      const items = this.initialItems() ?? this.data?.items ?? [];
+      const activeMediaId = this.activeMediaId() ?? this.data?.activeMediaId ?? items[0]?.id ?? null;
+      untracked(() => this.configureMedia(items, activeMediaId));
+    });
 
     this.breakpointObserver
       .observe(MediaInspectorDialogComponent.MOBILE_QUERY)
@@ -368,7 +370,7 @@ export class MediaInspectorDialogComponent {
   }
 
   close(): void {
-    this.dialogRef.close();
+    this.dialogRef?.close();
   }
 
   previous(): void {
@@ -880,6 +882,30 @@ export class MediaInspectorDialogComponent {
     this.resetDraftFromCurrentMedia();
   }
 
+  private configureMedia(items: MediaRead[], activeMediaId: string | null): void {
+    if (!activeMediaId || items.length === 0) {
+      return;
+    }
+
+    const nextItems = [...items];
+    const nextIndex = Math.max(0, nextItems.findIndex((item) => item.id === activeMediaId));
+    const nextActiveId = nextItems[nextIndex]?.id;
+    const nextKey = `${activeMediaId}:${nextItems.map((item) => item.id).join(',')}`;
+    const currentActiveId = this.activeItem()?.id ?? null;
+    if (this.configuredKey === nextKey && currentActiveId === nextActiveId) {
+      return;
+    }
+
+    this.configuredKey = nextKey;
+    this.items.set(nextItems);
+    this.activeIndex.set(nextIndex);
+    this.editing.set(false);
+    this.resetViewport();
+    this.beginLoadForActiveItem();
+    this.resetDraftFromCurrentMedia();
+    this.revealChrome();
+  }
+
   private revokeObjectUrl(): void {
     if (!this.objectUrl) {
       return;
@@ -1059,6 +1085,7 @@ export class MediaInspectorDialogComponent {
 
   private applyLocalMediaUpdate(updated: MediaRead): void {
     this.replaceActiveItem(updated);
+    this.mediaUpdated.emit(updated);
     const detail = this.detail();
     if (detail?.id === updated.id) {
       this.detail.set({

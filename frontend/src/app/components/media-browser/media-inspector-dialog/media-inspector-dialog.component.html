@@ -19,18 +19,6 @@
       (wheel)="onWheelZoom($event)"
       (pointerdown)="onStagePointerDown($event)"
     >
-      <div class="inspector-overlay inspector-overlay--top-left">
-        <button
-          class="toolbar-button"
-          mat-icon-button
-          type="button"
-          aria-label="Close viewer"
-          (click)="close()"
-        >
-          <mat-icon aria-hidden="true">arrow_back</mat-icon>
-        </button>
-      </div>
-
       <div class="inspector-overlay inspector-overlay--top-right">
         @if (isImage()) {
           <button

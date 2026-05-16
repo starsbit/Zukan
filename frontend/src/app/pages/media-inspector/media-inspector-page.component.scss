@@ -1,0 +1,29 @@
+:host {
+  display: block;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--mat-sys-scrim) 74%, transparent);
+}
+
+.media-inspector-page__state {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+  color: var(--mat-sys-on-surface);
+  text-align: center;
+}
+
+.media-inspector-page__state p {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.media-inspector-page__state mat-icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: 2.5rem;
+}

@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { seedAuthenticatedSession } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -221,55 +221,86 @@ test.describe.serial('Media viewer', () => {
   test('opens from the gallery, navigates media, and saves tag/character/OCR edits', async ({
     page,
   }) => {
+    await seedAuthenticatedSession(page);
     const { patchBodies } = await registerViewerRoutes(page);
-    await ensureAdminAuthenticated(page);
     await page.goto('/');
     await expect(page).toHaveURL('/');
 
     const firstCard = page.locator('.media-card').first();
     await expect(firstCard).toBeVisible();
     await firstCard.click();
+    await expect(page).toHaveURL('/media/m1');
 
-    const dialog = page.getByRole('dialog');
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText('m1.png');
-    await expect(dialog.locator('img')).toBeVisible();
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(viewer).toBeVisible();
+    await expect(viewer).toContainText('m1.png');
+    await expect(viewer.locator('img')).toBeVisible();
 
-    await dialog.getByRole('button', { name: 'Next media' }).click();
-    await expect(dialog).toContainText('m2.gif');
-    await expect(dialog.locator('img')).toBeVisible();
+    await viewer.getByRole('button', { name: 'Next media' }).click();
+    await expect(page).toHaveURL('/media/m2');
+    await expect(viewer).toContainText('m2.gif');
+    await expect(viewer.locator('img')).toBeVisible();
 
-    await dialog.getByRole('button', { name: 'Next media' }).click();
-    await expect(dialog).toContainText('m3.mp4');
-    await expect(dialog.locator('video')).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL('/media/m1');
+    await expect(viewer).toContainText('m1.png');
 
-    await dialog.getByRole('button', { name: 'Previous media' }).click();
-    await dialog.getByRole('button', { name: 'Previous media' }).click();
-    await expect(dialog).toContainText('m1.png');
+    await page.goBack();
+    await expect(page).toHaveURL('/');
+    await expect(firstCard).toBeVisible();
+    await firstCard.click();
+    await expect(page).toHaveURL('/media/m1');
 
-    await dialog.getByRole('button', { name: 'Edit' }).click();
-    const characterInput = dialog.getByRole('combobox', { name: 'Add character' });
-    const tagInput = dialog.getByRole('combobox', { name: 'Add tag' });
+    await viewer.getByRole('button', { name: 'Next media' }).click();
+    await viewer.getByRole('button', { name: 'Next media' }).click();
+    await expect(page).toHaveURL('/media/m3');
+    await expect(viewer).toContainText('m3.mp4');
+    await expect(viewer.locator('video')).toBeVisible();
+
+    await viewer.getByRole('button', { name: 'Previous media' }).click();
+    await viewer.getByRole('button', { name: 'Previous media' }).click();
+    await expect(page).toHaveURL('/media/m1');
+    await expect(viewer).toContainText('m1.png');
+
+    await viewer.getByRole('button', { name: 'Edit' }).click();
+    const characterInput = viewer.getByRole('combobox', { name: 'Add character' });
+    const tagInput = viewer.getByRole('combobox', { name: 'Add tag' });
     await characterInput.fill('Rin Tohsaka');
     await characterInput.press('Enter');
     await tagInput.fill('hero');
     await tagInput.press('Enter');
-    await dialog.getByLabel('OCR override').fill('Manual OCR text');
-    await dialog.getByRole('button', { name: 'Save' }).click();
+    await viewer.getByLabel('OCR override').fill('Manual OCR text');
+    await viewer.getByRole('button', { name: 'Save' }).click();
 
     await expect.poll(() => patchBodies.length, { timeout: 5000 }).toBe(1);
     expect(patchBodies[0]).toEqual({
       tags: ['starter_tag', 'hero'],
       entities: [
-        { entity_type: 'character', name: 'saber_alter' },
-        { entity_type: 'character', name: 'rin_tohsaka' },
+        { entity_type: 'character', name: 'Saber Alter' },
+        { entity_type: 'character', name: 'Rin Tohsaka' },
       ],
       ocr_text_override: 'Manual OCR text',
+      is_nsfw_override: null,
+      is_sensitive_override: null,
       version: 1,
     });
 
-    await expect(dialog).toContainText('Manual OCR text');
-    await expect(dialog).toContainText('Rin Tohsaka');
-    await expect(dialog).toContainText('Hero');
+    await expect(viewer).toContainText('Manual OCR text');
+    await expect(viewer).toContainText('Rin Tohsaka');
+    await expect(viewer).toContainText('Hero');
+  });
+
+  test('opens a shared media URL directly for an authenticated user', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+    await registerViewerRoutes(page);
+
+    await page.goto('/media/m1');
+
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(page).toHaveURL('/media/m1');
+    await expect(viewer).toContainText('m1.png');
+    await expect(viewer.locator('img')).toBeVisible();
+    await expect(viewer.getByRole('button', { name: 'Previous media' })).toBeDisabled();
+    await expect(viewer.getByRole('button', { name: 'Next media' })).toBeDisabled();
   });
 });

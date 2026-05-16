@@ -35,6 +35,12 @@ export const routes: Routes = [
     canActivate: [authGuard],
   },
   {
+    path: 'media/:mediaId',
+    loadComponent: () => import('./pages/media-inspector/media-inspector-page.component')
+      .then((m) => m.MediaInspectorPageComponent),
+    canActivate: [authGuard],
+  },
+  {
     path: 'graph/characters',
     loadComponent: () => import('./pages/character-graph/character-graph.component')
       .then((m) => m.CharacterGraphPageComponent),
