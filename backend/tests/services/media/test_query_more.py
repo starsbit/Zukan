@@ -123,6 +123,7 @@ async def test_visibility_and_detail_methods(service, user, media):
     media.visibility = MediaVisibility.public
     service._media_repo.is_accessible = AsyncMock(return_value=True)
     service._media_repo.get_by_id_with_relations = AsyncMock(return_value=media)
+    service.get_related_posts = AsyncMock(return_value=[])
     service.build_media_detail = AsyncMock(return_value="detail")
     detail = await service.get_media_detail(media.id, user)
     assert detail == "detail"

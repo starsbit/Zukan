@@ -9,6 +9,7 @@ import uuid
 from starlette.requests import Request as StarletteRequest
 
 from backend.app.config import settings
+from backend.app.models.media import MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.relations import MediaEntityType
 from backend.app.schemas import ImportBatchRecommendationSuggestionRead
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
@@ -58,6 +59,33 @@ def _media_read_payload(media_id: str) -> dict:
         "is_favorited": False,
         "favorite_count": 0,
     }
+
+
+def _preview_media(media_id: uuid.UUID, **overrides):
+    media = SimpleNamespace(
+        id=media_id,
+        deleted_at=None,
+        visibility=MediaVisibility.public,
+        tagging_status=TaggingStatus.DONE,
+        thumbnail_status=ProcessingStatus.DONE,
+        poster_status=ProcessingStatus.NOT_APPLICABLE,
+        media_type=MediaType.IMAGE,
+        thumbnail_path="/tmp/thumb.webp",
+        poster_path=None,
+        original_filename="shared & preview.webp",
+        filename="shared.webp",
+        version=7,
+        width=1280,
+        height=720,
+        duration_seconds=None,
+        media_tags=[
+            SimpleNamespace(tag=SimpleNamespace(name="safe")),
+            SimpleNamespace(tag=SimpleNamespace(name="landscape")),
+        ],
+    )
+    for key, value in overrides.items():
+        setattr(media, key, value)
+    return media
 
 
 def test_upload_media_contract(api_client, monkeypatch):
@@ -810,6 +838,96 @@ def test_get_media_contract(api_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["id"] == str(media_id)
     assert response.json()["related_posts"][0]["similarity"] == 0.87
+
+
+def test_get_media_embed_returns_open_graph_html_for_public_media(unauthenticated_client, monkeypatch):
+    media_id = uuid.uuid4()
+
+    async def _fake_get_with_relations(self, requested_media_id, deleted):
+        assert requested_media_id == media_id
+        assert deleted is False
+        return _preview_media(requested_media_id)
+
+    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
+
+    response = unauthenticated_client.get(
+        f"/api/v1/media/{media_id}/embed",
+        headers={
+            "host": "zukan.example",
+            "x-forwarded-proto": "https",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    html = response.text
+    assert '<meta property="og:title" content="shared &amp; preview.webp">' in html
+    assert f'<meta property="og:url" content="https://zukan.example/media/{media_id}">' in html
+    assert f'<meta property="og:image" content="https://zukan.example/api/v1/media/{media_id}/preview-image?v=7">' in html
+    assert '<meta name="twitter:card" content="summary_large_image">' in html
+    assert "Image - 1280x720 - landscape, safe" in html
+
+
+def test_get_media_embed_hides_private_or_unready_media(unauthenticated_client, monkeypatch):
+    media_id = uuid.uuid4()
+    media = _preview_media(media_id, visibility=MediaVisibility.private)
+
+    async def _fake_get_with_relations(self, requested_media_id, deleted):
+        return media
+
+    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
+
+    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/embed")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "media_not_found"
+
+    media.visibility = MediaVisibility.public
+    media.thumbnail_status = ProcessingStatus.PROCESSING
+
+    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/embed")
+
+    assert response.status_code == 404
+    assert response.json()["code"] == "media_not_found"
+
+
+def test_get_media_preview_image_uses_poster_for_animated_media(unauthenticated_client, monkeypatch, tmp_path):
+    media_id = uuid.uuid4()
+    poster_path = tmp_path / "poster.png"
+    poster_path.write_bytes(b"poster")
+
+    async def _fake_get_with_relations(self, requested_media_id, deleted):
+        return _preview_media(
+            requested_media_id,
+            media_type=MediaType.VIDEO,
+            poster_status=ProcessingStatus.DONE,
+            poster_path=str(poster_path),
+        )
+
+    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
+
+    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/preview-image")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/png")
+    assert response.content == b"poster"
+
+
+def test_get_media_preview_image_uses_thumbnail_for_images(unauthenticated_client, monkeypatch, tmp_path):
+    media_id = uuid.uuid4()
+    thumb_path = tmp_path / "thumb.webp"
+    thumb_path.write_bytes(b"thumb")
+
+    async def _fake_get_with_relations(self, requested_media_id, deleted):
+        return _preview_media(requested_media_id, thumbnail_path=str(thumb_path))
+
+    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
+
+    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/preview-image")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/webp")
+    assert response.content == b"thumb"
 
 
 def test_update_media_contract(api_client, monkeypatch):

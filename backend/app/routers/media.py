@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime
+from html import escape
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,9 +14,9 @@ from backend.app.database import get_db
 from backend.app.config import settings
 from backend.app.routers.deps import current_user
 from backend.app.errors.error import AppError
-from backend.app.errors.media import poster_not_available, thumbnail_not_available
+from backend.app.errors.media import media_not_found, poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
-from backend.app.models.media import MediaVisibility
+from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
 from backend.app.models.relations import MediaEntityType
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
@@ -70,6 +71,115 @@ IDEMPOTENCY_HEADER_DOC = (
     "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
     "same key + same payload replays original status/body; same key + different payload returns 409."
 )
+
+UNREADY_PREVIEW_STATUSES = {
+    TaggingStatus.PENDING.value,
+    TaggingStatus.PROCESSING.value,
+    ProcessingStatus.PENDING.value,
+    ProcessingStatus.PROCESSING.value,
+}
+
+
+def _status_value(value) -> str:
+    return getattr(value, "value", value)
+
+
+def _public_preview_media_or_404(media: Media | None) -> Media:
+    if (
+        media is None
+        or media.deleted_at is not None
+        or _status_value(media.visibility) != MediaVisibility.public.value
+        or _status_value(media.tagging_status) in UNREADY_PREVIEW_STATUSES
+        or _status_value(media.thumbnail_status) in UNREADY_PREVIEW_STATUSES
+        or _status_value(media.poster_status) in UNREADY_PREVIEW_STATUSES
+    ):
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
+    return media
+
+
+def _preview_image(media: Media) -> tuple[str, str] | None:
+    if _status_value(media.media_type) in {MediaType.VIDEO.value, MediaType.GIF.value} and media.poster_path:
+        return media.poster_path, "image/png"
+    if media.thumbnail_path:
+        return media.thumbnail_path, "image/webp"
+    return None
+
+
+def _origin_from_request(request: Request) -> str:
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip()
+    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
+    proto = forwarded_proto or request.url.scheme
+    host = forwarded_host or request.headers.get("host") or request.url.netloc
+    return f"{proto}://{host}"
+
+
+def _absolute_url(request: Request, path: str) -> str:
+    return f"{_origin_from_request(request)}{path}"
+
+
+def _media_tag_names(media: Media, *, limit: int | None = None) -> list[str]:
+    names = sorted(
+        item.tag.name
+        for item in getattr(media, "media_tags", [])
+        if getattr(item, "tag", None) is not None and getattr(item.tag, "name", None)
+    )
+    return names[:limit] if limit is not None else names
+
+
+def _preview_description(media: Media) -> str:
+    parts = [str(_status_value(media.media_type)).title()]
+    if media.width and media.height:
+        parts.append(f"{media.width}x{media.height}")
+    if media.duration_seconds:
+        parts.append(f"{media.duration_seconds:.1f}s".replace(".0s", "s"))
+    tags = _media_tag_names(media, limit=5)
+    if tags:
+        parts.append(", ".join(tags))
+    return " - ".join(parts)
+
+
+def _media_embed_html(request: Request, media: Media) -> str:
+    title = media.original_filename or media.filename
+    canonical_url = _absolute_url(request, f"/media/{media.id}")
+    image_url = _absolute_url(request, f"/api/v1/media/{media.id}/preview-image?v={media.version}")
+    description = _preview_description(media)
+    width = str(media.width) if media.width else None
+    height = str(media.height) if media.height else None
+    _, image_type = _preview_image(media) or ("", "image/webp")
+    image_meta = "\n".join(
+        f'    <meta property="{name}" content="{escape(value, quote=True)}">'
+        for name, value in (
+            ("og:image", image_url),
+            ("og:image:secure_url", image_url),
+            ("og:image:type", image_type),
+            ("og:image:width", width),
+            ("og:image:height", height),
+        )
+        if value
+    )
+    return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{escape(title)}</title>
+    <meta property="og:type" content="article">
+    <meta property="og:site_name" content="Zukan">
+    <meta property="og:title" content="{escape(title, quote=True)}">
+    <meta property="og:description" content="{escape(description, quote=True)}">
+    <meta property="og:url" content="{escape(canonical_url, quote=True)}">
+{image_meta}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{escape(title, quote=True)}">
+    <meta name="twitter:description" content="{escape(description, quote=True)}">
+    <meta name="twitter:image" content="{escape(image_url, quote=True)}">
+    <link rel="canonical" href="{escape(canonical_url, quote=True)}">
+  </head>
+  <body>
+    <p><a href="{escape(canonical_url, quote=True)}">Open in Zukan</a></p>
+  </body>
+</html>
+"""
 
 
 def _media_services(db: AsyncSession) -> tuple[
@@ -844,6 +954,41 @@ async def queue_bulk_media_tagging_jobs(
     _, _, _, processing, _, _ = _media_services(db)
     queued = await processing.bulk_retag_media(body.media_ids, user)
     return {"queued": queued}
+
+
+@router.get(
+    "/{media_id:uuid}/embed",
+    response_class=HTMLResponse,
+    include_in_schema=False,
+)
+async def get_media_embed(media_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)):
+    query, _, _, _, _, _ = _media_services(db)
+    media = _public_preview_media_or_404(await query.get_media_with_relations(media_id, deleted=False))
+    if _preview_image(media) is None:
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
+    return HTMLResponse(
+        content=_media_embed_html(request, media),
+        headers={"Cache-Control": "public, max-age=300"},
+    )
+
+
+@router.get(
+    "/{media_id:uuid}/preview-image",
+    response_class=FileResponse,
+    include_in_schema=False,
+)
+async def get_media_preview_image(media_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    query, _, _, _, _, _ = _media_services(db)
+    media = _public_preview_media_or_404(await query.get_media_with_relations(media_id, deleted=False))
+    preview = _preview_image(media)
+    if preview is None:
+        raise AppError(status_code=404, code=media_not_found, detail="Not found")
+    path, media_type = preview
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": f"public, max-age={60 * 60 * 24}"},
+    )
 
 
 @router.get(
