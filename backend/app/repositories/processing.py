@@ -5,9 +5,11 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem
+from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
 
 
 class ImportBatchRepository:
@@ -120,6 +122,7 @@ class ImportBatchItemRepository:
         stmt = (
             select(ImportBatchItem)
             .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+            .join(User, User.id == ImportBatch.user_id)
             .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
                 selectinload(ImportBatchItem.media).selectinload(Media.uploader),
@@ -134,6 +137,7 @@ class ImportBatchItemRepository:
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
                 Media.metadata_review_dismissed.is_(False),
+                *_user_classification_filters(),
                 or_(~has_character, ~has_series),
             )
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
@@ -147,6 +151,8 @@ class ImportBatchItemRepository:
         has_series = _media_has_named_entity(MediaEntityType.series)
         stmt = (
             select(ImportBatchItem)
+            .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
+            .join(User, User.id == ImportBatch.user_id)
             .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
                 selectinload(ImportBatchItem.media).selectinload(Media.uploader),
@@ -160,6 +166,7 @@ class ImportBatchItemRepository:
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
                 Media.metadata_review_dismissed.is_(False),
+                *_user_classification_filters(),
                 or_(~has_character, ~has_series),
             )
             .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
@@ -195,6 +202,7 @@ class ImportBatchItemRepository:
                 func.count(ImportBatchItem.id).label("unresolved_count"),
             )
             .join(ImportBatchItem, ImportBatch.id == ImportBatchItem.batch_id)
+            .join(User, User.id == ImportBatch.user_id)
             .join(Media, Media.id == ImportBatchItem.media_id)
             .where(
                 ImportBatch.user_id == user_id,
@@ -202,6 +210,7 @@ class ImportBatchItemRepository:
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
                 Media.metadata_review_dismissed.is_(False),
+                *_user_classification_filters(),
                 or_(~has_character, ~has_series),
             )
             .group_by(ImportBatch.id, ImportBatch.created_at)
@@ -223,4 +232,11 @@ def _media_has_named_entity(entity_type: MediaEntityType):
         )
         .limit(1)
         .exists()
+    )
+
+
+def _user_classification_filters():
+    return (
+        or_(User.show_nsfw.is_(True), effective_nsfw_expr().is_(False)),
+        or_(User.show_sensitive.is_(True), effective_sensitive_expr().is_(False)),
     )

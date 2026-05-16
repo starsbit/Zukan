@@ -224,13 +224,11 @@ class MediaEmbeddingRepository:
                         )
                       )
                       AND (
-                        :is_admin
-                        OR :show_nsfw
+                        :show_nsfw
                         OR COALESCE(candidate.is_nsfw_override, candidate.is_nsfw) IS FALSE
                       )
                       AND (
-                        :is_admin
-                        OR :show_sensitive
+                        :show_sensitive
                         OR COALESCE(candidate.is_sensitive_override, candidate.is_sensitive) IS FALSE
                       )
                     ORDER BY neighbors.embedding <=> target.embedding

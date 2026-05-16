@@ -56,6 +56,8 @@ async def test_list_all_review_candidates_for_user_includes_multiple_batches(db_
     other = await make_user()
     media_one = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
     media_two = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
+    nsfw_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE, is_nsfw=True)
+    sensitive_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE, is_sensitive=True)
     complete_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
     dismissed_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.DONE)
     pending_media = await make_media(uploader_id=user.id, tagging_status=TaggingStatus.PENDING)
@@ -74,12 +76,14 @@ async def test_list_all_review_candidates_for_user_includes_multiple_batches(db_
 
     item_one = ImportBatchItem(batch_id=batch_one.id, media_id=media_one.id, source_filename="one.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     item_two = ImportBatchItem(batch_id=batch_two.id, media_id=media_two.id, source_filename="two.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
+    nsfw_item = ImportBatchItem(batch_id=batch_two.id, media_id=nsfw_media.id, source_filename="nsfw.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
+    sensitive_item = ImportBatchItem(batch_id=batch_two.id, media_id=sensitive_media.id, source_filename="sensitive.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     complete_item = ImportBatchItem(batch_id=batch_two.id, media_id=complete_media.id, source_filename="complete.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     dismissed_item = ImportBatchItem(batch_id=batch_two.id, media_id=dismissed_media.id, source_filename="dismissed.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     pending_item = ImportBatchItem(batch_id=batch_two.id, media_id=pending_media.id, source_filename="pending.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     item_without_media = ImportBatchItem(batch_id=batch_two.id, source_filename="skip.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
     foreign_item = ImportBatchItem(batch_id=foreign_batch.id, media_id=foreign_media.id, source_filename="foreign.jpg", status=ItemStatus.done, step=ProcessingStep.tag, progress_percent=100)
-    db_session.add_all([item_one, item_two, complete_item, dismissed_item, pending_item, item_without_media, foreign_item])
+    db_session.add_all([item_one, item_two, nsfw_item, sensitive_item, complete_item, dismissed_item, pending_item, item_without_media, foreign_item])
     await db_session.flush()
 
     repo = ImportBatchItemRepository(db_session)
@@ -89,3 +93,10 @@ async def test_list_all_review_candidates_for_user_includes_multiple_batches(db_
 
     batch_results = await repo.list_review_candidates_for_batch(batch_two.id)
     assert {item.id for item in batch_results} == {item_two.id}
+
+    user.show_nsfw = True
+    user.show_sensitive = True
+    await db_session.flush()
+
+    visible_results = await repo.list_review_candidates_for_batch(batch_two.id)
+    assert {item.id for item in visible_results} == {item_two.id, nsfw_item.id, sensitive_item.id}

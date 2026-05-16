@@ -245,6 +245,17 @@ async def test_embedding_repository_accessible_neighbors_respects_classification
         safe_match.id,
     ]
 
+    viewer.is_admin = True
+    viewer.show_nsfw = False
+    viewer.show_sensitive = False
+    admin_hidden_neighbors = await repo.nearest_accessible_neighbors(
+        media_id=target.id,
+        user=viewer,
+        limit=8,
+        model_version="test_v1",
+    )
+    assert [neighbor.media_id for neighbor in admin_hidden_neighbors] == [safe_match.id]
+
 
 @pytest.mark.asyncio
 async def test_embedding_repository_accessible_neighbors_returns_empty_without_target_embedding(db_session, make_user, make_media):
