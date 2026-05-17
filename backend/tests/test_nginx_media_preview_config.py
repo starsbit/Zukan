@@ -14,7 +14,7 @@ def test_nginx_media_links_route_crawlers_to_embed_and_browsers_to_spa():
 
         assert "map $http_user_agent $zukan_media_preview_crawler" in config
         assert "discordbot|twitterbot|facebookexternalhit|slackbot" in config
-        assert "location ~ ^/media/(?<zukan_media_id>" in config
+        assert 'location ~ "^/media/(?<zukan_media_id>' in config
         assert "rewrite ^ /api/v1/media/$zukan_media_id/embed last;" in config
         assert "try_files $uri $uri/ /index.html;" in config
         assert "proxy_set_header X-Forwarded-Host $zukan_forwarded_host;" in config
