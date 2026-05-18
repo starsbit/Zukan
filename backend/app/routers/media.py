@@ -126,20 +126,69 @@ def _media_tag_names(media: Media, *, limit: int | None = None) -> list[str]:
     return names[:limit] if limit is not None else names
 
 
+def _media_entity_names(media: Media, entity_type: MediaEntityType, *, limit: int | None = None) -> list[str]:
+    seen: set[str] = set()
+    names: list[str] = []
+    for entity in getattr(media, "entities", []):
+        if _status_value(getattr(entity, "entity_type", None)) != entity_type.value:
+            continue
+        name = (getattr(entity, "name", None) or "").strip()
+        key = name.casefold()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
+    names = sorted(names, key=str.casefold)
+    return names[:limit] if limit is not None else names
+
+
+def _format_name_list(names: list[str]) -> str:
+    if len(names) <= 2:
+        return " and ".join(names)
+    return f"{', '.join(names[:-1])}, and {names[-1]}"
+
+
+def _summarize_names(names: list[str], *, limit: int = 2) -> str:
+    visible = names[:limit]
+    remaining = len(names) - len(visible)
+    summary = _format_name_list(visible)
+    if remaining > 0:
+        summary = f"{summary} + {remaining} more"
+    return summary
+
+
+def _preview_title(media: Media) -> str:
+    characters = _media_entity_names(media, MediaEntityType.character)
+    series = _media_entity_names(media, MediaEntityType.series)
+    if characters and series:
+        return f"{_summarize_names(characters)} from {_summarize_names(series)}"
+    if characters:
+        return _summarize_names(characters)
+    if series:
+        return _summarize_names(series)
+    return media.original_filename or media.filename
+
+
 def _preview_description(media: Media) -> str:
-    parts = [str(_status_value(media.media_type)).title()]
+    title = _preview_title(media)
+    filename = media.original_filename or media.filename
+    details = [str(_status_value(media.media_type)).title()]
     if media.width and media.height:
-        parts.append(f"{media.width}x{media.height}")
+        details.append(f"{media.width}x{media.height}")
     if media.duration_seconds:
-        parts.append(f"{media.duration_seconds:.1f}s".replace(".0s", "s"))
+        details.append(f"{media.duration_seconds:.1f}s".replace(".0s", "s"))
+
+    parts = [", ".join(details)]
+    if filename and filename != title:
+        parts.append(filename)
     tags = _media_tag_names(media, limit=5)
     if tags:
-        parts.append(", ".join(tags))
-    return " - ".join(parts)
+        parts.append(f"Tags: {', '.join(tags)}")
+    return ". ".join(parts)
 
 
 def _media_embed_html(request: Request, media: Media) -> str:
-    title = media.original_filename or media.filename
+    title = _preview_title(media)
     canonical_url = _absolute_url(request, f"/media/{media.id}")
     image_url = _absolute_url(request, f"/api/v1/media/{media.id}/preview-image?v={media.version}")
     description = _preview_description(media)

@@ -82,6 +82,7 @@ def _preview_media(media_id: uuid.UUID, **overrides):
             SimpleNamespace(tag=SimpleNamespace(name="safe")),
             SimpleNamespace(tag=SimpleNamespace(name="landscape")),
         ],
+        entities=[],
     )
     for key, value in overrides.items():
         setattr(media, key, value)
@@ -865,7 +866,44 @@ def test_get_media_embed_returns_open_graph_html_for_public_media(unauthenticate
     assert f'<meta property="og:url" content="https://zukan.example/media/{media_id}">' in html
     assert f'<meta property="og:image" content="https://zukan.example/api/v1/media/{media_id}/preview-image?v=7">' in html
     assert '<meta name="twitter:card" content="summary_large_image">' in html
-    assert "Image - 1280x720 - landscape, safe" in html
+    assert "Image, 1280x720. Tags: landscape, safe" in html
+
+
+def test_get_media_embed_prioritizes_character_and_series_text(unauthenticated_client, monkeypatch):
+    media_id = uuid.uuid4()
+    media = _preview_media(
+        media_id,
+        original_filename="buried-filename.webp",
+        entities=[
+            SimpleNamespace(entity_type=MediaEntityType.character, name="Rin Tohsaka"),
+            SimpleNamespace(entity_type=MediaEntityType.series, name="Fate/stay night"),
+            SimpleNamespace(entity_type=MediaEntityType.character, name="Saber"),
+        ],
+    )
+
+    async def _fake_get_with_relations(self, requested_media_id, deleted):
+        assert requested_media_id == media_id
+        assert deleted is False
+        return media
+
+    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
+
+    response = unauthenticated_client.get(
+        f"/api/v1/media/{media_id}/embed",
+        headers={
+            "host": "zukan.example",
+            "x-forwarded-proto": "https",
+        },
+    )
+
+    assert response.status_code == 200
+    html = response.text
+    assert '<meta property="og:title" content="Rin Tohsaka and Saber from Fate/stay night">' in html
+    assert '<meta name="twitter:title" content="Rin Tohsaka and Saber from Fate/stay night">' in html
+    assert (
+        '<meta property="og:description" content="Image, 1280x720. buried-filename.webp. Tags: landscape, safe">'
+        in html
+    )
 
 
 def test_get_media_embed_hides_private_or_unready_media(unauthenticated_client, monkeypatch):

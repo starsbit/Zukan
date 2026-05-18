@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
+import { Location } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
@@ -27,6 +28,7 @@ import { NavbarSearchService } from '../../services/navbar-search.service';
 })
 export class MediaInspectorPageComponent {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly location = inject(Location);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly mediaService = inject(MediaService);
@@ -55,6 +57,10 @@ export class MediaInspectorPageComponent {
 
   goToGallery(): void {
     void this.router.navigate(['/gallery']);
+  }
+
+  goBack(): void {
+    this.location.back();
   }
 
   onMediaUpdated(media: MediaRead): void {

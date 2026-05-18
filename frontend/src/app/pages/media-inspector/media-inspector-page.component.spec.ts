@@ -1,4 +1,5 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
+import { Location } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
@@ -149,6 +150,21 @@ describe('MediaInspectorPageComponent', () => {
     next.click();
 
     expect(navigateSpy).toHaveBeenCalledWith(['/media', 'm2']);
+  });
+
+  it('uses browser back navigation when Escape closes the routed inspector', async () => {
+    await configure('m1');
+    const location = TestBed.inject(Location);
+    const backSpy = vi.spyOn(location, 'back').mockImplementation(() => undefined);
+
+    const fixture = TestBed.createComponent(MediaInspectorPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(backSpy).toHaveBeenCalled();
   });
 
   it('disables previous and next for direct loads without list context', async () => {

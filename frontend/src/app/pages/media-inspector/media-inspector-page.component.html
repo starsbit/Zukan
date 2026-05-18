@@ -17,6 +17,7 @@
     [items]="items()"
     [activeMediaId]="activeMediaId()"
     (activeMediaChanged)="onActiveMediaChanged($event)"
+    (closeRequested)="goBack()"
     (metadataFilterSelected)="onMetadataFilterSelected($event)"
     (mediaUpdated)="onMediaUpdated($event)">
   </zukan-media-inspector-dialog>

@@ -144,6 +144,7 @@ export class MediaInspectorDialogComponent {
   readonly activeMediaId = input<string | null>(null);
   readonly initialItems = input<MediaRead[] | null>(null, { alias: 'items' });
   readonly activeMediaChanged = output<string>();
+  readonly closeRequested = output<void>();
   readonly metadataFilterSelected = output<MetadataFilterSelection>();
   readonly mediaUpdated = output<MediaRead>();
 
@@ -375,6 +376,7 @@ export class MediaInspectorDialogComponent {
 
   close(): void {
     this.dialogRef?.close();
+    this.closeRequested.emit();
   }
 
   previous(): void {

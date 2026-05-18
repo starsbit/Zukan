@@ -10,7 +10,7 @@ To start a local development server, run:
 ng serve
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
+Once the server is running, open your browser and navigate to `http://localhost:4200/`. The development server proxies `/api` requests to the API at `http://localhost:8000`, so keep the Docker Compose API service running while using `ng serve`. The application will automatically reload whenever you modify any of the source files.
 
 ## Code scaffolding
 
