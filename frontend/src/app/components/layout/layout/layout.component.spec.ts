@@ -1,8 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { BreakpointObserver, BreakpointState } from '@angular/cdk/layout';
-import { MatSidenav } from '@angular/material/sidenav';
 import { provideRouter } from '@angular/router';
-import { By } from '@angular/platform-browser';
 import { BehaviorSubject } from 'rxjs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { LayoutComponent } from './layout.component';
@@ -121,7 +119,7 @@ describe('LayoutComponent', () => {
     expect(fixture.componentInstance.sidenavOpened()).toBe(true);
   });
 
-  it('uses overlay mode on mobile so the sidebar does not compress content', async () => {
+  it('renders the mobile sidebar as an overlay without compressing content', async () => {
     breakpointState$.next({
       matches: true,
       breakpoints: { '(max-width: 1023px)': true },
@@ -131,8 +129,19 @@ describe('LayoutComponent', () => {
     const fixture = TestBed.createComponent(LayoutComponent);
     fixture.detectChanges();
 
-    let sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
-    expect(sidenav.mode).toBe('over');
+    const element = fixture.nativeElement as HTMLElement;
+    const sidebar = element.querySelector('.layout-sidebar');
+    expect(sidebar?.classList.contains('layout-sidebar--mobile')).toBe(true);
+    expect(sidebar?.classList.contains('layout-sidebar--open')).toBe(false);
+    expect(sidebar?.getAttribute('aria-hidden')).toBe('true');
+    expect(element.querySelector('.layout-backdrop')).toBeNull();
+
+    fixture.componentInstance.toggleSidenav();
+    fixture.detectChanges();
+
+    expect(sidebar?.classList.contains('layout-sidebar--open')).toBe(true);
+    expect(sidebar?.getAttribute('aria-hidden')).toBe('false');
+    expect(element.querySelector('.layout-backdrop')).not.toBeNull();
 
     breakpointState$.next({
       matches: false,
@@ -140,7 +149,27 @@ describe('LayoutComponent', () => {
     });
     fixture.detectChanges();
 
-    sidenav = fixture.debugElement.query(By.directive(MatSidenav)).componentInstance as MatSidenav;
-    expect(sidenav.mode).toBe('side');
+    expect(sidebar?.classList.contains('layout-sidebar--mobile')).toBe(false);
+    expect(sidebar?.classList.contains('layout-sidebar--open')).toBe(true);
+  });
+
+  it('closeSidenav only closes the mobile overlay', async () => {
+    await configureLayoutTestingModule();
+
+    const fixture = TestBed.createComponent(LayoutComponent);
+    fixture.detectChanges();
+
+    fixture.componentInstance.closeSidenav();
+    expect(fixture.componentInstance.sidenavOpened()).toBe(true);
+
+    breakpointState$.next({
+      matches: true,
+      breakpoints: { '(max-width: 1023px)': true },
+    });
+    fixture.detectChanges();
+
+    fixture.componentInstance.toggleSidenav();
+    fixture.componentInstance.closeSidenav();
+    expect(fixture.componentInstance.sidenavOpened()).toBe(false);
   });
 });

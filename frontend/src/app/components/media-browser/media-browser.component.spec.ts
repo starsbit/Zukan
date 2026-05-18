@@ -131,6 +131,41 @@ async function configureBrowserTestingModule() {
   }).compileComponents();
 }
 
+function setWindowScrollY(value: number): void {
+  Object.defineProperty(window, 'scrollY', {
+    value,
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(document.documentElement, 'scrollTop', {
+    value,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function setWindowInnerHeight(value: number): void {
+  Object.defineProperty(window, 'innerHeight', {
+    value,
+    writable: true,
+    configurable: true,
+  });
+}
+
+function placeContentAtDocumentTop(content: HTMLElement, top = 0): void {
+  Object.defineProperty(content, 'getBoundingClientRect', {
+    value: () => ({
+      top: top - window.scrollY,
+      left: 0,
+      bottom: top - window.scrollY + 500,
+      right: 500,
+      width: 500,
+      height: 500,
+    }),
+    configurable: true,
+  });
+}
+
 describe('MediaBrowserComponent', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
@@ -160,6 +195,8 @@ describe('MediaBrowserComponent', () => {
       return 1;
     });
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    setWindowScrollY(0);
+    setWindowInnerHeight(900);
     galleryStoreMock.batchDelete.mockClear();
     galleryStoreMock.batchUpdateAnnotations.mockClear();
     galleryStoreMock.batchQueueTaggingJobs.mockClear();
@@ -234,7 +271,7 @@ describe('MediaBrowserComponent', () => {
     expect(fixture.nativeElement.querySelector('.media-page__empty')).not.toBeNull();
   });
 
-  it('renders stories inside the scrollable browser content when enabled', async () => {
+  it('renders stories inside the browser content when enabled', async () => {
     await configureBrowserTestingModule();
 
     const fixture = TestBed.createComponent(MediaBrowserComponent);
@@ -311,16 +348,15 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    Object.defineProperty(content, 'scrollTop', { value: 0, writable: true });
-    Object.defineProperty(content, 'scrollTo', { value: vi.fn(), writable: true });
     Object.defineProperty(content, 'getBoundingClientRect', {
       value: () => ({ top: 0, left: 0, bottom: 500, right: 500, width: 500, height: 500 }),
     });
 
     fixture.componentInstance.onJumpRequested('2026-02');
 
-    expect(content.scrollTo).toHaveBeenCalled();
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 
   it('scrolls directly to a rendered section when jumping to a loaded month', async () => {
@@ -338,16 +374,15 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    Object.defineProperty(content, 'scrollTop', { value: 0, writable: true });
-    Object.defineProperty(content, 'scrollTo', { value: vi.fn(), writable: true });
     Object.defineProperty(content, 'getBoundingClientRect', {
       value: () => ({ top: 0, left: 0, bottom: 500, right: 500, width: 500, height: 500 }),
     });
 
     fixture.componentInstance.onJumpRequested('2026-03');
 
-    expect(content.scrollTo).toHaveBeenCalled();
+    expect(scrollToSpy).toHaveBeenCalled();
   });
 
   it('tracks the active month all the way to the bottom of the loaded range', async () => {
@@ -367,20 +402,16 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    Object.defineProperty(content, 'clientHeight', { value: 400, configurable: true });
-    Object.defineProperty(content, 'scrollHeight', { value: 1400, configurable: true });
-    Object.defineProperty(content, 'scrollTop', {
-      value: 1000,
-      writable: true,
-      configurable: true,
-    });
+    placeContentAtDocumentTop(content);
+    setWindowInnerHeight(400);
+    setWindowScrollY(1000);
     fixture.componentInstance.monthMetrics.set([
       { key: '2026-09', year: 2026, month: 9, offset: 0, height: 320 },
       { key: '2025-09', year: 2025, month: 9, offset: 420, height: 320 },
       { key: '2024-06', year: 2024, month: 6, offset: 1000, height: 320 },
     ]);
     fixture.componentInstance.maxScrollTop.set(1000);
-    content.dispatchEvent(new Event('scroll'));
+    (fixture.componentInstance as any).syncActiveSection();
 
     expect(fixture.componentInstance.activeMonthKey()).toBe('2024-06');
     expect(fixture.componentInstance.activeTimelineProgress()).toBe(100);
@@ -401,11 +432,8 @@ describe('MediaBrowserComponent', () => {
     fixture.detectChanges();
 
     const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    Object.defineProperty(content, 'scrollTop', {
-      value: 260,
-      writable: true,
-      configurable: true,
-    });
+    placeContentAtDocumentTop(content);
+    setWindowScrollY(260);
     (fixture.componentInstance as any).measuredMonthHeights.set({
       '2026-03': 250,
       '2026-02': 300,

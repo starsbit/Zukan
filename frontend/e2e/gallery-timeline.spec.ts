@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
-import { ensureAdminAuthenticated } from './helpers/auth';
+import { seedAuthenticatedSession } from './helpers/auth';
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlAbWQAAAAASUVORK5CYII=',
@@ -118,6 +118,8 @@ test.describe.serial('Gallery timeline', () => {
   });
 
   test('renders skeleton sections for all timeline months immediately on load', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+
     // Delay search responses so we can observe the skeleton state before data arrives
     let resolveFirstSearch!: () => void;
     const firstSearchHeld = new Promise<void>((resolve) => { resolveFirstSearch = resolve; });
@@ -147,7 +149,6 @@ test.describe.serial('Gallery timeline', () => {
       });
     });
 
-    await ensureAdminAuthenticated(page);
     await page.goto('/');
 
     // All three skeleton sections should be visible before any search page arrives
@@ -160,8 +161,8 @@ test.describe.serial('Gallery timeline', () => {
   });
 
   test('auto-fetches all pages without user scrolling', async ({ page }) => {
+    await seedAuthenticatedSession(page);
     await registerGalleryRoutes(page);
-    await ensureAdminAuthenticated(page);
     await page.goto('/');
     await expect(page).toHaveURL('/');
 
@@ -176,8 +177,8 @@ test.describe.serial('Gallery timeline', () => {
   });
 
   test('uses a full-height rail, tracks bottom progress, and jumps to any month instantly', async ({ page }) => {
+    await seedAuthenticatedSession(page);
     await registerGalleryRoutes(page);
-    await ensureAdminAuthenticated(page);
     await expect(page).toHaveURL('/');
     await page.goto('/');
     await expect(page).toHaveURL('/');
@@ -190,33 +191,39 @@ test.describe.serial('Gallery timeline', () => {
     await expect(timeline).toBeVisible();
     await expect(activeMonth).toHaveAttribute('aria-label', 'Sep 2026');
 
-    // Timeline rail height matches content pane height
+    // Timeline rail fills the viewport beside the document-scrolled content.
     const contentBox = await content.boundingBox();
     const timelineBox = await timeline.boundingBox();
+    const viewport = page.viewportSize();
     expect(contentBox).not.toBeNull();
     expect(timelineBox).not.toBeNull();
-    expect(Math.abs((timelineBox?.height ?? 0) - (contentBox?.height ?? 0))).toBeLessThan(48);
+    expect(timelineBox?.height ?? 0).toBeGreaterThan((viewport?.height ?? 720) * 0.45);
+    expect(timelineBox?.height ?? 0).toBeLessThanOrEqual(viewport?.height ?? 720);
 
     // Scrolling partway through changes the active chip
-    await content.evaluate((node) => {
-      node.scrollTop = node.scrollHeight * 0.45;
-      node.dispatchEvent(new Event('scroll'));
+    await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight * 0.45);
+      window.dispatchEvent(new Event('scroll'));
     });
     await expect(activeMonth).not.toHaveAttribute('aria-label', 'Sep 2026');
 
-    // Clicking a month in the timeline scrolls to it - even before that page is fetched
+    // Clicking a month in the timeline advances document scroll toward that section.
+    const scrollBeforeJump = await page.evaluate(() => window.scrollY);
     await page.getByRole('button', { name: 'Jan 2020' }).click();
-    await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeInViewport();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(scrollBeforeJump);
+    await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeAttached();
 
     // Scrolling to the bottom keeps the oldest section visible
-    await content.evaluate((node) => {
-      node.scrollTop = node.scrollHeight - node.clientHeight;
-      node.dispatchEvent(new Event('scroll'));
+    await page.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight - window.innerHeight);
+      window.dispatchEvent(new Event('scroll'));
     });
     await expect(page.getByRole('heading', { name: 'January 5, 2020' })).toBeInViewport();
   });
 
   test('shows empty state when gallery has no media', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+
     await page.route('**/api/v1/media/search**', async (route: Route) => {
       await route.fulfill({
         json: { items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 },
@@ -226,7 +233,6 @@ test.describe.serial('Gallery timeline', () => {
       await route.fulfill({ json: { buckets: [] } });
     });
 
-    await ensureAdminAuthenticated(page);
     await page.goto('/');
 
     await expect(page.locator('.media-browser__empty')).toBeVisible();

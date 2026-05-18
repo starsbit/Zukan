@@ -1,7 +1,7 @@
 import { ApplicationConfig, inject, provideAppInitializer, provideBrowserGlobalErrorListeners } from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { MAT_SNACK_BAR_DEFAULT_OPTIONS } from '@angular/material/snack-bar';
-import { provideRouter } from '@angular/router';
+import { provideRouter, withInMemoryScrolling } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideServiceWorker } from '@angular/service-worker';
 
@@ -15,7 +15,7 @@ export const appConfig: ApplicationConfig = {
     provideBrowserGlobalErrorListeners(),
     provideAnimationsAsync(),
     provideAppInitializer(() => inject(AuthSessionService).restore()),
-    provideRouter(routes),
+    provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'enabled' })),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideServiceWorker('ngsw-worker.js', {
       enabled: environment.production,

@@ -208,6 +208,70 @@ async function registerViewerRoutes(page: Page) {
   return { patchBodies };
 }
 
+async function registerScrollableViewerRoutes(page: Page) {
+  const items = Array.from({ length: 36 }, (_, index) => {
+    const day = String(28 - Math.floor(index / 12)).padStart(2, '0');
+    const hour = String(23 - (index % 12)).padStart(2, '0');
+    return mediaDetail(
+      mediaItem(`scroll-${index + 1}`, 'image', {
+        filename: `scroll-${index + 1}.png`,
+        original_filename: `scroll-${index + 1}-original.png`,
+        metadata: {
+          file_size: 100,
+          width: index % 3 === 0 ? 900 : 1200,
+          height: index % 3 === 0 ? 1200 : 800,
+          duration_seconds: null,
+          frame_count: null,
+          mime_type: 'image/png',
+          captured_at: `2026-03-${day}T${hour}:00:00Z`,
+        },
+        uploaded_at: `2026-03-${day}T${hour}:00:00Z`,
+        tags: [],
+        ocr_text: null,
+      }),
+    );
+  });
+  const state = new Map(items.map((item) => [item.id, item]));
+
+  await page.route('**/api/v1/media/search**', async (route: Route) => {
+    await route.fulfill({
+      json: {
+        items: items.map(
+          ({ tag_details: _tagDetails, external_refs: _refs, entities: _entities, ...media }) =>
+            media,
+        ),
+        total: items.length,
+        next_cursor: null,
+        has_more: false,
+        page_size: 160,
+      },
+    });
+  });
+
+  await page.route('**/api/v1/media/timeline**', async (route: Route) => {
+    await route.fulfill({
+      json: { buckets: [{ year: 2026, month: 3, count: items.length }] },
+    });
+  });
+
+  await page.route('**/api/v1/media/*/thumbnail', async (route: Route) => {
+    await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 });
+  });
+
+  await page.route('**/api/v1/media/*/file', async (route: Route) => {
+    await route.fulfill({ status: 200, contentType: 'image/png', body: PNG_1X1 });
+  });
+
+  await page.route('**/api/v1/tags**', async (route: Route) => {
+    await route.fulfill({ json: { items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 } });
+  });
+
+  await page.route(/\/api\/v1\/media\/scroll-\d+$/, async (route: Route) => {
+    const id = route.request().url().split('/').pop()!;
+    await route.fulfill({ json: state.get(id) });
+  });
+}
+
 test.describe.serial('Media viewer', () => {
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
@@ -288,6 +352,45 @@ test.describe.serial('Media viewer', () => {
     await expect(viewer).toContainText('Manual OCR text');
     await expect(viewer).toContainText('Rin Tohsaka');
     await expect(viewer).toContainText('Hero');
+  });
+
+  test('preserves the latest gallery position through repeated inspector returns', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+    await registerScrollableViewerRoutes(page);
+    await page.goto('/');
+    await expect(page).toHaveURL('/');
+
+    for (const [iteration, index] of [25, 7, 31, 13].entries()) {
+      const mediaId = `scroll-${index + 1}`;
+      const targetCard = page.locator(`zukan-media-card[data-media-id="${mediaId}"]`);
+      if (iteration > 0) {
+        await page.mouse.wheel(0, index > 18 ? 900 : -900);
+      }
+      await targetCard.scrollIntoViewIfNeeded();
+      await expect(targetCard).toBeInViewport();
+      const scrollYBeforeOpen = await page.evaluate(() => window.scrollY);
+      const cardTopBeforeOpen = await targetCard.evaluate((node) => node.getBoundingClientRect().top);
+      const cardBox = await targetCard.boundingBox();
+      expect(scrollYBeforeOpen).toBeGreaterThan(0);
+      expect(cardBox).not.toBeNull();
+
+      await page.mouse.click(
+        (cardBox?.x ?? 0) + (cardBox?.width ?? 0) / 2,
+        (cardBox?.y ?? 0) + (cardBox?.height ?? 0) / 2,
+      );
+      await expect(page).toHaveURL(`/media/${mediaId}`);
+      await expect(page.locator('zukan-media-inspector-dialog')).toContainText(`${mediaId}.png`);
+
+      await page.goBack();
+      await expect(page).toHaveURL('/');
+      await expect.poll(
+        async () => Math.abs(
+          (await targetCard.evaluate((node) => node.getBoundingClientRect().top)) - cardTopBeforeOpen,
+        ),
+        { timeout: 5000 },
+      ).toBeLessThanOrEqual(5);
+      await expect(targetCard).toBeInViewport();
+    }
   });
 
   test('opens a shared media URL directly for an authenticated user', async ({ page }) => {

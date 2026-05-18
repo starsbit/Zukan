@@ -199,8 +199,15 @@ export class MediaBrowserComponent {
   private resizeObserver?: ResizeObserver;
   private resizeDebounceTimer?: ReturnType<typeof setTimeout>;
   private removeContentScrollListener?: () => void;
+  private removeReturnAnchorCancelListeners?: () => void;
   private metricsFrameId: number | null = null;
   private frameId: number | null = null;
+  private pendingJumpRetryTimer?: ReturnType<typeof setTimeout>;
+  private pendingJumpFinalizeTimer?: ReturnType<typeof setTimeout>;
+  private returnAnchorRestoreFrameId: number | null = null;
+  private returnAnchorRestoreAttempts = 0;
+  private returnAnchorStableFrames = 0;
+  private activeReturnAnchorSequence: number | null = null;
   private pendingJumpTargetKey: string | null = null;
   private readonly scrollTop = signal(0);
   private readonly viewportHeight = signal(900);
@@ -230,10 +237,12 @@ export class MediaBrowserComponent {
       this.dayGroups();
       this.timeline();
       this.loading();
+      this.inspectionContext.returnAnchor();
       untracked(() => {
         this.tryResolvePendingJump();
         this.scheduleLayoutSync();
         this.ensureRenderedMonthsLoaded();
+        this.scheduleReturnAnchorRestore();
       });
     });
   }
@@ -241,6 +250,7 @@ export class MediaBrowserComponent {
   ngAfterViewInit(): void {
     this.observeContentWidth();
     this.watchContentScroll();
+    this.watchReturnAnchorCancellation();
     this.watchMonthSections();
     this.scheduleLayoutSync();
   }
@@ -248,6 +258,7 @@ export class MediaBrowserComponent {
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.removeContentScrollListener?.();
+    this.removeReturnAnchorCancelListeners?.();
     clearTimeout(this.resizeDebounceTimer);
     if (this.metricsFrameId != null) {
       cancelAnimationFrame(this.metricsFrameId);
@@ -255,6 +266,11 @@ export class MediaBrowserComponent {
     if (this.frameId != null) {
       cancelAnimationFrame(this.frameId);
     }
+    if (this.returnAnchorRestoreFrameId != null) {
+      cancelAnimationFrame(this.returnAnchorRestoreFrameId);
+    }
+    clearTimeout(this.pendingJumpRetryTimer);
+    clearTimeout(this.pendingJumpFinalizeTimer);
   }
 
   sectionId(date: string): string {
@@ -269,10 +285,14 @@ export class MediaBrowserComponent {
     return `${year}-${String(month).padStart(2, '0')}`;
   }
 
-  onMediaActivated(media: MediaRead): void {
+  onMediaActivated(media: MediaRead, viewportTop?: number): void {
     this.mediaSelected.emit(media);
     const items = this.dayGroups().flatMap((group) => group.items);
-    this.inspectionContext.setContext(items, this.router.url);
+    this.inspectionContext.setContext(
+      items,
+      this.router.url,
+      this.captureReturnAnchor(media.id, viewportTop),
+    );
     void this.router.navigate(['/media', media.id]);
   }
 
@@ -620,8 +640,156 @@ export class MediaBrowserComponent {
     this.monthSections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.tryResolvePendingJump();
       this.scheduleLayoutSync();
+      this.scheduleReturnAnchorRestore();
     });
     this.scheduleLayoutSync();
+  }
+
+  private watchReturnAnchorCancellation(): void {
+    if (typeof window === 'undefined' || this.removeReturnAnchorCancelListeners) {
+      return;
+    }
+
+    const cancel = () => this.cancelReturnAnchorRestore();
+    const options: AddEventListenerOptions = { passive: true };
+    window.addEventListener('wheel', cancel, options);
+    window.addEventListener('touchstart', cancel, options);
+    window.addEventListener('pointerdown', cancel, options);
+    window.addEventListener('keydown', cancel);
+    this.removeReturnAnchorCancelListeners = () => {
+      window.removeEventListener('wheel', cancel);
+      window.removeEventListener('touchstart', cancel);
+      window.removeEventListener('pointerdown', cancel);
+      window.removeEventListener('keydown', cancel);
+      this.removeReturnAnchorCancelListeners = undefined;
+    };
+  }
+
+  private cancelReturnAnchorRestore(): void {
+    const anchor = this.inspectionContext.returnAnchor();
+    if (!anchor || this.activeReturnAnchorSequence !== anchor.sequence) {
+      return;
+    }
+
+    this.inspectionContext.consumeReturnAnchor(anchor.sequence);
+    this.activeReturnAnchorSequence = null;
+    this.resetReturnAnchorRestoreState();
+    if (this.returnAnchorRestoreFrameId != null) {
+      cancelAnimationFrame(this.returnAnchorRestoreFrameId);
+      this.returnAnchorRestoreFrameId = null;
+    }
+  }
+
+  private captureReturnAnchor(mediaId: string, viewportTop?: number) {
+    const card = this.findMediaCardElement(mediaId);
+    if (!card) {
+      return null;
+    }
+
+    return {
+      mediaId,
+      originUrl: this.router.url,
+      scrollY: this.readDocumentScrollTop(),
+      viewportTop: viewportTop ?? card.getBoundingClientRect().top,
+    };
+  }
+
+  private scheduleReturnAnchorRestore(): void {
+    const anchor = this.inspectionContext.returnAnchor();
+    if (!anchor || anchor.originUrl !== this.router.url || this.returnAnchorRestoreFrameId != null) {
+      return;
+    }
+
+    if (this.activeReturnAnchorSequence !== anchor.sequence) {
+      this.activeReturnAnchorSequence = anchor.sequence;
+      this.resetReturnAnchorRestoreState();
+    }
+
+    this.returnAnchorRestoreFrameId = requestAnimationFrame(() => {
+      this.returnAnchorRestoreFrameId = null;
+      this.restoreReturnAnchor();
+    });
+  }
+
+  private restoreReturnAnchor(): void {
+    const anchor = this.inspectionContext.returnAnchor();
+    if (!anchor || anchor.originUrl !== this.router.url) {
+      this.activeReturnAnchorSequence = null;
+      this.resetReturnAnchorRestoreState();
+      return;
+    }
+
+    if (this.activeReturnAnchorSequence !== anchor.sequence) {
+      this.activeReturnAnchorSequence = anchor.sequence;
+      this.resetReturnAnchorRestoreState();
+    }
+
+    this.returnAnchorRestoreAttempts += 1;
+    const card = this.findMediaCardElement(anchor.mediaId);
+
+    if (!card) {
+      if (this.returnAnchorRestoreAttempts === 1) {
+        window.scrollTo({ top: anchor.scrollY, behavior: 'auto' });
+      }
+      if (this.returnAnchorRestoreAttempts < 240) {
+        this.scheduleReturnAnchorRestore();
+      } else {
+        this.inspectionContext.consumeReturnAnchor(anchor.sequence);
+        this.activeReturnAnchorSequence = null;
+        this.resetReturnAnchorRestoreState();
+      }
+      return;
+    }
+
+    const delta = card.getBoundingClientRect().top - anchor.viewportTop;
+    if (Math.abs(delta) > 0.5) {
+      window.scrollTo({ top: this.readDocumentScrollTop() + delta, behavior: 'auto' });
+    }
+
+    this.scrollTop.set(this.readLocalScrollTop());
+    this.scheduleActiveSectionSync();
+    this.ensureRenderedMonthsLoaded();
+
+    const remainingDelta = Math.abs(card.getBoundingClientRect().top - anchor.viewportTop);
+    this.returnAnchorStableFrames = remainingDelta <= 0.5
+      ? this.returnAnchorStableFrames + 1
+      : 0;
+
+    this.retryOrFinishReturnAnchorRestore(anchor);
+  }
+
+  private retryOrFinishReturnAnchorRestore(anchor: { originUrl: string }): void {
+    const settled = this.returnAnchorStableFrames >= 45;
+    const exhausted = this.returnAnchorRestoreAttempts >= 120;
+    if (settled || exhausted || anchor.originUrl !== this.router.url) {
+      const sequence = this.activeReturnAnchorSequence ?? undefined;
+      this.inspectionContext.consumeReturnAnchor(sequence);
+      this.activeReturnAnchorSequence = null;
+      this.resetReturnAnchorRestoreState();
+      return;
+    }
+
+    this.scheduleReturnAnchorRestore();
+  }
+
+  private resetReturnAnchorRestoreState(): void {
+    this.returnAnchorRestoreAttempts = 0;
+    this.returnAnchorStableFrames = 0;
+  }
+
+  private findMediaCardElement(mediaId: string): HTMLElement | null {
+    if (typeof document === 'undefined') {
+      return null;
+    }
+
+    const cards = document.querySelectorAll<HTMLElement>('zukan-media-card[data-media-id]');
+    for (const card of Array.from(cards)) {
+      if (card.getAttribute('data-media-id') === mediaId) {
+        return card;
+      }
+    }
+
+    return null;
   }
 
   private watchContentScroll(): void {
@@ -632,14 +800,17 @@ export class MediaBrowserComponent {
 
     this.zone.runOutsideAngular(() => {
       const onScroll = () => {
-        this.scrollTop.set(content.scrollTop);
-        this.viewportHeight.set(content.clientHeight);
+        this.scrollTop.set(this.readLocalScrollTop());
+        this.viewportHeight.set(this.readViewportHeight());
         this.scheduleActiveSectionSync();
         this.ensureRenderedMonthsLoaded();
       };
-      content.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+      window.addEventListener('scroll', onScroll, { passive: true });
+      window.addEventListener('resize', onScroll, { passive: true });
       this.removeContentScrollListener = () => {
-        content.removeEventListener('scroll', onScroll);
+        window.removeEventListener('scroll', onScroll);
+        window.removeEventListener('resize', onScroll);
         this.removeContentScrollListener = undefined;
       };
     });
@@ -691,16 +862,15 @@ export class MediaBrowserComponent {
   }
 
   private syncActiveSection(): void {
-    const content = this.contentPane?.nativeElement;
     const metrics = this.virtualMonthMetrics();
-    if (!content || metrics.length === 0) {
+    if (!this.contentPane?.nativeElement || metrics.length === 0) {
       this.activeYear.set(null);
       this.activeMonthKey.set(null);
       this.activeTimelineProgress.set(null);
       return;
     }
 
-    const scrollTop = content.scrollTop;
+    const scrollTop = this.readLocalScrollTop();
     this.scrollTop.set(scrollTop);
     const activeMetric = this.findActiveMonthMetric(metrics, scrollTop);
     const maxScrollTop = this.maxScrollTop();
@@ -795,8 +965,21 @@ export class MediaBrowserComponent {
       .pipe(takeUntilDestroyed(this.destroyRef), catchError(() => EMPTY))
       .subscribe(() => this.scheduleLayoutSync());
 
+    const targetElement = typeof document !== 'undefined'
+      ? document.getElementById(target.anchorId)
+      : null;
+    const targetHasLoadedDays = this.dayGroups().some((group) => group.date.slice(0, 7) === targetKey);
+    const targetReady = targetElement
+      && targetHasLoadedDays
+      && !targetElement.querySelector('.media-browser__day--skeleton');
+    if (targetReady) {
+      this.scrollElementIntoDocumentView(targetElement);
+      this.schedulePendingJumpFinalize(targetKey, target.anchorId);
+      return;
+    }
+
     if (this.scrollToAnchor(target.anchorId)) {
-      this.pendingJumpTargetKey = null;
+      this.schedulePendingJumpRetry();
       return;
     }
 
@@ -832,42 +1015,76 @@ export class MediaBrowserComponent {
     if (!cachedMonthMetric && !target) {
       return false;
     }
-    const nextTop = cachedMonthMetric?.offset ?? this.measureOffsetWithinContent(target!, content);
-    if (typeof content.scrollTo === 'function') {
-      content.scrollTo({ top: Math.max(nextTop, 0), behavior: 'auto' });
-    } else {
-      content.scrollTop = Math.max(nextTop, 0);
-    }
-    this.scrollTop.set(content.scrollTop);
+    const nextTop = target
+      ? this.measureOffsetWithinContent(target, content)
+      : cachedMonthMetric!.offset;
+    this.scrollDocumentToLocalTop(nextTop);
+    this.scrollTop.set(this.readLocalScrollTop());
     this.scheduleActiveSectionSync();
     this.ensureRenderedMonthsLoaded();
     return true;
   }
 
-  private measureOffsetWithinContent(target: HTMLElement, content: HTMLElement): number {
-    let offset = 0;
-    let node: HTMLElement | null = target;
-
-    while (node && node !== content) {
-      offset += node.offsetTop;
-      node = node.offsetParent instanceof HTMLElement ? node.offsetParent : null;
+  private scrollElementIntoDocumentView(target: HTMLElement): void {
+    if (typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
+    } else {
+      const content = this.contentPane?.nativeElement;
+      if (content) {
+        this.scrollDocumentToLocalTop(this.measureOffsetWithinContent(target, content));
+      }
     }
-
-    if (node === content) {
-      return offset;
-    }
-
-    const contentRect = content.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    return content.scrollTop + (targetRect.top - contentRect.top);
+    this.scrollTop.set(this.readLocalScrollTop());
+    this.scheduleActiveSectionSync();
+    this.ensureRenderedMonthsLoaded();
   }
 
-  private measureMonthSectionOffset(target: HTMLElement, content: HTMLElement): number {
-    if (target.parentElement === content) {
-      return target.offsetTop;
+  private schedulePendingJumpRetry(): void {
+    if (this.pendingJumpRetryTimer) {
+      return;
     }
 
-    return this.measureOffsetWithinContent(target, content);
+    this.pendingJumpRetryTimer = setTimeout(() => {
+      this.pendingJumpRetryTimer = undefined;
+      this.tryResolvePendingJump();
+    }, 0);
+  }
+
+  private schedulePendingJumpFinalize(targetKey: string, anchorId: string): void {
+    if (this.pendingJumpFinalizeTimer) {
+      return;
+    }
+
+    let attempts = 0;
+    const correct = () => {
+      if (this.pendingJumpTargetKey !== targetKey) {
+        this.pendingJumpFinalizeTimer = undefined;
+        return;
+      }
+
+      const target = typeof document !== 'undefined' ? document.getElementById(anchorId) : null;
+      if (target) {
+        this.scrollElementIntoDocumentView(target);
+      } else {
+        this.scrollToAnchor(anchorId);
+      }
+      attempts += 1;
+      if (attempts < 4) {
+        this.pendingJumpFinalizeTimer = setTimeout(correct, attempts * 160);
+        return;
+      }
+
+      this.pendingJumpFinalizeTimer = undefined;
+      this.pendingJumpTargetKey = null;
+    };
+
+    this.pendingJumpFinalizeTimer = setTimeout(correct, 80);
+  }
+
+  private measureOffsetWithinContent(target: HTMLElement, content: HTMLElement): number {
+    const contentRect = content.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    return targetRect.top - contentRect.top;
   }
 
   private flattenTimelineMonths() {
@@ -1191,26 +1408,25 @@ export class MediaBrowserComponent {
   }
 
   onScrollRequested(progress: number): void {
-    const content = this.contentPane?.nativeElement;
-    if (!content) {
+    if (!this.contentPane?.nativeElement) {
       return;
     }
 
-    content.scrollTop = progress * this.maxScrollTop();
-    this.scrollTop.set(content.scrollTop);
+    this.scrollDocumentToLocalTop(progress * this.maxScrollTop());
+    this.scrollTop.set(this.readLocalScrollTop());
     this.scheduleActiveSectionSync();
     this.ensureRenderedMonthsLoaded();
   }
 
   private updateVirtualScrollBounds(): void {
-    const content = this.contentPane?.nativeElement;
-    if (!content) {
+    if (!this.contentPane?.nativeElement) {
       return;
     }
 
-    this.viewportHeight.set(content.clientHeight);
-    this.scrollTop.set(content.scrollTop);
-    const nextMaxScrollTop = Math.max(this.totalVirtualHeight() - content.clientHeight, 0);
+    const viewportHeight = this.readViewportHeight();
+    this.viewportHeight.set(viewportHeight);
+    this.scrollTop.set(this.readLocalScrollTop());
+    const nextMaxScrollTop = Math.max(this.totalVirtualHeight() - viewportHeight, 0);
     if (nextMaxScrollTop !== this.maxScrollTop()) {
       this.maxScrollTop.set(nextMaxScrollTop);
     }
@@ -1285,6 +1501,48 @@ export class MediaBrowserComponent {
     );
 
     return Math.max(measured, 320);
+  }
+
+  private readViewportHeight(): number {
+    if (typeof window === 'undefined') {
+      return this.contentPane?.nativeElement.clientHeight || 900;
+    }
+
+    return window.innerHeight || document.documentElement.clientHeight || 900;
+  }
+
+  private readDocumentScrollTop(): number {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return 0;
+    }
+
+    return window.scrollY
+      || document.scrollingElement?.scrollTop
+      || document.documentElement.scrollTop
+      || document.body.scrollTop
+      || 0;
+  }
+
+  private browserDocumentTop(): number {
+    const content = this.contentPane?.nativeElement;
+    if (!content || typeof document === 'undefined') {
+      return 0;
+    }
+
+    return content.getBoundingClientRect().top + this.readDocumentScrollTop();
+  }
+
+  private readLocalScrollTop(): number {
+    return Math.max(this.readDocumentScrollTop() - this.browserDocumentTop(), 0);
+  }
+
+  private scrollDocumentToLocalTop(localTop: number): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const top = this.browserDocumentTop() + Math.max(localTop, 0);
+    window.scrollTo({ top, behavior: 'auto' });
   }
 
   private areMonthMetricsEqual(current: MonthMetric[], next: MonthMetric[]): boolean {

@@ -111,13 +111,14 @@
                     <div class="media-browser__cell" [style.width.px]="item.width">
                       @if (item.media; as media) {
                         <zukan-media-card
+                          [attr.data-media-id]="media.id"
                           [media]="media"
                           [selectable]="allowSelection()"
                           [selected]="isMediaSelected(media.id)"
                           [selectionMode]="isSelectionMode()"
                           [showFavorite]="true"
                           [showPublicBadge]="showPublicBadge()"
-                          (activated)="onMediaActivated($event)"
+                          (activatedWithAnchor)="onMediaActivated($event.media, $event.viewportTop)"
                           (selectionToggled)="onMediaSelectionToggled($event)"
                           (favoriteToggled)="onFavoriteToggled($event)">
                         </zukan-media-card>

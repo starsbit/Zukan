@@ -1,7 +1,6 @@
 import { BreakpointObserver } from '@angular/cdk/layout';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { MatSidenavModule } from '@angular/material/sidenav';
 import { NavbarComponent } from '../navbar/navbar.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { UploadStatusIslandComponent } from '../upload-status/upload-status-island/upload-status-island.component';
@@ -9,7 +8,7 @@ import { UpdateStatusIslandComponent } from '../update-status/update-status-isla
 
 @Component({
   selector: 'zukan-layout',
-  imports: [MatSidenavModule, NavbarComponent, SidebarComponent, UploadStatusIslandComponent, UpdateStatusIslandComponent],
+  imports: [NavbarComponent, SidebarComponent, UploadStatusIslandComponent, UpdateStatusIslandComponent],
   templateUrl: './layout.component.html',
   styleUrl: './layout.component.scss',
 })
@@ -32,5 +31,11 @@ export class LayoutComponent {
 
   toggleSidenav(): void {
     this.sidenavOpened.update((opened) => !opened);
+  }
+
+  closeSidenav(): void {
+    if (this.isMobile()) {
+      this.sidenavOpened.set(false);
+    }
   }
 }

@@ -1,17 +1,28 @@
 <div class="layout-shell">
   <zukan-navbar [showMenuToggle]="isMobile()" (menuToggle)="toggleSidenav()"></zukan-navbar>
 
-  <mat-sidenav-container class="layout-container">
-    <mat-sidenav [mode]="isMobile() ? 'over' : 'side'" [opened]="sidenavOpened()" class="layout-sidebar">
-      <zukan-sidebar></zukan-sidebar>
-    </mat-sidenav>
+  <div class="layout-container" [class.layout-container--mobile-open]="isMobile() && sidenavOpened()">
+    @if (isMobile() && sidenavOpened()) {
+      <button
+        type="button"
+        class="layout-backdrop"
+        aria-label="Close navigation menu"
+        (click)="closeSidenav()">
+      </button>
+    }
 
-    <mat-sidenav-content>
-      <main class="layout-content">
-        <ng-content></ng-content>
-      </main>
-    </mat-sidenav-content>
-  </mat-sidenav-container>
+    <aside
+      class="layout-sidebar"
+      [class.layout-sidebar--mobile]="isMobile()"
+      [class.layout-sidebar--open]="sidenavOpened()"
+      [attr.aria-hidden]="isMobile() && !sidenavOpened()">
+      <zukan-sidebar></zukan-sidebar>
+    </aside>
+
+    <main class="layout-content">
+      <ng-content></ng-content>
+    </main>
+  </div>
 
   <zukan-upload-status-island></zukan-upload-status-island>
   <zukan-update-status-island></zukan-update-status-island>
