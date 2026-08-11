@@ -20,6 +20,8 @@ services:
       UPDATER_URL: http://updater:8080
       UPDATER_TOKEN: ${UPDATER_TOKEN}
       LOG_LEVEL: INFO
+      COBALT_API_URL: ${COBALT_API_URL:-}
+      COBALT_API_KEY: ${COBALT_API_KEY:-}
     volumes:
       - storage_data:/backend/storage
       - model_cache:/backend/model_cache
