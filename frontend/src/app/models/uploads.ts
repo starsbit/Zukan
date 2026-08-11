@@ -1,3 +1,10 @@
+import { MediaVisibility } from './media';
+
+export interface UrlIngestRequest {
+  url: string;
+  visibility?: MediaVisibility;
+}
+
 export interface UploadResult {
   id: string | null;
   batch_item_id: string | null;

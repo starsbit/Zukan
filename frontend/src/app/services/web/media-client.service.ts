@@ -16,7 +16,7 @@ import {
   SensitiveFilter,
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
-import { BatchUploadResponse, TaggingJobQueuedResponse } from '../../models/uploads';
+import { BatchUploadResponse, TaggingJobQueuedResponse, UrlIngestRequest } from '../../models/uploads';
 import {
   LibraryClassificationFeedbackBulkCreate,
   LibraryClassificationFeedbackCreate,
@@ -161,6 +161,10 @@ export class MediaClientService {
       reportProgress: true,
       observe: 'events',
     });
+  }
+
+  ingestUrl(body: UrlIngestRequest): Observable<BatchUploadResponse> {
+    return this.http.post<BatchUploadResponse>(`${this.base}/api/v1/media/ingest-url`, body);
   }
 
   batchUpdate(body: MediaBatchUpdate): Observable<BulkResult> {

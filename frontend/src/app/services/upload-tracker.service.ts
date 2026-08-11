@@ -455,6 +455,48 @@ export class UploadTrackerService implements OnDestroy {
     this.refreshBatch(response.batch_id);
   }
 
+  registerUrlIngestStarted(response: BatchUploadResponse, visibility: MediaVisibility): void {
+    const now = new Date().toISOString();
+    this.dismissed.set(false);
+    this.trackedBatches.update((current) => ({
+      ...current,
+      [response.batch_id]: {
+        id: response.batch_id,
+        visibility,
+        createdAt: now,
+        pollAfterSeconds: this.normalizePollAfter(response.poll_after_seconds),
+        requestId: `url-ingest-${response.batch_id}`,
+        response,
+        batch: null,
+        items: [],
+        reviewItems: [],
+        recommendationGroups: [],
+        reviewTotal: 0,
+        reviewBaselineTotal: 0,
+        reviewRefreshing: false,
+        recommendationsRefreshing: false,
+        error: null,
+        refreshing: false,
+      },
+    }));
+    this.refreshBatch(response.batch_id);
+  }
+
+  registerUrlIngestFailed(url: string, error: string): void {
+    const createdAt = new Date().toISOString();
+    this.dismissed.set(false);
+    this.failedUploadFiles.update((entries) => [
+      ...entries,
+      {
+        id: `failed-file-${this.nextErrorId += 1}`,
+        filename: url,
+        error,
+        requestId: 'url-ingest-rejected',
+        createdAt,
+      },
+    ]);
+  }
+
   registerBatchRequestFailed(requestId: string, files: File[], error: string): void {
     const createdAt = new Date().toISOString();
     this.dismissed.set(false);

@@ -1,0 +1,35 @@
+:host {
+  display: block;
+  max-width: min(480px, calc(100vw - 32px));
+  overflow-x: hidden;
+}
+
+.url-ingest-form {
+  display: grid;
+  gap: 16px;
+  width: min(440px, calc(100vw - 64px));
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-top: 8px;
+}
+
+mat-form-field {
+  width: 100%;
+}
+
+.visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.info-icon {
+  font-size: 18px;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  color: var(--mat-sys-on-surface-variant);
+  cursor: default;
+  user-select: none;
+}

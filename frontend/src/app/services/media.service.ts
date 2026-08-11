@@ -4,7 +4,7 @@ import { catchError, EMPTY, filter, finalize, map, Observable, shareReplay, tap,
 import { MediaClientService, MediaSearchParams, UploadParams } from './web/media-client.service';
 import { BlobUrlCache } from '../utils/blob-url.utils';
 import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
-import { BatchUploadResponse, TaggingJobQueuedResponse } from '../models/uploads';
+import { BatchUploadResponse, TaggingJobQueuedResponse, UrlIngestRequest } from '../models/uploads';
 import { BulkResult } from '../models/common';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../models/tags';
 import {
@@ -186,6 +186,10 @@ export class MediaService implements OnDestroy {
 
   uploadWithProgress(files: File[], params?: UploadParams): Observable<HttpEvent<BatchUploadResponse>> {
     return this.client.upload(files, params);
+  }
+
+  ingestUrl(body: UrlIngestRequest): Observable<BatchUploadResponse> {
+    return this.client.ingestUrl(body);
   }
 
   download(ids: string[]): Observable<Blob> {

@@ -14,6 +14,7 @@ import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { ConfigClientService } from '../../../../services/web/config-client.service';
 import { UploadConfirmDialogComponent, UploadConfirmDialogData, UploadConfirmDialogResult } from './upload-confirm-dialog/upload-confirm-dialog.component';
+import { UrlIngestDialogComponent, UrlIngestDialogResult } from './url-ingest-dialog/url-ingest-dialog.component';
 import { extractApiError } from '../../../../utils/api-error.utils';
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -83,6 +84,23 @@ export class NavbarUploadComponent {
 
   openFolderPicker(): void {
     this.folderInput().nativeElement.click();
+  }
+
+  openUrlIngestDialog(): void {
+    if (this.loading()) {
+      return;
+    }
+
+    this.dialog
+      .open<UrlIngestDialogComponent, void, UrlIngestDialogResult>(UrlIngestDialogComponent)
+      .afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (!result) {
+          return;
+        }
+        this.startUrlIngest(result.url, result.isPublic);
+      });
   }
 
   onFileSelection(fileList: FileList | null): void {
@@ -284,6 +302,25 @@ export class NavbarUploadComponent {
             return EMPTY;
           }),
         );
+      }),
+      finalize(() => this.loading.set(false)),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe();
+  }
+
+  private startUrlIngest(url: string, isPublic: boolean): void {
+    const visibility = isPublic ? MediaVisibility.PUBLIC : MediaVisibility.PRIVATE;
+    this.loading.set(true);
+    this.mediaService.ingestUrl({ url, visibility }).pipe(
+      tap((response) => {
+        this.uploadTracker.registerUrlIngestStarted(response, visibility);
+        this.snackBar.open('Import started.', 'Close', { duration: 5000 });
+      }),
+      catchError((err: unknown) => {
+        const message = extractApiError(err, 'Unable to import from URL.');
+        this.uploadTracker.registerUrlIngestFailed(url, message);
+        this.snackBar.open(message, 'Close');
+        return EMPTY;
       }),
       finalize(() => this.loading.set(false)),
       takeUntilDestroyed(this.destroyRef),

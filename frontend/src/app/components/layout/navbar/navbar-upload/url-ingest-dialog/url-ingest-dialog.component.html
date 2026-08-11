@@ -1,0 +1,32 @@
+<h2 mat-dialog-title>Import from URL</h2>
+
+<mat-dialog-content>
+  <form class="url-ingest-form" [formGroup]="form">
+    <mat-form-field appearance="outline">
+      <mat-label>Media URL</mat-label>
+      <input matInput formControlName="url" placeholder="https://example.com/image.jpg" autofocus>
+      @if (form.controls.url.hasError('required')) {
+        <mat-error>A URL is required</mat-error>
+      } @else if (form.controls.url.hasError('pattern')) {
+        <mat-error>Enter a valid http(s) URL</mat-error>
+      }
+    </mat-form-field>
+
+    <div class="visibility-row">
+      <mat-checkbox [checked]="isPublic()" (change)="isPublic.set($event.checked)">
+        Upload publicly
+      </mat-checkbox>
+      <mat-icon
+        class="info-icon"
+        matTooltip="Public files can be accessed by anyone with the link, without signing in."
+        matTooltipPosition="right"
+        aria-label="What does public mean?"
+      >info_outline</mat-icon>
+    </div>
+  </form>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button mat-dialog-close type="button">Cancel</button>
+  <button mat-flat-button color="primary" type="button" (click)="save()">Import</button>
+</mat-dialog-actions>
