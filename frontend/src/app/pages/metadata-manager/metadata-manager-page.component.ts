@@ -14,11 +14,12 @@ import { MatTabsModule } from '@angular/material/tabs';
 import { Observable, debounceTime, distinctUntilChanged, finalize, map } from 'rxjs';
 import { MetadataNameListResponse, MetadataNameRead, TagListResponse, TagManagementResult, TagRead } from '../../models/tags';
 import { MetadataNameMergeDialogComponent } from '../../components/metadata/metadata-name-merge-dialog/metadata-name-merge-dialog.component';
+import { RenameDialogComponent } from '../../components/metadata/rename-dialog/rename-dialog.component';
 import { TagMergeDialogComponent } from '../../components/metadata/tag-merge-dialog/tag-merge-dialog.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { TagsClientService } from '../../services/web/tags-client.service';
-import { formatMetadataName } from '../../utils/media-display.utils';
+import { formatMetadataName, normalizeMetadataNameForSubmission } from '../../utils/media-display.utils';
 
 type SortOption = 'media_count_desc' | 'name_asc' | 'name_desc' | 'media_count_asc';
 type MetadataTab = 'tags' | 'characters' | 'series';
@@ -210,6 +211,85 @@ export class MetadataManagerPageComponent {
             'Close',
             { duration: 5000 },
           );
+        },
+      });
+    });
+  }
+
+  protected openTagRenameDialog(tag: TagRead): void {
+    const key = this.itemActionKey(tag.id);
+    if (this.isActioning(key)) {
+      return;
+    }
+
+    this.dialog.open(RenameDialogComponent, {
+      data: { title: 'Rename tag', label: 'Tag name', initialName: formatMetadataName(tag.name), maxLength: 255 },
+      width: 'min(28rem, 96vw)',
+      maxWidth: '96vw',
+      autoFocus: false,
+    }).afterClosed().subscribe((newName: string | null) => {
+      const normalized = newName ? normalizeMetadataNameForSubmission(newName) : '';
+      if (!normalized || normalized === tag.name) {
+        return;
+      }
+
+      this.setActioning(key, true);
+      this.tagsClient.renameTag(tag.id, normalized).pipe(
+        finalize(() => this.setActioning(key, false)),
+        takeUntilDestroyed(this.destroyRef),
+      ).subscribe({
+        next: (result) => {
+          const summary = this.buildRenameSummary(tag.name, normalized, result);
+          this.resultSummary.set(summary);
+          this.snackBar.open(summary, 'Close', { duration: 5000 });
+          this.reload();
+        },
+        error: (err) => {
+          this.snackBar.open(err.error?.detail ?? 'Unable to rename that tag.', 'Close', { duration: 5000 });
+        },
+      });
+    });
+  }
+
+  protected openNameRenameDialog(item: MetadataNameRead): void {
+    const kind = this.activeTab();
+    if (kind === 'tags') {
+      return;
+    }
+
+    const key = this.itemActionKey(item.name);
+    if (this.isActioning(key)) {
+      return;
+    }
+
+    const noun = kind === 'characters' ? 'character name' : 'series name';
+    this.dialog.open(RenameDialogComponent, {
+      data: { title: `Rename ${noun}`, label: formatMetadataName(noun), initialName: formatMetadataName(item.name), maxLength: 512 },
+      width: 'min(28rem, 96vw)',
+      maxWidth: '96vw',
+      autoFocus: false,
+    }).afterClosed().subscribe((newName: string | null) => {
+      const normalized = newName ? normalizeMetadataNameForSubmission(newName) : '';
+      if (!normalized || normalized === item.name) {
+        return;
+      }
+
+      this.setActioning(key, true);
+      const request = kind === 'characters'
+        ? this.tagsClient.renameCharacterName(item.name, normalized)
+        : this.tagsClient.renameSeriesName(item.name, normalized);
+      request.pipe(
+        finalize(() => this.setActioning(key, false)),
+        takeUntilDestroyed(this.destroyRef),
+      ).subscribe({
+        next: (result) => {
+          const summary = this.buildRenameSummary(item.name, normalized, result);
+          this.resultSummary.set(summary);
+          this.snackBar.open(summary, 'Close', { duration: 5000 });
+          this.reload();
+        },
+        error: (err) => {
+          this.snackBar.open(err.error?.detail ?? `Unable to rename that ${noun}.`, 'Close', { duration: 5000 });
         },
       });
     });
@@ -418,6 +498,13 @@ export class MetadataManagerPageComponent {
   private buildNameMergeSummary(sourceName: string, targetName: string, result: TagManagementResult): string {
     const cleanup = result.deleted_source ? ` The source ${this.activeNoun()} was fully cleaned up.` : '';
     return `Merged "${formatMetadataName(sourceName)}" into "${formatMetadataName(targetName)}" on ${result.updated_media} media.${cleanup}`;
+  }
+
+  private buildRenameSummary(oldName: string, newName: string, result: TagManagementResult): string {
+    if (result.deleted_source) {
+      return `"${formatMetadataName(oldName)}" already existed as "${formatMetadataName(newName)}", so they were merged on ${result.updated_media} media.`;
+    }
+    return `Renamed "${formatMetadataName(oldName)}" to "${formatMetadataName(newName)}".`;
   }
 
   protected displayMetadataName(value: string): string {

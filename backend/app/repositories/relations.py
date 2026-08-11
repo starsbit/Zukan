@@ -451,7 +451,7 @@ class OwnedEntityRepository:
         self.db = db
 
     async def get_by_id(self, entity_id: uuid.UUID) -> OwnedEntity | None:
-        return await self.db.get(OwnedEntity, entity_id)
+        return await self.db.get(OwnedEntity, entity_id, populate_existing=True)
 
     async def get_by_owner_type_name(
         self,

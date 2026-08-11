@@ -121,6 +121,26 @@ def test_merge_tag_contract(api_client, monkeypatch):
     assert response.json()["updated_media"] == 1
 
 
+def test_rename_tag_contract(api_client, monkeypatch):
+    async def _fake_rename(self, user, tag_id: int, new_name: str):
+        assert tag_id == 3
+        assert new_name == "fixed_name"
+        return _RESULT
+
+    monkeypatch.setattr(TagService, "rename_tag_by_id", _fake_rename)
+
+    response = api_client.post("/api/v1/tags/3/actions/rename", json={"new_name": "fixed_name"})
+
+    assert response.status_code == 200
+    assert response.json()["updated_media"] == 1
+
+
+def test_rename_tag_rejects_empty_name(api_client):
+    response = api_client.post("/api/v1/tags/3/actions/rename", json={"new_name": ""})
+
+    assert response.status_code == 422
+
+
 def test_trash_media_by_tag_contract(api_client, monkeypatch):
     async def _fake_trash(self, user, tag_id: int):
         assert tag_id == 7
@@ -161,6 +181,20 @@ def test_merge_character_name_contract(api_client, monkeypatch):
     assert response.json()["updated_media"] == 1
 
 
+def test_rename_character_name_contract(api_client, monkeypatch):
+    async def _fake_rename(self, user, character_name: str, new_name: str):
+        assert character_name == "Saber"
+        assert new_name == "Artoria"
+        return _RESULT
+
+    monkeypatch.setattr(RelationService, "rename_character_name", _fake_rename)
+
+    response = api_client.post("/api/v1/character-names/Saber/actions/rename", json={"new_name": "Artoria"})
+
+    assert response.status_code == 200
+    assert response.json()["updated_media"] == 1
+
+
 def test_trash_character_name_contract(api_client, monkeypatch):
     async def _fake_trash(self, user, character_name: str):
         assert character_name == "Rin"
@@ -196,6 +230,20 @@ def test_merge_series_name_contract(api_client, monkeypatch):
     monkeypatch.setattr(RelationService, "merge_series_name", _fake_merge)
 
     response = api_client.post("/api/v1/series-names/Fate/actions/merge", json={"target_name": "Fate/stay night"})
+
+    assert response.status_code == 200
+    assert response.json()["updated_media"] == 1
+
+
+def test_rename_series_name_contract(api_client, monkeypatch):
+    async def _fake_rename(self, user, series_name: str, new_name: str):
+        assert series_name == "Fate"
+        assert new_name == "Fate/stay night"
+        return _RESULT
+
+    monkeypatch.setattr(RelationService, "rename_series_name", _fake_rename)
+
+    response = api_client.post("/api/v1/series-names/Fate/actions/rename", json={"new_name": "Fate/stay night"})
 
     assert response.status_code == 200
     assert response.json()["updated_media"] == 1

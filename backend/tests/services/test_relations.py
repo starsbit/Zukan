@@ -176,6 +176,40 @@ async def test_merge_series_name_repoints_to_new_target_when_missing(fake_db, us
 
 
 @pytest.mark.asyncio
+async def test_rename_character_name_delegates_to_merge_entity_name(fake_db, user):
+    service = RelationService(fake_db)
+    expected = SimpleNamespace(matched_media=1, updated_media=1, deleted_source=True)
+
+    with patch.object(service, "_merge_entity_name", AsyncMock(return_value=expected)) as merge_fn:
+        result = await service.rename_character_name(user, character_name="Saber", new_name="Artoria")
+
+    merge_fn.assert_awaited_once_with(
+        user,
+        entity_type=MediaEntityType.character,
+        source_name="Saber",
+        target_name="Artoria",
+    )
+    assert result is expected
+
+
+@pytest.mark.asyncio
+async def test_rename_series_name_delegates_to_merge_entity_name(fake_db, user):
+    service = RelationService(fake_db)
+    expected = SimpleNamespace(matched_media=1, updated_media=1, deleted_source=False)
+
+    with patch.object(service, "_merge_entity_name", AsyncMock(return_value=expected)) as merge_fn:
+        result = await service.rename_series_name(user, series_name="Fate", new_name="Fate/stay night")
+
+    merge_fn.assert_awaited_once_with(
+        user,
+        entity_type=MediaEntityType.series,
+        source_name="Fate",
+        target_name="Fate/stay night",
+    )
+    assert result is expected
+
+
+@pytest.mark.asyncio
 async def test_trash_media_by_character_name_tracks_trashed_and_already(fake_db, user):
     service = RelationService(fake_db)
     m1 = SimpleNamespace(deleted_at=None)

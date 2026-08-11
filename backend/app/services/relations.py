@@ -50,6 +50,22 @@ class RelationService:
     async def clear_series_name(self, user, *, series_name: str) -> TagManagementResult:
         return await self._clear_entity_name(user, entity_type=MediaEntityType.series, name=series_name)
 
+    async def rename_character_name(self, user, *, character_name: str, new_name: str) -> TagManagementResult:
+        return await self._merge_entity_name(
+            user,
+            entity_type=MediaEntityType.character,
+            source_name=character_name,
+            target_name=new_name,
+        )
+
+    async def rename_series_name(self, user, *, series_name: str, new_name: str) -> TagManagementResult:
+        return await self._merge_entity_name(
+            user,
+            entity_type=MediaEntityType.series,
+            source_name=series_name,
+            target_name=new_name,
+        )
+
     async def merge_character_name(self, user, *, character_name: str, target_name: str) -> TagManagementResult:
         return await self._merge_entity_name(
             user,

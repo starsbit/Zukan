@@ -133,6 +133,7 @@ from .tags import (
     MetadataNameListResponse,
     MetadataNameRead,
     NameMergeRequest,
+    NameRenameRequest,
     NsfwFilter,
     SensitiveFilter,
     SeriesSuggestion,
@@ -141,6 +142,7 @@ from .tags import (
     TagMergeRequest,
     TagManagementResult,
     TagRead,
+    TagRenameRequest,
     TagWithConfidence,
 )
 from .trade import (
@@ -269,6 +271,7 @@ __all__ = [
     "MediaRead",
     "MediaUpdate",
     "NameMergeRequest",
+    "NameRenameRequest",
     "TimelineBucket",
     "NotificationListResponse",
     "NotificationRead",
@@ -283,6 +286,7 @@ __all__ = [
     "TagMergeRequest",
     "TagManagementResult",
     "TagRead",
+    "TagRenameRequest",
     "TagWithConfidence",
     "TaggingJobQueuedResponse",
     "TokenResponse",

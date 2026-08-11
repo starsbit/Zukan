@@ -97,6 +97,14 @@ class NameMergeRequest(BaseModel):
     target_name: str = Field(min_length=1, max_length=512, description="Exact target name to merge into.")
 
 
+class TagRenameRequest(BaseModel):
+    new_name: str = Field(min_length=1, max_length=255, description="New name for the tag.")
+
+
+class NameRenameRequest(BaseModel):
+    new_name: str = Field(min_length=1, max_length=512, description="New name for the character or series.")
+
+
 class MetadataListScope(str, Enum):
     ACCESSIBLE = "accessible"
     OWNER = "owner"

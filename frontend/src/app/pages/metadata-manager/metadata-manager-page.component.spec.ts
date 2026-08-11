@@ -26,6 +26,9 @@ describe('MetadataManagerPageComponent', () => {
     merge?: ReturnType<typeof vi.fn>;
     mergeCharacterName?: ReturnType<typeof vi.fn>;
     mergeSeriesName?: ReturnType<typeof vi.fn>;
+    renameTag?: ReturnType<typeof vi.fn>;
+    renameCharacterName?: ReturnType<typeof vi.fn>;
+    renameSeriesName?: ReturnType<typeof vi.fn>;
     confirm?: boolean;
     dialogResult?: unknown;
   } = {}) {
@@ -106,6 +109,30 @@ describe('MetadataManagerPageComponent', () => {
       deleted_tag: false,
       deleted_source: true,
     }));
+    const renameTag = options.renameTag ?? vi.fn(() => of({
+      matched_media: 12,
+      updated_media: 12,
+      trashed_media: 0,
+      already_trashed: 0,
+      deleted_tag: false,
+      deleted_source: false,
+    }));
+    const renameCharacterName = options.renameCharacterName ?? vi.fn(() => of({
+      matched_media: 8,
+      updated_media: 8,
+      trashed_media: 0,
+      already_trashed: 0,
+      deleted_tag: false,
+      deleted_source: true,
+    }));
+    const renameSeriesName = options.renameSeriesName ?? vi.fn(() => of({
+      matched_media: 4,
+      updated_media: 4,
+      trashed_media: 0,
+      already_trashed: 0,
+      deleted_tag: false,
+      deleted_source: true,
+    }));
     const confirmDialog = { open: vi.fn(() => of(options.confirm ?? true)) };
     const dialog = { open: vi.fn(() => ({ afterClosed: () => of(options.dialogResult ?? null) })) };
     const snackBar = { open: vi.fn() };
@@ -161,6 +188,9 @@ describe('MetadataManagerPageComponent', () => {
             merge,
             mergeCharacterName,
             mergeSeriesName,
+            renameTag,
+            renameCharacterName,
+            renameSeriesName,
           },
         },
         { provide: ConfirmDialogService, useValue: confirmDialog },
@@ -191,6 +221,9 @@ describe('MetadataManagerPageComponent', () => {
       merge,
       mergeCharacterName,
       mergeSeriesName,
+      renameTag,
+      renameCharacterName,
+      renameSeriesName,
       confirmDialog,
       dialogOpenSpy,
       snackBarOpenSpy,
@@ -319,6 +352,78 @@ describe('MetadataManagerPageComponent', () => {
     expect(merge).toHaveBeenCalledWith(1, 9);
     expect(list).toHaveBeenCalled();
     expect(snackBarOpenSpy).toHaveBeenCalled();
+  });
+
+  it('renames a tag to a fresh normalized name and refreshes the list', async () => {
+    const { fixture, list, renameTag, dialogOpenSpy, snackBarOpenSpy } = await createComponent({
+      dialogResult: 'Fixed Tag',
+    });
+    list.mockClear();
+
+    fixture.componentInstance['openTagRenameDialog'](
+      { id: 1, name: 'saber', category: 0, category_name: 'general', category_key: 'general', media_count: 12 },
+    );
+
+    expect(dialogOpenSpy).toHaveBeenCalled();
+    expect(renameTag).toHaveBeenCalledWith(1, 'fixed_tag');
+    expect(list).toHaveBeenCalled();
+    expect(snackBarOpenSpy).toHaveBeenCalled();
+  });
+
+  it('does not rename a tag when the dialog is canceled', async () => {
+    const { fixture, list, renameTag } = await createComponent({ dialogResult: null });
+    list.mockClear();
+
+    fixture.componentInstance['openTagRenameDialog'](
+      { id: 1, name: 'saber', category: 0, category_name: 'general', category_key: 'general', media_count: 12 },
+    );
+
+    expect(renameTag).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('does not rename a tag when the new name normalizes to the same value', async () => {
+    const { fixture, list, renameTag } = await createComponent({ dialogResult: 'Saber' });
+    list.mockClear();
+
+    fixture.componentInstance['openTagRenameDialog'](
+      { id: 1, name: 'saber', category: 0, category_name: 'general', category_key: 'general', media_count: 12 },
+    );
+
+    expect(renameTag).not.toHaveBeenCalled();
+    expect(list).not.toHaveBeenCalled();
+  });
+
+  it('renames a character name on the character tab', async () => {
+    const { fixture, listCharacterNames, renameCharacterName, dialogOpenSpy, snackBarOpenSpy } = await createComponent({
+      dialogResult: 'Artoria Pendragon',
+    });
+
+    fixture.componentInstance['onTabChange'](1);
+    fixture.detectChanges();
+    listCharacterNames.mockClear();
+
+    fixture.componentInstance['openNameRenameDialog']({ name: 'Saber', media_count: 8 });
+
+    expect(dialogOpenSpy).toHaveBeenCalled();
+    expect(renameCharacterName).toHaveBeenCalledWith('Saber', 'artoria_pendragon');
+    expect(listCharacterNames).toHaveBeenCalled();
+    expect(snackBarOpenSpy).toHaveBeenCalled();
+  });
+
+  it('renames a series name on the series tab', async () => {
+    const { fixture, listSeriesNames, renameSeriesName } = await createComponent({
+      dialogResult: 'Fate stay night',
+    });
+
+    fixture.componentInstance['onTabChange'](2);
+    fixture.detectChanges();
+    listSeriesNames.mockClear();
+
+    fixture.componentInstance['openNameRenameDialog']({ name: 'Fate', media_count: 4 });
+
+    expect(renameSeriesName).toHaveBeenCalledWith('Fate', 'fate_stay_night');
+    expect(listSeriesNames).toHaveBeenCalled();
   });
 
   it('removes and merges character names on the character tab', async () => {

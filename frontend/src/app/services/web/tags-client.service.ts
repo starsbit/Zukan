@@ -70,6 +70,13 @@ export class TagsClientService {
     );
   }
 
+  renameTag(tagId: number, newName: string): Observable<TagManagementResult> {
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/tags/${tagId}/actions/rename`,
+      { new_name: newName.trim() },
+    );
+  }
+
   removeCharacterFromMedia(characterName: string): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
       `${this.base}/api/v1/character-names/${encodeMetadataPathSegment(characterName)}/actions/remove-from-media`,
@@ -91,6 +98,13 @@ export class TagsClientService {
     );
   }
 
+  renameCharacterName(characterName: string, newName: string): Observable<TagManagementResult> {
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/character-names/${encodeMetadataPathSegment(characterName)}/actions/rename`,
+      { new_name: newName.trim() },
+    );
+  }
+
   removeSeriesFromMedia(seriesName: string): Observable<TagManagementResult> {
     return this.http.post<TagManagementResult>(
       `${this.base}/api/v1/series-names/${encodeMetadataPathSegment(seriesName)}/actions/remove-from-media`,
@@ -102,6 +116,13 @@ export class TagsClientService {
     return this.http.post<TagManagementResult>(
       `${this.base}/api/v1/series-names/${encodeMetadataPathSegment(seriesName)}/actions/merge`,
       { target_name: targetName.trim() },
+    );
+  }
+
+  renameSeriesName(seriesName: string, newName: string): Observable<TagManagementResult> {
+    return this.http.post<TagManagementResult>(
+      `${this.base}/api/v1/series-names/${encodeMetadataPathSegment(seriesName)}/actions/rename`,
+      { new_name: newName.trim() },
     );
   }
 

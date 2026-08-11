@@ -168,6 +168,25 @@ class TagService:
             deleted_source=deleted_tag,
         )
 
+    async def rename_tag_by_id(self, user, *, tag_id: int, new_name: str) -> TagManagementResult:
+        tag = await self.get_manageable_tag_by_id(user, tag_id)
+        return await self.rename_tag(user, tag=tag, new_name=new_name)
+
+    async def rename_tag(self, user, *, tag: Tag, new_name: str) -> TagManagementResult:
+        cleaned_name = new_name.strip()
+        if not cleaned_name or cleaned_name == tag.name:
+            return TagManagementResult(matched_media=tag.media_count, updated_media=0)
+
+        tags_repo = TagRepository(self._db)
+        existing_tag = await tags_repo.get_by_name(tag.owner_user_id, cleaned_name)
+        if existing_tag is not None and existing_tag.id != tag.id:
+            return await self.merge_tag(user, source_tag=tag, target_tag=existing_tag)
+
+        tag.name = cleaned_name
+        await self._db.commit()
+        logger.info("Renamed tag user_id=%s tag_id=%s new_name=%s", user.id, tag.id, cleaned_name)
+        return TagManagementResult(matched_media=tag.media_count, updated_media=tag.media_count)
+
     async def merge_tag_by_id(self, user, *, tag_id: int, target_tag_id: int) -> TagManagementResult:
         source_tag = await self.get_manageable_tag_by_id(user, tag_id)
         target_tag = await self.get_manageable_tag_by_id(user, target_tag_id)

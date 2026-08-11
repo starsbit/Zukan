@@ -123,6 +123,66 @@ async def test_merge_tag_updates_only_accessible_media_and_deduplicates(fake_db,
 
 
 @pytest.mark.asyncio
+async def test_rename_tag_updates_name_in_place(fake_db, user):
+    tag = Tag(id=1, owner_user_id=user.id, name="old_name", category=0, media_count=3)
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls:
+        repo_cls.return_value.get_by_name = AsyncMock(return_value=None)
+
+        result = await TagService(fake_db).rename_tag(user, tag=tag, new_name="new_name")
+
+    assert tag.name == "new_name"
+    assert result.matched_media == 3
+    assert result.updated_media == 3
+    assert result.deleted_source is False
+    fake_db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_rename_tag_noop_when_name_unchanged(fake_db, user):
+    tag = Tag(id=1, owner_user_id=user.id, name="same_name", category=0, media_count=2)
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls:
+        result = await TagService(fake_db).rename_tag(user, tag=tag, new_name="  same_name  ")
+
+    assert tag.name == "same_name"
+    assert result.updated_media == 0
+    repo_cls.return_value.get_by_name.assert_not_called()
+    fake_db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rename_tag_collision_delegates_to_merge(fake_db, user):
+    tag = Tag(id=1, owner_user_id=user.id, name="old_name", category=0, media_count=1)
+    existing_tag = Tag(id=2, owner_user_id=user.id, name="taken_name", category=0, media_count=1)
+
+    with patch("backend.app.services.tags.TagRepository") as repo_cls, patch.object(
+        TagService, "merge_tag", AsyncMock(return_value=SimpleNamespace(matched_media=1, updated_media=1, deleted_source=True))
+    ) as merge_fn:
+        repo_cls.return_value.get_by_name = AsyncMock(return_value=existing_tag)
+
+        result = await TagService(fake_db).rename_tag(user, tag=tag, new_name="taken_name")
+
+    merge_fn.assert_awaited_once_with(user, source_tag=tag, target_tag=existing_tag)
+    assert result.deleted_source is True
+    assert tag.name == "old_name"
+
+
+@pytest.mark.asyncio
+async def test_rename_tag_by_id_resolves_manageable_tag(fake_db, user):
+    tag = SimpleNamespace(id=5, name="old", owner_user_id=user.id)
+    service = TagService(fake_db)
+
+    with patch.object(service, "get_manageable_tag_by_id", AsyncMock(return_value=tag)) as get_fn, patch.object(
+        service, "rename_tag", AsyncMock(return_value=SimpleNamespace(matched_media=1))
+    ) as rename_fn:
+        await service.rename_tag_by_id(user, tag_id=5, new_name="new")
+
+    get_fn.assert_awaited_once_with(user, 5)
+    rename_fn.assert_awaited_once_with(user, tag=tag, new_name="new")
+
+
+@pytest.mark.asyncio
 async def test_trash_media_by_tag_counts(fake_db, user):
     m1 = SimpleNamespace(deleted_at=None)
     m2 = SimpleNamespace(deleted_at=datetime.now(timezone.utc))

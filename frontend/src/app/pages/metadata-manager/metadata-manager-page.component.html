@@ -80,6 +80,13 @@
                     mat-stroked-button
                     type="button"
                     [disabled]="isActioning(activeTab() + ':' + tag.id)"
+                    (click)="openTagRenameDialog(tag)">
+                    Rename
+                  </button>
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="isActioning(activeTab() + ':' + tag.id)"
                     (click)="openTagMergeDialog(tag)">
                     Merge
                   </button>
@@ -107,6 +114,13 @@
                 </div>
 
                 <div class="metadata-item__actions">
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    [disabled]="isActioning(activeTab() + ':' + item.name)"
+                    (click)="openNameRenameDialog(item)">
+                    Rename
+                  </button>
                   <button
                     mat-stroked-button
                     type="button"

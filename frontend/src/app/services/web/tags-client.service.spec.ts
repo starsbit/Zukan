@@ -80,6 +80,33 @@ describe('TagsClientService', () => {
     req.flush(mockResult);
   });
 
+  it('renameTag sends POST to tag rename action endpoint', () => {
+    service.renameTag(42, 'fixed_name').subscribe(res => expect(res).toEqual(mockResult));
+
+    const req = http.expectOne('/api/v1/tags/42/actions/rename');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ new_name: 'fixed_name' });
+    req.flush(mockResult);
+  });
+
+  it('renameCharacterName encodes character name and posts new_name', () => {
+    service.renameCharacterName("Jeanne D'Arc (Fate)", 'Jeanne Alter').subscribe(res => expect(res).toEqual(mockResult));
+
+    const req = http.expectOne('/api/v1/character-names/Jeanne%20D%27Arc%20(Fate)/actions/rename');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ new_name: 'Jeanne Alter' });
+    req.flush(mockResult);
+  });
+
+  it('renameSeriesName encodes series name and posts new_name', () => {
+    service.renameSeriesName('Fate Zero', 'Fate stay night').subscribe(res => expect(res).toEqual(mockResult));
+
+    const req = http.expectOne('/api/v1/series-names/Fate%20Zero/actions/rename');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ new_name: 'Fate stay night' });
+    req.flush(mockResult);
+  });
+
   it('trashMedia sends POST to tag trash action endpoint', () => {
     service.trashMedia(42).subscribe(res => expect(res).toEqual(mockResult));
 

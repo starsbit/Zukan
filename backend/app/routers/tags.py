@@ -11,9 +11,11 @@ from backend.app.schemas import (
     MetadataListScope,
     MetadataNameListResponse,
     NameMergeRequest,
+    NameRenameRequest,
     TagListResponse,
     TagManagementResult,
     TagMergeRequest,
+    TagRenameRequest,
 )
 from backend.app.services.relations import RelationService
 from backend.app.services.tags import TagService
@@ -108,6 +110,16 @@ async def merge_tag(
     return await TagService(db).merge_tag_by_id(user, tag_id=tag_id, target_tag_id=body.target_tag_id)
 
 
+@router.post("/tags/{tag_id}/actions/rename", response_model=TagManagementResult, summary="Rename Tag")
+async def rename_tag(
+    body: TagRenameRequest,
+    tag_id: int = Path(ge=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await TagService(db).rename_tag_by_id(user, tag_id=tag_id, new_name=body.new_name)
+
+
 @router.post("/tags/{tag_id}/actions/trash-media", response_model=TagManagementResult, summary="Move Matching Tag Media To Trash")
 async def trash_media_by_tag(
     tag_id: int = Path(ge=1),
@@ -142,6 +154,20 @@ async def merge_character_name(
     db: AsyncSession = Depends(get_db),
 ):
     return await RelationService(db).merge_character_name(user, character_name=character_name, target_name=body.target_name)
+
+
+@router.post(
+    "/character-names/{character_name}/actions/rename",
+    response_model=TagManagementResult,
+    summary="Rename Character Name",
+)
+async def rename_character_name(
+    body: NameRenameRequest,
+    character_name: str = Path(min_length=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).rename_character_name(user, character_name=character_name, new_name=body.new_name)
 
 
 @router.post(
@@ -182,3 +208,17 @@ async def merge_series_name(
     db: AsyncSession = Depends(get_db),
 ):
     return await RelationService(db).merge_series_name(user, series_name=series_name, target_name=body.target_name)
+
+
+@router.post(
+    "/series-names/{series_name}/actions/rename",
+    response_model=TagManagementResult,
+    summary="Rename Series Name",
+)
+async def rename_series_name(
+    body: NameRenameRequest,
+    series_name: str = Path(min_length=1),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await RelationService(db).rename_series_name(user, series_name=series_name, new_name=body.new_name)
