@@ -328,6 +328,120 @@ async def test_run_from_url_passes_url_through_shared_save_detector(fake_db, stu
 
 
 @pytest.mark.asyncio
+async def test_run_from_url_ingests_all_cobalt_resolved_items(fake_db, stub_query, user):
+    from backend.app.services.media.cobalt import CobaltMediaItem
+
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    resolved = [
+        CobaltMediaItem(url="https://cdn.example.com/1.jpg"),
+        CobaltMediaItem(url="https://cdn.example.com/2.jpg"),
+    ]
+
+    with patch(
+        "backend.app.services.media.cobalt.cobalt_enabled", return_value=True,
+    ), patch(
+        "backend.app.services.media.cobalt.resolve_via_cobalt", AsyncMock(return_value=resolved),
+    ), patch.object(
+        workflow, "_process_single_url_item", AsyncMock(),
+    ) as process_item, patch.object(
+        workflow, "_create_upload_batch",
+        AsyncMock(return_value=ImportBatch(id=uuid.uuid4(), total_items=2)),
+    ):
+        await workflow.run_from_url(
+            user=user,
+            url="https://x.com/example/status/1",
+            album_id=None,
+            tags=None,
+            external_refs=None,
+            captured_at_override=None,
+            visibility=MediaVisibility.private,
+        )
+
+    assert process_item.await_count == 2
+    called_urls = [call.kwargs["url"] for call in process_item.await_args_list]
+    assert called_urls == ["https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg"]
+    assert all(call.kwargs["trusted"] is True for call in process_item.await_args_list)
+
+
+@pytest.mark.asyncio
+async def test_run_from_url_falls_back_to_direct_fetch_when_cobalt_fails(fake_db, stub_query, user):
+    from backend.app.errors.error import AppError
+    from backend.app.errors.upload import cobalt_resolve_failed
+
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    url = "https://x.com/example/status/1"
+
+    with patch(
+        "backend.app.services.media.cobalt.cobalt_enabled", return_value=True,
+    ), patch(
+        "backend.app.services.media.cobalt.resolve_via_cobalt",
+        AsyncMock(side_effect=AppError(422, cobalt_resolve_failed, "nope")),
+    ), patch.object(
+        workflow, "_process_single_url_item", AsyncMock(),
+    ) as process_item, patch.object(
+        workflow, "_create_upload_batch",
+        AsyncMock(return_value=ImportBatch(id=uuid.uuid4(), total_items=1)),
+    ):
+        await workflow.run_from_url(
+            user=user,
+            url=url,
+            album_id=None,
+            tags=None,
+            external_refs=None,
+            captured_at_override=None,
+            visibility=MediaVisibility.private,
+        )
+
+    assert process_item.await_count == 1
+    assert process_item.await_args.kwargs["url"] == url
+    assert process_item.await_args.kwargs["trusted"] is False
+
+
+@pytest.mark.asyncio
+async def test_process_single_url_item_records_failure_without_raising(fake_db, stub_query, user):
+    from backend.app.errors.error import AppError
+    from backend.app.errors.upload import url_fetch_failed
+
+    workflow = MediaUploadWorkflow(
+        db=fake_db,
+        query=stub_query,
+        tags_repo=SimpleNamespace(set_media_tag_links=AsyncMock()),
+        post_processor=SimpleNamespace(dispatch=AsyncMock()),
+    )
+    ctx = UploadBatchContext()
+    upload_batch = ImportBatch(id=uuid.uuid4(), total_items=1)
+
+    with patch(
+        "backend.app.services.media.url_fetch.fetch_url_as_bytes",
+        AsyncMock(side_effect=AppError(502, url_fetch_failed, "boom")),
+    ):
+        await workflow._process_single_url_item(
+            upload_batch=upload_batch,
+            url="https://cdn.example.com/broken.jpg",
+            user=user,
+            tags=None,
+            captured_at_override=None,
+            external_refs=None,
+            visibility=MediaVisibility.private,
+            ctx=ctx,
+        )
+
+    assert ctx.errors == 1
+    assert ctx.results[0].status == "error"
+    assert ctx.results[0].message == "boom"
+
+
+@pytest.mark.asyncio
 async def test_mark_upload_batch_item_failed_and_missing_item(fake_db, stub_query):
     service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
 

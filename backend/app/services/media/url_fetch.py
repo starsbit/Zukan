@@ -42,8 +42,12 @@ def _check_ssrf(url: str) -> None:
         if any(addr in net for net in _BLOCKED_NETWORKS):
             raise AppError(422, ssrf_blocked, f"URL resolves to a blocked address: {addr_str}")
 
-async def fetch_url_as_bytes(url: str, *, max_size_bytes: int) -> tuple[bytes, str | None]:
-    _check_ssrf(url)
+async def fetch_url_as_bytes(url: str, *, max_size_bytes: int, trusted: bool = False) -> tuple[bytes, str | None]:
+    # trusted=True skips the SSRF guard for URLs we generated ourselves (e.g. a cobalt
+    # tunnel URL) rather than raw user input — self-hosted cobalt instances commonly
+    # live on a private LAN address, which the guard would otherwise block.
+    if not trusted:
+        _check_ssrf(url)
     try:
         async with httpx.AsyncClient(follow_redirects=True, max_redirects=5, timeout=15.0) as client:
             async with client.stream("GET", url, headers={"User-Agent": _USER_AGENT}) as response:

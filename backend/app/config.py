@@ -83,6 +83,10 @@ class Settings(BaseSettings):
     upload_multipart_max_files: int = 1000
     trash_purge_interval_seconds: int = 60 * 60 * 24
 
+    cobalt_api_url: str = ""
+    cobalt_api_key: str = ""
+    cobalt_request_timeout_seconds: float = 20.0
+
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30

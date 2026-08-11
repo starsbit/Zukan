@@ -525,8 +525,22 @@ class MediaUploadWorkflow:
         external_refs: list[ExternalRefCreate] | None = None,
         visibility: MediaVisibility,
     ) -> BatchUploadResponse:
-        from backend.app.services.media.url_fetch import fetch_url_as_bytes
         from backend.app.repositories.media import MediaRepository
+        from backend.app.services.media.cobalt import cobalt_enabled, resolve_via_cobalt
+
+        resolved_items: list[tuple[str, bool]]
+        if cobalt_enabled():
+            try:
+                resolved_items = [(item.url, True) for item in await resolve_via_cobalt(url)]
+            except AppError as exc:
+                logger.info(
+                    "Cobalt resolution failed, falling back to direct fetch url=%s error=%s",
+                    url,
+                    exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail,
+                )
+                resolved_items = [(url, False)]
+        else:
+            resolved_items = [(url, False)]
 
         if user.is_admin:
             max_size = 10 * 1024 ** 3
@@ -534,55 +548,27 @@ class MediaUploadWorkflow:
             current_storage = await MediaRepository(self._db).sum_file_size(uploader_id=user.id)
             max_size = user.storage_quota_mb * 1024 * 1024 - current_storage
 
-        content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=max(max_size, 0))
-        saved = await save_bytes(content, declared_mime_type=mime_type, source_name=url)
-        if saved is None:
-            from backend.app.errors.upload import unsupported_media_type
-            raise AppError(400, unsupported_media_type, "Unsupported media type or file too large")
-
-        path_segment = url.rstrip("/").split("/")[-1].split("?")[0] or "download"
-        original_name = path_segment[:255]
-
-        upload_batch = await self._create_upload_batch(user, total_items=1)
+        upload_batch = await self._create_upload_batch(user, total_items=len(resolved_items))
         logger.info(
-            "URL ingest batch started batch_id=%s user_id=%s url=%s",
+            "URL ingest batch started batch_id=%s user_id=%s url=%s item_count=%s",
             upload_batch.id,
             user.id,
             url,
+            len(resolved_items),
         )
         ctx = UploadBatchContext()
+        if not user.is_admin:
+            ctx.remaining_bytes = max(max_size, 0)
 
-        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        captured_at = _normalize_utc(captured_at_override) if captured_at_override is not None else datetime.now(UTC)
-
-        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
-        batch_item = self._new_batch_item(upload_batch.id, original_name)
-
-        if existing is not None:
-            await self._handle_existing_media(
-                batch_item=batch_item,
-                existing=existing,
-                original_name=original_name,
-                captured_at=captured_at,
-                saved_path=str(saved.path),
-                tags=tags,
-                character_names=None,
-                series_names=None,
-                external_refs=external_refs,
-                ctx=ctx,
-            )
-        else:
-            await self._handle_new_media(
-                batch_item=batch_item,
+        for item_url, item_trusted in resolved_items:
+            await self._process_single_url_item(
+                upload_batch=upload_batch,
+                url=item_url,
+                trusted=item_trusted,
                 user=user,
-                original_name=original_name,
-                saved=saved,
-                file_metadata=file_metadata,
                 tags=tags,
-                character_names=None,
-                series_names=None,
+                captured_at_override=captured_at_override,
                 external_refs=external_refs,
-                captured_at=captured_at,
                 visibility=visibility,
                 ctx=ctx,
             )
@@ -599,6 +585,79 @@ class MediaUploadWorkflow:
             ctx.errors,
         )
         return self._build_response(upload_batch, ctx)
+
+    async def _process_single_url_item(
+        self,
+        *,
+        upload_batch: ImportBatch,
+        url: str,
+        trusted: bool = False,
+        user: User,
+        tags: list[str] | None,
+        captured_at_override: datetime | None,
+        external_refs: list[ExternalRefCreate] | None,
+        visibility: MediaVisibility,
+        ctx: UploadBatchContext,
+    ) -> None:
+        from backend.app.services.media.url_fetch import fetch_url_as_bytes
+
+        path_segment = url.rstrip("/").split("/")[-1].split("?")[0] or "download"
+        original_name = path_segment[:255]
+        batch_item = self._new_batch_item(upload_batch.id, original_name)
+
+        max_size_bytes = ctx.remaining_bytes if ctx.remaining_bytes is not None else 10 * 1024 ** 3
+        if max_size_bytes <= 0:
+            await self._handle_failed_upload(batch_item, original_name, ctx, error="Storage quota exceeded")
+            return
+
+        try:
+            content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=max_size_bytes, trusted=trusted)
+        except AppError as exc:
+            message = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
+            await self._handle_failed_upload(batch_item, original_name, ctx, error=message)
+            return
+
+        saved = await save_bytes(content, declared_mime_type=mime_type, source_name=url)
+        if saved is None:
+            await self._handle_failed_upload(batch_item, original_name, ctx)
+            return
+
+        if ctx.remaining_bytes is not None:
+            ctx.remaining_bytes -= saved.file_size
+
+        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
+        captured_at = _normalize_utc(captured_at_override) if captured_at_override is not None else datetime.now(UTC)
+
+        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
+        if existing is not None:
+            await self._handle_existing_media(
+                batch_item=batch_item,
+                existing=existing,
+                original_name=original_name,
+                captured_at=captured_at,
+                saved_path=str(saved.path),
+                tags=tags,
+                character_names=None,
+                series_names=None,
+                external_refs=external_refs,
+                ctx=ctx,
+            )
+            return
+
+        await self._handle_new_media(
+            batch_item=batch_item,
+            user=user,
+            original_name=original_name,
+            saved=saved,
+            file_metadata=file_metadata,
+            tags=tags,
+            character_names=None,
+            series_names=None,
+            external_refs=external_refs,
+            captured_at=captured_at,
+            visibility=visibility,
+            ctx=ctx,
+        )
 
     async def create_media_from_saved_upload(
         self,
