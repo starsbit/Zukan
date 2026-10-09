@@ -53,6 +53,9 @@ class MediaEmbeddingService:
         if media is None or media.deleted_at is not None or media.uploader_id is None:
             return None
 
+        if (getattr(media, "file_status", None) or "available") != "available":
+            return None
+
         media_id = media.id
         uploader_id = media.uploader_id
         filepath = media.filepath

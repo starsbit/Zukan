@@ -12,6 +12,7 @@ import aiofiles
 from fastapi import UploadFile
 
 from backend.app.config import settings
+from backend.app.utils.library_paths import resolve_media_path, contained_path, root_path
 from backend.app.models.media import Media, MediaType
 from backend.app.utils.media_detection import SUPPORTED_MEDIA_TYPES, resolve_supported_media_type
 
@@ -34,17 +35,17 @@ class SavedUpload:
 
 def shard_path(file_id: uuid.UUID, ext: str) -> Path:
     hex_id = file_id.hex
-    return settings.storage_dir / hex_id[:2] / f"{hex_id}{ext}"
+    return settings.storage_dir / "uploads" / hex_id[:2] / f"{hex_id}{ext}" if settings.library_paths_relative else settings.storage_dir / hex_id[:2] / f"{hex_id}{ext}"
 
 
 def thumbnail_path(file_id: uuid.UUID) -> Path:
     hex_id = file_id.hex
-    return settings.storage_dir / hex_id[:2] / f"{hex_id}_thumb{THUMB_EXT}"
+    return contained_path(root_path(), f"{settings.generated_files_dir}/thumbnails/{hex_id[:2]}/{hex_id}{THUMB_EXT}") if settings.library_paths_relative else settings.storage_dir / hex_id[:2] / f"{hex_id}_thumb{THUMB_EXT}"
 
 
 def poster_path(file_id: uuid.UUID) -> Path:
     hex_id = file_id.hex
-    return settings.storage_dir / hex_id[:2] / f"{hex_id}_poster.png"
+    return contained_path(root_path(), f"{settings.generated_files_dir}/posters/{hex_id[:2]}/{hex_id}.png") if settings.library_paths_relative else settings.storage_dir / hex_id[:2] / f"{hex_id}_poster.png"
 
 
 def ffmpeg_available() -> bool:
@@ -76,6 +77,8 @@ async def save_bytes(
     sha256 = hashlib.sha256(content).hexdigest()
     file_id = uuid.uuid4()
     path = shard_path(file_id, supported_type.extension)
+    if settings.library_paths_relative:
+        contained_path(root_path(), str(path.relative_to(root_path())))
     path.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiofiles.open(path, "wb") as f:
@@ -91,11 +94,11 @@ async def save_bytes(
 
 
 def delete_media_files(filepath: str, poster_path_str: str | None = None, thumbnail_path_str: str | None = None) -> None:
-    path = Path(filepath)
+    path = resolve_media_path(filepath)
     for candidate in (
         path,
-        Path(poster_path_str) if poster_path_str else None,
-        Path(thumbnail_path_str) if thumbnail_path_str else None,
+        resolve_media_path(poster_path_str) if poster_path_str else None,
+        resolve_media_path(thumbnail_path_str) if thumbnail_path_str else None,
     ):
         if candidate and candidate.exists():
             candidate.unlink()
@@ -115,7 +118,8 @@ def delete_file(filepath: str) -> None:
         poster = str(poster_path(file_id))
     except ValueError:
         pass
-    delete_media_files(filepath, poster, thumb)
+    from backend.app.utils.library_paths import stored_path
+    delete_media_files(filepath, stored_path(poster) if poster else None, stored_path(thumb) if thumb else None)
 
 
 def zip_media(rows: list[Media]) -> io.BytesIO:
@@ -131,7 +135,7 @@ def zip_media(rows: list[Media]) -> io.BytesIO:
             else:
                 seen[name] = 0
             try:
-                zf.write(media.filepath, arcname=name)
+                zf.write(resolve_media_path(media.filepath), arcname=name)
             except OSError:
                 pass
     buf.seek(0)

@@ -173,6 +173,7 @@ class MediaEntityRepository:
     ) -> None:
         owned_repo = OwnedEntityRepository(self.db)
         touched_entity_ids = set()
+        preserved_names: set[str] = set()
         if replace_existing_type:
             existing = (
                 await self.db.execute(
@@ -184,6 +185,9 @@ class MediaEntityRepository:
             ).scalars().all()
             touched_entity_ids |= {entity.entity_id for entity in existing if entity.entity_id is not None}
             for entity in existing:
+                if source == "tagger" and entity.source != "tagger":
+                    preserved_names.add(entity.name.casefold())
+                    continue
                 await self.db.delete(entity)
             if existing:
                 await self.db.flush()
@@ -191,6 +195,8 @@ class MediaEntityRepository:
         owner_user_id = _effective_media_owner_id(media)
         created_entity_ids: set[uuid.UUID] = set()
         for name in normalize_manual_entity_names(names):
+            if name.casefold() in preserved_names:
+                continue
             owned_entity = await owned_repo.get_or_create(
                 owner_user_id=owner_user_id,
                 entity_type=entity_type,

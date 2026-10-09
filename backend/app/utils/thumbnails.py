@@ -12,8 +12,8 @@ from backend.app.utils.media_metadata import _extract_still_image_metadata, _saf
 from backend.app.utils.storage import ffmpeg_available, thumbnail_path, poster_path
 
 
-def generate_poster_and_thumbnail(filepath: str, media_type: MediaType) -> tuple[Path | None, Path | None]:
-    file_id = uuid.UUID(Path(filepath).stem)
+def generate_poster_and_thumbnail(filepath: str, media_type: MediaType, file_id: uuid.UUID | None = None) -> tuple[Path | None, Path | None]:
+    file_id = file_id or uuid.UUID(Path(filepath).stem)
     if media_type == MediaType.IMAGE:
         thumb = _generate_square_thumbnail(Path(filepath), thumbnail_path(file_id))
         return None, thumb

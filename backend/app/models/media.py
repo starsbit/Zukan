@@ -65,6 +65,7 @@ class Media(Base):
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(512), nullable=True)
     filepath: Mapped[str] = mapped_column(String(1024), nullable=False, unique=True)
+    file_status: Mapped[str] = mapped_column(String(24), nullable=False, default="available", server_default="available")
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=True, index=True)
     mime_type: Mapped[str] = mapped_column(String(64), nullable=True)

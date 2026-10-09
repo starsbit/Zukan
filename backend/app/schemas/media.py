@@ -84,6 +84,7 @@ class MediaRead(BaseModel):
         description="Username of the current owning user when available.",
     )
     visibility: MediaVisibility = Field(default=MediaVisibility.private, description="Visibility for this media item.")
+    file_status: str = "available"
     filename: str
     original_filename: str | None = None
     media_type: MediaType = MediaType.IMAGE

@@ -1,0 +1,25 @@
+from unittest.mock import AsyncMock
+from backend.app.routers import storage
+
+
+def test_storage_is_admin_only(unauthenticated_client):
+    assert unauthenticated_client.get('/api/v1/admin/storage').status_code == 401
+
+
+def test_storage_root_cannot_be_patched(api_client):
+    response = api_client.patch('/api/v1/admin/storage', json={'root': '/new'})
+    assert response.status_code == 422
+
+
+def test_storage_destination_validation_contract(api_client, monkeypatch):
+    validate = AsyncMock(return_value={'destination_root': '/library', 'required_bytes': 10, 'total_files': 1})
+    monkeypatch.setattr(storage.service, 'validate_destination', validate)
+    response = api_client.post('/api/v1/admin/storage/validate', json={'root': '/library'})
+    assert response.status_code == 200 and response.json()['total_files'] == 1
+    validate.assert_awaited_once()
+
+
+def test_storage_conflicts_return_reviewable_errors(api_client, monkeypatch):
+    monkeypatch.setattr(storage.service, 'validate_destination', AsyncMock(side_effect=ValueError('Destination contains different content')))
+    response = api_client.post('/api/v1/admin/storage/validate', json={'root': '/library'})
+    assert response.status_code == 409 and 'different content' in str(response.json())

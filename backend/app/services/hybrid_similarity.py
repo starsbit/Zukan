@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 from collections import Counter
 from dataclasses import dataclass, field
@@ -201,7 +202,7 @@ def first_existing_media_image_path(media: Media) -> Path | None:
     for raw_path in (media.thumbnail_path, media.poster_path, media.filepath):
         if not raw_path:
             continue
-        path = Path(raw_path)
+        path = resolve_media_path(raw_path)
         if path.exists() and path.is_file():
             return path
     return None

@@ -1,9 +1,10 @@
+from backend.app.utils.library_paths import resolve_media_path
 import uuid
 from datetime import datetime
 from html import escape
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Header, Query, Request, Response, status
+from fastapi import HTTPException, APIRouter, Depends, Header, Query, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -95,6 +96,20 @@ def _public_preview_media_or_404(media: Media | None) -> Media:
     ):
         raise AppError(status_code=404, code=media_not_found, detail="Not found")
     return media
+
+
+def _media_asset_path(value: str):
+    if settings.library_paths_relative:
+        from backend.app.services.library_storage import storage_available
+        if not storage_available():
+            raise HTTPException(503, 'Library storage is unavailable; metadata is retained')
+    try:
+        path = resolve_media_path(value)
+        if not path.is_file():
+            raise HTTPException(404, 'Media file is unavailable; metadata is retained')
+        return path
+    except (ValueError, OSError) as exc:
+        raise HTTPException(404, 'Media file is unavailable; metadata is retained') from exc
 
 
 def _preview_image(media: Media) -> tuple[str, str] | None:
@@ -1034,7 +1049,7 @@ async def get_media_preview_image(media_id: uuid.UUID, db: AsyncSession = Depend
         raise AppError(status_code=404, code=media_not_found, detail="Not found")
     path, media_type = preview
     return FileResponse(
-        path,
+        _media_asset_path(path),
         media_type=media_type,
         headers={"Cache-Control": f"public, max-age={60 * 60 * 24}"},
     )
@@ -1137,7 +1152,7 @@ async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depe
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     query, _, _, _, _, _ = _media_services(db)
     media = await query.get_visible_media(media_id, user)
-    return FileResponse(media.filepath, media_type=media.mime_type)
+    return FileResponse(_media_asset_path(media.filepath), media_type=media.mime_type)
 
 
 @router.get(
@@ -1162,7 +1177,7 @@ async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_
     media = await query.get_visible_media(media_id, user)
     if not media.thumbnail_path:
         raise AppError(status_code=404, code=thumbnail_not_available, detail="Thumbnail not available")
-    return FileResponse(media.thumbnail_path, media_type="image/webp")
+    return FileResponse(_media_asset_path(media.thumbnail_path), media_type="image/webp")
 
 
 @router.get(
@@ -1187,7 +1202,7 @@ async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_use
     media = await query.get_visible_media(media_id, user)
     if not media.poster_path:
         raise AppError(status_code=404, code=poster_not_available, detail="Poster not available")
-    return FileResponse(media.poster_path, media_type="image/png")
+    return FileResponse(_media_asset_path(media.poster_path), media_type="image/png")
 
 
 @router.delete(

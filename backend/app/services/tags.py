@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 import asyncio
 import logging
@@ -271,6 +272,8 @@ class TagService:
         if media is None:
             logger.warning("Tagging skipped because media was not found media_id=%s", media_id)
             return
+        if (getattr(media, "file_status", None) or "available") != "available":
+            return
         media_filepath = media.filepath
         media_type = media.media_type
         media.tagging_status = "processing"
@@ -283,12 +286,12 @@ class TagService:
         frames = sample_media_frames(media_filepath, media_type)
         try:
             results: list[TaggingResult] = []
-            for frame_path in frames or [Path(media_filepath)]:
+            for frame_path in frames or [resolve_media_path(media_filepath)]:
                 results.append(await self._predict_with_retries(str(frame_path)))
             aggregated = aggregate_tagging_results(results)
             await self._store_tagging_result(media, aggregated)
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != Path(media_filepath)])
+            cleanup_sampled_frames([frame for frame in frames if frame != resolve_media_path(media_filepath)])
 
     async def _predict_with_retries(self, image_path: str) -> TaggingResult:
         attempts = max(1, settings.tagging_retry_attempts)
@@ -375,7 +378,8 @@ class TagService:
             for entity in await entity_repo.get_by_media(media.id):
                 if entity.entity_type not in {MediaEntityType.character, MediaEntityType.series}:
                     continue
-                entity.confidence = by_name.get(entity.name, entity.confidence)
+                if entity.source == "tagger":
+                    entity.confidence = by_name.get(entity.name, entity.confidence)
 
         await self._db.commit()
         logger.info(

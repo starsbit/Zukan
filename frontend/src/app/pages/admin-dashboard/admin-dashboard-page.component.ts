@@ -1,3 +1,4 @@
+import { StoragePanelComponent } from '../../components/admin/storage-panel.component';
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -38,6 +39,7 @@ type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storag
 @Component({
   selector: 'zukan-admin-dashboard-page',
   imports: [
+    StoragePanelComponent,
     ReactiveFormsModule,
     DatePipe,
     DecimalPipe,

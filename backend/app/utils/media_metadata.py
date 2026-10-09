@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 import json
 import subprocess
@@ -25,9 +26,9 @@ class MediaMetadata:
 
 def extract_media_metadata(filepath: str, media_type: MediaType) -> MediaMetadata:
     if media_type == MediaType.IMAGE:
-        return _extract_still_image_metadata(filepath)
+        return _extract_still_image_metadata(str(resolve_media_path(filepath)))
     if media_type == MediaType.GIF:
-        return _extract_gif_metadata(filepath)
+        return _extract_gif_metadata(str(resolve_media_path(filepath)))
     return _extract_video_metadata(filepath)
 
 
@@ -67,7 +68,7 @@ def _extract_gif_metadata(filepath: str) -> MediaMetadata:
 
 
 def _extract_video_metadata(filepath: str) -> MediaMetadata:
-    payload = probe_media(Path(filepath))
+    payload = probe_media(resolve_media_path(filepath))
     streams = payload.get("streams", [])
     format_info = payload.get("format", {})
     video_stream = next((s for s in streams if s.get("codec_type") == "video"), {})

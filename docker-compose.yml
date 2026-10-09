@@ -38,6 +38,7 @@ services:
       LOG_LEVEL: INFO
     volumes:
       - storage_data:/backend/storage
+      - ${ZUKAN_LIBRARY_HOST_PATH:-nas_library}:/library
       - model_cache:/backend/model_cache
     depends_on:
       db:
@@ -51,6 +52,7 @@ services:
               capabilities: [gpu]
 
 volumes:
+  nas_library:
   postgres_data:
   storage_data:
   model_cache:

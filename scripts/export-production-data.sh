@@ -137,11 +137,12 @@ detect_storage_dir() {
 
     value="$(
         compose_cmd "$compose_file" "$env_file" exec -T api \
-            python -c 'from backend.app.config import settings; print(settings.storage_dir)' 2>/dev/null || true
+            python -m backend.app.storage_cli root 2>/dev/null || true
     )"
     if [ -z "$value" ]; then
-        value="storage"
+        value="$(compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api python -m backend.app.storage_cli root)"
     fi
+    [ -n "$value" ] || fail "Could not determine the active library root."
     printf "%s\n" "$value"
 }
 
@@ -168,16 +169,17 @@ archive_storage() {
     local env_file="$2"
     local output_tar="$3"
     local partial="${output_tar}.partial"
+    local library_root="$4"
 
     rm -f "$partial"
-    if compose_cmd "$compose_file" "$env_file" exec -T api tar -C /backend/storage -cf - . > "$partial"; then
+    if compose_cmd "$compose_file" "$env_file" exec -T api tar -C "$library_root" -cf - . > "$partial"; then
         mv "$partial" "$output_tar"
         return
     fi
 
     rm -f "$partial"
     info "The api container is not available for exec; using a one-off api container."
-    compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api tar -C /backend/storage -cf - . > "$partial"
+    compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api tar -C "$library_root" -cf - . > "$partial"
     mv "$partial" "$output_tar"
 }
 
@@ -209,7 +211,7 @@ run_export_on_host() {
         > "${TEMP_DIR}/database.dump"
 
     info "Archiving media storage volume."
-    archive_storage "$compose_file" "$env_file" "${TEMP_DIR}/storage.tar"
+    archive_storage "$compose_file" "$env_file" "${TEMP_DIR}/storage.tar" "$source_storage_dir"
 
     write_manifest "${TEMP_DIR}/manifest.env" "$compose_file" "$source_storage_dir" "$db_name" "$db_user"
 

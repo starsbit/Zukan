@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 import shutil
 import subprocess
@@ -15,10 +16,10 @@ from backend.app.utils.storage import ffmpeg_available
 
 def sample_media_frames(filepath: str, media_type: MediaType, sample_count: int = 5) -> list[Path]:
     if media_type == MediaType.IMAGE:
-        return [Path(filepath)]
+        return [resolve_media_path(filepath)]
     if media_type == MediaType.GIF:
-        return _sample_gif_frames(Path(filepath), sample_count)
-    return _sample_video_frames(Path(filepath), sample_count)
+        return _sample_gif_frames(resolve_media_path(filepath), sample_count)
+    return _sample_video_frames(resolve_media_path(filepath), sample_count)
 
 
 def cleanup_sampled_frames(frames: list[Path]) -> None:

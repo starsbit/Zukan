@@ -74,6 +74,7 @@ export interface MediaRead {
   owner_id: string | null;
   owner_username?: string | null;
   visibility: MediaVisibility;
+  file_status?: 'available' | 'missing' | 'changed';
   filename: string;
   original_filename: string | null;
   media_type: MediaType;

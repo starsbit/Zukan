@@ -23,6 +23,7 @@ services:
       COBALT_API_KEY: ${COBALT_API_KEY:-}
     volumes:
       - storage_data:/backend/storage
+      - ${ZUKAN_LIBRARY_HOST_PATH:-nas_library}:/library
       - model_cache:/backend/model_cache
     depends_on:
       db:
@@ -76,6 +77,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  nas_library:
   postgres_data:
   storage_data:
   model_cache:

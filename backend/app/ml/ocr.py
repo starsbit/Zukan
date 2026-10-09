@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 import asyncio
 import logging
@@ -65,7 +66,7 @@ class TesseractOCR:
             return None
 
         loop = asyncio.get_running_loop()
-        source_path = Path(media_path)
+        source_path = resolve_media_path(media_path)
         frames = sample_media_frames(media_path, media_type, sample_count=settings.ocr_sample_frames)
         frame_paths = frames or [source_path]
 

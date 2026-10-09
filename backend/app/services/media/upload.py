@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import stored_path
 
 import asyncio
 import logging
@@ -382,11 +383,12 @@ class MediaUploadWorkflow:
         has_manual_annotations = bool(normalized_tags or normalized_characters or normalized_series)
 
         media = Media(
+            id=uuid.UUID(saved.path.stem) if len(saved.path.stem) == 32 else uuid.uuid4(),
             uploader_id=user.id,
             owner_id=user.id,
             filename=saved.path.name,
             original_filename=original_name,
-            filepath=str(saved.path),
+            filepath=stored_path(saved.path),
             file_size=saved.file_size,
             sha256=saved.sha256,
             mime_type=saved.mime_type,
@@ -397,9 +399,9 @@ class MediaUploadWorkflow:
             frame_count=file_metadata.frame_count,
             tagging_status="done" if has_manual_annotations else "pending",
             tagging_error=None,
-            thumbnail_path=str(thumb) if thumb else None,
+            thumbnail_path=stored_path(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
-            poster_path=str(poster) if poster else None,
+            poster_path=stored_path(poster) if poster else None,
             poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
             captured_at=captured_at,
             visibility=visibility,
@@ -675,11 +677,12 @@ class MediaUploadWorkflow:
         normalized_tags = normalize_manual_tags(tags) if tags else []
 
         media = Media(
+            id=uuid.UUID(saved.path.stem) if len(saved.path.stem) == 32 else uuid.uuid4(),
             uploader_id=user.id,
             owner_id=user.id,
             filename=saved.path.name,
             original_filename=original_name,
-            filepath=str(saved.path),
+            filepath=stored_path(saved.path),
             file_size=saved.file_size,
             sha256=saved.sha256,
             mime_type=saved.mime_type,
@@ -690,9 +693,9 @@ class MediaUploadWorkflow:
             frame_count=file_metadata.frame_count,
             tagging_status="done" if normalized_tags else "pending",
             tagging_error=None,
-            thumbnail_path=str(thumb) if thumb else None,
+            thumbnail_path=stored_path(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
-            poster_path=str(poster) if poster else None,
+            poster_path=stored_path(poster) if poster else None,
             poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
             captured_at=captured_at,
             visibility=visibility,

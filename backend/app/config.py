@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     database_auto_repair_enabled: bool = True
 
     storage_dir: Path = Path("storage")
+    generated_files_dir: str = ".zukan"
+    library_paths_relative: bool = False
+    library_root_identity: str | None = None
 
     tagger_backend: str = "wd_v3"
     tagger_model_repo: str = "SmilingWolf/wd-vit-tagger-v3"

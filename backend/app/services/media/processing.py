@@ -70,7 +70,7 @@ class MediaProcessingService:
 
     async def run_ocr_for_media(self, media_id: uuid.UUID, ocr_model: TesseractOCR | None) -> None:
         media = await self._query.get_media_by_id(media_id)
-        if media is None or media.deleted_at is not None:
+        if media is None or media.deleted_at is not None or (getattr(media, "file_status", None) or "available") != "available":
             return
 
         if ocr_model is None:

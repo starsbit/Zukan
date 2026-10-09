@@ -291,6 +291,24 @@ When a new version is available, all users will receive an in-app notification a
 
 ---
 
+### NAS-backed media storage
+
+PostgreSQL stays in its existing database volume. An admin can move media to a mounted NAS folder and catalog existing images, GIFs, and videos there without changing their filenames or subfolders.
+
+1. Mount your NAS share on the Docker host, then set `ZUKAN_LIBRARY_HOST_PATH=/mnt/nas/anime` in the deployment `.env`. The Compose templates expose this directory to the API at `/library` and retain the old `storage_data` volume during migration. For Proxmox LXC, the path must be mounted inside the LXC where Docker runs.
+2. Recreate the API container with your usual Compose file, for example `docker compose -f docker-compose.prod.yml up -d api`.
+3. Open **Admin → Storage**, choose the user who will own discovered files, and save settings. Discovered media starts private. The default scan interval is 3600 seconds; set it to 0 for manual scanning.
+4. Enter `/library` as the destination, validate it, then choose **Copy, verify and migrate**. Existing IDs, metadata, ownership, albums, favorites, and embeddings are preserved. Migration includes trashed media.
+5. Zukan copies and hashes every referenced asset, switches the library root, checks file access and image/video processing, then deletes only verified source copies. Unrelated source files remain. Reads continue during copying; writes and processing pause until migration finishes.
+
+Generated thumbnails and posters live under `.zukan/thumbnails/` and `.zukan/posters/` by default. You can choose another hidden subfolder. New uploads use `uploads/`; existing NAS files stay in place. **Scan now** discovers external additions and unambiguous file moves. Missing files keep their database records; changed content requires an admin to accept and reprocess it. Manual tags, character/series annotations, OCR overrides, and rating overrides remain intact. Permanent deletion also deletes the cataloged NAS original; soft deletion retains it.
+
+Storage settings and migration progress survive restarts. Interrupted copying and cleanup resume on startup; jobs paused by an error show **Resume migration** after you correct the reported issue. Missing source assets or conflicting destination content block migration without deleting source files. A NAS disconnect pauses file mutations and scanning, and retains metadata. Keep the `.zukan-library-id` marker in each library: it distinguishes the correct mounted library from an empty mountpoint. Existing thumbnails remain valid if you change the generated-files subfolder; new thumbnails use the updated setting.
+
+Run one API worker per database; startup enforces this with a PostgreSQL advisory lock so separate processes cannot bypass migration pauses. The provided deployment already runs one worker. The updater retains NAS mount configuration through the `.env` setting. Wait for migration to finish before running backup/export commands.
+
+---
+
 ### Exporting and Importing Data
 
 Use the data export script from your laptop to create one archive containing the PostgreSQL dump, tags, embeddings, media files, thumbnails, and posters:
@@ -311,7 +329,7 @@ Import that archive into the current local Docker Compose install:
 scripts/import-production-data.sh ./zukan-prod-data.tar.gz --yes
 ```
 
-The import replaces the target database, copies media into the target storage volume, and rewrites stored media paths when the source and target installs use different storage directories. Existing unreferenced files in the target storage volume are left in place by default; add `--replace-storage` to clear the local storage volume first.
+The import replaces the target database, copies media into the target library directory, and adapts legacy paths when source and target installs use different storage directories. NAS libraries keep relative media paths; the restored library root is set to the target directory. Use `--target-storage-dir /library` to restore into a mounted NAS destination. Existing unreferenced files in the target storage volume are left in place by default; add `--replace-storage` to clear the local storage volume first.
 
 Both scripts accept `--compose-file`, `--env-file`, and `--project-name` for non-standard installs. Run either script with `--help` for the full option list.
 

@@ -54,7 +54,7 @@ Options:
   --compose-file PATH       Compose file. Default: auto-detect
   --env-file PATH           Compose env file. Default: auto-detect
   --project-name NAME       Docker Compose project name. Default: zukan
-  --target-storage-dir DIR  Path value to store in media rows. Default: detect
+  --target-storage-dir DIR  Target library directory inside API container. Default: detect
   --replace-storage         Clear existing media files before unpacking archive
   --yes                     Do not prompt for confirmation
   --no-start                Do not restart compose services after import
@@ -160,17 +160,15 @@ detect_target_storage_dir() {
 
     value="$(
         compose_cmd "$compose_file" "$env_file" exec -T api \
-            python -c 'from backend.app.config import settings; print(settings.storage_dir)' 2>/dev/null || true
+            python -m backend.app.storage_cli root 2>/dev/null || true
     )"
     if [ -z "$value" ]; then
         value="$(
             compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api \
-                python -c 'from backend.app.config import settings; print(settings.storage_dir)' 2>/dev/null || true
+                python -m backend.app.storage_cli root 2>/dev/null || true
         )"
     fi
-    if [ -z "$value" ]; then
-        value="storage"
-    fi
+    [ -n "$value" ] || fail "Could not determine the target library root; use --target-storage-dir."
 
     strip_trailing_slashes "$value"
 }
@@ -403,16 +401,17 @@ import_storage() {
     local compose_file="$1"
     local env_file="$2"
     local storage_tar="$3"
+    local library_root="$4"
 
     if [ "$REPLACE_STORAGE" = "1" ]; then
         info "Clearing target storage volume."
         compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api \
-            sh -c 'find /backend/storage -mindepth 1 -maxdepth 1 -exec rm -rf {} +'
+            sh -c 'find "$1" -mindepth 1 -maxdepth 1 -exec rm -rf {} +' sh "$library_root"
     fi
 
     info "Unpacking media storage."
     compose_cmd "$compose_file" "$env_file" run --rm --no-deps -T api \
-        tar -C /backend/storage -xf - \
+        tar -C "$library_root" -xf - \
         < "$storage_tar"
 }
 
@@ -427,6 +426,8 @@ rewrite_media_paths() {
 
     cat > "$sql_file" <<'SQL'
 \set ON_ERROR_STOP on
+SELECT to_regclass('public.library_storage') IS NULL AS legacy_paths \gset
+\if :legacy_paths
 WITH params AS (
     SELECT :'source_storage_dir'::text AS source_root, :'target_storage_dir'::text AS target_root
 ), roots AS (
@@ -464,6 +465,14 @@ SET poster_path = roots.target_root || substring(m.poster_path FROM char_length(
 FROM roots
 WHERE m.poster_path IS NOT NULL
   AND (m.poster_path = roots.root OR m.poster_path LIKE roots.root || '/%');
+
+\endif
+SELECT format('UPDATE library_storage SET root = %L', :'target_storage_dir')
+WHERE to_regclass('public.library_storage') IS NOT NULL
+\gexec
+SELECT 'DELETE FROM storage_migrations'
+WHERE to_regclass('public.storage_migrations') IS NOT NULL
+\gexec
 SQL
 
     info "Adjusting media paths from '$source_storage_dir' to '$target_storage_dir'."
@@ -523,7 +532,7 @@ run_import_on_host() {
     compose_cmd "$compose_file" "$env_file" up -d db >/dev/null
 
     restore_database "$compose_file" "$env_file" "${TEMP_DIR}/database.dump" "$db_user" "$db_name"
-    import_storage "$compose_file" "$env_file" "${TEMP_DIR}/storage.tar"
+    import_storage "$compose_file" "$env_file" "${TEMP_DIR}/storage.tar" "$target_storage_dir"
     rewrite_media_paths "$compose_file" "$env_file" "$source_storage_dir" "$target_storage_dir" "$db_user" "$db_name" "${TEMP_DIR}/rewrite-paths.sql"
 
     if [ "$NO_START" = "1" ]; then

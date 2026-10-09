@@ -29,6 +29,9 @@ from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, I
 from backend.app.models import notifications as _notifications_models  # noqa: F401
 from backend.app.models import processing as _processing_models  # noqa: F401
 from backend.app.models import trade as _trade_models  # noqa: F401
+from backend.app.services.storage_gate import storage_gate, StorageMiddleware
+from backend.app.services.library_storage import initialize_library, library_worker, resume_migrations, job_tasks, acquire_storage_lease, release_storage_lease
+from backend.app.routers import storage
 from backend.app.runtime import health_monitor
 from backend.app.routers import admin, albums, auth, batches, collection, config, gacha, graphs, media, notifications, tags, trades, users
 from backend.app.routers.deps import docs_user
@@ -117,45 +120,48 @@ API_KEY_AUTH_DESCRIPTION = (
 async def tagging_worker():
     while True:
         media_id: uuid.UUID = await tag_queue.get()
-        try:
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(select(Media).where(Media.id == media_id))
-                media_item = result.scalar_one_or_none()
-                if media_item is None:
-                    logger.warning("Tagging worker skipped missing media media_id=%s", media_id)
-                    continue
-                logger.info(
-                    "Tagging worker picked media_id=%s status=%s queue_depth=%s",
-                    media_id,
-                    getattr(media_item.tagging_status, "value", media_item.tagging_status),
-                    tag_queue.qsize(),
-                )
-                await ml_startup_state.wait_until_ready()
-                query = MediaQueryService(db)
-                upload_service = MediaUploadService(db, MediaProcessingService(db, query), query)
-                if media_item.tagging_status in ("pending", "processing"):
-                    logger.info("Tagging worker running tag prediction media_id=%s", media_id)
-                    await TagService(db, tagger).tag_media(media_id)
-                else:
+        async with storage_gate.operation(wait_for_storage=True):
+            try:
+                async with AsyncSessionLocal() as db:
+                    result = await db.execute(select(Media).where(Media.id == media_id))
+                    media_item = result.scalar_one_or_none()
+                    if media_item is not None and (getattr(media_item, "file_status", None) or "available") != "available":
+                        continue
+                    if media_item is None:
+                        logger.warning("Tagging worker skipped missing media media_id=%s", media_id)
+                        continue
                     logger.info(
-                        "Tagging worker skipped tag prediction media_id=%s status=%s",
+                        "Tagging worker picked media_id=%s status=%s queue_depth=%s",
                         media_id,
                         getattr(media_item.tagging_status, "value", media_item.tagging_status),
+                        tag_queue.qsize(),
                     )
-                await upload_service.mark_upload_batch_item_done(media_id)
-                try:
-                    await ProcessingService(db).precompute_review_suggestions_for_media(media_id)
-                except Exception:
-                    logger.exception("Failed to precompute missing-name review suggestions media_id=%s", media_id)
-                if settings.post_tag_worker_count > 0:
-                    await post_tag_queue.put(media_id)
-                logger.info("Tagging worker completed media_id=%s", media_id)
+                    await ml_startup_state.wait_until_ready()
+                    query = MediaQueryService(db)
+                    upload_service = MediaUploadService(db, MediaProcessingService(db, query), query)
+                    if media_item.tagging_status in ("pending", "processing"):
+                        logger.info("Tagging worker running tag prediction media_id=%s", media_id)
+                        await TagService(db, tagger).tag_media(media_id)
+                    else:
+                        logger.info(
+                            "Tagging worker skipped tag prediction media_id=%s status=%s",
+                            media_id,
+                            getattr(media_item.tagging_status, "value", media_item.tagging_status),
+                        )
+                    await upload_service.mark_upload_batch_item_done(media_id)
+                    try:
+                        await ProcessingService(db).precompute_review_suggestions_for_media(media_id)
+                    except Exception:
+                        logger.exception("Failed to precompute missing-name review suggestions media_id=%s", media_id)
+                    if settings.post_tag_worker_count > 0:
+                        await post_tag_queue.put(media_id)
+                    logger.info("Tagging worker completed media_id=%s", media_id)
 
-        except Exception as exc:
-            await _mark_tagging_job_failed(media_id, exc)
-            logger.exception("Tagging failed for media_id=%s", media_id)
-        finally:
-            tag_queue.task_done()
+            except Exception as exc:
+                await _mark_tagging_job_failed(media_id, exc)
+                logger.exception("Tagging failed for media_id=%s", media_id)
+            finally:
+                tag_queue.task_done()
 
 
 async def _mark_tagging_job_failed(media_id: uuid.UUID, exc: Exception) -> None:
@@ -173,25 +179,29 @@ async def _mark_tagging_job_failed(media_id: uuid.UUID, exc: Exception) -> None:
 async def post_tag_worker():
     while True:
         media_id: uuid.UUID = await post_tag_queue.get()
-        try:
-            await ml_startup_state.wait_until_ready()
-            async with AsyncSessionLocal() as db:
-                query = MediaQueryService(db)
-                processing = MediaProcessingService(db, query)
-                logger.info(
-                    "Post-tag worker picked media_id=%s queue_depth=%s",
-                    media_id,
-                    post_tag_queue.qsize(),
-                )
-                logger.info("Post-tag worker running OCR media_id=%s", media_id)
-                await processing.run_ocr_for_media(media_id, ocr_backend)
-                logger.info("Post-tag worker refreshing embedding media_id=%s", media_id)
-                await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
-                logger.info("Post-tag worker completed media_id=%s", media_id)
-        except Exception:
-            logger.exception("Post-tag processing failed for media_id=%s", media_id)
-        finally:
-            post_tag_queue.task_done()
+        async with storage_gate.operation(wait_for_storage=True):
+            try:
+                await ml_startup_state.wait_until_ready()
+                async with AsyncSessionLocal() as db:
+                    media_item = await db.get(Media, media_id)
+                    if media_item is not None and (getattr(media_item, "file_status", None) or "available") != "available":
+                        continue
+                    query = MediaQueryService(db)
+                    processing = MediaProcessingService(db, query)
+                    logger.info(
+                        "Post-tag worker picked media_id=%s queue_depth=%s",
+                        media_id,
+                        post_tag_queue.qsize(),
+                    )
+                    logger.info("Post-tag worker running OCR media_id=%s", media_id)
+                    await processing.run_ocr_for_media(media_id, ocr_backend)
+                    logger.info("Post-tag worker refreshing embedding media_id=%s", media_id)
+                    await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
+                    logger.info("Post-tag worker completed media_id=%s", media_id)
+            except Exception:
+                logger.exception("Post-tag processing failed for media_id=%s", media_id)
+            finally:
+                post_tag_queue.task_done()
 
 
 async def _run_library_enrichment_after_post_tag(db, media_id: uuid.UUID) -> None:
@@ -218,29 +228,31 @@ async def _run_library_enrichment_after_post_tag(db, media_id: uuid.UUID) -> Non
 async def embedding_backfill_worker():
     while True:
         item_id: uuid.UUID = await embedding_backfill_queue.get()
-        async with AsyncSessionLocal() as db:
-            try:
-                await ml_startup_state.wait_until_ready()
-                await AdminService(db).run_embedding_backfill_item(item_id)
-            except Exception:
-                await db.rollback()
-                logger.exception("Embedding backfill failed for item_id=%s", item_id)
-            finally:
-                embedding_backfill_queue.task_done()
+        async with storage_gate.operation(wait_for_storage=True):
+            async with AsyncSessionLocal() as db:
+                try:
+                    await ml_startup_state.wait_until_ready()
+                    await AdminService(db).run_embedding_backfill_item(item_id)
+                except Exception:
+                    await db.rollback()
+                    logger.exception("Embedding backfill failed for item_id=%s", item_id)
+                finally:
+                    embedding_backfill_queue.task_done()
 
 
 async def trash_purge_worker() -> None:
     interval_seconds = max(60, settings.trash_purge_interval_seconds)
     while True:
-        try:
-            async with AsyncSessionLocal() as db:
-                query = MediaQueryService(db)
-                lifecycle = MediaLifecycleService(db, query)
-                purged = await lifecycle.purge_expired_trash()
-                if purged:
-                    logger.info("Purged %s expired trashed media records", purged)
-        except Exception:
-            logger.exception("Scheduled trash purge run failed")
+        async with storage_gate.operation(wait_for_storage=True):
+            try:
+                async with AsyncSessionLocal() as db:
+                    query = MediaQueryService(db)
+                    lifecycle = MediaLifecycleService(db, query)
+                    purged = await lifecycle.purge_expired_trash()
+                    if purged:
+                        logger.info("Purged %s expired trashed media records", purged)
+            except Exception:
+                logger.exception("Scheduled trash purge run failed")
         await asyncio.sleep(interval_seconds)
 
 
@@ -514,6 +526,8 @@ async def lifespan(_api: FastAPI):
     failed_retry_worker: asyncio.Task | None = None
     update_worker: asyncio.Task | None = None
     ml_worker: asyncio.Task | None = None
+    storage_worker: asyncio.Task | None = None
+    storage_lease = None
     ml_startup_state.reset()
     try:
         logger.info("Startup phase: running database migrations")
@@ -527,6 +541,12 @@ async def lifespan(_api: FastAPI):
         logger.info("Startup phase: ensuring admin user")
         await _ensure_admin_user()
         logger.info("Startup phase complete: ensuring admin user")
+
+        storage_lease = await acquire_storage_lease()
+        await initialize_library()
+        await resume_migrations()
+        storage.media_queue = tag_queue
+        storage_worker = asyncio.create_task(library_worker(tag_queue))
 
         logger.info("Startup phase: scheduling background ML initialization")
         ml_worker = asyncio.create_task(_initialize_ml_services())
@@ -562,6 +582,14 @@ async def lifespan(_api: FastAPI):
         raise
     finally:
         logger.info("Application shutdown initiated")
+        storage_tasks = list(job_tasks) + ([storage_worker] if storage_worker else [])
+        for task in storage_tasks:
+            task.cancel()
+        for task in storage_tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
         for w in workers:
             w.cancel()
         for w in post_tag_workers:
@@ -616,6 +644,7 @@ async def lifespan(_api: FastAPI):
                 await ml_worker
             except asyncio.CancelledError:
                 logger.info("Background ML startup task stopped")
+        await release_storage_lease(storage_lease)
 
 
 api = FastAPI(
@@ -801,6 +830,7 @@ v1_router.include_router(graphs.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
 v1_router.include_router(admin.router)
+v1_router.include_router(storage.router)
 v1_router.include_router(batches.router)
 v1_router.include_router(notifications.router)
 v1_router.include_router(trades.router)
@@ -851,3 +881,5 @@ async def redoc_ui(_: User = Depends(docs_user)):
         openapi_url="/openapi.json",
         title=f"{api.title} - ReDoc",
     )
+
+api.add_middleware(StorageMiddleware)

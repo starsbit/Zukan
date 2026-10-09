@@ -158,6 +158,8 @@ class TagRepository:
         existing_by_name = {item.tag.name: item for item in existing_media_tags}
 
         for name, media_tag in existing_by_name.items():
+            if source == "auto" and getattr(media_tag.source, "value", media_tag.source) == "manual":
+                continue
             if name in desired_by_name:
                 desired_category, desired_confidence = desired_by_name[name]
                 if media_tag.tag.category == 0 and desired_category != 0:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.utils.library_paths import resolve_media_path
 
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
@@ -51,7 +52,7 @@ class ColorHistogramEmbeddingBackend:
 
     async def compute(self, filepath: str, media_type: MediaType) -> list[float]:
         frames = sample_media_frames(filepath, media_type)
-        frame_paths = frames or [Path(filepath)]
+        frame_paths = frames or [resolve_media_path(filepath)]
         loop = asyncio.get_running_loop()
         try:
             embeddings = await asyncio.gather(*[
@@ -59,7 +60,7 @@ class ColorHistogramEmbeddingBackend:
                 for frame_path in frame_paths
             ])
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != Path(filepath)])
+            cleanup_sampled_frames([frame for frame in frames if frame != resolve_media_path(filepath)])
 
         vectors = [np.array(embedding, dtype=np.float32) for embedding in embeddings if embedding]
         if not vectors:
@@ -151,7 +152,7 @@ class CLIPOnnxEmbeddingBackend:
 
     async def compute(self, filepath: str, media_type: MediaType) -> list[float]:
         frames = sample_media_frames(filepath, media_type)
-        frame_paths = frames or [Path(filepath)]
+        frame_paths = frames or [resolve_media_path(filepath)]
         loop = asyncio.get_running_loop()
         try:
             embeddings = await asyncio.gather(*[
@@ -159,7 +160,7 @@ class CLIPOnnxEmbeddingBackend:
                 for frame_path in frame_paths
             ])
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != Path(filepath)])
+            cleanup_sampled_frames([frame for frame in frames if frame != resolve_media_path(filepath)])
 
         vectors = [np.array(embedding, dtype=np.float32) for embedding in embeddings if embedding]
         if not vectors:
