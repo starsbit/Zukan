@@ -6,6 +6,7 @@ from backend.app.database import get_db
 from backend.app.models.library_storage import StorageMigration
 from backend.app.routers.deps import admin_user
 from backend.app.services import library_storage as service
+from backend.app.services import storage_maintenance
 
 router = APIRouter(prefix='/admin/storage', tags=['admin'], dependencies=[Depends(admin_user)])
 media_queue = None
@@ -21,6 +22,27 @@ class StorageSettingsUpdate(BaseModel):
 class Destination(BaseModel):
     model_config = ConfigDict(extra='forbid')
     root: str = Field(min_length=1, max_length=1024)
+
+
+class MaintenanceCleanup(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    media_ids: list[uuid.UUID] = Field(min_length=1, max_length=10000)
+    root: str
+    root_identity: str | None
+    confirm_permanent_deletion: bool
+
+
+@router.get('/maintenance')
+async def inspect_maintenance(db: AsyncSession = Depends(get_db)):
+    async with service.control_lock, service.storage_gate.operation(writer=False):
+        return await call(storage_maintenance.inspect(db))
+
+
+@router.post('/maintenance/cleanup')
+async def cleanup_maintenance(body: MaintenanceCleanup, db: AsyncSession = Depends(get_db)):
+    if not body.confirm_permanent_deletion:
+        raise HTTPException(422, 'Permanent deletion must be acknowledged')
+    return await call(storage_maintenance.cleanup(db, body.media_ids, body.root, body.root_identity))
 
 
 async def call(awaitable):

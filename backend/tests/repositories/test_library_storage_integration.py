@@ -9,7 +9,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from backend.app.config import settings
 from backend.app.models.library_storage import LibraryStorage, StorageMigration
-from backend.app.models.media import Media, MediaType, MediaVisibility, TaggingStatus
+from backend.app.models.media import Media, MediaType, MediaVisibility, TaggingStatus, ProcessingStatus
 from backend.app.services import library_storage as service
 from backend.app.services.storage_gate import StorageGate
 
@@ -305,3 +305,73 @@ async def test_setup_prompt_upgrade_respects_existing_migrations(library, db_ses
         await connection.run_sync(upgrade)
     await db_session.refresh(config)
     assert config.folder_configured
+
+
+@pytest.mark.asyncio
+async def test_maintenance_cleans_missing_records_and_preserves_recovered_and_shared_assets(library, db_session, make_user):
+    from backend.app.services import storage_maintenance as maintenance
+    from backend.app.models.tags import Tag, MediaTag
+    source, _ = library
+    user = await make_user()
+    await service.initialize_library()
+    shared = source / 'shared.webp'; shared.write_bytes(b'preview')
+    missing = Media(uploader_id=user.id, filepath='missing.jpg', filename='missing.jpg',
+                    media_type=MediaType.IMAGE, thumbnail_path='shared.webp')
+    recovered = Media(uploader_id=user.id, filepath='recovered.jpg', filename='recovered.jpg', media_type=MediaType.IMAGE)
+    healthy = Media(uploader_id=user.id, filepath='healthy.jpg', filename='healthy.jpg',
+                    media_type=MediaType.IMAGE, thumbnail_path='shared.webp', poster_path='lost.webp', ocr_text_override='retain')
+    (source / 'healthy.jpg').write_bytes(b'original')
+    for item in (missing, recovered, healthy):
+        item.captured_at = datetime.now(timezone.utc)
+    db_session.add_all([missing, recovered, healthy]); await db_session.flush()
+    tag = Tag(name='manual', owner_user_id=user.id); db_session.add(tag); await db_session.flush()
+    db_session.add(MediaTag(media_id=missing.id, tag_id=tag.id, confidence=1.0))
+    await db_session.commit()
+    report = await maintenance.inspect(db_session)
+    assert len(report['items']) == 3
+    (source / 'recovered.jpg').write_bytes(b'returned')
+    result = await maintenance.cleanup(db_session, [missing.id, recovered.id, healthy.id], report['root'], report['root_identity'])
+    assert result['deleted_ids'] == [str(missing.id)]
+    assert result['repaired_ids'] == [str(healthy.id)]
+    assert result['skipped_ids'] == [str(recovered.id)]
+    assert await db_session.scalar(select(MediaTag).where(MediaTag.media_id == missing.id)) is None
+    assert shared.exists() and healthy.ocr_text_override == 'retain' and healthy.poster_path is None
+    assert healthy.poster_status == ProcessingStatus.FAILED
+    assert (source / 'healthy.jpg').exists() and (source / 'recovered.jpg').exists()
+    assert await service.validate_destination(db_session, str(library[1]))
+
+
+@pytest.mark.asyncio
+async def test_maintenance_refuses_disconnected_library_and_changed_root(library, db_session, make_user):
+    from backend.app.services import storage_maintenance as maintenance
+    await service.initialize_library()
+    with pytest.raises(ValueError, match='Library changed'):
+        await maintenance.cleanup(db_session, [], '/other', settings.library_root_identity)
+    (library[0] / service.MARKER).unlink()
+    with pytest.raises(ValueError, match='unavailable'):
+        await maintenance.inspect(db_session)
+    with pytest.raises(ValueError, match='unavailable'):
+        await maintenance.cleanup(db_session, [], str(library[0]), settings.library_root_identity)
+
+
+@pytest.mark.asyncio
+async def test_maintenance_aborts_on_io_errors_and_unsafe_paths(library, db_session, make_user, monkeypatch):
+    from backend.app.services import storage_maintenance as maintenance
+    await service.initialize_library()
+    user = await make_user()
+    media = Media(uploader_id=user.id, filepath='missing.jpg', filename='missing.jpg',
+                  media_type=MediaType.IMAGE, captured_at=datetime.now(timezone.utc))
+    db_session.add(media); await db_session.commit()
+    def io_failure(_):
+        raise PermissionError('NAS access denied')
+    with monkeypatch.context() as patch:
+        patch.setattr(maintenance, 'missing_fields', io_failure)
+        with pytest.raises(PermissionError):
+            await maintenance.cleanup(db_session, [media.id], str(library[0]), settings.library_root_identity)
+    await db_session.refresh(media)
+    assert media.filepath == 'missing.jpg'
+    media.filepath = '../outside.jpg'; await db_session.commit()
+    with pytest.raises(ValueError, match='traversal'):
+        await maintenance.cleanup(db_session, [media.id], str(library[0]), settings.library_root_identity)
+    await db_session.refresh(media)
+    assert media.id

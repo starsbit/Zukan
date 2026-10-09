@@ -39,12 +39,13 @@ class MediaLifecycleService:
             await self._db.commit()
         return len(expired)
 
-    async def purge_media_record(self, media: Media) -> None:
+    async def purge_media_record(self, media: Media, *, delete_files: bool = True) -> None:
         from backend.app.utils.storage import delete_media_files
 
         await self._reimburse_collection_items_for_media(media)
         await MediaRepository(self._db).delete(media)
-        delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
+        if delete_files:
+            delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
         logger.info("Purged media record media_id=%s", media.id)
 
     async def soft_delete_media(self, media_id: uuid.UUID, user: User) -> None:

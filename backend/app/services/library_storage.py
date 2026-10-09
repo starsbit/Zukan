@@ -239,7 +239,10 @@ async def build_manifest(db):
             if not relative:
                 continue
             path = contained_path(root_path(), relative)
-            size, digest = await asyncio.to_thread(file_digest, path)
+            try:
+                size, digest = await asyncio.to_thread(file_digest, path)
+            except FileNotFoundError as exc:
+                raise ValueError(f'Source asset is missing: {relative}. Open Database maintenance to review and clean missing records before migration.') from exc
             if field == "filepath" and media.sha256 and digest != media.sha256 and media.file_status == "available":
                 raise ValueError(f"Source content changed; scan and review it before migration: {relative}")
             destination = relative

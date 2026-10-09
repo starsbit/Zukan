@@ -36,3 +36,11 @@ def test_folder_confirmation_contract(api_client, monkeypatch):
     response = api_client.post('/api/v1/admin/storage/confirm', json={'root': '/library'})
     assert response.status_code == 200 and response.json() == {'folder_configured': True}
     confirm.assert_awaited_once()
+
+
+def test_maintenance_requires_admin_and_explicit_acknowledgment(unauthenticated_client, api_client):
+    assert unauthenticated_client.get('/api/v1/admin/storage/maintenance').status_code == 401
+    body = {'media_ids': ['007954ed-2b86-43c4-8798-232aa0c57c0a'], 'root': '/library',
+            'root_identity': 'identity', 'confirm_permanent_deletion': False}
+    assert unauthenticated_client.post('/api/v1/admin/storage/maintenance/cleanup', json=body).status_code == 401
+    assert api_client.post('/api/v1/admin/storage/maintenance/cleanup', json=body).status_code == 422

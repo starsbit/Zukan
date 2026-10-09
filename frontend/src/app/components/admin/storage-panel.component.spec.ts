@@ -38,6 +38,21 @@ describe('StoragePanelComponent', () => {
     expect(request.request.body).toEqual({root: '/nas'}); request.flush({id: 'job'});
     http.expectOne('/api/v1/admin/storage').flush(status); fixture.destroy();
   });
+  it('requires acknowledgment and sends only the reviewed maintenance IDs', () => {
+    const fixture = create(); const c = fixture.componentInstance;
+    c.inspectMaintenance();
+    http.expectOne('/api/v1/admin/storage/maintenance').flush({root: '/library', root_identity: 'marker', checked_records: 100,
+      items: [{id: 'missing', path: 'lost.jpg', missing_fields: ['filepath'], trashed: false}]});
+    c.cleanupMaintenance();
+    http.expectNone('/api/v1/admin/storage/maintenance/cleanup');
+    c.maintenanceConfirmed = true; c.cleanupMaintenance();
+    const request = http.expectOne('/api/v1/admin/storage/maintenance/cleanup');
+    expect(request.request.body).toEqual({media_ids: ['missing'], root: '/library', root_identity: 'marker', confirm_permanent_deletion: true});
+    request.flush({deleted_ids: ['missing'], repaired_ids: [], skipped_ids: [], file_cleanup_errors: []});
+    http.expectOne('/api/v1/admin/storage').flush(status);
+    expect(c.maintenanceResult()).toContain('1 records deleted');
+    expect(c.maintenance()).toBeNull(); fixture.destroy();
+  });
   it('saves the discovery owner and scan interval without patching the root', () => {
     const fixture = create(); const c = fixture.componentInstance;
     c.scanInterval = 0; c.save();

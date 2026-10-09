@@ -7,6 +7,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
+import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatSelectModule } from '@angular/material/select';
 import { API_BASE_URL } from '../../services/web/api.config';
 import { AdminClientService } from '../../services/web/admin-client.service';
@@ -19,6 +20,10 @@ interface Migration {
 interface ScanResult {
   scanned_at: string; added: number; moved: number; missing: number; changed: number; duplicates: string[];
 }
+interface MaintenanceReport {
+  root: string; root_identity: string | null; checked_records: number;
+  items: { id: string; path: string; missing_fields: string[]; trashed: boolean }[];
+}
 interface StorageStatus {
   folder_configured?: boolean; root: string; generated_dir: string; discovery_owner_id: string | null;
   scan_interval_seconds: number; available: boolean; scanning: boolean;
@@ -28,7 +33,7 @@ interface StorageStatus {
 
 @Component({
   selector: 'zukan-storage-panel',
-  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule, MatSelectModule],
+  imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule, MatSelectModule, MatCheckboxModule],
   template: `
     <mat-card id="storage">
       <mat-card-header><mat-card-title>Storage</mat-card-title></mat-card-header>
@@ -57,6 +62,21 @@ interface StorageStatus {
             <p>Last scan: {{ scan.scanned_at }} — {{ scan.added }} added, {{ scan.moved }} moved, {{ scan.missing }} missing, {{ scan.changed }} changed.</p>
             @for (path of scan.duplicates; track path) { <p>Duplicate requiring review: {{ path }}</p> }
           }
+          <h3>Database maintenance</h3>
+          <p>Inspect catalog references for missing originals and generated files. Unavailable storage stops the check.</p>
+          <button mat-stroked-button (click)="inspectMaintenance()" [disabled]="busy() || migrating() || !s.available || s.scanning">Inspect database</button>
+          @if (maintenance(); as report) {
+            <p>{{ report.checked_records }} records checked; {{ report.items.length }} need attention.</p>
+            @for (item of report.items; track item.id) {
+              <p>{{ item.path }} — missing {{ item.missing_fields.join(', ') }}{{ item.trashed ? ' (in trash)' : '' }}</p>
+            }
+            @if (report.items.length) {
+              <p>Cleanup permanently deletes records with missing originals, including their annotations and relationships, and removes their remaining generated files. Collection compensation and trade cleanup follow normal permanent deletion. Records with only missing thumbnails or posters keep their metadata; broken generated-file references are cleared and marked failed for reprocessing.</p>
+              <mat-checkbox [(ngModel)]="maintenanceConfirmed">I accept permanent deletion of records whose originals are missing.</mat-checkbox>
+              <button mat-flat-button (click)="cleanupMaintenance()" [disabled]="busy() || migrating() || !s.available || !maintenanceConfirmed">Clean reviewed entries</button>
+            }
+          }
+          @if (maintenanceResult()) { <p role="status">{{ maintenanceResult() }}</p> }
           <h3>Move library</h3>
           <mat-form-field class="destination"><mat-label>Destination folder (absolute path in API container)</mat-label><input matInput [(ngModel)]="destination" (ngModelChange)="validation.set(null)"></mat-form-field>
           <p>Files will be copied and verified before switching. Verified old copies will then be deleted; unrelated files remain.</p>
@@ -92,6 +112,9 @@ export class StoragePanelComponent {
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
   readonly validation = signal<{total_files: number; required_bytes: number} | null>(null);
+  readonly maintenance = signal<MaintenanceReport | null>(null);
+  readonly maintenanceResult = signal<string | null>(null);
+  maintenanceConfirmed = false;
   generatedDir = '.zukan';
   ownerId: string | null = null;
   scanInterval = 3600;
@@ -132,6 +155,30 @@ export class StoragePanelComponent {
   migrate() { this.request('/migrations', {root: this.destination}); this.validation.set(null); }
   resume(id: string) { this.request('/migrations/' + id + '/resume'); }
   accept(id: string) { this.request('/conflicts/' + id + '/accept'); }
+  inspectMaintenance() {
+    this.busy.set(true); this.error.set(null); this.maintenance.set(null);
+    this.maintenanceConfirmed = false; this.maintenanceResult.set(null);
+    this.http.get<MaintenanceReport>(this.base + '/maintenance').pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: report => { this.maintenance.set(report); this.busy.set(false); },
+      error: e => { this.busy.set(false); this.error.set(e.error?.detail ?? 'Database inspection failed.'); },
+    });
+  }
+  cleanupMaintenance() {
+    const report = this.maintenance();
+    if (!report || !this.maintenanceConfirmed) return;
+    this.busy.set(true); this.error.set(null); this.validation.set(null);
+    this.http.post<{deleted_ids: string[]; repaired_ids: string[]; skipped_ids: string[]; file_cleanup_errors: {path: string; error: string}[]}>(this.base + '/maintenance/cleanup', {
+      media_ids: report.items.map(item => item.id), root: report.root, root_identity: report.root_identity, confirm_permanent_deletion: true,
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: result => {
+        this.busy.set(false); this.maintenance.set(null); this.maintenanceConfirmed = false;
+        this.maintenanceResult.set(`${result.deleted_ids.length} records deleted; ${result.repaired_ids.length} generated-file references repaired; ${result.skipped_ids.length} recovered entries skipped.`);
+        if (result.file_cleanup_errors.length) this.error.set('Some generated files could not be removed: ' + result.file_cleanup_errors.map(item => `${item.path}: ${item.error}`).join('; '));
+        this.refresh();
+      },
+      error: e => { this.busy.set(false); this.error.set(e.error?.detail ?? 'Database cleanup failed.'); },
+    });
+  }
   validate() {
     this.busy.set(true); this.error.set(null); this.validation.set(null);
     this.http.post<{total_files: number; required_bytes: number}>(this.base + '/validate', {root: this.destination}).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

@@ -120,7 +120,7 @@ The command above is the default install command. By default, the script:
 - Assigns 4 GB RAM, 2 GB swap, and 4 CPU cores
 - Attaches the container to `vmbr0`
 - Uses DHCP networking
-- Deploys Zukan version `0.5.0`
+- Deploys Zukan version `0.5.1`
 
 **4. Customize the install if needed**
 
@@ -138,7 +138,7 @@ CORES=6 \
 BRIDGE=vmbr0 \
 IP=192.168.178.50/24 \
 GATEWAY=192.168.178.1 \
-APP_VERSION=0.5.0 \
+APP_VERSION=0.5.1 \
 GPU_REQUIRED=1 \
 bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
 ```
@@ -158,7 +158,7 @@ Common options:
 | `BRIDGE` | `vmbr0` | Proxmox network bridge |
 | `IP` | `dhcp` | Static IP in CIDR format, or `dhcp` |
 | `GATEWAY` | empty | Gateway for static IP setups |
-| `APP_VERSION` | `0.5.0` | Zukan image tag to deploy |
+| `APP_VERSION` | `0.5.1` | Zukan image tag to deploy |
 | `GPU_REQUIRED` | `0` | Fail if no NVIDIA GPU is available |
 
 **5. What the installer does**
@@ -306,6 +306,8 @@ PostgreSQL stays in its existing database volume. An admin can move media to a m
 Generated thumbnails and posters live under `.zukan/thumbnails/` and `.zukan/posters/` by default. You can choose another hidden subfolder. New uploads use `uploads/`; existing NAS files stay in place. **Scan now** discovers external additions and unambiguous file moves. Missing files keep their database records; changed content requires an admin to accept and reprocess it. Manual tags, character/series annotations, OCR overrides, and rating overrides remain intact. Permanent deletion also deletes the cataloged NAS original; soft deletion retains it.
 
 Storage settings and migration progress survive restarts. Interrupted copying and cleanup resume on startup; jobs paused by an error show **Resume migration** after you correct the reported issue. Missing source assets or conflicting destination content block migration without deleting source files. A NAS disconnect pauses file mutations and scanning, and retains metadata. Keep the `.zukan-library-id` marker in each library: it distinguishes the correct mounted library from an empty mountpoint. Existing thumbnails remain valid if you change the generated-files subfolder; new thumbnails use the updated setting.
+
+**Database maintenance:** In **Admin → Storage**, select **Inspect database** to review missing catalog assets, including trash. Cleanup requires acknowledgment and rechecks only the reviewed IDs. Records whose originals are still missing are permanently deleted through normal media deletion: foreign-key cascades and nulling rules remove dependent links, and collection/trade compensation is preserved. Surviving generated files are removed only when no other record references them. Recovered originals are skipped. Records missing only generated files retain their annotations and relationships; broken thumbnail/poster references are cleared and marked failed for reprocessing. Storage identity checks and migration/scan locks prevent cleanup of an unavailable library or during migration. This is explicit maintenance; periodic scans continue to preserve missing records. Review or restore externally moved files before choosing permanent cleanup.
 
 Run one API worker per database; startup enforces this with a PostgreSQL advisory lock so separate processes cannot bypass migration pauses. The provided deployment already runs one worker. The updater retains NAS mount configuration through the `.env` setting. Wait for migration to finish before running backup/export commands.
 
