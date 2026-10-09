@@ -23,3 +23,16 @@ def test_storage_conflicts_return_reviewable_errors(api_client, monkeypatch):
     monkeypatch.setattr(storage.service, 'validate_destination', AsyncMock(side_effect=ValueError('Destination contains different content')))
     response = api_client.post('/api/v1/admin/storage/validate', json={'root': '/library'})
     assert response.status_code == 409 and 'different content' in str(response.json())
+
+
+def test_folder_confirmation_requires_admin(unauthenticated_client):
+    response = unauthenticated_client.post('/api/v1/admin/storage/confirm', json={'root': '/library'})
+    assert response.status_code == 401
+
+
+def test_folder_confirmation_contract(api_client, monkeypatch):
+    confirm = AsyncMock(return_value={'folder_configured': True})
+    monkeypatch.setattr(storage.service, 'confirm_storage_folder', confirm)
+    response = api_client.post('/api/v1/admin/storage/confirm', json={'root': '/library'})
+    assert response.status_code == 200 and response.json() == {'folder_configured': True}
+    confirm.assert_awaited_once()

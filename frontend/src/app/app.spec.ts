@@ -1,3 +1,4 @@
+import { StorageSetupService } from './services/storage-setup.service';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
 import { ThemeService } from './services/theme.service';
@@ -7,6 +8,7 @@ describe('App', () => {
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [
+        { provide: StorageSetupService, useValue: {} },
         { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },
       ],
     }).compileComponents();

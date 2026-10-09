@@ -152,6 +152,7 @@ async def get_storage_status(db):
     conflicts = (await db.scalars(select(Media).where(Media.file_status != 'available'))).all()
     return {
         'root': config.root, 'generated_dir': config.generated_dir,
+        'folder_configured': config.folder_configured,
         'discovery_owner_id': config.discovery_owner_id,
         'scan_interval_seconds': config.scan_interval_seconds,
         'available': available, 'scanning': scan_lock.locked(), 'last_scan': config.last_scan,
@@ -166,6 +167,20 @@ def job_status(job):
             'total_files': len(job.manifest),
             'copied_files': sum(bool(x.get('copied')) for x in job.manifest),
             'cleaned_files': sum(bool(x.get('cleaned')) for x in job.manifest)}
+
+
+async def confirm_storage_folder(db, root: str):
+    if storage_gate.paused:
+        raise ValueError('Wait for migration to finish before confirming the folder')
+    async with control_lock, storage_gate.operation():
+        config = await db.get(LibraryStorage, 1, populate_existing=True)
+        if root != config.root:
+            raise ValueError('The library folder changed; refresh and confirm the current folder')
+        if not storage_available(Path(config.root), config.root_identity) or not os.access(config.root, os.R_OK | os.W_OK | os.X_OK):
+            raise ValueError('The library folder must be available, readable and writable')
+        config.folder_configured = True
+        await db.commit()
+    return {'folder_configured': True}
 
 
 async def update_storage_settings(db, changes):
@@ -434,6 +449,7 @@ async def run_migration(job_id):
                             if media is None or getattr(media, entry['field']) != entry['source']:
                                 raise ValueError('Library records changed during migration')
                             setattr(media, entry['field'], entry['destination'])
+                        config.folder_configured = True
                         config.root = str(target)
                         config.root_identity = job.destination_identity
                         job.state = 'cleanup'

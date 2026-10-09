@@ -47,6 +47,11 @@ async def update_storage(body: StorageSettingsUpdate, db: AsyncSession = Depends
     return await call(service.update_storage_settings(db, changes))
 
 
+@router.post('/confirm')
+async def confirm(body: Destination, db: AsyncSession = Depends(get_db)):
+    return await call(service.confirm_storage_folder(db, body.root))
+
+
 @router.post('/validate')
 async def validate(body: Destination, db: AsyncSession = Depends(get_db)):
     return await call(service.validate_destination(db, body.root))

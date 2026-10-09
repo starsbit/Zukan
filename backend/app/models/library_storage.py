@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Integer, String, Text, DateTime, func
+from sqlalchemy import Boolean, false, Integer, String, Text, DateTime, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from backend.app.database import Base
@@ -8,6 +8,7 @@ from backend.app.database import Base
 class LibraryStorage(Base):
     __tablename__ = 'library_storage'
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    folder_configured: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     root: Mapped[str] = mapped_column(String(1024), nullable=False)
     generated_dir: Mapped[str] = mapped_column(String(512), nullable=False, default='.zukan')
     discovery_owner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

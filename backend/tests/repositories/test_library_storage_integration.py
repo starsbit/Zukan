@@ -261,6 +261,47 @@ async def test_storage_schema_upgrade_from_previous_revision(db_engine, db_sessi
             with patch.object(migration, 'op', Operations(MigrationContext.configure(sync_connection))):
                 migration.upgrade()
                 migration.upgrade()  # compatible with the live-metadata release baseline
+            setup_migration = import_module('backend.migrations.versions.0021_storage_setup_prompt')
+            with patch.object(setup_migration, 'op', Operations(MigrationContext.configure(sync_connection))):
+                setup_migration.upgrade()
         await connection.run_sync(upgrade)
     await db_session.refresh(media)
     assert media.id == mid and media.file_status == 'available'
+
+
+@pytest.mark.asyncio
+async def test_folder_confirmation_is_explicit_persistent_and_rejects_stale_roots(library, db_session):
+    source, _ = library
+    await service.initialize_library()
+    config = await db_session.get(LibraryStorage, 1)
+    assert not config.folder_configured
+    with pytest.raises(ValueError, match='changed'):
+        await service.confirm_storage_folder(db_session, '/wrong-folder')
+    assert not config.folder_configured
+    await service.confirm_storage_folder(db_session, str(source))
+    await service.initialize_library()
+    await db_session.refresh(config)
+    assert config.folder_configured
+
+
+@pytest.mark.asyncio
+async def test_setup_prompt_upgrade_respects_existing_migrations(library, db_session, db_engine):
+    from importlib import import_module
+    from unittest.mock import patch
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    source, _ = library
+    await service.initialize_library()
+    config = await db_session.get(LibraryStorage, 1)
+    db_session.add(StorageMigration(id=str(uuid.uuid4()), source_root='/old-library',
+        source_identity=str(uuid.uuid4()), destination_root=str(source), destination_identity=config.root_identity,
+        state='complete', manifest=[]))
+    await db_session.commit()
+    migration = import_module('backend.migrations.versions.0021_storage_setup_prompt')
+    async with db_engine.begin() as connection:
+        def upgrade(sync_connection):
+            with patch.object(migration, 'op', Operations(MigrationContext.configure(sync_connection))):
+                migration.upgrade()
+        await connection.run_sync(upgrade)
+    await db_session.refresh(config)
+    assert config.folder_configured

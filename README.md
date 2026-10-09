@@ -293,6 +293,8 @@ When a new version is available, all users will receive an in-app notification a
 
 ### NAS-backed media storage
 
+After a first setup or upgrade, admins see a folder prompt until the library folder is explicitly confirmed. Choose **Keep current folder** to retain the current location, **Open storage settings** to configure another folder, or **Later** to defer until the next sign-in or page reload. Successful storage migration also confirms the folder.
+
 PostgreSQL stays in its existing database volume. An admin can move media to a mounted NAS folder and catalog existing images, GIFs, and videos there without changing their filenames or subfolders.
 
 1. Mount your NAS share on the Docker host, then set `ZUKAN_LIBRARY_HOST_PATH=/mnt/nas/anime` in the deployment `.env`. The Compose templates expose this directory to the API at `/library` and retain the old `storage_data` volume during migration. For Proxmox LXC, the path must be mounted inside the LXC where Docker runs.

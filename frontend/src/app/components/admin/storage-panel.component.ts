@@ -20,7 +20,7 @@ interface ScanResult {
   scanned_at: string; added: number; moved: number; missing: number; changed: number; duplicates: string[];
 }
 interface StorageStatus {
-  root: string; generated_dir: string; discovery_owner_id: string | null;
+  folder_configured?: boolean; root: string; generated_dir: string; discovery_owner_id: string | null;
   scan_interval_seconds: number; available: boolean; scanning: boolean;
   last_scan: ScanResult | null; migration: Migration | null;
   conflicts: { id: string; path: string; status: string }[];
@@ -30,11 +30,15 @@ interface StorageStatus {
   selector: 'zukan-storage-panel',
   imports: [FormsModule, MatButtonModule, MatCardModule, MatFormFieldModule, MatInputModule, MatSelectModule],
   template: `
-    <mat-card>
+    <mat-card id="storage">
       <mat-card-header><mat-card-title>Storage</mat-card-title></mat-card-header>
       <mat-card-content>
         @if (error()) { <p role="alert">{{ error() }}</p> }
         @if (status(); as s) {
+          @if (!s.folder_configured) {
+            <p>Confirm your current folder or move your library to another folder below.</p>
+            <button mat-stroked-button (click)="confirmFolder()" [disabled]="busy() || migrating() || !s.available">Use current folder</button>
+          }
           <p><strong>{{ s.available ? 'Available' : 'Unavailable — metadata retained' }}</strong>: {{ s.root }}</p>
           <p>PostgreSQL remains in its current location. Mount the NAS folder in the API container before selecting it.</p>
           <div class="fields">
@@ -123,6 +127,7 @@ export class StoragePanelComponent {
     });
   }
   save() { this.validation.set(null); this.request('', {generated_dir: this.generatedDir, discovery_owner_id: this.ownerId, scan_interval_seconds: this.scanInterval}, 'patch'); }
+  confirmFolder() { this.request('/confirm', {root: this.status()?.root}); }
   scan() { this.request('/scan'); }
   migrate() { this.request('/migrations', {root: this.destination}); this.validation.set(null); }
   resume(id: string) { this.request('/migrations/' + id + '/resume'); }
