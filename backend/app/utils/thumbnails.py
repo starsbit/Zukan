@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 import uuid
 from pathlib import Path
@@ -9,7 +10,9 @@ from PIL import Image as PILImage, ImageOps
 from backend.app.config import settings
 from backend.app.models.media import MediaType
 from backend.app.utils.media_metadata import _extract_still_image_metadata, _safe_float, probe_media
-from backend.app.utils.storage import ffmpeg_available, thumbnail_path, poster_path
+from backend.app.utils.storage import ffmpeg_available, finalize_media_file, thumbnail_path, poster_path
+
+logger = logging.getLogger(__name__)
 
 
 def generate_poster_and_thumbnail(filepath: str, media_type: MediaType, file_id: uuid.UUID | None = None) -> tuple[Path | None, Path | None]:
@@ -53,8 +56,10 @@ def _generate_square_thumbnail(source_path: Path, thumb_path: Path) -> Path | No
             canvas = ImageOps.fit(img, (size, size), method=PILImage.LANCZOS, centering=(0.5, 0.5))
             thumb_path.parent.mkdir(parents=True, exist_ok=True)
             canvas.save(thumb_path, "WEBP", quality=85)
+        finalize_media_file(thumb_path)
         return thumb_path
     except Exception:
+        logger.warning("Thumbnail generation failed source=%s target=%s", source_path, thumb_path, exc_info=True)
         return None
 
 
@@ -66,8 +71,10 @@ def _extract_gif_poster(source_path: Path, dest_path: Path) -> Path | None:
             frame = img.convert("RGB")
             dest_path.parent.mkdir(parents=True, exist_ok=True)
             frame.save(dest_path, "PNG")
+        finalize_media_file(dest_path)
         return dest_path
     except Exception:
+        logger.warning("GIF poster generation failed source=%s target=%s", source_path, dest_path, exc_info=True)
         return None
 
 
@@ -87,4 +94,11 @@ def _extract_video_poster(source_path: Path, dest_path: Path) -> Path | None:
         )
     except subprocess.TimeoutExpired:
         return None
-    return dest_path if result.returncode == 0 and dest_path.exists() else None
+    if result.returncode != 0 or not dest_path.exists():
+        return None
+    try:
+        finalize_media_file(dest_path)
+    except OSError:
+        logger.warning("Video poster is unreadable target=%s", dest_path, exc_info=True)
+        return None
+    return dest_path

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import time
 import os
 import shutil
 import uuid
@@ -341,6 +342,8 @@ def copy_verified(source: Path, target: Path, entry: dict, job_id: str):
     if temp.is_symlink():
         raise ValueError('Temporary migration path is a symlink')
     with source.open('rb') as src, temp.open('wb') as dst:
+        # Use explicit media permissions rather than inheriting NAS defaults.
+        os.fchmod(dst.fileno(), 0o644)
         shutil.copyfileobj(src, dst, 1024 * 1024)
         dst.flush()
         os.fsync(dst.fileno())
@@ -349,6 +352,11 @@ def copy_verified(source: Path, target: Path, entry: dict, job_id: str):
     # Exclusive hard-link publication prevents replacing a concurrently-created file.
     try:
         publish_without_overwrite(temp, target)
+        target.chmod(0o644)
+        # Some shares alter permissions on publication. Detect this per asset,
+        # before recording it as copied, rather than at final verification.
+        with target.open('rb') as stream:
+            stream.read(1)
     except FileExistsError:
         if file_digest(target) != expected:
             raise ValueError(f'Destination conflict: {target}')
@@ -428,21 +436,30 @@ async def run_migration(job_id):
                 if not storage_available(target, job.destination_identity):
                     raise ValueError('Destination NAS is unavailable or changed identity')
                 job.error = None
+                if switched:
+                    # Resuming cleanup rechecks the destination before removing
+                    # more sources. Publish its active state immediately.
+                    job.state = 'cleanup'
+                    await db.commit()
                 if not switched:
                     if not storage_available(source, config.root_identity):
                         raise ValueError('Source library is unavailable')
                     job.state = 'copying'
                     await db.commit()
+                    checkpoint = time.monotonic()
                     for entry in manifest:
                         if not storage_available(source, job.source_identity) or not storage_available(target, job.destination_identity):
                             raise ValueError('Storage disconnected during copy')
                         src = contained_path(source, entry['source'])
                         dest = contained_path(target, entry['destination'])
                         await asyncio.to_thread(copy_verified, src, dest, entry, job.id)
+                        was_copied = entry.get('copied', False)
                         entry['copied'] = True
-                        await save_manifest(db, job, manifest)
+                        if not was_copied and time.monotonic() - checkpoint >= 30:
+                            await save_manifest(db, job, manifest)
+                            checkpoint = time.monotonic()
                     job.state = 'verifying'
-                    await db.commit()
+                    await save_manifest(db, job, manifest)
                     await asyncio.to_thread(verify_manifest, target, manifest)
                     async with storage_gate.cutover():
                         # No mutation can have escaped the pause since manifest capture.
@@ -465,6 +482,7 @@ async def run_migration(job_id):
                 # Recheck every destination asset before removing any source asset.
                 await asyncio.to_thread(verify_manifest, target, manifest)
                 await asyncio.to_thread(verify_runtime_assets, manifest)
+                checkpoint = time.monotonic()
                 for entry in manifest:
                     if entry.get('cleaned'):
                         continue
@@ -479,12 +497,17 @@ async def run_migration(job_id):
                         raise ValueError('Destination changed during cleanup')
                     await asyncio.to_thread(cleanup_verified_source, src, dest, entry, job.id)
                     entry['cleaned'] = True
-                    await save_manifest(db, job, manifest)
+                    if time.monotonic() - checkpoint >= 30:
+                        await save_manifest(db, job, manifest)
+                        checkpoint = time.monotonic()
                 job.state = 'complete'
-                await db.commit()
+                await save_manifest(db, job, manifest)
             except Exception as exc:
                 await db.rollback()
                 job = await db.get(StorageMigration, job_id)
+                # Completed file operations are idempotent on resume. Save their
+                # latest flags after rollback rather than discarding the checkpoint.
+                job.manifest = [dict(entry) for entry in manifest]
                 job.state = 'cleanup_pending' if switched else 'failed'
                 job.error = str(exc)
                 await db.commit()

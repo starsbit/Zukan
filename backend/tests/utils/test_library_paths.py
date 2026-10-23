@@ -118,3 +118,18 @@ def test_cleanup_recovers_staged_source_and_retains_changed_data(library):
     with pytest.raises(ValueError):
         cleanup_verified_source(source, destination, entry, 'job')
     assert source.read_bytes() == b'external change'
+
+
+def test_copy_repairs_permissions_changed_by_share_publication(library, monkeypatch):
+    from backend.app.services import library_storage as service
+    source = library / 'source.jpg'; source.write_bytes(b'original')
+    target = library / 'copy.jpg'
+    publish = service.publish_without_overwrite
+    def nas_publish(temp, dest):
+        publish(temp, dest)
+        dest.chmod(0)
+    monkeypatch.setattr(service, 'publish_without_overwrite', nas_publish)
+    size, digest = file_digest(source)
+    copy_verified(source, target, {'size': size, 'sha256': digest}, 'job')
+    assert target.stat().st_mode & 0o777 == 0o644
+    assert target.read_bytes() == source.read_bytes()

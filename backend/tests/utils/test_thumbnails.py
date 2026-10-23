@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from PIL import Image
 
 from backend.app.models.media import MediaType
@@ -83,3 +84,40 @@ def test_generate_poster_and_thumbnail_video_mocked_ffmpeg(tmp_path):
 
     assert poster is not None
     assert thumb is not None
+
+
+@pytest.mark.parametrize("media_type", [MediaType.IMAGE, MediaType.GIF, MediaType.VIDEO])
+def test_new_nas_previews_can_be_reopened_from_stored_paths(tmp_path, monkeypatch, media_type):
+    from backend.app.config import settings
+    from backend.app.utils.library_paths import resolve_media_path, stored_path
+
+    monkeypatch.setattr(settings, "storage_dir", tmp_path)
+    monkeypatch.setattr(settings, "library_paths_relative", True)
+    monkeypatch.setattr(settings, "generated_files_dir", ".zukan")
+    source = tmp_path / f"{uuid.uuid4().hex}.gif"
+    Image.new("RGB", (16, 16), "red").save(source)
+    real_save = Image.Image.save
+
+    def nas_save(image, path, *args, **kwargs):
+        real_save(image, path, *args, **kwargs)
+        Path(path).chmod(0)
+
+    def fake_ffmpeg(cmd, **kwargs):
+        Image.new("RGB", (16, 16), "blue").save(Path(cmd[-1]), "PNG")
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(Image.Image, "save", nas_save)
+    monkeypatch.setattr("backend.app.utils.thumbnails.ffmpeg_available", lambda: True)
+    monkeypatch.setattr("backend.app.utils.thumbnails.probe_media", lambda path: {})
+    monkeypatch.setattr("backend.app.utils.thumbnails.subprocess.run", fake_ffmpeg)
+
+    poster, thumb = generate_poster_and_thumbnail(str(source), media_type)
+    assert thumb is not None
+    if media_type != MediaType.IMAGE:
+        assert poster is not None
+    for path in (poster, thumb):
+        if path is not None:
+            assert path.stat().st_mode & 0o777 == 0o644
+            persisted = stored_path(path)
+            with Image.open(resolve_media_path(persisted)) as reopened:
+                reopened.load()

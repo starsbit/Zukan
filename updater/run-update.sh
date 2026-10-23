@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-lockdir=/tmp/zukan-updater.lock
+lockdir="${TMPDIR:-/tmp}/zukan-updater.lock"
 pidfile="$lockdir/pid"
 
 cleanup() {
@@ -159,4 +159,11 @@ docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" pull
 docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps db
 docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps --force-recreate api frontend
 refresh_updater_scripts_from_github
-docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" up -d --no-deps --force-recreate updater
+# Recreating this service kills this script and its Compose client. A detached
+# one-off container retains the mounts/environment and survives that replacement.
+docker compose -p "$project_name" -f "$compose_file" --env-file "$env_file" run -d --rm --no-deps --entrypoint sh updater -c '
+    docker compose -p "${COMPOSE_PROJECT_NAME:-zukan}" \
+        -f "${ZUKAN_COMPOSE_FILE:-/work/docker-compose.yml}" \
+        --env-file "${ZUKAN_ENV_FILE:-/work/.env}" \
+        up -d --no-deps --force-recreate updater
+'

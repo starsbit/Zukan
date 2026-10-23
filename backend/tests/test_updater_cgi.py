@@ -50,3 +50,25 @@ def test_update_cgi_starts_update_and_returns_http_status(tmp_path):
     assert result.stdout.startswith("HTTP/1.1 202 Accepted\n")
     assert "Content-Type: application/json" in result.stdout
     assert '{"message":"Update initiated"}' in result.stdout
+
+
+def test_updater_replacement_runs_from_detached_helper(tmp_path):
+    from pathlib import Path
+    scripts = tmp_path / 'bin'; scripts.mkdir()
+    calls = tmp_path / 'calls'
+    docker = scripts / 'docker'
+    docker.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$DOCKER_CALLS"\n', encoding='ascii')
+    wget = scripts / 'wget'
+    wget.write_text('#!/bin/sh\nexit 1\n', encoding='ascii')
+    docker.chmod(0o755); wget.chmod(0o755)
+    env = {**os.environ, 'PATH': str(scripts) + ':' + os.environ['PATH'],
+           'TMPDIR': str(tmp_path), 'DOCKER_CALLS': str(calls),
+           'ZUKAN_COMPOSE_FILE': str(tmp_path / 'compose.yml'),
+           'ZUKAN_ENV_FILE': str(tmp_path / '.env')}
+    script = Path(SCRIPT_PATH).with_name('run-update.sh')
+    result = subprocess.run(['sh', str(script)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    lines = calls.read_text().splitlines()
+    assert any('up -d --no-deps --force-recreate api frontend' in line for line in lines)
+    assert any('run -d --rm --no-deps --entrypoint sh updater -c' in line for line in lines)
+    assert not (tmp_path / 'zukan-updater.lock').exists()

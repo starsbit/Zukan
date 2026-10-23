@@ -52,6 +52,16 @@ def ffmpeg_available() -> bool:
     return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
 
 
+def finalize_media_file(path: Path) -> None:
+    # NAS defaults can remove read access when a writer closes the file.
+    # Match migration copies, then check access through a fresh handle, as a
+    # subsequent HTTP request will do rather than using the writer's handle.
+    if settings.library_paths_relative:
+        path.chmod(0o644)
+    with path.open("rb") as stream:
+        stream.read(1)
+
+
 async def save_upload(upload: UploadFile) -> SavedUpload | None:
     content = await upload.read()
     return await save_bytes(
@@ -83,6 +93,7 @@ async def save_bytes(
 
     async with aiofiles.open(path, "wb") as f:
         await f.write(content)
+    finalize_media_file(path)
 
     return SavedUpload(
         path=path,

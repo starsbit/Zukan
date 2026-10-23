@@ -28,7 +28,7 @@ def library(tmp_path, monkeypatch, db_engine):
 
 
 @pytest.mark.asyncio
-async def test_legacy_migration_preserves_records_and_removes_only_verified_sources(library, db_session, make_user):
+async def test_legacy_migration_preserves_records_and_removes_only_verified_sources(library, db_session, make_user, monkeypatch):
     source, target = library
     user = await make_user()
     path = source / 'aa' / (uuid.uuid4().hex + '.png'); path.parent.mkdir()
@@ -46,11 +46,19 @@ async def test_legacy_migration_preserves_records_and_removes_only_verified_sour
     await db_session.execute(text("CREATE TRIGGER trg_media_version BEFORE UPDATE ON media FOR EACH ROW EXECUTE FUNCTION fn_bump_version()"))
     await db_session.commit()
     await service.initialize_library()
+    checkpoints = []
+    save = service.save_manifest
+    async def checkpoint(db, job, manifest):
+        checkpoints.append(len(manifest))
+        await save(db, job, manifest)
+    monkeypatch.setattr(service, 'save_manifest', checkpoint)
     await service.start_migration(db_session, str(target))
     await asyncio.gather(*list(service.job_tasks))
     await db_session.refresh(media)
     job = await db_session.scalar(select(StorageMigration))
     assert job.state == 'complete', job.error
+    assert len(checkpoints) == 2  # phase boundaries, rather than rewriting once per asset
+    assert all(entry['copied'] and entry['cleaned'] for entry in job.manifest)
     assert media.id == mid and media.version == 7 and media.deleted_at and media.ocr_text_override == 'manual annotation'
     assert media.tagging_status == TaggingStatus.DONE
     assert not Path(media.filepath).is_absolute()
