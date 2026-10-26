@@ -2,10 +2,17 @@
   <!-- Step 1: New admin credentials -->
   <mat-step [stepControl]="credentialsForm" label="New Admin Account">
     <form [formGroup]="credentialsForm" class="auth-form">
+      <mat-form-field
+        ><mat-label>Setup token</mat-label
+        ><input matInput type="password" formControlName="setupToken" autocomplete="off"
+      /></mat-form-field>
       <mat-form-field appearance="outline" class="full-width">
         <mat-label>Username</mat-label>
         <input matInput formControlName="username" autocomplete="username" />
-        @if (credentialsForm.controls.username.hasError('required') && credentialsForm.controls.username.touched) {
+        @if (
+          credentialsForm.controls.username.hasError('required') &&
+          credentialsForm.controls.username.touched
+        ) {
           <mat-error>Username is required</mat-error>
         } @else if (credentialsForm.controls.username.hasError('minlength')) {
           <mat-error>Username must be at least 3 characters</mat-error>
@@ -39,7 +46,10 @@
         <button mat-icon-button matSuffix type="button" (click)="hideConfirm = !hideConfirm">
           <mat-icon>{{ hideConfirm ? 'visibility_off' : 'visibility' }}</mat-icon>
         </button>
-        @if (credentialsForm.controls.confirmPassword.touched && credentialsForm.hasError('passwordMismatch')) {
+        @if (
+          credentialsForm.controls.confirmPassword.touched &&
+          credentialsForm.hasError('passwordMismatch')
+        ) {
           <mat-error>Passwords do not match</mat-error>
         }
       </mat-form-field>
@@ -59,16 +69,12 @@
       <div class="setup-warning">
         <mat-icon color="warn">warning</mat-icon>
         <div>
-          <strong>This action is irreversible.</strong>
+          <strong>Create the owner account</strong>
           <p>
-            Completing setup will:
+            This creates the single owner login for
+            <strong>{{ credentialsForm.controls.username.value }}</strong> and signs you in.
           </p>
-          <ul>
-            <li>Create a new admin account for <strong>{{ credentialsForm.controls.username.value }}</strong></li>
-            <li>Log in as the default <code>admin</code> user to grant admin privileges</li>
-            <li>Permanently delete the default <code>admin</code> account</li>
-          </ul>
-          <p>Only proceed if you are setting up Zukan for the first time and the default <code>admin:admin</code> credentials are still active.</p>
+          <p>The setup token is required. Setup closes once the owner has been created.</p>
         </div>
       </div>
 
@@ -78,7 +84,13 @@
 
       <div class="form-actions">
         <button mat-button matStepperPrevious type="button" [disabled]="loading()">Back</button>
-        <button mat-flat-button color="warn" type="button" (click)="onSubmit()" [disabled]="loading()">
+        <button
+          mat-flat-button
+          color="warn"
+          type="button"
+          (click)="onSubmit()"
+          [disabled]="loading()"
+        >
           @if (loading()) {
             <mat-spinner diameter="20" />
           } @else {

@@ -1,5 +1,5 @@
 import { computed, Injectable, signal } from '@angular/core';
-import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
+import { MediaType, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
 import { MediaSearchParams } from './web/media-client.service';
 
 export type SearchChipType = 'tag' | 'character' | 'series' | 'ocr';
@@ -33,9 +33,6 @@ export interface AdvancedSearchFilters {
   sensitive: SensitiveFilter | null;
   status: string | null;
   favorited: boolean | null;
-  visibility: MediaVisibility | null;
-  ownerUsername: string | null;
-  uploaderUsername: string | null;
   mediaTypes: MediaType[];
   sortBy: MediaSearchParams['sort_by'] | null;
   sortOrder: MediaSearchParams['sort_order'] | null;
@@ -66,9 +63,6 @@ const SEARCH_QUERY_PARAM_NAMES = [
   'sensitive',
   'status',
   'favorited',
-  'visibility',
-  'owner_username',
-  'uploader_username',
   'media_type',
   'sort_by',
   'sort_order',
@@ -89,7 +83,6 @@ const SEARCH_QUERY_PARAM_NAMES = [
 const TAG_FILTER_MODES = new Set<string>(Object.values(TagFilterMode));
 const NSFW_FILTERS = new Set<string>(Object.values(NsfwFilter));
 const SENSITIVE_FILTERS = new Set<string>(Object.values(SensitiveFilter));
-const VISIBILITIES = new Set<string>(Object.values(MediaVisibility));
 const MEDIA_TYPES = new Set<string>(Object.values(MediaType));
 const SORT_BY_VALUES = new Set<string>(['captured_at', 'uploaded_at', 'filename', 'file_size']);
 const SORT_ORDER_VALUES = new Set<string>(['asc', 'desc']);
@@ -107,9 +100,6 @@ export class NavbarSearchService {
     sensitive: null,
     status: null,
     favorited: null,
-    visibility: null,
-    ownerUsername: null,
-    uploaderUsername: null,
     mediaTypes: [],
     sortBy: null,
     sortOrder: null,
@@ -152,9 +142,6 @@ export class NavbarSearchService {
       filters.sensitive != null,
       filters.status != null,
       filters.favorited != null,
-      filters.visibility != null,
-      filters.ownerUsername != null,
-      filters.uploaderUsername != null,
       filters.mediaTypes.length > 0,
       filters.sortBy != null,
       filters.sortOrder != null,
@@ -179,7 +166,8 @@ export class NavbarSearchService {
       character_name: applied.characterNames.length > 0 ? applied.characterNames : undefined,
       series_name: applied.seriesNames.length > 0 ? applied.seriesNames : undefined,
       ocr_text: applied.ocrText ?? undefined,
-      exclude_tag: applied.advanced.excludeTags.length > 0 ? applied.advanced.excludeTags : undefined,
+      exclude_tag:
+        applied.advanced.excludeTags.length > 0 ? applied.advanced.excludeTags : undefined,
       mode: applied.advanced.mode ?? undefined,
       character_mode: applied.advanced.characterMode ?? undefined,
       series_mode: applied.advanced.seriesMode ?? undefined,
@@ -187,9 +175,6 @@ export class NavbarSearchService {
       sensitive: applied.advanced.sensitive ?? undefined,
       status: applied.advanced.status ?? undefined,
       favorited: applied.advanced.favorited ?? undefined,
-      visibility: applied.advanced.visibility ?? undefined,
-      owner_username: applied.advanced.ownerUsername ?? undefined,
-      uploader_username: applied.advanced.uploaderUsername ?? undefined,
       media_type: applied.advanced.mediaTypes.length > 0 ? applied.advanced.mediaTypes : undefined,
       sort_by: applied.advanced.sortBy ?? undefined,
       sort_order: applied.advanced.sortOrder ?? undefined,
@@ -244,9 +229,6 @@ export class NavbarSearchService {
     this.setScalarParam(params, 'sensitive', state.advanced.sensitive);
     this.setScalarParam(params, 'status', state.advanced.status);
     this.setScalarParam(params, 'favorited', state.advanced.favorited);
-    this.setScalarParam(params, 'visibility', state.advanced.visibility);
-    this.setScalarParam(params, 'owner_username', state.advanced.ownerUsername);
-    this.setScalarParam(params, 'uploader_username', state.advanced.uploaderUsername);
     this.setArrayParam(params, 'media_type', state.advanced.mediaTypes);
     this.setScalarParam(params, 'sort_by', state.advanced.sortBy);
     this.setScalarParam(params, 'sort_order', state.advanced.sortOrder);
@@ -439,9 +421,6 @@ export class NavbarSearchService {
       sensitive: filters.sensitive,
       status: filters.status?.trim() || null,
       favorited: filters.favorited,
-      visibility: filters.visibility,
-      ownerUsername: filters.ownerUsername?.trim() || null,
-      uploaderUsername: filters.uploaderUsername?.trim() || null,
       mediaTypes: [...filters.mediaTypes],
       sortBy: filters.sortBy,
       sortOrder: filters.sortOrder,
@@ -473,19 +452,30 @@ export class NavbarSearchService {
       advanced: this.normalizeAdvancedFilters({
         excludeTags: this.uniqueTrimmed(params.getAll('exclude_tag')),
         mode: this.parseEnum(params.get('mode'), TAG_FILTER_MODES) as TagFilterMode | null,
-        characterMode: this.parseEnum(params.get('character_mode'), TAG_FILTER_MODES) as TagFilterMode | null,
-        seriesMode: this.parseEnum(params.get('series_mode'), TAG_FILTER_MODES) as TagFilterMode | null,
+        characterMode: this.parseEnum(
+          params.get('character_mode'),
+          TAG_FILTER_MODES,
+        ) as TagFilterMode | null,
+        seriesMode: this.parseEnum(
+          params.get('series_mode'),
+          TAG_FILTER_MODES,
+        ) as TagFilterMode | null,
         nsfw: this.parseEnum(params.get('nsfw'), NSFW_FILTERS) as NsfwFilter | null,
-        sensitive: this.parseEnum(params.get('sensitive'), SENSITIVE_FILTERS) as SensitiveFilter | null,
+        sensitive: this.parseEnum(
+          params.get('sensitive'),
+          SENSITIVE_FILTERS,
+        ) as SensitiveFilter | null,
         status: params.get('status')?.trim() || null,
         favorited: this.parseBoolean(params.get('favorited')),
-        visibility: this.parseEnum(params.get('visibility'), VISIBILITIES) as MediaVisibility | null,
-        ownerUsername: params.get('owner_username')?.trim() || null,
-        uploaderUsername: params.get('uploader_username')?.trim() || null,
-        mediaTypes: this.uniqueTrimmed(params.getAll('media_type'))
-          .filter((value) => MEDIA_TYPES.has(value)) as MediaType[],
-        sortBy: this.parseEnum(params.get('sort_by'), SORT_BY_VALUES) as MediaSearchParams['sort_by'] | null,
-        sortOrder: this.parseEnum(params.get('sort_order'), SORT_ORDER_VALUES) as MediaSearchParams['sort_order'] | null,
+        mediaTypes: this.uniqueTrimmed(params.getAll('media_type')).filter((value) =>
+          MEDIA_TYPES.has(value),
+        ) as MediaType[],
+        sortBy: this.parseEnum(params.get('sort_by'), SORT_BY_VALUES) as
+          | MediaSearchParams['sort_by']
+          | null,
+        sortOrder: this.parseEnum(params.get('sort_order'), SORT_ORDER_VALUES) as
+          | MediaSearchParams['sort_order']
+          | null,
         capturedYear: this.parseInteger(params.get('captured_year')),
         capturedMonth: this.parseInteger(params.get('captured_month')),
         capturedDay: this.parseInteger(params.get('captured_day')),
@@ -576,6 +566,8 @@ export class NavbarSearchService {
   }
 
   private searchStatesMatch(left: AppliedSearchState, right: AppliedSearchState): boolean {
-    return this.queryParamKey(this.toQueryParams(left)) === this.queryParamKey(this.toQueryParams(right));
+    return (
+      this.queryParamKey(this.toQueryParams(left)) === this.queryParamKey(this.toQueryParams(right))
+    );
   }
 }

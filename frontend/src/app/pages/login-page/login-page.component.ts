@@ -1,95 +1,103 @@
 import { Component, inject, OnInit, signal, viewChild } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { MatCardModule } from '@angular/material/card';
-import { MatDividerModule } from '@angular/material/divider';
-import { MatTabsModule } from '@angular/material/tabs';
-import { LoginFormComponent, LoginFormValue } from '../../components/auth/login-form/login-form.component';
-import { RegisterFormComponent, RegisterFormValue } from '../../components/auth/register-form/register-form.component';
-import { SetupWizardComponent, SetupFormValue } from '../../components/auth/setup-wizard/setup-wizard.component';
+import { MatButtonModule } from '@angular/material/button';
+import {
+  LoginFormComponent,
+  LoginFormValue,
+} from '../../components/auth/login-form/login-form.component';
+import {
+  SetupWizardComponent,
+  SetupFormValue,
+} from '../../components/auth/setup-wizard/setup-wizard.component';
 import { AuthService } from '../../services/auth.service';
-import { ConfigClientService } from '../../services/web/config-client.service';
 import { extractApiError } from '../../utils/api-error.utils';
 
 @Component({
   selector: 'zukan-login-page',
-  imports: [
-    MatCardModule,
-    MatDividerModule,
-    MatTabsModule,
-    LoginFormComponent,
-    RegisterFormComponent,
-    SetupWizardComponent,
-  ],
-  templateUrl: './login-page.component.html',
+  imports: [MatCardModule, MatButtonModule, LoginFormComponent, SetupWizardComponent],
+  template: `<main class="login-page">
+    <mat-card
+      ><mat-card-header><mat-card-title>Zukan</mat-card-title></mat-card-header>
+      <mat-card-content>
+        @if (error()) {
+          <p role="alert">{{ error() }}</p>
+        }
+        @if (ready()) {
+          @if (setupRequired()) {
+            <zukan-setup-wizard [loading]="loading()" (submitted)="onSetup($event)" />
+          } @else if (mode() === 'oidc') {
+            <button mat-flat-button (click)="sso()" [disabled]="loading()">Sign in with SSO</button>
+          } @else {
+            <zukan-login-form [loading]="loading()" (submitted)="onLogin($event)" />
+          }
+        }</mat-card-content
+    ></mat-card>
+  </main>`,
   styleUrl: './login-page.component.scss',
 })
 export class LoginPageComponent implements OnInit {
-  private readonly authService = inject(AuthService);
-  private readonly configClient = inject(ConfigClientService);
+  private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-
   private readonly loginForm = viewChild(LoginFormComponent);
-  private readonly registerForm = viewChild(RegisterFormComponent);
   private readonly setupWizard = viewChild(SetupWizardComponent);
-
-  selectedTab = 0;
+  readonly ready = signal(false);
   readonly loading = signal(false);
-  readonly registerSuccess = signal<string | null>(null);
+  readonly error = signal<string | null>(null);
+  readonly mode = signal('local');
   readonly setupRequired = signal(false);
 
-  private toRegistrationEmail(username: string): string {
-    return `${username}@starsbit.space`;
+  private returnUrl(): string {
+    const value = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/';
+    return value.startsWith('/') && !value.startsWith('//') && !/[\\\x00-\x1f]/.test(value)
+      ? value
+      : '/';
   }
-
   ngOnInit(): void {
-    this.configClient.getSetupRequired().subscribe({
-      next: ({ setup_required }) => this.setupRequired.set(setup_required),
-      error: () => {},
+    const code = this.route.snapshot.queryParamMap.get('code');
+    this.auth.configuration().subscribe({
+      next: (config) => {
+        this.mode.set(config.mode);
+        this.setupRequired.set(config.setup_required);
+        this.ready.set(true);
+        if (code && config.mode === 'oidc') {
+          const destination = this.returnUrl();
+          window.history.replaceState(null, '', '/login');
+          this.loading.set(true);
+          this.auth
+            .exchange(code)
+            .subscribe({
+              next: () => this.router.navigateByUrl(destination),
+              error: (e) => this.failed(e),
+            });
+        }
+      },
+      error: (e) => this.failed(e),
     });
   }
-
+  sso(): void {
+    this.auth.startSso(this.returnUrl());
+  }
   onLogin(value: LoginFormValue): void {
     this.loading.set(true);
-    this.authService.login(value.username, value.password, value.rememberMe).subscribe({
-      next: () => {
-        const returnUrl = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/';
-        this.router.navigateByUrl(returnUrl);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.loginForm()?.setError(extractApiError(err));
-      },
+    this.auth.login(value.username, value.password, value.rememberMe).subscribe({
+      next: () => this.router.navigateByUrl(this.returnUrl()),
+      error: (e) => this.failed(e),
     });
   }
-
-  onRegister(value: RegisterFormValue): void {
-    this.loading.set(true);
-    const email = this.toRegistrationEmail(value.username);
-    this.authService.register(value.username, email, value.password).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.registerSuccess.set(`Account created! Sign in as ${value.username}.`);
-        this.selectedTab = 0;
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.registerForm()?.setError(extractApiError(err));
-      },
-    });
-  }
-
   onSetup(value: SetupFormValue): void {
     this.loading.set(true);
-    const email = this.toRegistrationEmail(value.username);
-    this.authService.setupAdmin(value.username, email, value.password).subscribe({
-      next: () => {
-        this.router.navigate(['/']);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        this.setupWizard()?.setError(extractApiError(err));
-      },
+    this.auth.setup(value.username, value.password, value.setupToken).subscribe({
+      next: () => this.router.navigateByUrl('/'),
+      error: (e) => this.failed(e),
     });
+  }
+  private failed(error: unknown): void {
+    this.loading.set(false);
+    const message = extractApiError(error);
+    this.error.set(message);
+    this.loginForm()?.setError(message);
+    this.setupWizard()?.setError(message);
   }
 }

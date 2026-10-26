@@ -1,23 +1,29 @@
 from backend.app.utils.library_paths import resolve_media_path
 import uuid
 from datetime import datetime
-from html import escape
 from typing import Annotated, Literal
-
-from fastapi import HTTPException, APIRouter, Depends, Header, Query, Request, Response, status
+from fastapi import (
+    HTTPException,
+    APIRouter,
+    Depends,
+    Header,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.database import get_db
 from backend.app.config import settings
 from backend.app.routers.deps import current_user
 from backend.app.errors.error import AppError
-from backend.app.errors.media import media_not_found, poster_not_available, thumbnail_not_available
+from backend.app.errors.media import poster_not_available, thumbnail_not_available
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
+from backend.app.models.media import ProcessingStatus, TaggingStatus
 from backend.app.models.relations import MediaEntityType
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
@@ -56,46 +62,25 @@ from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
-from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
+from backend.app.utils.idempotency import (
+    idempotency_body_hash,
+    idempotency_scope,
+    idempotency_store,
+)
 from backend.app.utils.rate_limit import rate_limit
 from backend.app.utils.storage import zip_media
 
-router = APIRouter(prefix="/media", tags=["media"], responses=AUTHENTICATED_ERROR_RESPONSES)
-
-IDEMPOTENCY_BEHAVIOR_DOC = (
-    "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original "
-    "status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; "
-    "keys are retained for about 24 hours in process-local memory."
+router = APIRouter(
+    prefix="/media", tags=["media"], responses=AUTHENTICATED_ERROR_RESPONSES
 )
-
-IDEMPOTENCY_HEADER_DOC = (
-    "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
-    "same key + same payload replays original status/body; same key + different payload returns 409."
-)
-
+IDEMPOTENCY_BEHAVIOR_DOC = "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; keys are retained for about 24 hours in process-local memory."
+IDEMPOTENCY_HEADER_DOC = "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: same key + same payload replays original status/body; same key + different payload returns 409."
 UNREADY_PREVIEW_STATUSES = {
     TaggingStatus.PENDING.value,
     TaggingStatus.PROCESSING.value,
     ProcessingStatus.PENDING.value,
     ProcessingStatus.PROCESSING.value,
 }
-
-
-def _status_value(value) -> str:
-    return getattr(value, "value", value)
-
-
-def _public_preview_media_or_404(media: Media | None) -> Media:
-    if (
-        media is None
-        or media.deleted_at is not None
-        or _status_value(media.visibility) != MediaVisibility.public.value
-        or _status_value(media.tagging_status) in UNREADY_PREVIEW_STATUSES
-        or _status_value(media.thumbnail_status) in UNREADY_PREVIEW_STATUSES
-        or _status_value(media.poster_status) in UNREADY_PREVIEW_STATUSES
-    ):
-        raise AppError(status_code=404, code=media_not_found, detail="Not found")
-    return media
 
 
 def _media_asset_path(value: str):
@@ -110,140 +95,6 @@ def _media_asset_path(value: str):
         return path
     except (ValueError, OSError) as exc:
         raise HTTPException(404, 'Media file is unavailable; metadata is retained') from exc
-
-
-def _preview_image(media: Media) -> tuple[str, str] | None:
-    if _status_value(media.media_type) in {MediaType.VIDEO.value, MediaType.GIF.value} and media.poster_path:
-        return media.poster_path, "image/png"
-    if media.thumbnail_path:
-        return media.thumbnail_path, "image/webp"
-    return None
-
-
-def _origin_from_request(request: Request) -> str:
-    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip()
-    forwarded_host = (request.headers.get("x-forwarded-host") or "").split(",", 1)[0].strip()
-    proto = forwarded_proto or request.url.scheme
-    host = forwarded_host or request.headers.get("host") or request.url.netloc
-    return f"{proto}://{host}"
-
-
-def _absolute_url(request: Request, path: str) -> str:
-    return f"{_origin_from_request(request)}{path}"
-
-
-def _media_tag_names(media: Media, *, limit: int | None = None) -> list[str]:
-    names = sorted(
-        item.tag.name
-        for item in getattr(media, "media_tags", [])
-        if getattr(item, "tag", None) is not None and getattr(item.tag, "name", None)
-    )
-    return names[:limit] if limit is not None else names
-
-
-def _media_entity_names(media: Media, entity_type: MediaEntityType, *, limit: int | None = None) -> list[str]:
-    seen: set[str] = set()
-    names: list[str] = []
-    for entity in getattr(media, "entities", []):
-        if _status_value(getattr(entity, "entity_type", None)) != entity_type.value:
-            continue
-        name = (getattr(entity, "name", None) or "").strip()
-        key = name.casefold()
-        if not name or key in seen:
-            continue
-        seen.add(key)
-        names.append(name)
-    names = sorted(names, key=str.casefold)
-    return names[:limit] if limit is not None else names
-
-
-def _format_name_list(names: list[str]) -> str:
-    if len(names) <= 2:
-        return " and ".join(names)
-    return f"{', '.join(names[:-1])}, and {names[-1]}"
-
-
-def _summarize_names(names: list[str], *, limit: int = 2) -> str:
-    visible = names[:limit]
-    remaining = len(names) - len(visible)
-    summary = _format_name_list(visible)
-    if remaining > 0:
-        summary = f"{summary} + {remaining} more"
-    return summary
-
-
-def _preview_title(media: Media) -> str:
-    characters = _media_entity_names(media, MediaEntityType.character)
-    series = _media_entity_names(media, MediaEntityType.series)
-    if characters and series:
-        return f"{_summarize_names(characters)} from {_summarize_names(series)}"
-    if characters:
-        return _summarize_names(characters)
-    if series:
-        return _summarize_names(series)
-    return media.original_filename or media.filename
-
-
-def _preview_description(media: Media) -> str:
-    title = _preview_title(media)
-    filename = media.original_filename or media.filename
-    details = [str(_status_value(media.media_type)).title()]
-    if media.width and media.height:
-        details.append(f"{media.width}x{media.height}")
-    if media.duration_seconds:
-        details.append(f"{media.duration_seconds:.1f}s".replace(".0s", "s"))
-
-    parts = [", ".join(details)]
-    if filename and filename != title:
-        parts.append(filename)
-    tags = _media_tag_names(media, limit=5)
-    if tags:
-        parts.append(f"Tags: {', '.join(tags)}")
-    return ". ".join(parts)
-
-
-def _media_embed_html(request: Request, media: Media) -> str:
-    title = _preview_title(media)
-    canonical_url = _absolute_url(request, f"/media/{media.id}")
-    image_url = _absolute_url(request, f"/api/v1/media/{media.id}/preview-image?v={media.version}")
-    description = _preview_description(media)
-    width = str(media.width) if media.width else None
-    height = str(media.height) if media.height else None
-    _, image_type = _preview_image(media) or ("", "image/webp")
-    image_meta = "\n".join(
-        f'    <meta property="{name}" content="{escape(value, quote=True)}">'
-        for name, value in (
-            ("og:image", image_url),
-            ("og:image:secure_url", image_url),
-            ("og:image:type", image_type),
-            ("og:image:width", width),
-            ("og:image:height", height),
-        )
-        if value
-    )
-    return f"""<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{escape(title)}</title>
-    <meta property="og:type" content="article">
-    <meta property="og:site_name" content="Zukan">
-    <meta property="og:title" content="{escape(title, quote=True)}">
-    <meta property="og:description" content="{escape(description, quote=True)}">
-    <meta property="og:url" content="{escape(canonical_url, quote=True)}">
-{image_meta}
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="{escape(title, quote=True)}">
-    <meta name="twitter:description" content="{escape(description, quote=True)}">
-    <meta name="twitter:image" content="{escape(image_url, quote=True)}">
-    <link rel="canonical" href="{escape(canonical_url, quote=True)}">
-  </head>
-  <body>
-    <p><a href="{escape(canonical_url, quote=True)}">Open in Zukan</a></p>
-  </body>
-</html>
-"""
 
 
 def _media_services(db: AsyncSession) -> tuple[
@@ -301,10 +152,7 @@ def media_metadata_filter_query(
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload Media",
-    description=(
-        "Upload one or more media files. Returns an explicit import batch job (`batch_id`) and polling links for async progress tracking.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
+    description=f"Upload one or more media files. Returns an explicit import batch job (`batch_id`) and polling links for async progress tracking.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
     responses={
         202: {
             "description": "Upload accepted and processing queued.",
@@ -325,7 +173,7 @@ def media_metadata_filter_query(
                                 "batch_item_id": "4a7d8d3a-2f57-4ab0-81be-852eb95b6a23",
                                 "original_filename": "sakura.webp",
                                 "status": "accepted",
-                                "message": None
+                                "message": None,
                             }
                         ],
                     }
@@ -346,30 +194,38 @@ def media_metadata_filter_query(
 )
 async def upload(
     request: Request,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    body = await MediaUploadRequest.from_request(request, max_files=settings.upload_multipart_max_files)
-    scope = idempotency_scope(user_id=user.id, method="POST", path="/media")
+    body = await MediaUploadRequest.from_request(
+        request, max_files=settings.upload_multipart_max_files
+    )
+    scope = idempotency_scope(method="POST", path="/media")
     upload_signature = {
-        "files": [{"filename": f.filename, "content_type": f.content_type} for f in body.files],
+        "files": [
+            {"filename": f.filename, "content_type": f.content_type} for f in body.files
+        ],
         "album_id": str(body.album_id) if body.album_id else None,
         "tags": body.tags or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
-        "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "captured_at_values": [
+            captured.isoformat() for captured in body.captured_at_values or []
+        ],
         "external_refs_values": [
             [ref.model_dump(mode="json") for ref in refs]
-            for refs in (body.external_refs_values or [])
+            for refs in body.external_refs_values or []
         ],
-        "visibility": body.visibility.value,
     }
     body_hash = idempotency_body_hash(upload_signature)
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    replay = await idempotency_store.get_replay(
+        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
+    )
     if replay is not None:
         _, payload = replay
         return payload
-
     _, _, _, _, upload_service, _ = _media_services(db)
     payload = await upload_service.upload_files(
         user,
@@ -379,7 +235,6 @@ async def upload(
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
         external_refs_values=body.external_refs_values,
-        visibility=body.visibility,
     )
     await idempotency_store.remember(
         scope=scope,
@@ -396,12 +251,7 @@ async def upload(
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Upload Media With Predefined Tags And Entities",
-    description=(
-        "Upload media for third-party clients with predefined manual annotations. "
-        "Accepted tags, character names, and series names are stored as authoritative manual metadata, "
-        "and automatic AI tagging is skipped for the uploaded files.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
+    description=f"Upload media for third-party clients with predefined manual annotations. Accepted tags, character names, and series names are stored as authoritative manual metadata, and automatic AI tagging is skipped for the uploaded files.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
     responses={
         202: {
             "description": "Upload accepted with manual annotations applied and AI tagging skipped.",
@@ -422,7 +272,7 @@ async def upload(
                                 "batch_item_id": "4a7d8d3a-2f57-4ab0-81be-852eb95b6a23",
                                 "original_filename": "sakura.webp",
                                 "status": "accepted",
-                                "message": None
+                                "message": None,
                             }
                         ],
                     }
@@ -443,32 +293,40 @@ async def upload(
 )
 async def upload_with_annotations(
     request: Request,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    body = await MediaAnnotatedUploadRequest.from_request(request, max_files=settings.upload_multipart_max_files)
-    scope = idempotency_scope(user_id=user.id, method="POST", path="/media/annotated")
+    body = await MediaAnnotatedUploadRequest.from_request(
+        request, max_files=settings.upload_multipart_max_files
+    )
+    scope = idempotency_scope(method="POST", path="/media/annotated")
     upload_signature = {
-        "files": [{"filename": f.filename, "content_type": f.content_type} for f in body.files],
+        "files": [
+            {"filename": f.filename, "content_type": f.content_type} for f in body.files
+        ],
         "album_id": str(body.album_id) if body.album_id else None,
         "tags": body.tags or [],
         "character_names": body.character_names or [],
         "series_names": body.series_names or [],
         "captured_at": body.captured_at.isoformat() if body.captured_at else None,
-        "captured_at_values": [captured.isoformat() for captured in (body.captured_at_values or [])],
+        "captured_at_values": [
+            captured.isoformat() for captured in body.captured_at_values or []
+        ],
         "external_refs_values": [
             [ref.model_dump(mode="json") for ref in refs]
-            for refs in (body.external_refs_values or [])
+            for refs in body.external_refs_values or []
         ],
-        "visibility": body.visibility.value,
     }
     body_hash = idempotency_body_hash(upload_signature)
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    replay = await idempotency_store.get_replay(
+        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
+    )
     if replay is not None:
         _, payload = replay
         return payload
-
     _, _, _, _, upload_service, _ = _media_services(db)
     payload = await upload_service.upload_files_with_annotations(
         user,
@@ -480,7 +338,6 @@ async def upload_with_annotations(
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
         external_refs_values=body.external_refs_values,
-        visibility=body.visibility,
     )
     await idempotency_store.remember(
         scope=scope,
@@ -497,11 +354,7 @@ async def upload_with_annotations(
     response_model=BatchUploadResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="Ingest Media from URL",
-    description=(
-        "Download an image or video from a remote URL server-side and feed it through the "
-        "standard upload pipeline (dedup, thumbnail, tagging). "
-        "Accepts direct media URLs (JPEG, PNG, WebP, GIF, MP4, WebM, MOV)."
-    ),
+    description="Download an image or video from a remote URL server-side and feed it through the standard upload pipeline (dedup, thumbnail, tagging). Accepts direct media URLs (JPEG, PNG, WebP, GIF, MP4, WebM, MOV).",
     responses={**error_responses(400, 422, 429, 502)},
     dependencies=[
         Depends(
@@ -526,7 +379,6 @@ async def ingest_url(
         tags=body.tags,
         captured_at_override=body.captured_at,
         external_refs=body.external_refs,
-        visibility=body.visibility,
     )
 
 
@@ -534,22 +386,35 @@ async def ingest_url(
     "",
     response_model=MediaCursorPage,
     summary="List Media",
-    description=(
-        "List media visible to the caller using cursor pagination.\n\n"
-        "This is the lightweight browse endpoint and supports only scope + ordering parameters. "
-        "For tag/name/metadata/text-driven filtering, use `GET /media/search`."
-    ),
+    description="List media visible to the caller using cursor pagination.\n\nThis is the lightweight browse endpoint and supports only scope + ordering parameters. For tag/name/metadata/text-driven filtering, use `GET /media/search`.",
     responses=error_responses(403, 404, 422),
 )
 async def list_media(
-    state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
-    album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
-    visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
-    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
-    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
-    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
-    page_size: int = Query(default=20, ge=1, le=1000, description="Maximum number of items to return."),
-    include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
+    state: MediaListState = Query(
+        default=MediaListState.ACTIVE,
+        description="Whether to list active or trashed media.",
+    ),
+    album_id: uuid.UUID | None = Query(
+        default=None,
+        description="Optional album filter for visible media in a specific album.",
+    ),
+    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(
+        default="captured_at", description="Field to sort by."
+    ),
+    sort_order: Literal["asc", "desc"] = Query(
+        default="desc", description="Sort direction."
+    ),
+    after: str | None = Query(
+        default=None,
+        description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response.",
+    ),
+    page_size: int = Query(
+        default=20, ge=1, le=1000, description="Maximum number of items to return."
+    ),
+    include_total: bool = Query(
+        default=True,
+        description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination.",
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -560,8 +425,6 @@ async def list_media(
         tags=None,
         character_names=None,
         series_names=None,
-        owner_username=None,
-        uploader_username=None,
         exclude_tags=None,
         mode=TagFilterMode.AND,
         character_mode=TagFilterMode.AND,
@@ -571,7 +434,6 @@ async def list_media(
         status_filter=None,
         metadata=MediaMetadataFilter(),
         favorited=None,
-        visibility=visibility,
         media_type=None,
         album_id=album_id,
         after=after,
@@ -587,39 +449,97 @@ async def list_media(
     "/search",
     response_model=MediaCursorPage,
     summary="Search Media",
-    description=(
-        "Search-focused media endpoint. Use this for tag/name/metadata/text filtering and discovery workflows. "
-        "It uses the full filtering engine, while `GET /media` is a lightweight browse endpoint, "
-        "and is intended for discovery-style queries that combine tags, OCR text, character names, "
-        "and metadata constraints."
-    ),
+    description="Search-focused media endpoint. Use this for tag/name/metadata/text filtering and discovery workflows. It uses the full filtering engine, while `GET /media` is a lightweight browse endpoint, and is intended for discovery-style queries that combine tags, OCR text, character names, and metadata constraints.",
     responses=error_responses(403, 404, 422),
 )
 async def search_media(
     metadata: Annotated[MediaMetadataFilter, Depends(media_metadata_filter_query)],
-    state: MediaListState = Query(default=MediaListState.ACTIVE, description="Whether to list active or trashed media."),
-    album_id: uuid.UUID | None = Query(default=None, description="Optional album filter for visible media in a specific album."),
-    tag: Annotated[list[str] | None, Query(description="Tags that must be present. Repeat for multiple: ?tag=cat&tag=night")] = None,
-    character_name: Annotated[list[str] | None, Query(description="Case-insensitive partial match against derived character names. Repeat for multiple.")] = None,
-    series_name: Annotated[list[str] | None, Query(description="Case-insensitive partial match against derived series names. Repeat for multiple.")] = None,
-    owner_username: str | None = Query(default=None, description="Case-insensitive exact match against the current owner username."),
-    uploader_username: str | None = Query(default=None, description="Case-insensitive exact match against the uploader username."),
-    exclude_tag: Annotated[list[str] | None, Query(description="Tags that must not be present. Repeat for multiple.")] = None,
-    mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included tags."),
-    character_mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included character filters."),
-    series_mode: TagFilterMode = Query(default=TagFilterMode.AND, description="How to combine multiple included series filters."),
-    nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."),
-    sensitive: SensitiveFilter = Query(default=SensitiveFilter.DEFAULT, description="Controls how sensitive media is included."),
-    status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
-    favorited: bool | None = Query(default=None, description="If true, return only media favorited by the current user."),
-    visibility: MediaVisibility | None = Query(default=None, description="Optional visibility filter."),
-    media_type: Annotated[list[str] | None, Query(description="Media type filter. Repeat for multiple: ?media_type=image&media_type=gif")] = None,
-    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(default="captured_at", description="Field to sort by."),
-    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
-    after: str | None = Query(default=None, description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response."),
-    page_size: int = Query(default=20, ge=1, le=1000, description="Maximum number of items to return."),
-    ocr_text: str | None = Query(default=None, description="Case-insensitive OCR text search with fuzzy matching to tolerate noisy characters inside words."),
-    include_total: bool = Query(default=True, description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination."),
+    state: MediaListState = Query(
+        default=MediaListState.ACTIVE,
+        description="Whether to list active or trashed media.",
+    ),
+    album_id: uuid.UUID | None = Query(
+        default=None,
+        description="Optional album filter for visible media in a specific album.",
+    ),
+    tag: Annotated[
+        list[str] | None,
+        Query(
+            description="Tags that must be present. Repeat for multiple: ?tag=cat&tag=night"
+        ),
+    ] = None,
+    character_name: Annotated[
+        list[str] | None,
+        Query(
+            description="Case-insensitive partial match against derived character names. Repeat for multiple."
+        ),
+    ] = None,
+    series_name: Annotated[
+        list[str] | None,
+        Query(
+            description="Case-insensitive partial match against derived series names. Repeat for multiple."
+        ),
+    ] = None,
+    exclude_tag: Annotated[
+        list[str] | None,
+        Query(description="Tags that must not be present. Repeat for multiple."),
+    ] = None,
+    mode: TagFilterMode = Query(
+        default=TagFilterMode.AND, description="How to combine multiple included tags."
+    ),
+    character_mode: TagFilterMode = Query(
+        default=TagFilterMode.AND,
+        description="How to combine multiple included character filters.",
+    ),
+    series_mode: TagFilterMode = Query(
+        default=TagFilterMode.AND,
+        description="How to combine multiple included series filters.",
+    ),
+    nsfw: NsfwFilter = Query(
+        default=NsfwFilter.DEFAULT, description="Controls how NSFW media is included."
+    ),
+    sensitive: SensitiveFilter = Query(
+        default=SensitiveFilter.DEFAULT,
+        description="Controls how sensitive media is included.",
+    ),
+    status_filter: Annotated[
+        str | None,
+        Query(
+            alias="status",
+            description="Optional tagging status filter such as pending, processing, done, failed, or any.",
+        ),
+    ] = None,
+    favorited: bool | None = Query(
+        default=None,
+        description="If true, return only media favorited by the current user.",
+    ),
+    media_type: Annotated[
+        list[str] | None,
+        Query(
+            description="Media type filter. Repeat for multiple: ?media_type=image&media_type=gif"
+        ),
+    ] = None,
+    sort_by: Literal["captured_at", "uploaded_at", "filename", "file_size"] = Query(
+        default="captured_at", description="Field to sort by."
+    ),
+    sort_order: Literal["asc", "desc"] = Query(
+        default="desc", description="Sort direction."
+    ),
+    after: str | None = Query(
+        default=None,
+        description="Opaque cursor for keyset pagination. Returned as next_cursor in a previous response.",
+    ),
+    page_size: int = Query(
+        default=20, ge=1, le=1000, description="Maximum number of items to return."
+    ),
+    ocr_text: str | None = Query(
+        default=None,
+        description="Case-insensitive OCR text search with fuzzy matching to tolerate noisy characters inside words.",
+    ),
+    include_total: bool = Query(
+        default=True,
+        description="Whether to compute the total count. Set to false to skip the COUNT query for faster pagination.",
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -630,8 +550,6 @@ async def search_media(
         tags=tag,
         character_names=character_name,
         series_names=series_name,
-        owner_username=owner_username,
-        uploader_username=uploader_username,
         exclude_tags=exclude_tag,
         mode=mode,
         character_mode=character_mode,
@@ -641,7 +559,6 @@ async def search_media(
         status_filter=status_filter,
         metadata=metadata,
         favorited=favorited,
-        visibility=visibility,
         media_type=media_type,
         album_id=album_id,
         after=after,
@@ -657,31 +574,41 @@ async def search_media(
     "/timeline",
     response_model=MediaTimeline,
     summary="Media Timeline",
-    description=(
-        "Return year/month bucket counts for the current user's media matching the given filters. "
-        "Use this to populate a timeline sidebar without loading media items. "
-        "Date-range parameters (captured_year, captured_after, etc.) are intentionally excluded. "
-        "The timeline always reflects the full date distribution for the active filter set."
-    ),
+    description="Return year/month bucket counts for the current user's media matching the given filters. Use this to populate a timeline sidebar without loading media items. Date-range parameters (captured_year, captured_after, etc.) are intentionally excluded. The timeline always reflects the full date distribution for the active filter set.",
     responses=error_responses(403, 404, 422),
 )
 async def get_media_timeline(
     state: MediaListState = Query(default=MediaListState.ACTIVE),
     album_id: uuid.UUID | None = Query(default=None),
-    tag: Annotated[list[str] | None, Query(description="Tags that must be present.")] = None,
-    character_name: Annotated[list[str] | None, Query(description="Case-insensitive partial match against derived character names. Repeat for multiple.")] = None,
-    series_name: Annotated[list[str] | None, Query(description="Case-insensitive partial match against derived series names. Repeat for multiple.")] = None,
-    owner_username: str | None = Query(default=None),
-    uploader_username: str | None = Query(default=None),
+    tag: Annotated[
+        list[str] | None, Query(description="Tags that must be present.")
+    ] = None,
+    character_name: Annotated[
+        list[str] | None,
+        Query(
+            description="Case-insensitive partial match against derived character names. Repeat for multiple."
+        ),
+    ] = None,
+    series_name: Annotated[
+        list[str] | None,
+        Query(
+            description="Case-insensitive partial match against derived series names. Repeat for multiple."
+        ),
+    ] = None,
     exclude_tag: Annotated[list[str] | None, Query()] = None,
     mode: TagFilterMode = Query(default=TagFilterMode.AND),
     character_mode: TagFilterMode = Query(default=TagFilterMode.AND),
     series_mode: TagFilterMode = Query(default=TagFilterMode.AND),
     nsfw: NsfwFilter = Query(default=NsfwFilter.DEFAULT),
     sensitive: SensitiveFilter = Query(default=SensitiveFilter.DEFAULT),
-    status_filter: Annotated[str | None, Query(alias="status", description="Optional tagging status filter such as pending, processing, done, failed, or any.")] = None,
+    status_filter: Annotated[
+        str | None,
+        Query(
+            alias="status",
+            description="Optional tagging status filter such as pending, processing, done, failed, or any.",
+        ),
+    ] = None,
     favorited: bool | None = Query(default=None),
-    visibility: MediaVisibility | None = Query(default=None),
     media_type: Annotated[list[str] | None, Query()] = None,
     ocr_text: str | None = Query(default=None),
     user: User = Depends(current_user),
@@ -694,8 +621,6 @@ async def get_media_timeline(
         tags=tag,
         character_names=character_name,
         series_names=series_name,
-        owner_username=owner_username,
-        uploader_username=uploader_username,
         exclude_tags=exclude_tag,
         mode=mode,
         character_mode=character_mode,
@@ -704,7 +629,6 @@ async def get_media_timeline(
         sensitive=sensitive,
         status_filter=status_filter,
         favorited=favorited,
-        visibility=visibility,
         media_type=media_type,
         album_id=album_id,
         ocr_text=ocr_text,
@@ -749,28 +673,28 @@ async def list_series_suggestions(
     "",
     response_model=BulkResult,
     summary="Batch Update Media",
-    description=(
-        "Apply the same metadata/tag mutations to a set of media IDs.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
+    description=f"Apply the same metadata/tag mutations to a set of media IDs.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
     responses=error_responses(409, 422),
 )
 async def batch_update_media(
     body: MediaBatchUpdate,
     response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    scope = idempotency_scope(user_id=user.id, method="PATCH", path="/media")
+    scope = idempotency_scope(method="PATCH", path="/media")
     body_hash = idempotency_body_hash(body.model_dump(mode="json"))
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    replay = await idempotency_store.get_replay(
+        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
+    )
     if replay is not None:
         status_code, payload = replay
         if response is not None:
             response.status_code = status_code
         return payload
-
     _, lifecycle, interactions, _, _, metadata = _media_services(db)
     if body.deleted is True:
         result = await lifecycle.bulk_delete_media(body.media_ids, user)
@@ -780,13 +704,9 @@ async def batch_update_media(
         result = await interactions.bulk_favorite_media(body.media_ids, user)
     elif body.favorited is False:
         result = await interactions.bulk_unfavorite_media(body.media_ids, user)
-    elif body.visibility is not None:
-        result = await metadata.bulk_update_visibility(body.media_ids, user, body.visibility)
     elif body.metadata_review_dismissed is not None:
         result = await metadata.bulk_update_metadata_review_dismissed(
-            body.media_ids,
-            user,
-            body.metadata_review_dismissed,
+            body.media_ids, user, body.metadata_review_dismissed
         )
     else:
         result = BulkResult(processed=0, skipped=0)
@@ -844,9 +764,11 @@ async def record_library_classification_feedback(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    feedback = await MediaLibraryEnrichmentService(db).record_feedback(user.id, body)
+    feedback = await MediaLibraryEnrichmentService(db).record_feedback(body)
     if feedback is None:
-        raise AppError(status_code=404, code="media_not_found", detail="Media not found")
+        raise AppError(
+            status_code=404, code="media_not_found", detail="Media not found"
+        )
     return feedback
 
 
@@ -862,7 +784,7 @@ async def record_library_classification_feedback_bulk(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await MediaLibraryEnrichmentService(db).record_feedback_bulk(user.id, body.items)
+    return await MediaLibraryEnrichmentService(db).record_feedback_bulk(body.items)
 
 
 @router.get(
@@ -877,9 +799,11 @@ async def get_library_classification_suggestions(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await MediaLibraryEnrichmentService(db).enrich_media(media_id, user_id=user.id, apply=False)
+    result = await MediaLibraryEnrichmentService(db).enrich_media(media_id, apply=False)
     if result.metadata.get("reason") == "media_not_found":
-        raise AppError(status_code=404, code="media_not_found", detail="Media not found")
+        raise AppError(
+            status_code=404, code="media_not_found", detail="Media not found"
+        )
     return LibraryClassificationSuggestionResponse(
         suggested_characters=result.suggestions.get(MediaEntityType.character, []),
         suggested_series=result.suggestions.get(MediaEntityType.series, []),
@@ -890,28 +814,28 @@ async def get_library_classification_suggestions(
     "/actions/delete",
     response_model=BulkResult,
     summary="Batch Delete Media",
-    description=(
-        "Move media to trash in bulk.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
+    description=f"Move media to trash in bulk.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
     responses=error_responses(409, 422),
 )
 async def batch_delete_media_command(
     body: MediaIdsRequest,
     response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    scope = idempotency_scope(user_id=user.id, method="POST", path="/media/actions/delete")
+    scope = idempotency_scope(method="POST", path="/media/actions/delete")
     body_hash = idempotency_body_hash(body.model_dump(mode="json"))
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    replay = await idempotency_store.get_replay(
+        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
+    )
     if replay is not None:
         status_code, payload = replay
         if response is not None:
             response.status_code = status_code
         return payload
-
     _, lifecycle, _, _, _, _ = _media_services(db)
     result = await lifecycle.batch_delete_media(body, user)
     await idempotency_store.remember(
@@ -928,28 +852,28 @@ async def batch_delete_media_command(
     "/actions/purge",
     response_model=BulkResult,
     summary="Batch Purge Media",
-    description=(
-        "Permanently delete trashed media in bulk.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
+    description=f"Permanently delete trashed media in bulk.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
     responses=error_responses(409, 422),
 )
 async def batch_purge_media(
     body: MediaIdsRequest,
     response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
+    ),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    scope = idempotency_scope(user_id=user.id, method="POST", path="/media/actions/purge")
+    scope = idempotency_scope(method="POST", path="/media/actions/purge")
     body_hash = idempotency_body_hash(body.model_dump(mode="json"))
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
+    replay = await idempotency_store.get_replay(
+        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
+    )
     if replay is not None:
         status_code, payload = replay
         if response is not None:
             response.status_code = status_code
         return payload
-
     _, lifecycle, _, _, _, _ = _media_services(db)
     result = await lifecycle.batch_purge_media(body, user)
     await idempotency_store.remember(
@@ -1021,41 +945,6 @@ async def queue_bulk_media_tagging_jobs(
 
 
 @router.get(
-    "/{media_id:uuid}/embed",
-    response_class=HTMLResponse,
-    include_in_schema=False,
-)
-async def get_media_embed(media_id: uuid.UUID, request: Request, db: AsyncSession = Depends(get_db)):
-    query, _, _, _, _, _ = _media_services(db)
-    media = _public_preview_media_or_404(await query.get_media_with_relations(media_id, deleted=False))
-    if _preview_image(media) is None:
-        raise AppError(status_code=404, code=media_not_found, detail="Not found")
-    return HTMLResponse(
-        content=_media_embed_html(request, media),
-        headers={"Cache-Control": "public, max-age=300"},
-    )
-
-
-@router.get(
-    "/{media_id:uuid}/preview-image",
-    response_class=FileResponse,
-    include_in_schema=False,
-)
-async def get_media_preview_image(media_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    query, _, _, _, _, _ = _media_services(db)
-    media = _public_preview_media_or_404(await query.get_media_with_relations(media_id, deleted=False))
-    preview = _preview_image(media)
-    if preview is None:
-        raise AppError(status_code=404, code=media_not_found, detail="Not found")
-    path, media_type = preview
-    return FileResponse(
-        _media_asset_path(path),
-        media_type=media_type,
-        headers={"Cache-Control": f"public, max-age={60 * 60 * 24}"},
-    )
-
-
-@router.get(
     "/{media_id:uuid}",
     response_model=MediaDetail,
     summary="Get Media Detail",
@@ -1071,10 +960,7 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
     "/{media_id:uuid}",
     response_model=MediaDetail,
     summary="Update Media",
-    description=(
-        "Update a single media resource. Supports optimistic locking via `version`. "
-        "For `tags`, `entities`, and `external_refs`: omitted means unchanged, empty array means clear all, populated array means replace all."
-    ),
+    description="Update a single media resource. Supports optimistic locking via `version`. For `tags`, `entities`, and `external_refs`: omitted means unchanged, empty array means clear all, populated array means replace all.",
     openapi_extra={
         "requestBody": {
             "content": {
@@ -1114,11 +1000,7 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
                         },
                         "omit_unchanged": {
                             "summary": "Omit fields to leave them unchanged",
-                            "value": {
-                                "favorited": True,
-                                "visibility": "public",
-                                "version": 5,
-                            },
+                            "value": {"favorited": True, "version": 5},
                         },
                     }
                 }
@@ -1127,7 +1009,12 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
     },
     responses=error_responses(403, 404, 409, 422),
 )
-async def update_media(media_id: uuid.UUID, body: MediaUpdate, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
+async def update_media(
+    media_id: uuid.UUID,
+    body: MediaUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
     _, _, _, _, _, metadata = _media_services(db)
     return await metadata.update_media_metadata(media_id, user, body)
 

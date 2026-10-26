@@ -1,7 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import { MediaRead, MediaType, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { MediaService } from '../../../services/media.service';
 import { MediaCardComponent } from './media-card.component';
 
@@ -24,11 +24,6 @@ class FakeIntersectionObserver {
 function makeMedia(overrides: Partial<MediaRead> = {}): MediaRead {
   const media: MediaRead = {
     id: 'm1',
-    uploader_id: 'u1',
-    uploader_username: 'uploader',
-    owner_id: 'u1',
-    owner_username: 'owner',
-    visibility: MediaVisibility.PRIVATE,
     filename: 'media.jpg',
     original_filename: null,
     media_type: MediaType.IMAGE,
@@ -233,36 +228,6 @@ describe('MediaCardComponent', () => {
 
     expect(fixture.nativeElement.querySelector('img')?.getAttribute('src')).toBe('blob:local-preview');
     expect(mediaService.getThumbnailUrl).not.toHaveBeenCalled();
-  });
-
-  it('shows a public icon only for public media', async () => {
-    const mediaService = {
-      getThumbnailUrl: vi.fn(() => of('blob:thumb')),
-      getPosterUrl: vi.fn(() => of('blob:poster')),
-      getFileUrl: vi.fn(() => of('blob:file')),
-    };
-
-    await TestBed.configureTestingModule({
-      imports: [MediaCardComponent],
-      providers: [{ provide: MediaService, useValue: mediaService }],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(MediaCardComponent);
-    fixture.componentRef.setInput('media', makeMedia({ visibility: MediaVisibility.PUBLIC }));
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('[aria-label="Public"]')).toBeNull();
-
-    const card = fixture.nativeElement.querySelector('.media-card') as HTMLElement;
-    card.dispatchEvent(new Event('mouseenter'));
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('[aria-label="Public"]')).not.toBeNull();
-
-    fixture.componentRef.setInput('media', makeMedia({ visibility: MediaVisibility.PRIVATE }));
-    fixture.detectChanges();
-
-    expect(fixture.nativeElement.querySelector('[aria-label="Public"]')).toBeNull();
   });
 
   it('shows the processing spinner while tagging is pending', async () => {

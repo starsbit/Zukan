@@ -13,25 +13,28 @@ import { UsersClientService } from './web/users-client.service';
 describe('AuthService', () => {
   it('resets upload tracking after a successful login', async () => {
     const authClient = {
-      login: vi.fn(() => of({
-        access_token: 'access',
-        refresh_token: 'refresh',
-        token_type: 'bearer',
-      })),
+      login: vi.fn(() =>
+        of({
+          access_token: 'access',
+          refresh_token: 'refresh',
+          token_type: 'bearer',
+        }),
+      ),
       register: vi.fn(),
       logout: vi.fn(),
     };
     const usersClient = {
-      getMe: vi.fn(() => of({
-        id: 'u1',
-        username: 'stars',
-        email: 'stars@example.com',
-        is_admin: false,
-        show_nsfw: false,
-        tag_confidence_threshold: 0.5,
-        version: 1,
-        created_at: '2026-04-02T10:00:00Z',
-      })),
+      getMe: vi.fn(() =>
+        of({
+          id: 'u1',
+          username: 'stars',
+          email: 'stars@example.com',
+          show_nsfw: false,
+          tag_confidence_threshold: 0.5,
+          version: 1,
+          created_at: '2026-04-02T10:00:00Z',
+        }),
+      ),
     };
     const authStore = {
       setTokens: vi.fn(),

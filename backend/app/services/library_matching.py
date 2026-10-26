@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from collections import Counter, defaultdict
 from collections.abc import Coroutine
 from itertools import combinations
@@ -9,11 +8,9 @@ import re
 from types import SimpleNamespace
 import uuid
 from typing import Any
-
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
-
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.models.processing import ImportBatchItem
 from backend.app.models.relations import MediaEntity, MediaEntityType
@@ -26,16 +23,14 @@ from backend.app.schemas import (
     ImportBatchReviewItemRead,
 )
 
-TOKEN_RE = re.compile(r"[a-z0-9]+")
+TOKEN_RE = re.compile("[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
 LIBRARY_MATCH_SCORE_THRESHOLD = 0.72
-LIBRARY_MATCH_SCORE_MARGIN = 0.10
+LIBRARY_MATCH_SCORE_MARGIN = 0.1
 EXACT_MATCH_CONFIDENCE = 0.99
-
 logger = logging.getLogger(__name__)
-
 SuggestionSource = Coroutine[Any, Any, list[ImportBatchRecommendationSuggestionRead]]
 
 
@@ -178,10 +173,7 @@ class MediaSimilarityMatcher:
 
 class MediaLibraryMatcher:
     def __init__(
-        self,
-        db: AsyncSession,
-        *,
-        similarity: MediaSimilarityMatcher | None = None,
+        self, db: AsyncSession, *, similarity: MediaSimilarityMatcher | None = None
     ) -> None:
         self._db = db
         self._similarity = similarity or MediaSimilarityMatcher()
@@ -190,30 +182,35 @@ class MediaLibraryMatcher:
         self,
         review_items: list[ImportBatchReviewItemRead],
         candidates: list[ImportBatchItem],
-        user_id: uuid.UUID,
     ) -> list[ImportBatchRecommendationGroupRead]:
         review_item_by_media_id = {item.media.id: item for item in review_items}
-        review_candidates = [candidate for candidate in candidates if candidate.media and candidate.media.id in review_item_by_media_id]
-        logger.info("Building recommendation groups candidate_count=%d", len(review_candidates))
+        review_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.media and candidate.media.id in review_item_by_media_id
+        ]
+        logger.info(
+            "Building recommendation groups candidate_count=%d", len(review_candidates)
+        )
         if len(review_candidates) < 2:
             logger.info("Skipping grouping: fewer than 2 candidates")
             return []
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         grouped_ids: set[uuid.UUID] = set()
-
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
             entity_groups, entity_grouped_ids = await self._build_entity_name_groups(
-                remaining, review_item_by_media_id, len(groups), user_id,
+                remaining, review_item_by_media_id, len(groups)
             )
             groups.extend(entity_groups)
             grouped_ids |= entity_grouped_ids
-
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
-            groups.extend(await self._build_similarity_groups(remaining, review_item_by_media_id, len(groups), user_id))
-
+            groups.extend(
+                await self._build_similarity_groups(
+                    remaining, review_item_by_media_id, len(groups)
+                )
+            )
         groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
         return groups
 
@@ -222,48 +219,61 @@ class MediaLibraryMatcher:
         candidates: list[ImportBatchItem],
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         group_index_start: int,
-        user_id: uuid.UUID,
     ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
         series_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
         series_names_by_key: dict[str, str] = {}
-        series_character_buckets: dict[tuple[str, str], list[ImportBatchItem]] = defaultdict(list)
+        series_character_buckets: dict[tuple[str, str], list[ImportBatchItem]] = (
+            defaultdict(list)
+        )
         character_names_by_key: dict[tuple[str, str], str] = {}
         character_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
-
         for candidate in candidates:
             review_item = review_item_by_media_id[candidate.media.id]
-            if review_item.missing_character and not review_item.missing_series:
+            if review_item.missing_character and (not review_item.missing_series):
                 series_name = next(
-                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.series and e.name.strip()),
+                    (
+                        e.name.strip()
+                        for e in candidate.media.entities
+                        if e.entity_type == MediaEntityType.series and e.name.strip()
+                    ),
                     None,
                 )
                 if series_name is not None:
                     series_key = series_name.casefold()
                     series_buckets[series_key].append(candidate)
                     series_names_by_key.setdefault(series_key, series_name)
-                    suggested_character = self._best_suggested_entity_name(review_item.suggested_characters)
+                    suggested_character = self._best_suggested_entity_name(
+                        review_item.suggested_characters
+                    )
                     if suggested_character is not None:
                         bucket_key = (series_key, suggested_character.casefold())
                         series_character_buckets[bucket_key].append(candidate)
-                        character_names_by_key.setdefault(bucket_key, suggested_character)
-            elif review_item.missing_series and not review_item.missing_character:
+                        character_names_by_key.setdefault(
+                            bucket_key, suggested_character
+                        )
+            elif review_item.missing_series and (not review_item.missing_character):
                 char_name = next(
-                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
+                    (
+                        e.name.strip()
+                        for e in candidate.media.entities
+                        if e.entity_type == MediaEntityType.character and e.name.strip()
+                    ),
                     None,
                 )
                 if char_name is not None:
                     character_buckets[char_name.casefold()].append(candidate)
-
         logger.info(
             "Entity buckets built series_buckets=%s character_buckets=%s",
             {k: len(v) for k, v in series_buckets.items()},
             {k: len(v) for k, v in character_buckets.items()},
         )
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         grouped_ids: set[uuid.UUID] = set()
-
-        for bucket_key, bucket_candidates in sorted(series_character_buckets.items(), key=lambda item: len(item[1]), reverse=True):
+        for bucket_key, bucket_candidates in sorted(
+            series_character_buckets.items(),
+            key=lambda item: len(item[1]),
+            reverse=True,
+        ):
             if len(bucket_candidates) < 2:
                 continue
             series_name = series_names_by_key.get(bucket_key[0])
@@ -273,14 +283,16 @@ class MediaLibraryMatcher:
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
-                extra_character_suggestions=self._build_named_suggestions([character_name] if character_name else []),
-                extra_series_suggestions=self._build_named_suggestions([series_name] if series_name else []),
+                extra_character_suggestions=self._build_named_suggestions(
+                    [character_name] if character_name else []
+                ),
+                extra_series_suggestions=self._build_named_suggestions(
+                    [series_name] if series_name else []
+                ),
                 confidence_override=0.92,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in bucket_candidates)
-
+            grouped_ids.update((c.media.id for c in bucket_candidates))
         for series_key, bucket_candidates in series_buckets.items():
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if len(ungrouped) < 2:
@@ -291,13 +303,13 @@ class MediaLibraryMatcher:
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
-                extra_series_suggestions=self._build_named_suggestions([series_name] if series_name else []),
-                confidence_override=0.90,
+                extra_series_suggestions=self._build_named_suggestions(
+                    [series_name] if series_name else []
+                ),
+                confidence_override=0.9,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in ungrouped)
-
+            grouped_ids.update((c.media.id for c in ungrouped))
         for bucket_candidates in character_buckets.values():
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if not ungrouped:
@@ -309,28 +321,25 @@ class MediaLibraryMatcher:
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
-                confidence_override=0.80,
+                confidence_override=0.8,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in ungrouped)
-
-        return groups, grouped_ids
+            grouped_ids.update((c.media.id for c in ungrouped))
+        return (groups, grouped_ids)
 
     async def _build_similarity_groups(
         self,
         candidates: list[ImportBatchItem],
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         group_index_start: int,
-        user_id: uuid.UUID,
     ) -> list[ImportBatchRecommendationGroupRead]:
         batch_tag_counts = self._similarity.build_batch_tag_counts(candidates)
-
         adjacency: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
         pair_scores: dict[frozenset[uuid.UUID], float] = {}
-
         for left, right in combinations(candidates, 2):
-            score = self._similarity.pair_similarity(left, right, batch_tag_counts, len(candidates))
+            score = self._similarity.pair_similarity(
+                left, right, batch_tag_counts, len(candidates)
+            )
             if score < PAIR_SCORE_THRESHOLD:
                 continue
             left_id = left.media.id
@@ -338,14 +347,12 @@ class MediaLibraryMatcher:
             adjacency[left_id].add(right_id)
             adjacency[right_id].add(left_id)
             pair_scores[frozenset((left_id, right_id))] = score
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         visited: set[uuid.UUID] = set()
         for candidate in candidates:
             media_id = candidate.media.id
             if media_id in visited or media_id not in adjacency:
                 continue
-
             component_ids: list[uuid.UUID] = []
             stack = [media_id]
             while stack:
@@ -354,23 +361,27 @@ class MediaLibraryMatcher:
                     continue
                 visited.add(current)
                 component_ids.append(current)
-                stack.extend(neighbor for neighbor in adjacency[current] if neighbor not in visited)
-
+                stack.extend(
+                    (
+                        neighbor
+                        for neighbor in adjacency[current]
+                        if neighbor not in visited
+                    )
+                )
             if len(component_ids) < 2:
                 continue
-
             component_media_ids = set(component_ids)
-            component_candidates = [c for c in candidates if c.media.id in component_media_ids]
+            component_candidates = [
+                c for c in candidates if c.media.id in component_media_ids
+            ]
             groups.append(
                 await self._build_recommendation_group(
                     component_candidates,
                     review_item_by_media_id,
                     pair_scores,
                     group_index_start + len(groups),
-                    user_id,
                 )
             )
-
         return groups
 
     async def _build_recommendation_group(
@@ -379,47 +390,67 @@ class MediaLibraryMatcher:
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         pair_scores: dict[frozenset[uuid.UUID], float],
         group_index: int,
-        user_id: uuid.UUID,
         *,
-        extra_character_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
-        extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
+        extra_character_suggestions: list[ImportBatchRecommendationSuggestionRead]
+        | None = None,
+        extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead]
+        | None = None,
         confidence_override: float | None = None,
     ) -> ImportBatchRecommendationGroupRead:
         media_ids = [candidate.media.id for candidate in candidates]
         media_id_set = set(media_ids)
         pair_values = [
-            pair_scores[key]
-            for key in pair_scores
-            if key.issubset(media_id_set)
+            pair_scores[key] for key in pair_scores if key.issubset(media_id_set)
         ]
-        confidence = confidence_override if confidence_override is not None else (
-            round(sum(pair_values) / len(pair_values), 3) if pair_values else PAIR_SCORE_THRESHOLD
+        confidence = (
+            confidence_override
+            if confidence_override is not None
+            else round(sum(pair_values) / len(pair_values), 3)
+            if pair_values
+            else PAIR_SCORE_THRESHOLD
         )
-
-        missing_character_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_character)
-        missing_series_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_series)
-
+        missing_character_count = sum(
+            (
+                1
+                for media_id in media_ids
+                if review_item_by_media_id[media_id].missing_character
+            )
+        )
+        missing_series_count = sum(
+            (
+                1
+                for media_id in media_ids
+                if review_item_by_media_id[media_id].missing_series
+            )
+        )
         character_sources: list[SuggestionSource] = []
         if extra_character_suggestions:
             character_sources.append(_resolved(extra_character_suggestions))
-        character_sources.extend([
-            self._build_name_suggestions(candidates, MediaEntityType.character),
-            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.character),
-        ])
+        character_sources.extend(
+            [
+                self._build_name_suggestions(candidates, MediaEntityType.character),
+                self._infer_entity_suggestions_from_library(
+                    candidates, MediaEntityType.character
+                ),
+            ]
+        )
         suggested_characters = await self._collect_suggestions(character_sources)
-
         series_sources: list[SuggestionSource] = []
         if extra_series_suggestions:
             series_sources.append(_resolved(extra_series_suggestions))
-        series_sources.extend([
-            self._build_name_suggestions(candidates, MediaEntityType.series),
-            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.series),
-            self._infer_series_suggestions_from_characters(user_id, [s.name for s in suggested_characters]),
-        ])
+        series_sources.extend(
+            [
+                self._build_name_suggestions(candidates, MediaEntityType.series),
+                self._infer_entity_suggestions_from_library(
+                    candidates, MediaEntityType.series
+                ),
+                self._infer_series_suggestions_from_characters(
+                    [s.name for s in suggested_characters]
+                ),
+            ]
+        )
         suggested_series = await self._collect_suggestions(series_sources)
-
         shared_signals = self._build_shared_signals(candidates)
-
         return ImportBatchRecommendationGroupRead(
             id=f"batch-group-{group_index + 1}",
             media_ids=media_ids,
@@ -445,16 +476,16 @@ class MediaLibraryMatcher:
         return results
 
     async def _infer_entity_suggestions_from_library(
-        self,
-        user_id: uuid.UUID,
-        candidates: list[ImportBatchItem],
-        entity_type: MediaEntityType,
+        self, candidates: list[ImportBatchItem], entity_type: MediaEntityType
     ) -> list[ImportBatchRecommendationSuggestionRead]:
         shared_tag_weights = self._similarity.shared_tag_weights(candidates)
         if not shared_tag_weights:
             return []
-
-        current_media_ids = [candidate.media.id for candidate in candidates if candidate.media is not None]
+        current_media_ids = [
+            candidate.media.id
+            for candidate in candidates
+            if candidate.media is not None
+        ]
         stmt = (
             select(
                 MediaEntity.name.label("name"),
@@ -467,7 +498,6 @@ class MediaLibraryMatcher:
                 MediaEntity.entity_type == entity_type,
                 MediaEntity.name != "",
                 Media.deleted_at.is_(None),
-                Media.uploader_id == user_id,
                 MediaTag.tag_id.in_(list(shared_tag_weights)),
                 Media.id.not_in(current_media_ids),
             )
@@ -476,7 +506,6 @@ class MediaLibraryMatcher:
         rows = (await self._db.execute(stmt)).all()
         if not rows:
             return []
-
         name_scores: dict[str, float] = defaultdict(float)
         for row in rows:
             name = row.name.strip() if row.name else ""
@@ -487,37 +516,29 @@ class MediaLibraryMatcher:
             if tag_weight <= 0 or media_count <= 0:
                 continue
             name_scores[name] += tag_weight * media_count
-
         if not name_scores:
             return []
-
-        sorted_scores = sorted(name_scores.items(), key=lambda item: (-item[1], item[0].casefold()))
+        sorted_scores = sorted(
+            name_scores.items(), key=lambda item: (-item[1], item[0].casefold())
+        )
         max_score = sorted_scores[0][1] or 1.0
         return [
             ImportBatchRecommendationSuggestionRead(
-                name=name,
-                confidence=round(score / max_score, 3),
+                name=name, confidence=round(score / max_score, 3)
             )
             for name, score in sorted_scores[:MAX_GROUP_SUGGESTIONS]
         ]
 
     async def _infer_series_suggestions_from_characters(
-        self,
-        user_id: uuid.UUID,
-        character_names: list[str],
+        self, character_names: list[str]
     ) -> list[ImportBatchRecommendationSuggestionRead]:
         if not character_names:
             return []
-
         character_model = aliased(MediaEntity)
         series_model = aliased(MediaEntity)
-
         count_expr = func.count(series_model.media_id.distinct())
         stmt = (
-            select(
-                series_model.name.label("name"),
-                count_expr.label("media_count"),
-            )
+            select(series_model.name.label("name"), count_expr.label("media_count"))
             .join(character_model, character_model.media_id == series_model.media_id)
             .join(Media, Media.id == series_model.media_id)
             .where(
@@ -525,7 +546,6 @@ class MediaLibraryMatcher:
                 character_model.entity_type == MediaEntityType.character,
                 character_model.name.in_(character_names),
                 Media.deleted_at.is_(None),
-                Media.uploader_id == user_id,
             )
             .group_by(series_model.name)
             .order_by(count_expr.desc(), series_model.name.asc())
@@ -534,12 +554,11 @@ class MediaLibraryMatcher:
         rows = (await self._db.execute(stmt)).all()
         if not rows:
             return []
-
-        max_count = max(int(row.media_count or 0) for row in rows) or 1
+        max_count = max((int(row.media_count or 0) for row in rows)) or 1
         return [
             ImportBatchRecommendationSuggestionRead(
                 name=row.name,
-                confidence=round((int(row.media_count or 0) / max_count), 3),
+                confidence=round(int(row.media_count or 0) / max_count, 3),
             )
             for row in rows
             if row.name
@@ -677,19 +696,17 @@ class MediaLibraryMatcher:
 
 class MediaLibraryEnrichmentService:
     def __init__(
-        self,
-        db: AsyncSession,
-        *,
-        similarity: MediaSimilarityMatcher | None = None,
+        self, db: AsyncSession, *, similarity: MediaSimilarityMatcher | None = None
     ) -> None:
         self._db = db
         self._similarity = similarity or MediaSimilarityMatcher()
 
-    async def enrich_media(self, media_id: uuid.UUID, *, user_id: uuid.UUID) -> dict[MediaEntityType, list[str]]:
-        target = await self._load_media(media_id, uploader_id=user_id)
+    async def enrich_media(
+        self, media_id: uuid.UUID
+    ) -> dict[MediaEntityType, list[str]]:
+        target = await self._load_media(media_id)
         if target is None:
             return {}
-
         missing_types = [
             entity_type
             for entity_type in (MediaEntityType.character, MediaEntityType.series)
@@ -697,30 +714,25 @@ class MediaLibraryEnrichmentService:
         ]
         if not missing_types:
             return {}
-
-        candidates = await self._load_candidate_media(target.id, uploader_id=user_id)
+        candidates = await self._load_candidate_media(target.id)
         if not candidates:
             return {}
-
         matches: dict[MediaEntityType, tuple[list[str], float]] = {}
         exact_phash_matches = [
-            candidate for candidate in candidates
-            if target.phash and candidate.phash and candidate.phash == target.phash
+            candidate
+            for candidate in candidates
+            if target.phash and candidate.phash and (candidate.phash == target.phash)
         ]
-
         for entity_type in missing_types:
             exact_match = self._pick_exact_match(exact_phash_matches, entity_type)
             if exact_match is not None:
                 matches[entity_type] = exact_match
                 continue
-
             scored_match = self._pick_scored_match(target, candidates, entity_type)
             if scored_match is not None:
                 matches[entity_type] = scored_match
-
         if not matches:
             return {}
-
         entity_repo = MediaEntityRepository(self._db)
         applied: dict[MediaEntityType, list[str]] = {}
         for entity_type, (names, confidence) in matches.items():
@@ -735,35 +747,29 @@ class MediaLibraryEnrichmentService:
                 replace_existing_type=True,
             )
             applied[entity_type] = names
-
         if applied:
             await self._db.commit()
             logger.info(
                 "Library enrichment applied media_id=%s uploader_id=%s character_names=%s series_names=%s",
                 target.id,
-                user_id,
+                None,
                 applied.get(MediaEntityType.character, []),
                 applied.get(MediaEntityType.series, []),
             )
-
         return applied
 
-    async def _load_media(self, media_id: uuid.UUID, *, uploader_id: uuid.UUID) -> Media | None:
+    async def _load_media(self, media_id: uuid.UUID) -> Media | None:
         stmt = (
             select(Media)
             .options(
                 selectinload(Media.entities),
                 selectinload(Media.media_tags).selectinload(MediaTag.tag),
             )
-            .where(
-                Media.id == media_id,
-                Media.uploader_id == uploader_id,
-                Media.deleted_at.is_(None),
-            )
+            .where(Media.id == media_id, Media.deleted_at.is_(None))
         )
         return (await self._db.execute(stmt)).scalar_one_or_none()
 
-    async def _load_candidate_media(self, media_id: uuid.UUID, *, uploader_id: uuid.UUID) -> list[Media]:
+    async def _load_candidate_media(self, media_id: uuid.UUID) -> list[Media]:
         stmt = (
             select(Media)
             .options(
@@ -771,7 +777,6 @@ class MediaLibraryEnrichmentService:
                 selectinload(Media.media_tags).selectinload(MediaTag.tag),
             )
             .where(
-                Media.uploader_id == uploader_id,
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
                 Media.id != media_id,

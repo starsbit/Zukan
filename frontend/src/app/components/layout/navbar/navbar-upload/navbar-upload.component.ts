@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, HostListener, inject, signal, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  HostListener,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { HttpErrorResponse, HttpEventType, HttpResponse } from '@angular/common/http';
 import { MatButtonModule } from '@angular/material/button';
@@ -7,14 +16,36 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { EMPTY, catchError, concatMap, filter, finalize, from, map, of, reduce, retry, switchMap, tap, throwError, timer } from 'rxjs';
+import {
+  EMPTY,
+  catchError,
+  concatMap,
+  filter,
+  finalize,
+  from,
+  map,
+  of,
+  reduce,
+  retry,
+  switchMap,
+  tap,
+  throwError,
+  timer,
+} from 'rxjs';
 import { BatchUploadResponse } from '../../../../models/uploads';
-import { MediaVisibility } from '../../../../models/media';
+import {} from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { ConfigClientService } from '../../../../services/web/config-client.service';
-import { UploadConfirmDialogComponent, UploadConfirmDialogData, UploadConfirmDialogResult } from './upload-confirm-dialog/upload-confirm-dialog.component';
-import { UrlIngestDialogComponent, UrlIngestDialogResult } from './url-ingest-dialog/url-ingest-dialog.component';
+import {
+  UploadConfirmDialogComponent,
+  UploadConfirmDialogData,
+  UploadConfirmDialogResult,
+} from './upload-confirm-dialog/upload-confirm-dialog.component';
+import {
+  UrlIngestDialogComponent,
+  UrlIngestDialogResult,
+} from './url-ingest-dialog/url-ingest-dialog.component';
 import { extractApiError } from '../../../../utils/api-error.utils';
 
 const ALLOWED_MIME_TYPES = new Set([
@@ -99,7 +130,7 @@ export class NavbarUploadComponent {
         if (!result) {
           return;
         }
-        this.startUrlIngest(result.url, result.isPublic);
+        this.startUrlIngest(result.url);
       });
   }
 
@@ -190,10 +221,7 @@ export class NavbarUploadComponent {
     const unsupportedFiles = files.filter((file) => !this.isLegalFile(file));
 
     if (unsupportedFiles.length > 0) {
-      this.uploadTracker.registerRejectedFiles(
-        unsupportedFiles,
-        UNSUPPORTED_UPLOAD_MESSAGE,
-      );
+      this.uploadTracker.registerRejectedFiles(unsupportedFiles, UNSUPPORTED_UPLOAD_MESSAGE);
     }
 
     if (uploadableFiles.length === 0) {
@@ -215,7 +243,7 @@ export class NavbarUploadComponent {
         if (!result) {
           return;
         }
-        this.startUpload(uploadableFiles, result.isPublic);
+        this.startUpload(uploadableFiles);
         if (unsupportedFiles.length > 0) {
           this.snackBar.open(
             `${unsupportedFiles.length} unsupported file${unsupportedFiles.length === 1 ? '' : 's'} flagged as failed`,
@@ -226,105 +254,122 @@ export class NavbarUploadComponent {
       });
   }
 
-  private startUpload(files: File[], isPublic: boolean): void {
-    const visibility = isPublic ? MediaVisibility.PUBLIC : MediaVisibility.PRIVATE;
+  private startUpload(files: File[]): void {
     this.loading.set(true);
-    this.configClient.getUploadConfig().pipe(
-      map((config) => this.normalizeBatchSize(config.max_batch_size)),
-      catchError(() => of(DEFAULT_MAX_BATCH_SIZE)),
-      map((maxBatchSize) => this.chunkFiles(files, maxBatchSize)),
-      switchMap((batches) => {
-        const trackedRequests = batches.map((batch) => ({
-          files: batch,
-          requestId: this.uploadTracker.registerPendingBatch(batch, visibility),
-        }));
-        let activeTrackedRequest = trackedRequests[0]
-          ? { ...trackedRequests[0], index: 0 }
-          : null;
+    this.configClient
+      .getUploadConfig()
+      .pipe(
+        map((config) => this.normalizeBatchSize(config.max_batch_size)),
+        catchError(() => of(DEFAULT_MAX_BATCH_SIZE)),
+        map((maxBatchSize) => this.chunkFiles(files, maxBatchSize)),
+        switchMap((batches) => {
+          const trackedRequests = batches.map((batch) => ({
+            files: batch,
+            requestId: this.uploadTracker.registerPendingBatch(batch),
+          }));
+          let activeTrackedRequest = trackedRequests[0]
+            ? { ...trackedRequests[0], index: 0 }
+            : null;
 
-        return from(trackedRequests.entries()).pipe(
-          concatMap(([index, { files: batch, requestId }]) => {
-            activeTrackedRequest = { files: batch, requestId, index };
-            this.uploadTracker.markBatchUploading(requestId);
-            const idempotencyKey = this.createIdempotencyKey();
-            return this.mediaService.uploadWithProgress(batch, {
-              visibility,
-              captured_at_values: this.getCapturedAtValues(batch),
-              idempotencyKey,
-            }).pipe(
-              tap((event) => {
-                if (event.type === HttpEventType.UploadProgress) {
-                  this.uploadTracker.updateUploadProgress(requestId, event.loaded, event.total ?? 0);
-                }
-              }),
-              filter((event): event is HttpResponse<BatchUploadResponse> => event.type === HttpEventType.Response),
-              map((event) => event.body!),
-              retry({
-                count: 3,
-                delay: (err: unknown, retryCount: number) => {
-                  if (err instanceof HttpErrorResponse && err.status >= 400 && err.status < 500 && err.status !== 429) {
-                    return throwError(() => err);
-                  }
-                  return timer(retryCount * 5000);
-                },
-              }),
-              tap((response) => {
-                this.uploadTracker.registerBatchStarted(requestId, response, batch, visibility);
-              }),
-              map((response) => response.accepted),
-            );
-          }),
-          reduce((total, accepted) => total + accepted, 0),
-          tap((accepted) => {
-            this.snackBar.open(
-              `Upload started for ${accepted} file${accepted === 1 ? '' : 's'}.`,
-              'Close',
-              { duration: 5000 },
-            );
-          }),
-          catchError((err: unknown) => {
-            const message = extractApiError(err, 'Unable to start upload.');
-            if (activeTrackedRequest) {
-              this.uploadTracker.registerBatchRequestFailed(
-                activeTrackedRequest.requestId,
-                activeTrackedRequest.files,
-                message,
-              );
-              for (const pending of trackedRequests.slice(activeTrackedRequest.index + 1)) {
-                this.uploadTracker.registerBatchRequestFailed(
-                  pending.requestId,
-                  [],
-                  'Upload did not start because an earlier batch failed.',
+          return from(trackedRequests.entries()).pipe(
+            concatMap(([index, { files: batch, requestId }]) => {
+              activeTrackedRequest = { files: batch, requestId, index };
+              this.uploadTracker.markBatchUploading(requestId);
+              const idempotencyKey = this.createIdempotencyKey();
+              return this.mediaService
+                .uploadWithProgress(batch, {
+                  captured_at_values: this.getCapturedAtValues(batch),
+                  idempotencyKey,
+                })
+                .pipe(
+                  tap((event) => {
+                    if (event.type === HttpEventType.UploadProgress) {
+                      this.uploadTracker.updateUploadProgress(
+                        requestId,
+                        event.loaded,
+                        event.total ?? 0,
+                      );
+                    }
+                  }),
+                  filter(
+                    (event): event is HttpResponse<BatchUploadResponse> =>
+                      event.type === HttpEventType.Response,
+                  ),
+                  map((event) => event.body!),
+                  retry({
+                    count: 3,
+                    delay: (err: unknown, retryCount: number) => {
+                      if (
+                        err instanceof HttpErrorResponse &&
+                        err.status >= 400 &&
+                        err.status < 500 &&
+                        err.status !== 429
+                      ) {
+                        return throwError(() => err);
+                      }
+                      return timer(retryCount * 5000);
+                    },
+                  }),
+                  tap((response) => {
+                    this.uploadTracker.registerBatchStarted(requestId, response, batch);
+                  }),
+                  map((response) => response.accepted),
                 );
+            }),
+            reduce((total, accepted) => total + accepted, 0),
+            tap((accepted) => {
+              this.snackBar.open(
+                `Upload started for ${accepted} file${accepted === 1 ? '' : 's'}.`,
+                'Close',
+                { duration: 5000 },
+              );
+            }),
+            catchError((err: unknown) => {
+              const message = extractApiError(err, 'Unable to start upload.');
+              if (activeTrackedRequest) {
+                this.uploadTracker.registerBatchRequestFailed(
+                  activeTrackedRequest.requestId,
+                  activeTrackedRequest.files,
+                  message,
+                );
+                for (const pending of trackedRequests.slice(activeTrackedRequest.index + 1)) {
+                  this.uploadTracker.registerBatchRequestFailed(
+                    pending.requestId,
+                    [],
+                    'Upload did not start because an earlier batch failed.',
+                  );
+                }
               }
-            }
-            this.snackBar.open(message, 'Close');
-            return EMPTY;
-          }),
-        );
-      }),
-      finalize(() => this.loading.set(false)),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe();
+              this.snackBar.open(message, 'Close');
+              return EMPTY;
+            }),
+          );
+        }),
+        finalize(() => this.loading.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
   }
 
-  private startUrlIngest(url: string, isPublic: boolean): void {
-    const visibility = isPublic ? MediaVisibility.PUBLIC : MediaVisibility.PRIVATE;
+  private startUrlIngest(url: string): void {
     this.loading.set(true);
-    this.mediaService.ingestUrl({ url, visibility }).pipe(
-      tap((response) => {
-        this.uploadTracker.registerUrlIngestStarted(response, visibility);
-        this.snackBar.open('Import started.', 'Close', { duration: 5000 });
-      }),
-      catchError((err: unknown) => {
-        const message = extractApiError(err, 'Unable to import from URL.');
-        this.uploadTracker.registerUrlIngestFailed(url, message);
-        this.snackBar.open(message, 'Close');
-        return EMPTY;
-      }),
-      finalize(() => this.loading.set(false)),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe();
+    this.mediaService
+      .ingestUrl({ url })
+      .pipe(
+        tap((response) => {
+          this.uploadTracker.registerUrlIngestStarted(response);
+          this.snackBar.open('Import started.', 'Close', { duration: 5000 });
+        }),
+        catchError((err: unknown) => {
+          const message = extractApiError(err, 'Unable to import from URL.');
+          this.uploadTracker.registerUrlIngestFailed(url, message);
+          this.snackBar.open(message, 'Close');
+          return EMPTY;
+        }),
+        finalize(() => this.loading.set(false)),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe();
   }
 
   private normalizeBatchSize(rawBatchSize: number): number {

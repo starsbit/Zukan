@@ -1,10 +1,11 @@
 from __future__ import annotations
-
 import uuid
-
 from backend.app.models.media import Media
 from backend.app.schemas import MediaMetadata, MediaRead
-from backend.app.utils.media_classification import effective_nsfw_value, effective_sensitive_value
+from backend.app.utils.media_classification import (
+    effective_nsfw_value,
+    effective_sensitive_value,
+)
 
 
 def build_media_metadata(media: Media) -> MediaMetadata:
@@ -19,21 +20,23 @@ def build_media_metadata(media: Media) -> MediaMetadata:
     )
 
 
-def build_media_read(media: Media, is_favorited: bool, favorite_count: int = 0, tag_names: list[str] | None = None) -> MediaRead:
+def build_media_read(
+    media: Media,
+    is_favorited: bool,
+    favorite_count: int = 0,
+    tag_names: list[str] | None = None,
+) -> MediaRead:
     return MediaRead(
         id=media.id,
-        uploader_id=media.uploader_id,
-        uploader_username=media.uploader.username if media.uploader is not None else None,
-        owner_id=media.owner_id,
-        owner_username=media.owner.username if media.owner is not None else None,
-        visibility=media.visibility,
         filename=media.filename,
         file_status=getattr(media, "file_status", None) or "available",
         original_filename=media.original_filename,
         media_type=media.media_type,
         metadata=build_media_metadata(media),
         version=media.version,
-        tags=tag_names if tag_names is not None else sorted(mt.tag.name for mt in media.media_tags),
+        tags=tag_names
+        if tag_names is not None
+        else sorted((mt.tag.name for mt in media.media_tags)),
         ocr_text=media.ocr_text,
         ocr_text_override=media.ocr_text_override,
         metadata_review_dismissed=bool(media.metadata_review_dismissed),

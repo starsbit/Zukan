@@ -14,6 +14,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatStepperModule } from '@angular/material/stepper';
 
 export interface SetupFormValue {
+  setupToken: string;
   username: string;
   password: string;
 }
@@ -49,6 +50,7 @@ export class SetupWizardComponent {
 
   readonly credentialsForm = this.fb.nonNullable.group(
     {
+      setupToken: ['', Validators.required],
       username: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(64)]],
       password: ['', [Validators.required, Validators.minLength(8)]],
       confirmPassword: ['', Validators.required],
@@ -67,7 +69,7 @@ export class SetupWizardComponent {
   onSubmit(): void {
     if (this.credentialsForm.invalid || this.loading()) return;
     this.error.set(null);
-    const { username, password } = this.credentialsForm.getRawValue();
-    this.submitted.emit({ username, password });
+    const { username, password, setupToken } = this.credentialsForm.getRawValue();
+    this.submitted.emit({ username, password, setupToken });
   }
 }

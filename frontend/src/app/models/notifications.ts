@@ -4,7 +4,6 @@ export enum NotificationType {
   BATCH_DONE = 'batch_done',
   BATCH_FAILED = 'batch_failed',
   APP_UPDATE = 'app_update',
-  SHARE_INVITE = 'share_invite',
   METADATA_REVIEW = 'metadata_review',
   WELCOME = 'welcome',
 }
@@ -13,16 +12,6 @@ export enum AnnouncementSeverity {
   INFO = 'info',
   WARNING = 'warning',
   CRITICAL = 'critical',
-}
-
-export interface ShareInviteNotificationData {
-  album_id: string;
-  album_name: string;
-  role: 'viewer' | 'editor';
-  invited_by_user_id: string;
-  invited_by_username: string;
-  invite_status: 'pending' | 'accepted' | 'rejected';
-  invite_id: string;
 }
 
 export interface AppUpdateNotificationData {
@@ -41,14 +30,12 @@ export interface MetadataReviewNotificationData {
 }
 
 export type NotificationData =
-  | ShareInviteNotificationData
   | AppUpdateNotificationData
   | MetadataReviewNotificationData
   | Record<string, unknown>;
 
 export interface NotificationRead {
   id: string;
-  user_id: string;
   type: NotificationType;
   title: string;
   body: string;

@@ -60,7 +60,6 @@ async function uploadTaggedMedia(
       );
     }
     form.append('tags', uploadTag);
-    form.append('visibility', uploadVisibility);
 
     const response = await fetch('/api/v1/media', {
       method: 'POST',
@@ -265,87 +264,6 @@ test.describe.serial('Gallery bulk actions', () => {
     });
   });
 
-  test('bulk visibility and retag actions work against the backend and refresh the gallery timeline', async ({ page }) => {
-    let searchRequests = 0;
-    let timelineRequests = 0;
-    page.on('request', (request) => {
-      if (request.method() !== 'GET') {
-        return;
-      }
-      if (request.url().includes('/api/v1/media/search')) {
-        searchRequests += 1;
-      }
-      if (request.url().includes('/api/v1/media/timeline')) {
-        timelineRequests += 1;
-      }
-    });
-
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
-    const token = await getAccessToken(page);
-    const tag = `bulk-actions-${Date.now()}`;
-
-    await uploadTaggedMedia(page, token, tag, 'private');
-    await waitForTaggedMedia(page, token, tag, 2);
-    await waitForTaggingDone(page, token, tag, 2);
-
-    await page.goto('/');
-    await expect(page).toHaveURL('/');
-    await applyVisibilityFilter(page, 'Private');
-    await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBeGreaterThanOrEqual(2);
-
-    await selectAllVisibleMedia(page);
-    let searchBefore = searchRequests;
-    let timelineBefore = timelineRequests;
-
-    await page.getByRole('button', { name: 'Make public' }).click();
-    await page.locator('mat-dialog-container').getByRole('button', { name: 'Make public' }).click();
-
-    await expect.poll(() => searchRequests, { timeout: 15000 }).toBeGreaterThan(searchBefore);
-    await expect.poll(() => timelineRequests, { timeout: 15000 }).toBeGreaterThan(timelineBefore);
-    await expect.poll(async () => {
-      const items = await fetchMediaByTag(page, token, tag);
-      return items.length === 2 && items.every((item) => item.visibility === 'public');
-    }, { timeout: 15000 }).toBe(true);
-
-    await applyVisibilityFilter(page, 'Public');
-    await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBeGreaterThanOrEqual(2);
-
-    await selectAllVisibleMedia(page);
-    searchBefore = searchRequests;
-    timelineBefore = timelineRequests;
-
-    await page.getByRole('button', { name: 'Make private' }).click();
-    await page.locator('mat-dialog-container').getByRole('button', { name: 'Make private' }).click();
-
-    await expect.poll(() => searchRequests, { timeout: 15000 }).toBeGreaterThan(searchBefore);
-    await expect.poll(() => timelineRequests, { timeout: 15000 }).toBeGreaterThan(timelineBefore);
-    await expect.poll(async () => {
-      const items = await fetchMediaByTag(page, token, tag);
-      return items.length === 2 && items.every((item) => item.visibility === 'private');
-    }, { timeout: 15000 }).toBe(true);
-
-    await applyVisibilityFilter(page, 'Private');
-    await expect.poll(async () => page.locator('zukan-media-card').count(), { timeout: 15000 }).toBeGreaterThanOrEqual(2);
-
-    await waitForTaggingDone(page, token, tag, 2);
-
-    await selectAllVisibleMedia(page);
-    searchBefore = searchRequests;
-    timelineBefore = timelineRequests;
-
-    await page.getByRole('button', { name: 'Reprocess tagging' }).click();
-    await page.locator('mat-dialog-container').getByRole('button', { name: 'Reprocess tagging' }).click();
-
-    await expect(page.locator('.media-browser__action-bar')).toHaveCount(0, { timeout: 15000 });
-    await expect(page.locator('zukan-upload-status-island')).toContainText('Processing', { timeout: 15000 });
-    await expect(page.locator('[aria-label="Processing"]').first()).toBeVisible({ timeout: 15000 });
-    await expect.poll(() => searchRequests, { timeout: 15000 }).toBeGreaterThan(searchBefore);
-    await expect.poll(() => timelineRequests, { timeout: 15000 }).toBeGreaterThan(timelineBefore);
-
-    await moveTaggedMediaToTrash(page, token, tag);
-  });
-
   test('adds selected media to an existing album from the gallery selection bar', async ({ page }) => {
     test.setTimeout(90000);
 
@@ -367,9 +285,6 @@ test.describe.serial('Gallery bulk actions', () => {
         json: {
           items: uploadedIds.map((id, index) => ({
             id,
-            uploader_id: 'u1',
-            owner_id: 'u1',
-            visibility: 'private',
             filename: `${tag}-${index + 1}.png`,
             original_filename: null,
             media_type: 'image',
@@ -463,9 +378,6 @@ test.describe.serial('Gallery bulk actions', () => {
         json: {
           items: uploadedIds.map((id, index) => ({
             id,
-            uploader_id: 'u1',
-            owner_id: 'u1',
-            visibility: 'private',
             filename: `${tag}-${index + 1}.png`,
             original_filename: null,
             media_type: 'image',

@@ -9,9 +9,6 @@ const PNG_1X1 = Buffer.from(
 function mediaItem(id: string) {
   return {
     id,
-    uploader_id: 'u1',
-    owner_id: 'u1',
-    visibility: 'private',
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: 'image',
@@ -85,31 +82,6 @@ test.describe.serial('Favorites page', () => {
     await expect(page.locator('.media-card').first()).toBeVisible();
     await expect(page.getByText('No favorites yet')).toHaveCount(0);
     await expect(page.getByText('Media you favorite will appear here.')).toHaveCount(0);
-  });
-
-  test('shows public and shared-album favorites returned by the backend', async ({ page }) => {
-    const searchRequests: URL[] = [];
-    const publicFavorite = {
-      ...mediaItem('public-favorite-1'),
-      uploader_id: 'u2',
-      owner_id: 'u2',
-      visibility: 'public',
-      filename: 'public-favorite-1.jpg',
-    };
-    const sharedAlbumFavorite = {
-      ...mediaItem('shared-album-favorite-1'),
-      uploader_id: 'u2',
-      owner_id: 'u2',
-      visibility: 'private',
-      filename: 'shared-album-favorite-1.jpg',
-    };
-    await seedAuthenticatedSession(page);
-    await setupFavoritesMocks(page, searchRequests, { items: [publicFavorite, sharedAlbumFavorite], total: 2 });
-    await page.goto('/favorites');
-
-    await expect.poll(() => searchRequests.length, { timeout: 5000 }).toBeGreaterThan(0);
-    await expect(page.locator('.media-card')).toHaveCount(2);
-    await expect(page.getByText('No favorites yet')).toHaveCount(0);
   });
 
   test('shows the empty state after previously visible favorites lose access', async ({ page }) => {

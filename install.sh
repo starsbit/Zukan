@@ -108,6 +108,15 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      SINGLE_USER_OWNER_ID: ${SINGLE_USER_OWNER_ID:-}
+      OIDC_DISCOVERY_URL: ${OIDC_DISCOVERY_URL:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-}
+      OIDC_ALLOWED_SUBJECT: ${OIDC_ALLOWED_SUBJECT:-}
       UPDATER_URL: http://updater:8080
       UPDATER_TOKEN: ${UPDATER_TOKEN}
       LOG_LEVEL: INFO
@@ -194,17 +203,20 @@ write_env() {
         fi
         return
     fi
-    local secret_key pg_password updater_token
+    local secret_key pg_password updater_token setup_token
+    setup_token=$(generate_secret)
     secret_key=$(generate_secret)
     pg_password=$(generate_secret | head -c 32)
     updater_token=$(generate_secret | head -c 32)
     cat > "$ENV_FILE" << ENV
+AUTH_MODE=local
+SETUP_TOKEN=${setup_token}
 SECRET_KEY=${secret_key}
 POSTGRES_PASSWORD=${pg_password}
 UPDATER_TOKEN=${updater_token}
 ENV
     chmod 600 "$ENV_FILE"
-    success "Generated $ENV_FILE with random secrets"
+    success "Generated $ENV_FILE with random secrets. Use SETUP_TOKEN from that file for first-time owner setup."
 }
 
 write_updater_scripts() {
@@ -487,8 +499,8 @@ verify_install() {
         | grep -q "Database migration bootstrap finished" \
         || error "API logs did not confirm database migration completion."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs api --tail=200 \
-        | grep -q "Bootstrapped default admin user\|Startup phase complete: ensuring admin user" \
-        || error "API logs did not confirm admin bootstrap/startup completion."
+        | grep -q "Startup phase complete: initializing owner authentication" \
+        || error "API logs did not confirm owner authentication startup completion."
     success "Zukan health checks passed"
 
     if [[ "${GPU_ENABLED}" == "1" ]]; then
@@ -520,9 +532,8 @@ print_summary() {
         echo "  Runtime:  CPU only"
     fi
     echo ""
-    echo "  Default login: admin / admin"
-    echo "  Change your password and configure the"
-    echo "  app via the admin panel immediately."
+    echo "  Create your owner login using SETUP_TOKEN from $ENV_FILE."
+    echo "  Existing installations require SINGLE_USER_OWNER_ID before upgrade."
     echo ""
     echo "  To upgrade, run this script again:"
     echo "    curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install.sh | bash"

@@ -9,14 +9,25 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
 import { ActivatedRoute, Router } from '@angular/router';
-import { EMPTY, catchError, combineLatest, distinctUntilChanged, filter, forkJoin, map, of, switchMap, tap } from 'rxjs';
-import { AlbumAccessRole } from '../../models/albums';
+import {
+  EMPTY,
+  catchError,
+  combineLatest,
+  distinctUntilChanged,
+  filter,
+  forkJoin,
+  map,
+  of,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { MediaListState, MediaRead } from '../../models/media';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
-import { AlbumFormDialogComponent, AlbumFormDialogValue } from '../../components/album/album-form-dialog/album-form-dialog.component';
-import { AlbumAccessDialogComponent } from '../../components/album/album-access-dialog/album-access-dialog.component';
-import { AlbumShareDialogComponent, AlbumShareDialogValue } from '../../components/album/album-share-dialog/album-share-dialog.component';
+import {
+  AlbumFormDialogComponent,
+  AlbumFormDialogValue,
+} from '../../components/album/album-form-dialog/album-form-dialog.component';
 import {
   AlbumThumbnailDialogComponent,
   AlbumThumbnailDialogValue,
@@ -29,7 +40,11 @@ import { NavbarSearchService } from '../../services/navbar-search.service';
 import { UserStore } from '../../services/user.store';
 import { AuthStore } from '../../services/web/auth.store';
 import { AlbumsClientService } from '../../services/web/albums-client.service';
-import { getAlbumPreviewLayout, getAlbumPreviewTargetCount, resolveAlbumPreviewUrls } from '../../utils/album-preview.utils';
+import {
+  getAlbumPreviewLayout,
+  getAlbumPreviewTargetCount,
+  resolveAlbumPreviewUrls,
+} from '../../utils/album-preview.utils';
 
 @Component({
   selector: 'zukan-album-detail',
@@ -68,32 +83,13 @@ export class AlbumDetailComponent {
   );
   readonly albumId = computed(() => this.albumIdParam());
   readonly album = this.albumStore.selectedAlbum;
-  readonly canEdit = computed(() => {
-    const role = this.album()?.access_role;
-    return role === AlbumAccessRole.OWNER || role === AlbumAccessRole.EDITOR;
-  });
-  readonly canDelete = computed(() =>
-    this.album()?.access_role === AlbumAccessRole.OWNER || this.userStore.isAdmin(),
-  );
-  readonly canManageShares = computed(() =>
-    this.album()?.access_role === AlbumAccessRole.OWNER || this.userStore.isAdmin(),
-  );
-  readonly accessLabel = computed(() => {
-    switch (this.album()?.access_role) {
-      case AlbumAccessRole.OWNER:
-        return 'Owner';
-      case AlbumAccessRole.EDITOR:
-        return 'Can edit';
-      case AlbumAccessRole.VIEWER:
-        return 'View only';
-      default:
-        return '';
-    }
-  });
-  readonly ownerName = computed(() => this.album()?.owner?.username ?? 'Unknown');
+  readonly canEdit = computed(() => !!this.album());
+  readonly canDelete = computed(() => !!this.album());
   readonly headerPreviewUrls = signal<string[]>([]);
   readonly visibleHeaderPreviewUrls = computed(() => this.headerPreviewUrls().slice(0, 4));
-  readonly headerPreviewLayout = computed(() => getAlbumPreviewLayout(this.visibleHeaderPreviewUrls().length));
+  readonly headerPreviewLayout = computed(() =>
+    getAlbumPreviewLayout(this.visibleHeaderPreviewUrls().length),
+  );
   readonly headerPreviewLoading = signal(false);
 
   private static hasLoadContext(
@@ -111,52 +107,54 @@ export class AlbumDetailComponent {
         distinctUntilChanged((left, right) => left.key === right.key),
         map(({ params }) => params),
       ),
-    ]).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      filter(AlbumDetailComponent.hasLoadContext),
-      switchMap(([, albumId, appliedParams]) => {
-        const params = {
-          ...appliedParams,
-          album_id: albumId,
-          state: MediaListState.ACTIVE,
-        };
+    ])
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        filter(AlbumDetailComponent.hasLoadContext),
+        switchMap(([, albumId, appliedParams]) => {
+          const params = {
+            ...appliedParams,
+            album_id: albumId,
+            state: MediaListState.ACTIVE,
+          };
 
-        this.galleryStore.setParams(params);
+          this.galleryStore.setParams(params);
 
-        return forkJoin({
-          album: this.albumStore.get(albumId).pipe(
-            catchError(() => {
-              void this.router.navigate(['/album']);
-              return of(null);
-            }),
-          ),
-          gallery: this.galleryStore.loadInitial(),
-        });
-      }),
-    ).subscribe();
+          return forkJoin({
+            album: this.albumStore.get(albumId).pipe(
+              catchError(() => {
+                void this.router.navigate(['/album']);
+                return of(null);
+              }),
+            ),
+            gallery: this.galleryStore.loadInitial(),
+          });
+        }),
+      )
+      .subscribe();
 
-    toObservable(this.album).pipe(
-      tap((album) => {
-        this.headerPreviewUrls.set([]);
-        this.headerPreviewLoading.set(!!album && getAlbumPreviewTargetCount(album) > 0);
-      }),
-      switchMap((album) => {
-        if (!album) {
-          return of<string[]>([]);
-        }
+    toObservable(this.album)
+      .pipe(
+        tap((album) => {
+          this.headerPreviewUrls.set([]);
+          this.headerPreviewLoading.set(!!album && getAlbumPreviewTargetCount(album) > 0);
+        }),
+        switchMap((album) => {
+          if (!album) {
+            return of<string[]>([]);
+          }
 
-        return resolveAlbumPreviewUrls(album, {
-          albumsClient: this.albumsClient,
-          mediaService: this.mediaService,
-        }).pipe(
-          catchError(() => of<string[]>([])),
-        );
-      }),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((urls) => {
-      this.headerPreviewUrls.set(urls);
-      this.headerPreviewLoading.set(false);
-    });
+          return resolveAlbumPreviewUrls(album, {
+            albumsClient: this.albumsClient,
+            mediaService: this.mediaService,
+          }).pipe(catchError(() => of<string[]>([])));
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((urls) => {
+        this.headerPreviewUrls.set(urls);
+        this.headerPreviewLoading.set(false);
+      });
   }
 
   editAlbum(): void {
@@ -208,59 +206,6 @@ export class AlbumDetailComponent {
       this.albumStore.delete(album.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
         void this.router.navigate(['/album']);
       });
-    });
-  }
-
-  inviteToAlbum(): void {
-    const album = this.album();
-    if (!album || !this.canManageShares()) {
-      return;
-    }
-
-    this.dialog.open(AlbumShareDialogComponent, {
-      data: {
-        albumName: album.name,
-      },
-      maxWidth: '560px',
-      width: '100%',
-    }).afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((value: AlbumShareDialogValue | undefined) => {
-      if (!value) {
-        return;
-      }
-
-      this.albumStore.share(album.id, {
-        username: value.username,
-        role: value.role,
-      }).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError((error: { error?: { detail?: string } }) => {
-          this.snackBar.open(error.error?.detail ?? 'Unable to send the album invite.', 'Close', { duration: 5000 });
-          return EMPTY;
-        }),
-      ).subscribe((result) => {
-        const message = result.status === 'pending'
-          ? `Invite sent to ${value.username}.`
-          : `Updated ${value.username}'s album access.`;
-        this.snackBar.open(message, 'Close', { duration: 4000 });
-      });
-    });
-  }
-
-  manageAlbumAccess(): void {
-    const album = this.album();
-    if (!album || !this.canManageShares()) {
-      return;
-    }
-
-    this.dialog.open(AlbumAccessDialogComponent, {
-      data: {
-        albumId: album.id,
-        albumName: album.name,
-      },
-      maxWidth: '760px',
-      width: '100%',
     });
   }
 

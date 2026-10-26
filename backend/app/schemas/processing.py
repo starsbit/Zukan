@@ -2,9 +2,7 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Literal
-
 from pydantic import BaseModel, Field
-
 from backend.app.schemas.media import MediaRead
 from backend.app.schemas.relations import EntityRead
 
@@ -37,7 +35,6 @@ class BatchItemStatus(str, Enum):
 
 class ImportBatchRead(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
     type: BatchType
     status: BatchStatus
     total_items: int
@@ -52,7 +49,6 @@ class ImportBatchRead(BaseModel):
     app_version: str | None = None
     worker_version: str | None = None
     error_summary: str | None = None
-
     model_config = {"from_attributes": True}
 
 

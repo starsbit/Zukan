@@ -5,7 +5,6 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MediaVisibility } from '../../../../models/media';
 import { MediaService } from '../../../../services/media.service';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { ConfigClientService } from '../../../../services/web/config-client.service';
@@ -44,7 +43,7 @@ describe('NavbarUploadComponent', () => {
     } as unknown as DragEvent;
   }
 
-  function makeDialogMock(result: { isPublic: boolean } | undefined) {
+  function makeDialogMock(result: Record<string, never> | undefined) {
     return {
       open: vi.fn().mockReturnValue({
         afterClosed: () => of(result),
@@ -71,7 +70,7 @@ describe('NavbarUploadComponent', () => {
 
   async function createComponent(overrides?: {
     upload?: ReturnType<typeof vi.fn>;
-    dialogResult?: { isPublic: boolean } | undefined;
+    dialogResult?: Record<string, never> | undefined;
     uploadConfig?: { max_batch_size: number };
     tracker?: {
       registerPendingBatch: ReturnType<typeof vi.fn>;
@@ -81,12 +80,11 @@ describe('NavbarUploadComponent', () => {
       registerRejectedFiles: ReturnType<typeof vi.fn>;
     };
   }) {
-    const upload = overrides?.upload ?? vi.fn().mockImplementation((files: File[]) => uploadResponse(files));
+    const upload =
+      overrides?.upload ?? vi.fn().mockImplementation((files: File[]) => uploadResponse(files));
 
     // Default: dialog confirms with isPublic=false
-    const dialogResult = 'dialogResult' in (overrides ?? {})
-      ? overrides!.dialogResult
-      : { isPublic: false };
+    const dialogResult = 'dialogResult' in (overrides ?? {}) ? overrides!.dialogResult : {};
     const dialog = makeDialogMock(dialogResult);
     const uploadConfig = overrides?.uploadConfig ?? { max_batch_size: 1000 };
     const tracker = overrides?.tracker ?? {
@@ -101,7 +99,10 @@ describe('NavbarUploadComponent', () => {
       imports: [NavbarUploadComponent, NoopAnimationsModule],
       providers: [
         { provide: MediaService, useValue: { uploadWithProgress: upload } },
-        { provide: ConfigClientService, useValue: { getUploadConfig: vi.fn().mockReturnValue(of(uploadConfig)) } },
+        {
+          provide: ConfigClientService,
+          useValue: { getUploadConfig: vi.fn().mockReturnValue(of(uploadConfig)) },
+        },
         { provide: UploadTrackerService, useValue: tracker },
         { provide: MatDialog, useValue: dialog },
       ],
@@ -114,35 +115,15 @@ describe('NavbarUploadComponent', () => {
     return { fixture, component: fixture.componentInstance, upload, dialog, tracker };
   }
 
-  function expectUploadWithVisibility(upload: ReturnType<typeof vi.fn>, files: File[], visibility: MediaVisibility) {
+  function expectUploadWithVisibility(upload: ReturnType<typeof vi.fn>, files: File[]) {
     expect(upload).toHaveBeenCalledWith(
       files,
       expect.objectContaining({
-        visibility,
         captured_at_values: expect.any(Array),
         idempotencyKey: expect.any(String),
       }),
     );
   }
-
-  it('uploads multiple legal files in one batch request with PRIVATE visibility', async () => {
-    const { component, upload } = await createComponent();
-    const first = new File(['a'], 'first.webp', { type: 'image/webp' });
-    const second = new File(['b'], 'second.mov', { type: 'video/quicktime' });
-    Object.defineProperty(first, 'lastModified', { value: Date.UTC(2022, 0, 2, 3, 4, 5) });
-    Object.defineProperty(second, 'lastModified', { value: Date.UTC(2021, 5, 6, 7, 8, 9) });
-
-    component.onFileSelection(toFileList([first, second]));
-
-    expect(upload).toHaveBeenCalledWith([first, second], {
-      visibility: MediaVisibility.PRIVATE,
-      captured_at_values: [
-        '2022-01-02T03:04:05.000Z',
-        '2021-06-06T07:08:09.000Z',
-      ],
-      idempotencyKey: expect.any(String),
-    });
-  });
 
   it('accepts newly supported files by MIME type and extension', async () => {
     const { component, upload } = await createComponent();
@@ -152,21 +133,24 @@ describe('NavbarUploadComponent', () => {
 
     component.onFileSelection(toFileList([avif, bitmap, matroska]));
 
-    expect(upload).toHaveBeenCalledWith(
-      [avif, bitmap, matroska],
-      expect.objectContaining({ visibility: MediaVisibility.PRIVATE }),
-    );
+    expect(upload).toHaveBeenCalledWith([avif, bitmap, matroska], expect.objectContaining({}));
   });
 
   it('splits uploads into configured max batch size chunks', async () => {
     const tracker = {
-      registerPendingBatch: vi.fn().mockReturnValueOnce('request-1').mockReturnValueOnce('request-2'),
+      registerPendingBatch: vi
+        .fn()
+        .mockReturnValueOnce('request-1')
+        .mockReturnValueOnce('request-2'),
       markBatchUploading: vi.fn(),
       registerBatchStarted: vi.fn(),
       registerBatchRequestFailed: vi.fn(),
       registerRejectedFiles: vi.fn(),
     };
-    const { component, upload } = await createComponent({ tracker, uploadConfig: { max_batch_size: 2 } });
+    const { component, upload } = await createComponent({
+      tracker,
+      uploadConfig: { max_batch_size: 2 },
+    });
     const first = new File(['a'], 'first.webp', { type: 'image/webp' });
     const second = new File(['b'], 'second.webp', { type: 'image/webp' });
     const third = new File(['c'], 'third.webp', { type: 'image/webp' });
@@ -174,8 +158,8 @@ describe('NavbarUploadComponent', () => {
     component.onFileSelection(toFileList([first, second, third]));
 
     expect(upload).toHaveBeenCalledTimes(2);
-    expect(upload).toHaveBeenNthCalledWith(1, [first, second], expect.objectContaining({ visibility: MediaVisibility.PRIVATE }));
-    expect(upload).toHaveBeenNthCalledWith(2, [third], expect.objectContaining({ visibility: MediaVisibility.PRIVATE }));
+    expect(upload).toHaveBeenNthCalledWith(1, [first, second], expect.objectContaining({}));
+    expect(upload).toHaveBeenNthCalledWith(2, [third], expect.objectContaining({}));
   });
 
   it('flags unsupported-only selections as failed and does not upload them', async () => {
@@ -212,14 +196,8 @@ describe('NavbarUploadComponent', () => {
 
     component.onFileSelection(toFileList([valid, illegal]));
 
-    expect(upload).toHaveBeenCalledWith(
-      [valid],
-      expect.objectContaining({ visibility: MediaVisibility.PRIVATE }),
-    );
-    expect(tracker.registerRejectedFiles).toHaveBeenCalledWith(
-      [illegal],
-      unsupportedUploadMessage,
-    );
+    expect(upload).toHaveBeenCalledWith([valid], expect.objectContaining({}));
+    expect(tracker.registerRejectedFiles).toHaveBeenCalledWith([illegal], unsupportedUploadMessage);
   });
 
   it('uploads folder selections with all legal files from the folder list', async () => {
@@ -229,7 +207,7 @@ describe('NavbarUploadComponent', () => {
 
     component.onFolderSelection(toFileList([first, second]));
 
-    expectUploadWithVisibility(upload, [first, second], MediaVisibility.PRIVATE);
+    expectUploadWithVisibility(upload, [first, second]);
   });
 
   it('shows and hides the drop overlay during drag lifecycle', async () => {
@@ -250,7 +228,7 @@ describe('NavbarUploadComponent', () => {
 
     await component.onDrop(dragEventWithFiles([first, second]));
 
-    expectUploadWithVisibility(upload, [first, second], MediaVisibility.PRIVATE);
+    expectUploadWithVisibility(upload, [first, second]);
   });
 
   it('collects files recursively from dropped folders', async () => {
@@ -296,7 +274,7 @@ describe('NavbarUploadComponent', () => {
 
     await component.onDrop(dropEvent);
 
-    expectUploadWithVisibility(upload, [nestedFile], MediaVisibility.PRIVATE);
+    expectUploadWithVisibility(upload, [nestedFile]);
   });
 
   it('falls back to dropped item files when directory entries are unavailable', async () => {
@@ -318,7 +296,7 @@ describe('NavbarUploadComponent', () => {
 
     await component.onDrop(dropEvent);
 
-    expectUploadWithVisibility(upload, [droppedFile], MediaVisibility.PRIVATE);
+    expectUploadWithVisibility(upload, [droppedFile]);
   });
 
   it('opens the confirm dialog with the correct file count', async () => {
@@ -345,34 +323,6 @@ describe('NavbarUploadComponent', () => {
     expect(upload).not.toHaveBeenCalled();
   });
 
-  it('passes PUBLIC visibility when the public checkbox is checked', async () => {
-    const { component, upload } = await createComponent({ dialogResult: { isPublic: true } });
-    const file = new File(['a'], 'photo.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(file, 'lastModified', { value: Date.UTC(2025, 6, 8, 9, 10, 11) });
-
-    component.onFileSelection(toFileList([file]));
-
-    expect(upload).toHaveBeenCalledWith([file], {
-      visibility: MediaVisibility.PUBLIC,
-      captured_at_values: ['2025-07-08T09:10:11.000Z'],
-      idempotencyKey: expect.any(String),
-    });
-  });
-
-  it('passes PRIVATE visibility when the public checkbox is not checked', async () => {
-    const { component, upload } = await createComponent({ dialogResult: { isPublic: false } });
-    const file = new File(['a'], 'photo.jpg', { type: 'image/jpeg' });
-    Object.defineProperty(file, 'lastModified', { value: Date.UTC(2025, 6, 8, 9, 10, 11) });
-
-    component.onFileSelection(toFileList([file]));
-
-    expect(upload).toHaveBeenCalledWith([file], {
-      visibility: MediaVisibility.PRIVATE,
-      captured_at_values: ['2025-07-08T09:10:11.000Z'],
-      idempotencyKey: expect.any(String),
-    });
-  });
-
   it('omits captured_at_values when a file does not expose a valid OS timestamp', async () => {
     const { component, upload } = await createComponent();
     const file = new File(['a'], 'photo.jpg', { type: 'image/jpeg' });
@@ -381,7 +331,6 @@ describe('NavbarUploadComponent', () => {
     component.onFileSelection(toFileList([file]));
 
     expect(upload).toHaveBeenCalledWith([file], {
-      visibility: MediaVisibility.PRIVATE,
       idempotencyKey: expect.any(String),
     });
   });
@@ -397,33 +346,11 @@ describe('NavbarUploadComponent', () => {
 
     component.onFileSelection(toFileList([file]));
 
-    expect(upload).toHaveBeenCalledWith([file], expect.objectContaining({
-      visibility: MediaVisibility.PRIVATE,
-      idempotencyKey: expect.stringMatching(/^fallback-/),
-    }));
-
-  });
-
-  it('registers successful batch uploads with the upload tracker', async () => {
-    const tracker = {
-      registerPendingBatch: vi.fn().mockReturnValue('request-1'),
-      markBatchUploading: vi.fn(),
-      registerBatchStarted: vi.fn(),
-      registerBatchRequestFailed: vi.fn(),
-      registerRejectedFiles: vi.fn(),
-    };
-    const { component } = await createComponent({ tracker });
-    const file = new File(['a'], 'tracked.jpg', { type: 'image/jpeg' });
-
-    component.onFileSelection(toFileList([file]));
-
-    expect(tracker.registerPendingBatch).toHaveBeenCalledWith([file], MediaVisibility.PRIVATE);
-    expect(tracker.markBatchUploading).toHaveBeenCalledWith('request-1');
-    expect(tracker.registerBatchStarted).toHaveBeenCalledWith(
-      'request-1',
-      expect.objectContaining({ batch_id: 'b1' }),
+    expect(upload).toHaveBeenCalledWith(
       [file],
-      MediaVisibility.PRIVATE,
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(/^fallback-/),
+      }),
     );
   });
 
@@ -437,9 +364,11 @@ describe('NavbarUploadComponent', () => {
     const { component, upload } = await createComponent();
     const pasted = new File(['img'], 'image.png', { type: 'image/png' });
 
-    component.onPaste(pasteEventWithItems([{ kind: 'file', type: 'image/png', getAsFile: () => pasted }]));
+    component.onPaste(
+      pasteEventWithItems([{ kind: 'file', type: 'image/png', getAsFile: () => pasted }]),
+    );
 
-    expectUploadWithVisibility(upload, [pasted], MediaVisibility.PRIVATE);
+    expectUploadWithVisibility(upload, [pasted]);
   });
 
   it('ignores paste events that contain only non-file clipboard items', async () => {
@@ -456,29 +385,5 @@ describe('NavbarUploadComponent', () => {
     component.onPaste({ clipboardData: null } as unknown as ClipboardEvent);
 
     expect(upload).not.toHaveBeenCalled();
-  });
-
-  it('registers failed upload requests with the upload tracker', async () => {
-    const upload = vi.fn().mockReturnValue(throwError(() => new HttpErrorResponse({
-      status: 400,
-      error: { detail: 'boom' },
-    })));
-    const tracker = {
-      registerPendingBatch: vi.fn().mockReturnValue('request-1'),
-      markBatchUploading: vi.fn(),
-      registerBatchStarted: vi.fn(),
-      registerBatchRequestFailed: vi.fn(),
-      registerRejectedFiles: vi.fn(),
-    };
-    const { component } = await createComponent({ upload, tracker });
-    const file = new File(['a'], 'broken.jpg', { type: 'image/jpeg' });
-
-    expect(() => component.onFileSelection(toFileList([file]))).not.toThrow();
-
-    expect(tracker.registerBatchRequestFailed).toHaveBeenCalledWith(
-      'request-1',
-      [file],
-      'boom',
-    );
   });
 });

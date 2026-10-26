@@ -1,5 +1,13 @@
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  inject,
+  OnInit,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatBadgeModule } from '@angular/material/badge';
 import { MatButtonModule } from '@angular/material/button';
@@ -18,7 +26,6 @@ import {
   MetadataReviewNotificationData,
   NotificationRead,
   NotificationType,
-  ShareInviteNotificationData,
 } from '../../../../models/notifications';
 import { ReviewReminderService } from '../../../../services/review-reminder.service';
 import { UploadReviewDialogComponent } from '../../upload-status/upload-review-dialog/upload-review-dialog.component';
@@ -65,7 +72,9 @@ export class NavbarNotificationsComponent implements OnInit {
   readonly loading = signal(false);
   readonly error = signal(false);
   readonly actioningIds = signal<string[]>([]);
-  readonly unreadCount = computed(() => this.notifications().filter((item) => !item.is_read).length);
+  readonly unreadCount = computed(
+    () => this.notifications().filter((item) => !item.is_read).length,
+  );
   readonly announcementSeverity = AnnouncementSeverity;
 
   ngOnInit(): void {
@@ -105,13 +114,6 @@ export class NavbarNotificationsComponent implements OnInit {
       });
   }
 
-  isPendingShareInvite(notification: NotificationRead): notification is NotificationRead & { data: ShareInviteNotificationData } {
-    return notification.type === NotificationType.SHARE_INVITE
-      && !!notification.data
-      && 'invite_status' in notification.data
-      && notification.data.invite_status === 'pending';
-  }
-
   isAppUpdate(notification: NotificationRead): notification is NotificationRead & { data: AppUpdateNotificationData | null } {
     return notification.type === NotificationType.APP_UPDATE;
   }
@@ -132,9 +134,7 @@ export class NavbarNotificationsComponent implements OnInit {
   }
 
   canMarkRead(notification: NotificationRead): boolean {
-    return !notification.is_read
-      && !this.isPendingShareInvite(notification)
-      && !this.isMetadataReview(notification);
+    return !notification.is_read && !this.isMetadataReview(notification);
   }
 
   markRead(notification: NotificationRead, event: Event): void {
@@ -153,47 +153,6 @@ export class NavbarNotificationsComponent implements OnInit {
       }),
     ).subscribe(() => {
       this.notifications.update((items) => items.filter((item) => item.id !== notification.id));
-    });
-  }
-
-  acceptInvite(notification: NotificationRead, event: Event): void {
-    event.stopPropagation();
-    if (!this.isPendingShareInvite(notification) || this.isActioning(notification.id)) {
-      return;
-    }
-
-    this.setActioning(notification.id, true);
-    this.notificationsClient.acceptInvite(notification.id).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.setActioning(notification.id, false)),
-      catchError((error: { error?: { detail?: string } }) => {
-        this.snackBar.open(error.error?.detail ?? 'Unable to accept the album invite.', 'Close', { duration: 5000 });
-        return EMPTY;
-      }),
-    ).subscribe(() => {
-      this.snackBar.open(`Joined ${notification.data.album_name}.`, 'Close', { duration: 4000 });
-      this.loadNotifications();
-      this.albumStore.load().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-    });
-  }
-
-  rejectInvite(notification: NotificationRead, event: Event): void {
-    event.stopPropagation();
-    if (!this.isPendingShareInvite(notification) || this.isActioning(notification.id)) {
-      return;
-    }
-
-    this.setActioning(notification.id, true);
-    this.notificationsClient.rejectInvite(notification.id).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.setActioning(notification.id, false)),
-      catchError((error: { error?: { detail?: string } }) => {
-        this.snackBar.open(error.error?.detail ?? 'Unable to reject the album invite.', 'Close', { duration: 5000 });
-        return EMPTY;
-      }),
-    ).subscribe(() => {
-      this.snackBar.open(`Declined ${notification.data.album_name}.`, 'Close', { duration: 4000 });
-      this.loadNotifications();
     });
   }
 
@@ -225,7 +184,7 @@ export class NavbarNotificationsComponent implements OnInit {
   }
 
   isAdminAppUpdate(notification: NotificationRead): boolean {
-    return this.isAppUpdate(notification) && this.userStore.isAdmin();
+    return this.isAppUpdate(notification) && !!this.userStore.currentUser();
   }
 
   triggerUpdate(notification: NotificationRead, event: Event): void {
@@ -271,8 +230,6 @@ export class NavbarNotificationsComponent implements OnInit {
         return 'error';
       case NotificationType.APP_UPDATE:
         return 'system_update';
-      case NotificationType.SHARE_INVITE:
-        return 'group_add';
       case NotificationType.METADATA_REVIEW:
         return 'edit_note';
       case NotificationType.WELCOME:
@@ -289,8 +246,10 @@ export class NavbarNotificationsComponent implements OnInit {
   private hasMetadataReviewData(
     notification: NotificationRead,
   ): notification is NotificationRead & { data: MetadataReviewNotificationData } {
-    return this.isMetadataReview(notification)
-      && !!notification.data
-      && 'dismiss_signature' in notification.data;
+    return (
+      this.isMetadataReview(notification) &&
+      !!notification.data &&
+      'dismiss_signature' in notification.data
+    );
   }
 }

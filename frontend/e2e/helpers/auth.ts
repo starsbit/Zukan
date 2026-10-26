@@ -5,9 +5,7 @@ import { Page } from '@playwright/test';
  * proxies /api/ -> backend. In local dev mode, set API_BASE_URL=http://localhost:8000.
  */
 export const API_BASE =
-  process.env['API_BASE_URL'] ??
-  process.env['PLAYWRIGHT_TEST_BASE_URL'] ??
-  'http://localhost:8000';
+  process.env['API_BASE_URL'] ?? process.env['PLAYWRIGHT_TEST_BASE_URL'] ?? 'http://localhost:8000';
 
 export const TEST_ADMIN = {
   username: 'e2e_admin',
@@ -34,13 +32,11 @@ export async function seedAuthenticatedSession(
     id: user.id ?? 'u1',
     username: user.username ?? TEST_ADMIN.username,
     email: user.email ?? TEST_ADMIN.email,
-    is_admin: user.is_admin ?? true,
     show_nsfw: false,
     show_sensitive: false,
     tag_confidence_threshold: 0.35,
     version: 1,
     created_at: '2026-03-28T12:00:00Z',
-    storage_quota_mb: 10240,
     storage_used_mb: 0,
   };
 
@@ -134,7 +130,7 @@ export async function seedAuthenticatedSession(
 
 export async function isSetupRequired(): Promise<boolean> {
   const res = await fetch(`${API_BASE}/api/v1/config/setup-required`);
-  const data = await res.json() as { setup_required: boolean };
+  const data = (await res.json()) as { setup_required: boolean };
   return data.setup_required;
 }
 
@@ -174,8 +170,12 @@ export async function ensureAdminAuthenticated(page: Page): Promise<void> {
   await page.goto('/login');
 
   if (setupRequired) {
-    await page.locator('zukan-setup-wizard input[formcontrolname="username"]').fill(TEST_ADMIN.username);
-    // await page.locator('zukan-setup-wizard input[formcontrolname="email"]').fill(TEST_ADMIN.email);
+    await page
+      .locator('zukan-setup-wizard input[formcontrolname="username"]')
+      .fill(TEST_ADMIN.username);
+    await page
+      .locator('zukan-setup-wizard input[formcontrolname="setupToken"]')
+      .fill(process.env['ZUKAN_SETUP_TOKEN'] ?? 'e2e-setup-token');
     await fillPasswordFields(page, 'zukan-setup-wizard', TEST_ADMIN.password, TEST_ADMIN.password);
     await page.getByRole('button', { name: 'Next' }).click();
     await page.getByRole('button', { name: 'Complete Setup' }).click();
@@ -184,10 +184,15 @@ export async function ensureAdminAuthenticated(page: Page): Promise<void> {
     } catch {
       const setupFinishedElsewhere = !(await isSetupRequired().catch(() => true));
       if (!setupFinishedElsewhere) {
-        throw new Error('Setup did not complete and the instance still reports setup_required=true');
+        throw new Error(
+          'Setup did not complete and the instance still reports setup_required=true',
+        );
       }
     }
-    const alreadyAuthenticated = await page.getByRole('button', { name: 'Profile' }).isVisible().catch(() => false);
+    const alreadyAuthenticated = await page
+      .getByRole('button', { name: 'Profile' })
+      .isVisible()
+      .catch(() => false);
     if (alreadyAuthenticated) {
       await disableRateLimiting(page);
       return;
@@ -219,8 +224,6 @@ async function disableRateLimiting(page: Page): Promise<void> {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        auth_register_rate_limit_requests: 0,
-        auth_register_rate_limit_window_seconds: 0,
         auth_login_rate_limit_requests: 0,
         auth_login_rate_limit_window_seconds: 0,
         auth_refresh_rate_limit_requests: 0,
@@ -238,7 +241,9 @@ async function disableRateLimiting(page: Page): Promise<void> {
   });
 
   if (!result.ok) {
-    throw new Error(`Unable to disable backend rate limiting for e2e: ${result.status} ${result.body}`);
+    throw new Error(
+      `Unable to disable backend rate limiting for e2e: ${result.status} ${result.body}`,
+    );
   }
 
   rateLimitsDisabledForRun = true;

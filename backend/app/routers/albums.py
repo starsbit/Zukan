@@ -1,23 +1,16 @@
 import uuid
 from typing import Annotated, Literal
-
-from fastapi import APIRouter, Depends, Header, Query, Response, status
-from fastapi.encoders import jsonable_encoder
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
 from backend.app.schemas import (
     AUTHENTICATED_ERROR_RESPONSES,
-    AlbumAccessListResponse,
     AlbumListResponse,
     AlbumCreate,
-    AlbumOwnershipTransferRequest,
     AlbumRead,
-    AlbumShareCreate,
-    AlbumShareRead,
     AlbumUpdate,
     BulkResult,
     MediaIdsRequest,
@@ -26,21 +19,13 @@ from backend.app.schemas import (
     error_responses,
 )
 from backend.app.services.albums import AlbumService
-from backend.app.utils.idempotency import idempotency_body_hash, idempotency_scope, idempotency_store
 from backend.app.utils.storage import zip_media
 
-router = APIRouter(prefix="/albums", tags=["albums"], responses=AUTHENTICATED_ERROR_RESPONSES)
-
-IDEMPOTENCY_BEHAVIOR_DOC = (
-    "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original "
-    "status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; "
-    "keys are retained for about 24 hours in process-local memory."
+router = APIRouter(
+    prefix="/albums", tags=["albums"], responses=AUTHENTICATED_ERROR_RESPONSES
 )
-
-IDEMPOTENCY_HEADER_DOC = (
-    "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: "
-    "same key + same payload replays original status/body; same key + different payload returns 409."
-)
+IDEMPOTENCY_BEHAVIOR_DOC = "Idempotency behavior when `Idempotency-Key` is provided: same key + same payload replays the original status code and JSON response body; same key + different payload is rejected with `409 idempotency_key_conflict`; keys are retained for about 24 hours in process-local memory."
+IDEMPOTENCY_HEADER_DOC = "Optional idempotency key for safe retries. Within the same user+method+path scope for about 24 hours: same key + same payload replays original status/body; same key + different payload returns 409."
 
 
 @router.post(
@@ -112,7 +97,7 @@ async def update_album(
     "/{album_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete Album",
-    description="Delete an album and remove all album share relationships.",
+    description="Delete an album and its media memberships.",
     responses=error_responses(403, 404),
 )
 async def delete_album(
@@ -175,78 +160,6 @@ async def remove_media_from_album(
     return await AlbumService(db).bulk_remove_from_album(album_id, body.media_ids, user)
 
 
-@router.post(
-    "/{album_id}/shares",
-    response_model=AlbumShareRead,
-    summary="Share Album",
-    description=(
-        "Create or upsert album sharing permissions for a target user.\n\n"
-        f"{IDEMPOTENCY_BEHAVIOR_DOC}"
-    ),
-    responses={
-        201: {"model": AlbumShareRead, "description": "Share created."},
-        **error_responses(403, 404, 409, 422),
-    },
-)
-async def share_album(
-    album_id: uuid.UUID,
-    body: AlbumShareCreate,
-    response: Response,
-    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    scope = idempotency_scope(user_id=user.id, method="POST", path=f"/albums/{album_id}/shares")
-    body_hash = idempotency_body_hash(body.model_dump(mode="json"))
-    replay = await idempotency_store.get_replay(scope=scope, idempotency_key=idempotency_key, body_hash=body_hash)
-    if replay is not None:
-        status_code, payload = replay
-        response.status_code = status_code
-        return payload
-
-    share, created = await AlbumService(db).share_album(album_id, body, user)
-    response.status_code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
-    await idempotency_store.remember(
-        scope=scope,
-        idempotency_key=idempotency_key,
-        body_hash=body_hash,
-        status_code=response.status_code,
-        payload=jsonable_encoder(share),
-    )
-    return share
-
-
-@router.get(
-    "/{album_id}/shares",
-    response_model=AlbumAccessListResponse,
-    summary="List Album Access",
-    description="List the owner, accepted shares, and pending invites for an album.",
-    responses=error_responses(403, 404),
-)
-async def list_album_access(
-    album_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await AlbumService(db).list_album_access(album_id, user)
-
-
-@router.post(
-    "/{album_id}/owner/transfer",
-    response_model=AlbumRead,
-    summary="Transfer Album Ownership",
-    description="Transfer album ownership to an existing editor. This is distinct from sharing and requires owner privileges.",
-    responses=error_responses(403, 404, 422),
-)
-async def transfer_album_ownership(
-    album_id: uuid.UUID,
-    body: AlbumOwnershipTransferRequest,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await AlbumService(db).transfer_album_ownership(album_id, body, user)
-
-
 @router.get(
     "/{album_id}/download",
     summary="Download Album Media",
@@ -277,19 +190,3 @@ async def download_album(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'},
     )
-
-
-@router.delete(
-    "/{album_id}/shares/{shared_user_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Revoke Album Share",
-    description="Revoke album access for a previously shared user.",
-    responses=error_responses(403, 404),
-)
-async def revoke_share(
-    album_id: uuid.UUID,
-    shared_user_id: uuid.UUID,
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await AlbumService(db).revoke_share(album_id, shared_user_id, user)

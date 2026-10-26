@@ -2,7 +2,6 @@ import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any
-
 from pydantic import BaseModel, Field
 
 
@@ -10,13 +9,7 @@ class NotificationType(str, Enum):
     batch_done = "batch_done"
     batch_failed = "batch_failed"
     app_update = "app_update"
-    share_invite = "share_invite"
     welcome = "welcome"
-    trade_received = "trade_received"
-    trade_accepted = "trade_accepted"
-    trade_rejected = "trade_rejected"
-    trade_cancelled = "trade_cancelled"
-    trade_expired = "trade_expired"
 
 
 class AnnouncementSeverity(str, Enum):
@@ -27,7 +20,6 @@ class AnnouncementSeverity(str, Enum):
 
 class NotificationRead(BaseModel):
     id: uuid.UUID
-    user_id: uuid.UUID
     type: NotificationType
     title: str
     body: str
@@ -35,7 +27,6 @@ class NotificationRead(BaseModel):
     link_url: str | None = None
     data: dict[str, Any] | None = None
     created_at: datetime
-
     model_config = {"from_attributes": True}
 
 

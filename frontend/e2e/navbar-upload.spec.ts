@@ -290,17 +290,6 @@ test.describe.serial('Navbar upload', () => {
     await expect(dialog).toContainText('1 file selected');
   });
 
-  test('public checkbox is unchecked by default', async ({ page }) => {
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
-
-    await page.locator('input[data-upload-kind="files"]').setInputFiles([singleUploadFile]);
-
-    const dialog = page.locator('mat-dialog-container');
-    await expect(dialog).toBeVisible();
-    await expect(dialog.getByRole('checkbox', { name: 'Upload publicly' })).not.toBeChecked();
-  });
-
   test('cancelling the dialog does not start an upload', async ({ page }) => {
     await ensureAdminAuthenticated(page);
     await expect(page).toHaveURL('/');
@@ -320,65 +309,5 @@ test.describe.serial('Navbar upload', () => {
     await expect(dialog).toHaveCount(0);
 
     expect(uploadRequests).toHaveLength(0);
-  });
-
-  test('uploads with PRIVATE visibility when public checkbox is left unchecked', async ({ page }) => {
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
-
-    const token = await getAccessToken(page);
-    const beforeTotal = await getMediaTotal(page, token);
-    const [uploadFile] = await createUniquePngPayloads(page, 1);
-    const uploadResponsePromise = page.waitForResponse((response) =>
-      response.url().endsWith('/api/v1/media') && response.request().method() === 'POST',
-    );
-
-    await page.locator('input[data-upload-kind="files"]').setInputFiles([uploadFile]);
-    await confirmUploadDialog(page, { isPublic: false });
-
-    const uploadPayload = await (await uploadResponsePromise).json() as {
-      results: Array<{ id: string | null }>;
-    };
-    const uploadedId = uploadPayload.results.find((item) => item.id)?.id;
-    await expect.poll(async () => getMediaTotal(page, token), { timeout: 15000 }).toBeGreaterThanOrEqual(beforeTotal);
-    if (uploadedId) {
-      await expect.poll(
-        async () => getMediaById(page, token, uploadedId),
-        { timeout: 15000 },
-      ).not.toBeNull();
-      const resolvedMedia = await getMediaById(page, token, uploadedId);
-      expect(resolvedMedia).toBeTruthy();
-      expect(resolvedMedia!.visibility).toBe('private');
-    }
-  });
-
-  test('uploads with PUBLIC visibility when public checkbox is checked', async ({ page }) => {
-    await ensureAdminAuthenticated(page);
-    await expect(page).toHaveURL('/');
-
-    const token = await getAccessToken(page);
-    const beforeTotal = await getMediaTotal(page, token);
-    const [uploadFile] = await createUniquePngPayloads(page, 1);
-    const uploadResponsePromise = page.waitForResponse((response) =>
-      response.url().endsWith('/api/v1/media') && response.request().method() === 'POST',
-    );
-
-    await page.locator('input[data-upload-kind="files"]').setInputFiles([uploadFile]);
-    await confirmUploadDialog(page, { isPublic: true });
-
-    const uploadPayload = await (await uploadResponsePromise).json() as {
-      results: Array<{ id: string | null }>;
-    };
-    const uploadedId = uploadPayload.results.find((item) => item.id)?.id;
-    await expect.poll(async () => getMediaTotal(page, token), { timeout: 15000 }).toBeGreaterThanOrEqual(beforeTotal);
-    if (uploadedId) {
-      await expect.poll(
-        async () => getMediaById(page, token, uploadedId),
-        { timeout: 15000 },
-      ).not.toBeNull();
-      const media = await getMediaById(page, token, uploadedId);
-      expect(media).toBeTruthy();
-      expect(media!.visibility).toBe('public');
-    }
   });
 });

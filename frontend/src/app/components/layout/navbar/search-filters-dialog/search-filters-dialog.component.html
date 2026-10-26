@@ -8,7 +8,9 @@
         @for (tag of excludeTagChips(); track tag) {
           <mat-chip-row (removed)="removeExcludeTag(tag)">
             {{ displayMetadataName(tag) }}
-            <button matChipRemove [attr.aria-label]="'Remove ' + displayMetadataName(tag)"><mat-icon>cancel</mat-icon></button>
+            <button matChipRemove [attr.aria-label]="'Remove ' + displayMetadataName(tag)">
+              <mat-icon>cancel</mat-icon>
+            </button>
           </mat-chip-row>
         }
       </mat-chip-grid>
@@ -79,25 +81,6 @@
             <mat-option [value]="option.value">{{ option.label }}</mat-option>
           }
         </mat-select>
-      </mat-form-field>
-
-      <mat-form-field>
-        <mat-label>Visibility</mat-label>
-        <mat-select formControlName="visibility">
-          @for (option of visibilityOptions; track option.label) {
-            <mat-option [value]="option.value">{{ option.label }}</mat-option>
-          }
-        </mat-select>
-      </mat-form-field>
-
-      <mat-form-field>
-        <mat-label>Owner</mat-label>
-        <input matInput formControlName="ownerUsername" />
-      </mat-form-field>
-
-      <mat-form-field>
-        <mat-label>Uploaded by</mat-label>
-        <input matInput formControlName="uploaderUsername" />
       </mat-form-field>
 
       <mat-form-field>

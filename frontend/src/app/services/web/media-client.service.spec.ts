@@ -4,19 +4,42 @@ import { HttpEventType, HttpResponse, provideHttpClient } from '@angular/common/
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MediaClientService } from './media-client.service';
 import { API_BASE_URL } from './api.config';
-import { MediaListState, MediaVisibility, TagFilterMode, NsfwFilter, SensitiveFilter } from '../../models/media';
+import { MediaListState, TagFilterMode, NsfwFilter, SensitiveFilter } from '../../models/media';
 
 const mockPage = { total: 1, next_cursor: null, has_more: false, page_size: 20, items: [] };
 const mockMedia = {
-  id: 'm1', uploader_id: 'u1', owner_id: 'u1', visibility: MediaVisibility.PRIVATE,
-  filename: 'test.webp', original_filename: 'test.webp', media_type: 'image' as const,
-  metadata: { captured_at: '2026-01-01T00:00:00Z', file_size: 1000, width: 800, height: 600, duration_seconds: null, frame_count: null, mime_type: 'image/webp' },
-  version: 1, uploaded_at: '2026-01-01T00:00:00Z', deleted_at: null, tags: [],
-  ocr_text_override: null, is_nsfw: false, is_sensitive: false,
-  is_nsfw_override: null, is_sensitive_override: null, tagging_status: 'done' as const,
-  tagging_error: null, thumbnail_status: 'done' as const, poster_status: 'pending' as const,
-  ocr_text: null, is_favorited: false,
-  tag_details: [], external_refs: [], entities: [], related_posts: [],
+  id: 'm1',
+  filename: 'test.webp',
+  original_filename: 'test.webp',
+  media_type: 'image' as const,
+  metadata: {
+    captured_at: '2026-01-01T00:00:00Z',
+    file_size: 1000,
+    width: 800,
+    height: 600,
+    duration_seconds: null,
+    frame_count: null,
+    mime_type: 'image/webp',
+  },
+  version: 1,
+  uploaded_at: '2026-01-01T00:00:00Z',
+  deleted_at: null,
+  tags: [],
+  ocr_text_override: null,
+  is_nsfw: false,
+  is_sensitive: false,
+  is_nsfw_override: null,
+  is_sensitive_override: null,
+  tagging_status: 'done' as const,
+  tagging_error: null,
+  thumbnail_status: 'done' as const,
+  poster_status: 'pending' as const,
+  ocr_text: null,
+  is_favorited: false,
+  tag_details: [],
+  external_refs: [],
+  entities: [],
+  related_posts: [],
 };
 
 describe('MediaClientService', () => {
@@ -54,14 +77,6 @@ describe('MediaClientService', () => {
     req.flush(mockPage);
   });
 
-  it('list passes visibility param', () => {
-    service.list({ visibility: MediaVisibility.PUBLIC }).subscribe();
-
-    const req = http.expectOne(r => r.url === '/api/v1/media');
-    expect(req.request.params.get('visibility')).toBe('public');
-    req.flush(mockPage);
-  });
-
   it('search sends GET /api/v1/media/search with tag array params', () => {
     service.search({ tag: ['Cat Girl', 'night'], mode: TagFilterMode.AND }).subscribe();
 
@@ -82,14 +97,6 @@ describe('MediaClientService', () => {
     req.flush(mockPage);
   });
 
-  it('search passes visibility filter', () => {
-    service.search({ visibility: MediaVisibility.PUBLIC }).subscribe();
-
-    const req = http.expectOne(r => r.url === '/api/v1/media/search');
-    expect(req.request.params.get('visibility')).toBe('public');
-    req.flush(mockPage);
-  });
-
   it('search passes exclude_tag array params', () => {
     service.search({ exclude_tag: ['Bad Tag', 'spoiler'] }).subscribe();
 
@@ -99,42 +106,41 @@ describe('MediaClientService', () => {
   });
 
   it('search passes advanced filter and sort params', () => {
-    service.search({
-      status: 'reviewed',
-      character_name: ['Rin Tohsaka', "Jeanne D'Arc (Fate)"],
-      series_name: ['Fate stay night', 'Tsukihime'],
-      character_mode: TagFilterMode.OR,
-      series_mode: TagFilterMode.AND,
-      visibility: MediaVisibility.PUBLIC,
-      owner_username: 'owner_user',
-      uploader_username: 'uploader_user',
-      media_type: ['video', 'gif'],
-      sort_by: 'filename',
-      sort_order: 'asc',
-      ocr_text: 'burning field',
-      captured_year: 2026,
-      captured_month: 3,
-      captured_day: 29,
-      captured_after: '2026-03-01T00:00',
-      captured_before: '2026-03-31T23:59',
-      captured_before_year: 2027,
-      uploaded_year: 2026,
-      uploaded_month: 4,
-      uploaded_day: 2,
-      uploaded_after: '2026-04-01T00:00',
-      uploaded_before: '2026-04-30T23:59',
-      uploaded_before_year: 2027,
-    }).subscribe();
+    service
+      .search({
+        status: 'reviewed',
+        character_name: ['Rin Tohsaka', "Jeanne D'Arc (Fate)"],
+        series_name: ['Fate stay night', 'Tsukihime'],
+        character_mode: TagFilterMode.OR,
+        series_mode: TagFilterMode.AND,
+        media_type: ['video', 'gif'],
+        sort_by: 'filename',
+        sort_order: 'asc',
+        ocr_text: 'burning field',
+        captured_year: 2026,
+        captured_month: 3,
+        captured_day: 29,
+        captured_after: '2026-03-01T00:00',
+        captured_before: '2026-03-31T23:59',
+        captured_before_year: 2027,
+        uploaded_year: 2026,
+        uploaded_month: 4,
+        uploaded_day: 2,
+        uploaded_after: '2026-04-01T00:00',
+        uploaded_before: '2026-04-30T23:59',
+        uploaded_before_year: 2027,
+      })
+      .subscribe();
 
-    const req = http.expectOne(r => r.url === '/api/v1/media/search');
+    const req = http.expectOne((r) => r.url === '/api/v1/media/search');
     expect(req.request.params.get('status')).toBe('reviewed');
-    expect(req.request.params.getAll('character_name')).toEqual(['Rin Tohsaka', "Jeanne D'Arc (Fate)"]);
+    expect(req.request.params.getAll('character_name')).toEqual([
+      'Rin Tohsaka',
+      "Jeanne D'Arc (Fate)",
+    ]);
     expect(req.request.params.getAll('series_name')).toEqual(['Fate stay night', 'Tsukihime']);
     expect(req.request.params.get('character_mode')).toBe('or');
     expect(req.request.params.get('series_mode')).toBe('and');
-    expect(req.request.params.get('visibility')).toBe('public');
-    expect(req.request.params.get('owner_username')).toBe('owner_user');
-    expect(req.request.params.get('uploader_username')).toBe('uploader_user');
     expect(req.request.params.getAll('media_type')).toEqual(['video', 'gif']);
     expect(req.request.params.get('sort_by')).toBe('filename');
     expect(req.request.params.get('sort_order')).toBe('asc');
@@ -155,26 +161,25 @@ describe('MediaClientService', () => {
   });
 
   it('getTimeline forwards active non-date filters', () => {
-    service.getTimeline({
-      tag: ['cat'],
-      character_name: ['Rin Tohsaka', 'Saber Alter'],
-      series_name: ['Fate stay night'],
-      exclude_tag: ['Big Spoiler'],
-      mode: TagFilterMode.OR,
-      character_mode: TagFilterMode.OR,
-      series_mode: TagFilterMode.AND,
-      nsfw: NsfwFilter.ONLY,
-      sensitive: SensitiveFilter.INCLUDE,
-      status: 'reviewed',
-      favorited: false,
-      visibility: MediaVisibility.PRIVATE,
-      owner_username: 'owner_user',
-      uploader_username: 'uploader_user',
-      media_type: ['image'],
-      ocr_text: 'moon',
-    }).subscribe();
+    service
+      .getTimeline({
+        tag: ['cat'],
+        character_name: ['Rin Tohsaka', 'Saber Alter'],
+        series_name: ['Fate stay night'],
+        exclude_tag: ['Big Spoiler'],
+        mode: TagFilterMode.OR,
+        character_mode: TagFilterMode.OR,
+        series_mode: TagFilterMode.AND,
+        nsfw: NsfwFilter.ONLY,
+        sensitive: SensitiveFilter.INCLUDE,
+        status: 'reviewed',
+        favorited: false,
+        media_type: ['image'],
+        ocr_text: 'moon',
+      })
+      .subscribe();
 
-    const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
+    const req = http.expectOne((r) => r.url === '/api/v1/media/timeline');
     expect(req.request.params.getAll('tag')).toEqual(['cat']);
     expect(req.request.params.getAll('character_name')).toEqual(['Rin Tohsaka', 'Saber Alter']);
     expect(req.request.params.getAll('series_name')).toEqual(['Fate stay night']);
@@ -186,9 +191,6 @@ describe('MediaClientService', () => {
     expect(req.request.params.get('sensitive')).toBe('include');
     expect(req.request.params.get('status')).toBe('reviewed');
     expect(req.request.params.get('favorited')).toBe('false');
-    expect(req.request.params.get('visibility')).toBe('private');
-    expect(req.request.params.get('owner_username')).toBe('owner_user');
-    expect(req.request.params.get('uploader_username')).toBe('uploader_user');
     expect(req.request.params.getAll('media_type')).toEqual(['image']);
     expect(req.request.params.get('ocr_text')).toBe('moon');
     req.flush({ buckets: [] });
@@ -493,16 +495,6 @@ describe('MediaClientService', () => {
     expect(req.request.body).toBeInstanceOf(FormData);
     expect((req.request.body as FormData).getAll('tags')).toEqual(['saber_alter']);
     req.flush(mock);
-  });
-
-  it('upload appends visibility when provided', () => {
-    const file = new File(['content'], 'test.jpg', { type: 'image/jpeg' });
-
-    service.upload([file], { visibility: MediaVisibility.PUBLIC }).subscribe();
-
-    const req = http.expectOne('/api/v1/media');
-    expect((req.request.body as FormData).get('visibility')).toBe('public');
-    req.flush({ batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items', poll_after_seconds: 2, webhooks_supported: false, accepted: 1, duplicates: 0, errors: 0, results: [] });
   });
 
   it('upload appends per-file captured_at_values when provided', () => {

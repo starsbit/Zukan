@@ -2,27 +2,23 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-
 from alembic import command
 from alembic.config import Config
 from sqlalchemy.engine.url import make_url
-
 from backend.app.config import settings
-
 
 logger = logging.getLogger("backend.app.database.bootstrap")
 
 
 async def init_db():
     """Run schema migrations to the latest Alembic revision."""
-
     started_at = time.perf_counter()
     logger.info("Database migration bootstrap started")
-    from backend.app.services.database_repair import repair_database_before_migrations
-
-    await repair_database_before_migrations()
     await asyncio.to_thread(_upgrade_to_head)
-    logger.info("Database migration bootstrap finished in %.2fs", time.perf_counter() - started_at)
+    logger.info(
+        "Database migration bootstrap finished in %.2fs",
+        time.perf_counter() - started_at,
+    )
 
 
 def _upgrade_to_head() -> None:

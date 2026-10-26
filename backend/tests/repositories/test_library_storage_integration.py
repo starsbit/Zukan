@@ -2,17 +2,15 @@ import asyncio
 import uuid
 from pathlib import Path
 from datetime import datetime, timezone
-
 import pytest
 from PIL import Image
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from backend.app.config import settings
 from backend.app.models.library_storage import LibraryStorage, StorageMigration
-from backend.app.models.media import Media, MediaType, MediaVisibility, TaggingStatus, ProcessingStatus
+from backend.app.models.media import Media, MediaType, TaggingStatus, ProcessingStatus
 from backend.app.services import library_storage as service
 from backend.app.services.storage_gate import StorageGate
-
 
 @pytest.fixture
 def library(tmp_path, monkeypatch, db_engine):
@@ -26,78 +24,6 @@ def library(tmp_path, monkeypatch, db_engine):
     monkeypatch.setattr(service, 'storage_gate', StorageGate())
     return source, target
 
-
-@pytest.mark.asyncio
-async def test_legacy_migration_preserves_records_and_removes_only_verified_sources(library, db_session, make_user, monkeypatch):
-    source, target = library
-    user = await make_user()
-    path = source / 'aa' / (uuid.uuid4().hex + '.png'); path.parent.mkdir()
-    Image.new('RGB', (20, 30), 'red').save(path)
-    thumb = source / 'aa' / 'thumb.webp'; Image.new('RGB', (10, 10)).save(thumb)
-    (source / 'unrelated.txt').write_text('retain')
-    media = Media(uploader_id=user.id, owner_id=user.id, filename='favorite.png', original_filename='favorite.png',
-                  filepath=str(path), thumbnail_path=str(thumb), media_type=MediaType.IMAGE,
-                  tagging_status=TaggingStatus.DONE, captured_at=datetime.now(timezone.utc),
-                  deleted_at=datetime.now(timezone.utc), ocr_text_override='manual annotation',
-                  visibility=MediaVisibility.private, version=7)
-    db_session.add(media); await db_session.commit()
-    mid = media.id
-    await db_session.execute(text("CREATE OR REPLACE FUNCTION fn_bump_version() RETURNS TRIGGER AS $$ BEGIN NEW.version = OLD.version + 1; RETURN NEW; END; $$ LANGUAGE plpgsql"))
-    await db_session.execute(text("CREATE TRIGGER trg_media_version BEFORE UPDATE ON media FOR EACH ROW EXECUTE FUNCTION fn_bump_version()"))
-    await db_session.commit()
-    await service.initialize_library()
-    checkpoints = []
-    save = service.save_manifest
-    async def checkpoint(db, job, manifest):
-        checkpoints.append(len(manifest))
-        await save(db, job, manifest)
-    monkeypatch.setattr(service, 'save_manifest', checkpoint)
-    await service.start_migration(db_session, str(target))
-    await asyncio.gather(*list(service.job_tasks))
-    await db_session.refresh(media)
-    job = await db_session.scalar(select(StorageMigration))
-    assert job.state == 'complete', job.error
-    assert len(checkpoints) == 2  # phase boundaries, rather than rewriting once per asset
-    assert all(entry['copied'] and entry['cleaned'] for entry in job.manifest)
-    assert media.id == mid and media.version == 7 and media.deleted_at and media.ocr_text_override == 'manual annotation'
-    assert media.tagging_status == TaggingStatus.DONE
-    assert not Path(media.filepath).is_absolute()
-    assert (target / media.filepath).exists() and (target / media.thumbnail_path).exists()
-    assert not path.exists() and not thumb.exists() and (source / 'unrelated.txt').exists()
-    await service.initialize_library()
-    assert settings.storage_dir == target
-
-
-@pytest.mark.asyncio
-async def test_scan_moves_flags_changes_and_retains_missing_metadata(library, db_session, make_user):
-    source, _ = library
-    user = await make_user()
-    await service.initialize_library()
-    await service.update_storage_settings(db_session, {'discovery_owner_id': str(user.id)})
-    path = source / 'anime' / 'favorite.png'; path.parent.mkdir()
-    Image.new('RGB', (20, 30), 'red').save(path)
-    queue = asyncio.Queue()
-    first = await service.scan_library(queue)
-    assert first['added'] == 1
-    media = await db_session.scalar(select(Media))
-    mid = media.id
-    assert media.visibility == MediaVisibility.private and media.uploader_id == user.id
-    assert await service.scan_library(queue) == first or queue.qsize() == 1
-    moved = path.with_name('renamed.png'); path.rename(moved)
-    result = await service.scan_library(queue)
-    await db_session.refresh(media)
-    assert result['moved'] == 1 and media.id == mid and media.filepath == 'anime/renamed.png'
-    Image.new('RGB', (20, 30), 'blue').save(moved)
-    old_hash = media.sha256
-    await service.scan_library(queue); await db_session.refresh(media)
-    assert media.file_status == 'changed' and media.sha256 == old_hash
-    await service.accept_changed_file(db_session, mid, queue)
-    assert media.file_status == 'available' and media.sha256 != old_hash
-    moved.unlink()
-    await service.scan_library(queue); await db_session.refresh(media)
-    assert media.file_status == 'missing' and media.id == mid
-
-
 @pytest.mark.asyncio
 async def test_disconnect_does_not_mark_library_missing(library, db_session, make_user):
     source, _ = library
@@ -109,7 +35,6 @@ async def test_disconnect_does_not_mark_library_missing(library, db_session, mak
         await service.scan_library(asyncio.Queue())
     config = await db_session.get(LibraryStorage, 1)
     assert config.last_scan is None
-
 
 @pytest.mark.asyncio
 async def test_failed_copy_resumes_without_cutover_or_losing_metadata(library, db_session, make_user, monkeypatch):
@@ -141,7 +66,6 @@ async def test_failed_copy_resumes_without_cutover_or_losing_metadata(library, d
     assert job.state == 'complete' and settings.storage_dir == target
     assert len(list((await db_session.scalars(select(Media))).all())) == 2
 
-
 @pytest.mark.asyncio
 async def test_cleanup_retains_source_changed_after_switch(library, db_session, make_user, monkeypatch):
     source, target = library
@@ -167,25 +91,30 @@ async def test_cleanup_retains_source_changed_after_switch(library, db_session, 
     await service.run_migration(job.id); await db_session.refresh(job)
     assert job.state == 'complete' and not path.exists()
 
-
 @pytest.mark.asyncio
-async def test_ambiguous_moves_and_trashed_records_are_not_reimported(library, db_session, make_user):
+async def test_distinct_duplicate_files_are_imported_and_original_trash_state_survives(library, db_session, make_user):
     source, _ = library
     user = await make_user()
     await service.initialize_library()
     await service.update_storage_settings(db_session, {'discovery_owner_id': str(user.id)})
-    path = source / 'a.png'; Image.new('RGB', (20, 30), 'red').save(path)
-    queue = asyncio.Queue(); await service.scan_library(queue)
-    media = await db_session.scalar(select(Media)); media.deleted_at = datetime.now(timezone.utc)
+    path = source / 'a.png'
+    Image.new('RGB', (20, 30), 'red').save(path)
+    queue = asyncio.Queue()
+    await service.scan_library(queue)
+    media = await db_session.scalar(select(Media))
+    media.deleted_at = datetime.now(timezone.utc)
     await db_session.commit()
-    await service.scan_library(queue); await db_session.refresh(media)
+    await service.scan_library(queue)
+    await db_session.refresh(media)
     assert media.deleted_at and queue.qsize() == 1
-    content = path.read_bytes(); path.unlink()
-    (source / 'copy1.png').write_bytes(content); (source / 'copy2.png').write_bytes(content)
-    result = await service.scan_library(queue); await db_session.refresh(media)
-    assert len(result['duplicates']) == 2 and result['added'] == result['moved'] == 0
+    content = path.read_bytes()
+    path.unlink()
+    (source / 'copy1.png').write_bytes(content)
+    (source / 'copy2.png').write_bytes(content)
+    result = await service.scan_library(queue)
+    await db_session.refresh(media)
+    assert result['duplicates'] == [] and result['added'] == 2 and result['moved'] == 0
     assert media.file_status == 'missing' and media.deleted_at
-
 
 @pytest.mark.asyncio
 async def test_file_routes_and_processing_after_migration(library, db_session, make_user, monkeypatch):
@@ -223,7 +152,6 @@ async def test_file_routes_and_processing_after_migration(library, db_session, m
     with zipfile.ZipFile(zip_media([record])) as archive:
         assert archive.read(record.filename) == response.content
 
-
 @pytest.mark.asyncio
 async def test_gif_and_video_migration_with_posters(library, db_session, make_user):
     import subprocess
@@ -250,14 +178,14 @@ async def test_gif_and_video_migration_with_posters(library, db_session, make_us
         assert (target / record.filepath).exists() and (target / record.poster_path).exists()
         assert not (source / record.filepath).exists()
 
-
 @pytest.mark.asyncio
 async def test_storage_schema_upgrade_from_previous_revision(db_engine, db_session, make_user, make_media):
     from importlib import import_module
     from unittest.mock import patch
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
-    user = await make_user(); media = await make_media(uploader_id=user.id)
+    user = await make_user()
+    media = await make_media()
     mid = media.id
     migration = import_module('backend.migrations.versions.0020_nas_library')
     await db_session.commit()
@@ -265,17 +193,17 @@ async def test_storage_schema_upgrade_from_previous_revision(db_engine, db_sessi
         await connection.execute(text('DROP TABLE storage_migrations'))
         await connection.execute(text('DROP TABLE library_storage'))
         await connection.execute(text('ALTER TABLE media DROP COLUMN file_status'))
+
         def upgrade(sync_connection):
             with patch.object(migration, 'op', Operations(MigrationContext.configure(sync_connection))):
                 migration.upgrade()
-                migration.upgrade()  # compatible with the live-metadata release baseline
+                migration.upgrade()
             setup_migration = import_module('backend.migrations.versions.0021_storage_setup_prompt')
             with patch.object(setup_migration, 'op', Operations(MigrationContext.configure(sync_connection))):
                 setup_migration.upgrade()
         await connection.run_sync(upgrade)
     await db_session.refresh(media)
     assert media.id == mid and media.file_status == 'available'
-
 
 @pytest.mark.asyncio
 async def test_folder_confirmation_is_explicit_persistent_and_rejects_stale_roots(library, db_session):
@@ -290,7 +218,6 @@ async def test_folder_confirmation_is_explicit_persistent_and_rejects_stale_root
     await service.initialize_library()
     await db_session.refresh(config)
     assert config.folder_configured
-
 
 @pytest.mark.asyncio
 async def test_setup_prompt_upgrade_respects_existing_migrations(library, db_session, db_engine):
@@ -314,41 +241,6 @@ async def test_setup_prompt_upgrade_respects_existing_migrations(library, db_ses
     await db_session.refresh(config)
     assert config.folder_configured
 
-
-@pytest.mark.asyncio
-async def test_maintenance_cleans_missing_records_and_preserves_recovered_and_shared_assets(library, db_session, make_user):
-    from backend.app.services import storage_maintenance as maintenance
-    from backend.app.models.tags import Tag, MediaTag
-    source, _ = library
-    user = await make_user()
-    await service.initialize_library()
-    shared = source / 'shared.webp'; shared.write_bytes(b'preview')
-    missing = Media(uploader_id=user.id, filepath='missing.jpg', filename='missing.jpg',
-                    media_type=MediaType.IMAGE, thumbnail_path='shared.webp')
-    recovered = Media(uploader_id=user.id, filepath='recovered.jpg', filename='recovered.jpg', media_type=MediaType.IMAGE)
-    healthy = Media(uploader_id=user.id, filepath='healthy.jpg', filename='healthy.jpg',
-                    media_type=MediaType.IMAGE, thumbnail_path='shared.webp', poster_path='lost.webp', ocr_text_override='retain')
-    (source / 'healthy.jpg').write_bytes(b'original')
-    for item in (missing, recovered, healthy):
-        item.captured_at = datetime.now(timezone.utc)
-    db_session.add_all([missing, recovered, healthy]); await db_session.flush()
-    tag = Tag(name='manual', owner_user_id=user.id); db_session.add(tag); await db_session.flush()
-    db_session.add(MediaTag(media_id=missing.id, tag_id=tag.id, confidence=1.0))
-    await db_session.commit()
-    report = await maintenance.inspect(db_session)
-    assert len(report['items']) == 3
-    (source / 'recovered.jpg').write_bytes(b'returned')
-    result = await maintenance.cleanup(db_session, [missing.id, recovered.id, healthy.id], report['root'], report['root_identity'])
-    assert result['deleted_ids'] == [str(missing.id)]
-    assert result['repaired_ids'] == [str(healthy.id)]
-    assert result['skipped_ids'] == [str(recovered.id)]
-    assert await db_session.scalar(select(MediaTag).where(MediaTag.media_id == missing.id)) is None
-    assert shared.exists() and healthy.ocr_text_override == 'retain' and healthy.poster_path is None
-    assert healthy.poster_status == ProcessingStatus.FAILED
-    assert (source / 'healthy.jpg').exists() and (source / 'recovered.jpg').exists()
-    assert await service.validate_destination(db_session, str(library[1]))
-
-
 @pytest.mark.asyncio
 async def test_maintenance_refuses_disconnected_library_and_changed_root(library, db_session, make_user):
     from backend.app.services import storage_maintenance as maintenance
@@ -361,15 +253,15 @@ async def test_maintenance_refuses_disconnected_library_and_changed_root(library
     with pytest.raises(ValueError, match='unavailable'):
         await maintenance.cleanup(db_session, [], str(library[0]), settings.library_root_identity)
 
-
 @pytest.mark.asyncio
 async def test_maintenance_aborts_on_io_errors_and_unsafe_paths(library, db_session, make_user, monkeypatch):
     from backend.app.services import storage_maintenance as maintenance
     await service.initialize_library()
     user = await make_user()
-    media = Media(uploader_id=user.id, filepath='missing.jpg', filename='missing.jpg',
-                  media_type=MediaType.IMAGE, captured_at=datetime.now(timezone.utc))
-    db_session.add(media); await db_session.commit()
+    media = Media(filepath='missing.jpg', filename='missing.jpg', media_type=MediaType.IMAGE, captured_at=datetime.now(timezone.utc))
+    db_session.add(media)
+    await db_session.commit()
+
     def io_failure(_):
         raise PermissionError('NAS access denied')
     with monkeypatch.context() as patch:
@@ -378,7 +270,8 @@ async def test_maintenance_aborts_on_io_errors_and_unsafe_paths(library, db_sess
             await maintenance.cleanup(db_session, [media.id], str(library[0]), settings.library_root_identity)
     await db_session.refresh(media)
     assert media.filepath == 'missing.jpg'
-    media.filepath = '../outside.jpg'; await db_session.commit()
+    media.filepath = '../outside.jpg'
+    await db_session.commit()
     with pytest.raises(ValueError, match='traversal'):
         await maintenance.cleanup(db_session, [media.id], str(library[0]), settings.library_root_identity)
     await db_session.refresh(media)

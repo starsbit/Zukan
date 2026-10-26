@@ -1,8 +1,7 @@
-import { MediaVisibility } from './media';
+import {} from './media';
 
 export interface UrlIngestRequest {
   url: string;
-  visibility?: MediaVisibility;
 }
 
 export interface UploadResult {

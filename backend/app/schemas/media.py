@@ -1,11 +1,14 @@
 import uuid
 from datetime import datetime
 from enum import Enum
-
 from pydantic import BaseModel, Field, model_validator
-
-from backend.app.models.media import MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
-from backend.app.schemas.relations import EntityCreate, EntityRead, ExternalRefCreate, ExternalRefRead
+from backend.app.models.media import MediaType, ProcessingStatus, TaggingStatus
+from backend.app.schemas.relations import (
+    EntityCreate,
+    EntityRead,
+    ExternalRefCreate,
+    ExternalRefRead,
+)
 from backend.app.schemas.tags import TagWithConfidence
 
 
@@ -67,23 +70,6 @@ class MediaMetadataFilter(BaseModel):
 
 class MediaRead(BaseModel):
     id: uuid.UUID
-    uploader_id: uuid.UUID | None = None
-    uploader_username: str | None = Field(
-        default=None,
-        description="Username of the uploading user when available.",
-    )
-    owner_id: uuid.UUID | None = Field(
-        default=None,
-        description=(
-            "Current owning user id for compatibility with future ownership workflows. "
-            "In the current public contract this is equivalent to uploader ownership semantics."
-        ),
-    )
-    owner_username: str | None = Field(
-        default=None,
-        description="Username of the current owning user when available.",
-    )
-    visibility: MediaVisibility = Field(default=MediaVisibility.private, description="Visibility for this media item.")
     file_status: str = "available"
     filename: str
     original_filename: str | None = None
@@ -102,7 +88,7 @@ class MediaRead(BaseModel):
         description="Whether this media has been explicitly dismissed from missing metadata review flows.",
     )
     is_nsfw: bool = Field(
-        description="Effective NSFW classification for this media after applying any manual override.",
+        description="Effective NSFW classification for this media after applying any manual override."
     )
     is_sensitive: bool = Field(
         default=False,
@@ -116,13 +102,30 @@ class MediaRead(BaseModel):
         default=None,
         description="Manual sensitive override. Null means automatic classification is in effect.",
     )
-    tagging_status: TaggingStatus = Field(description="Current AI tagging lifecycle state. One of: pending, processing, done, failed.")
-    tagging_error: str | None = Field(default=None, description="Last tagging failure message, if any.")
-    thumbnail_status: ProcessingStatus = Field(description="Current thumbnail generation lifecycle state. One of: pending, processing, done, failed, not_applicable.")
-    poster_status: ProcessingStatus = Field(default=ProcessingStatus.PENDING, description="Current poster generation lifecycle state for animated media.")
-    ocr_text: str | None = Field(default=None, description="System-derived OCR text. Read-only; set by the OCR pipeline.")
-    is_favorited: bool = Field(default=False, description="Whether the current user has favorited this media item.")
-    favorite_count: int = Field(default=0, description="Number of users who have favorited this media.")
+    tagging_status: TaggingStatus = Field(
+        description="Current AI tagging lifecycle state. One of: pending, processing, done, failed."
+    )
+    tagging_error: str | None = Field(
+        default=None, description="Last tagging failure message, if any."
+    )
+    thumbnail_status: ProcessingStatus = Field(
+        description="Current thumbnail generation lifecycle state. One of: pending, processing, done, failed, not_applicable."
+    )
+    poster_status: ProcessingStatus = Field(
+        default=ProcessingStatus.PENDING,
+        description="Current poster generation lifecycle state for animated media.",
+    )
+    ocr_text: str | None = Field(
+        default=None,
+        description="System-derived OCR text. Read-only; set by the OCR pipeline.",
+    )
+    is_favorited: bool = Field(
+        default=False,
+        description="Whether the current user has favorited this media item.",
+    )
+    favorite_count: int = Field(
+        default=0, description="Number of users who have favorited this media."
+    )
 
 
 class RelatedMediaRead(MediaRead):
@@ -146,16 +149,10 @@ class MediaDetail(MediaRead):
         default_factory=list,
         description="Accessible media items related to this item by persisted embedding similarity.",
     )
-
     model_config = {
         "json_schema_extra": {
             "example": {
                 "id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
-                "uploader_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
-                "uploader_username": "saber",
-                "owner_id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
-                "owner_username": "saber",
-                "visibility": "private",
                 "filename": "2026-03-24_15-07-11.webp",
                 "original_filename": "saberalterburger.webp",
                 "media_type": "image",
@@ -166,7 +163,7 @@ class MediaDetail(MediaRead):
                     "duration_seconds": None,
                     "frame_count": None,
                     "mime_type": "image/webp",
-                    "captured_at": "2026-03-24T15:07:11Z"
+                    "captured_at": "2026-03-24T15:07:11Z",
                 },
                 "version": 5,
                 "uploaded_at": "2026-03-24T15:07:13Z",
@@ -189,14 +186,14 @@ class MediaDetail(MediaRead):
                         "category": 0,
                         "category_name": "general",
                         "category_key": "general",
-                        "confidence": 0.96
+                        "confidence": 0.96,
                     }
                 ],
                 "external_refs": [
                     {
                         "provider": "pixiv",
                         "external_id": "987654",
-                        "url": "https://www.pixiv.net/en/artworks/75453892"
+                        "url": "https://www.pixiv.net/en/artworks/75453892",
                     }
                 ],
                 "entities": [
@@ -206,10 +203,10 @@ class MediaDetail(MediaRead):
                         "name": "Saber (Alter)",
                         "role": "primary",
                         "source": "manual",
-                        "confidence": 0.93
+                        "confidence": 0.93,
                     }
                 ],
-                "related_posts": []
+                "related_posts": [],
             }
         }
     }
@@ -223,17 +220,11 @@ class MediaListState(str, Enum):
 class MediaUpdate(BaseModel):
     tags: list[str] | None = Field(
         default=None,
-        description=(
-            "Complete replacement tag list. Omit field to keep unchanged; send empty array to clear all tags; "
-            "send populated array to replace all tags."
-        ),
+        description="Complete replacement tag list. Omit field to keep unchanged; send empty array to clear all tags; send populated array to replace all tags.",
     )
     entities: list[EntityCreate] | None = Field(
         default=None,
-        description=(
-            "Complete replacement entity list. Omit field to keep unchanged; send empty array to clear all entities; "
-            "send populated array to replace all entities."
-        ),
+        description="Complete replacement entity list. Omit field to keep unchanged; send empty array to clear all entities; send populated array to replace all entities.",
     )
     metadata: MediaMetadataUpdate | None = None
     deleted: bool | None = Field(
@@ -254,14 +245,7 @@ class MediaUpdate(BaseModel):
     )
     external_refs: list[ExternalRefCreate] | None = Field(
         default=None,
-        description=(
-            "Complete replacement list of external references. Omit field to keep unchanged; send empty array to clear all refs; "
-            "send populated array to replace all refs."
-        ),
-    )
-    visibility: MediaVisibility | None = Field(
-        default=None,
-        description="Visibility to apply to this media item. Omit to keep the current visibility unchanged.",
+        description="Complete replacement list of external references. Omit field to keep unchanged; send empty array to clear all refs; send populated array to replace all refs.",
     )
     is_nsfw_override: bool | None = Field(
         default=None,
@@ -271,8 +255,10 @@ class MediaUpdate(BaseModel):
         default=None,
         description="Manual sensitive override. Send true/false to force a value, or null to clear the override.",
     )
-    version: int | None = Field(default=None, description="Current version of the resource for optimistic locking.")
-
+    version: int | None = Field(
+        default=None,
+        description="Current version of the resource for optimistic locking.",
+    )
     model_config = {
         "json_schema_extra": {
             "example": {

@@ -17,7 +17,8 @@
   (pointermove)="onPointerMove($event)"
   (pointerup)="onPointerRelease($event)"
   (pointercancel)="onPointerRelease($event)"
-  (pointerleave)="onPointerRelease($event)">
+  (pointerleave)="onPointerRelease($event)"
+>
   <div class="media-card__surface">
     @if (showSelectionControl()) {
       <button
@@ -29,8 +30,11 @@
         [disabled]="interactionDisabled()"
         [attr.aria-label]="selectedState() ? 'Unselect media' : 'Select media'"
         [attr.aria-pressed]="selectedState()"
-        (click)="onSelectionToggle($event)">
-        <mat-icon aria-hidden="true">{{ selectedState() ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+        (click)="onSelectionToggle($event)"
+      >
+        <mat-icon aria-hidden="true">{{
+          selectedState() ? 'check_circle' : 'radio_button_unchecked'
+        }}</mat-icon>
       </button>
     }
 
@@ -55,19 +59,6 @@
       }
     </div>
 
-    @if (showPublicOverlay()) {
-      <div class="media-card__badge-stack media-card__badge-stack--bottom-left">
-        <span
-          class="media-card__badge media-card__badge--icon media-card__badge--public"
-          aria-label="Public"
-          title="Public"
-          matTooltip="This media was uploaded publicly."
-          matTooltipPosition="above">
-          <mat-icon aria-hidden="true">public</mat-icon>
-        </span>
-      </div>
-    }
-
     @if (showVideoPreview() && animatedPreviewUrl(); as videoUrl) {
       <video
         #videoPreview
@@ -78,12 +69,21 @@
         [loop]="true"
         [attr.aria-label]="media().original_filename ?? media().filename"
         playsinline
-        preload="metadata">
-      </video>
+        preload="metadata"
+      ></video>
     } @else if (displayUrl(); as url) {
-      <img class="media-card__image" [src]="url" [alt]="media().original_filename ?? media().filename" loading="lazy" decoding="async">
+      <img
+        class="media-card__image"
+        [src]="url"
+        [alt]="media().original_filename ?? media().filename"
+        loading="lazy"
+        decoding="async"
+      />
     } @else {
-      <div class="media-card__placeholder" [class.media-card__placeholder--loading]="loading() || isProcessing()">
+      <div
+        class="media-card__placeholder"
+        [class.media-card__placeholder--loading]="loading() || isProcessing()"
+      >
         @if (loading() || isProcessing()) {
           <span class="media-card__placeholder-spinner" aria-hidden="true"></span>
         }
@@ -96,7 +96,11 @@
     @if (mediaIcon() || showFavoriteOverlay()) {
       <div class="media-card__badge-stack media-card__badge-stack--right">
         @if (mediaIcon(); as icon) {
-          <span class="media-card__badge media-card__badge--icon" [attr.aria-label]="media().media_type" [attr.title]="media().media_type">
+          <span
+            class="media-card__badge media-card__badge--icon"
+            [attr.aria-label]="media().media_type"
+            [attr.title]="media().media_type"
+          >
             <mat-icon aria-hidden="true">{{ icon }}</mat-icon>
           </span>
         }
@@ -107,8 +111,11 @@
             [disabled]="interactionDisabled()"
             [attr.aria-label]="isFavorited() ? 'Remove from favorites' : 'Add to favorites'"
             [attr.aria-pressed]="isFavorited()"
-            (click)="onFavoriteToggle($event)">
-            <mat-icon aria-hidden="true">{{ isFavorited() ? 'favorite' : 'favorite_border' }}</mat-icon>
+            (click)="onFavoriteToggle($event)"
+          >
+            <mat-icon aria-hidden="true">{{
+              isFavorited() ? 'favorite' : 'favorite_border'
+            }}</mat-icon>
             @if (favoriteCount() > 0) {
               <span class="media-card__favorite-count">{{ favoriteCount() }}</span>
             }

@@ -1,20 +1,27 @@
 from __future__ import annotations
-
 import logging
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.config import settings
 from backend.app.errors.error import AppError
-from backend.app.errors.auth import duplicate_email, duplicate_username, invalid_credentials, invalid_refresh_token
+from backend.app.errors.auth import invalid_credentials, invalid_refresh_token
 from backend.app.errors.upload import version_conflict
-from backend.app.models.auth import APIKey, RefreshToken, User
-from backend.app.models.notifications import Notification, NotificationType
-from backend.app.repositories.auth import APIKeyRepository, RefreshTokenRepository, UserRepository
-from backend.app.schemas import APIKeyCreateResponse, APIKeyStatusResponse, TokenResponse, UserRegister, UserUpdate
+from backend.app.models.auth import APIKey, RefreshToken, User, AuthSession
+from backend.app.services.owner_auth import auth_fingerprint
+from sqlalchemy import select
+from backend.app.repositories.auth import (
+    APIKeyRepository,
+    RefreshTokenRepository,
+    UserRepository,
+)
+from backend.app.schemas import (
+    APIKeyCreateResponse,
+    APIKeyStatusResponse,
+    TokenResponse,
+    UserUpdate,
+)
 from backend.app.utils.passwords import hash_password, hash_token, verify_password
 from backend.app.utils.tokens import create_access_token
 
@@ -40,95 +47,101 @@ class AuthService:
     async def get_user_by_email(self, email: str) -> User | None:
         return await UserRepository(self._db).get_by_email(email)
 
-    async def register_user(self, body: UserRegister) -> User:
-        users = UserRepository(self._db)
-        if await users.get_by_username(body.username):
-            logger.warning("Registration rejected because username is taken username=%s", body.username)
-            raise AppError(status_code=409, code=duplicate_username, detail="Username already taken")
-        if await users.get_by_email(body.email):
-            logger.warning("Registration rejected because email is already registered email=%s", body.email)
-            raise AppError(status_code=409, code=duplicate_email, detail="Email already registered")
-        user = User(
-            username=body.username,
-            email=body.email,
-            hashed_password=hash_password(body.password),
-            tag_confidence_threshold=settings.tagger_threshold_general,
-        )
-        self._db.add(user)
-        await self._db.flush()
-        self._db.add(Notification(
-            user_id=user.id,
-            type=NotificationType.welcome,
-            title="Welcome to Zukan!",
-            body=(
-                "Upload images or videos via the upload button in the top bar. "
-                "Browse your library in the Gallery, or explore public content in the Explore section. "
-                "Organise media into Albums and tag items for easy searching. "
-                "NSFW and sensitive content is shown by default. You can adjust this and other preferences "
-                "in Settings (click your avatar in the top-right corner)."
-            ),
-        ))
-        await self._db.commit()
-        await self._db.refresh(user)
-        logger.info("Registered new user user_id=%s username=%s", user.id, user.username)
-        return user
-
-    async def login_user(self, username: str, password: str, remember_me: bool = False) -> TokenResponse:
+    async def login_user(self, username, password, remember_me=False):
+        if settings.auth_mode != "local":
+            raise AppError(
+                status_code=403,
+                code="password_disabled",
+                detail="Local login is disabled",
+            )
         user = await UserRepository(self._db).get_by_username(username)
         if user is None or not verify_password(password, user.hashed_password):
-            logger.warning("Login failed for username=%s", username)
-            raise AppError(status_code=401, code=invalid_credentials, detail="Invalid credentials")
-        access = create_access_token(user.id)
-        refresh = await self.create_refresh_token(user.id, remember_me=remember_me)
-        logger.info("Login succeeded user_id=%s username=%s remember_me=%s", user.id, user.username, remember_me)
-        return TokenResponse(access_token=access, refresh_token=refresh)
+            raise AppError(
+                status_code=401, code=invalid_credentials, detail="Invalid credentials"
+            )
+        return await self.issue_session(user, remember_me)
 
-    async def refresh_access_token(self, raw_refresh_token: str) -> TokenResponse:
-        result = await self.rotate_refresh_token(raw_refresh_token)
-        if result is None:
-            raise AppError(status_code=401, code=invalid_refresh_token, detail="Invalid or expired refresh token")
-        new_raw, user_id = result
-        access = create_access_token(user_id)
-        return TokenResponse(access_token=access, refresh_token=new_raw)
-
-    async def create_refresh_token(self, user_id: uuid.UUID, *, remember_me: bool = False) -> str:
-        raw = secrets.token_hex(32)
-        record = RefreshToken(
-            user_id=user_id,
-            token_hash=hash_token(raw),
-            remember_me=remember_me,
-            expires_at=datetime.now(UTC) + timedelta(days=_refresh_token_expiry_days(remember_me)),
+    async def issue_session(self, user, remember_me=False):
+        expiry = datetime.now(UTC) + timedelta(
+            days=_refresh_token_expiry_days(remember_me)
         )
-        self._db.add(record)
+        session = AuthSession(
+            id=uuid.uuid4(),
+            auth_config=auth_fingerprint(),
+            revoked=False,
+            expires_at=expiry,
+        )
+        self._db.add(session)
+        await self._db.flush()
+        raw = secrets.token_hex(32)
+        self._db.add(
+            RefreshToken(
+                user_id=user.id,
+                session_id=session.id,
+                token_hash=hash_token(raw),
+                remember_me=remember_me,
+                expires_at=expiry,
+            )
+        )
         await self._db.commit()
-        logger.info("Created refresh token user_id=%s remember_me=%s", user_id, remember_me)
-        return raw
+        return TokenResponse(
+            access_token=create_access_token(user.id, session.id), refresh_token=raw
+        )
 
-    async def rotate_refresh_token(self, raw_token: str) -> tuple[str, uuid.UUID] | None:
-        record = await RefreshTokenRepository(self._db).get_by_hash(hash_token(raw_token))
-        if record is None or record.revoked or record.expires_at.replace(tzinfo=UTC) < datetime.now(UTC):
-            logger.warning("Refresh token rotation rejected")
-            return None
+    async def refresh_access_token(self, raw_refresh_token):
+        record = await self._db.scalar(
+            select(RefreshToken)
+            .where(RefreshToken.token_hash == hash_token(raw_refresh_token))
+            .with_for_update()
+        )
+        if (
+            record is None
+            or record.revoked
+            or record.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC)
+        ):
+            raise AppError(
+                status_code=401,
+                code=invalid_refresh_token,
+                detail="Invalid or expired refresh token",
+            )
+        session = await self._db.get(AuthSession, record.session_id)
+        if (
+            session is None
+            or session.revoked
+            or session.auth_config != auth_fingerprint()
+            or (session.expires_at.replace(tzinfo=UTC) <= datetime.now(UTC))
+        ):
+            raise AppError(
+                status_code=401, code=invalid_refresh_token, detail="Session expired"
+            )
         record.revoked = True
-        new_raw = secrets.token_hex(32)
-        self._db.add(RefreshToken(
-            user_id=record.user_id,
-            token_hash=hash_token(new_raw),
-            remember_me=record.remember_me,
-            expires_at=datetime.now(UTC) + timedelta(days=_refresh_token_expiry_days(record.remember_me)),
-        ))
+        raw = secrets.token_hex(32)
+        self._db.add(
+            RefreshToken(
+                user_id=record.user_id,
+                session_id=session.id,
+                token_hash=hash_token(raw),
+                remember_me=record.remember_me,
+                expires_at=session.expires_at,
+            )
+        )
         await self._db.commit()
-        logger.info("Rotated refresh token user_id=%s remember_me=%s", record.user_id, record.remember_me)
-        return new_raw, record.user_id
+        return TokenResponse(
+            access_token=create_access_token(record.user_id, session.id),
+            refresh_token=raw,
+        )
 
-    async def revoke_refresh_token(self, raw_token: str) -> bool:
-        record = await RefreshTokenRepository(self._db).get_by_hash(hash_token(raw_token))
+    async def revoke_refresh_token(self, raw_token):
+        record = await RefreshTokenRepository(self._db).get_by_hash(
+            hash_token(raw_token)
+        )
         if record is None:
-            logger.info("Refresh token revoke skipped because token was not found")
             return False
+        session = await self._db.get(AuthSession, record.session_id)
+        if session is not None:
+            session.revoked = True
         record.revoked = True
         await self._db.commit()
-        logger.info("Revoked refresh token user_id=%s", getattr(record, "user_id", None))
         return True
 
     async def get_api_key_status(self, user_id: uuid.UUID) -> APIKeyStatusResponse:
@@ -183,15 +196,12 @@ class AuthService:
         logger.info("API key authentication succeeded user_id=%s", user.id)
         return user
 
-    async def authenticate_basic_user(self, username: str, password: str) -> User | None:
-        user = await UserRepository(self._db).get_by_username(username)
-        valid_password = user is not None and verify_password(password, user.hashed_password)
-        if not valid_password:
-            return None
-        return user
-
     async def update_current_user(self, user: User, body: UserUpdate) -> User:
-        if "version" in body.model_fields_set and body.version is not None and body.version != user.version:
+        if (
+            "version" in body.model_fields_set
+            and body.version is not None
+            and (body.version != user.version)
+        ):
             raise AppError(
                 status_code=409,
                 code=version_conflict,
@@ -209,6 +219,18 @@ class AuthService:
             user.tag_confidence_threshold = body.tag_confidence_threshold
         if body.library_classification_enabled is not None:
             user.library_classification_enabled = body.library_classification_enabled
+        if body.password is not None and settings.auth_mode != "local":
+            raise AppError(
+                status_code=403,
+                code="password_disabled",
+                detail="Password changes are disabled in OIDC mode",
+            )
+        if body.password is not None and settings.auth_mode != "local":
+            raise AppError(
+                status_code=403,
+                code="password_disabled",
+                detail="Password changes are disabled in OIDC mode",
+            )
         if body.password is not None:
             user.hashed_password = hash_password(body.password)
         await self._db.commit()

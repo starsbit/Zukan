@@ -9,12 +9,7 @@ import { UserStore } from '../../../services/user.store';
 @Component({
   selector: 'zukan-update-status-island',
   standalone: true,
-  imports: [
-    MatButtonModule,
-    MatCardModule,
-    MatIconModule,
-    MatProgressBarModule,
-  ],
+  imports: [MatButtonModule, MatCardModule, MatIconModule, MatProgressBarModule],
   templateUrl: './update-status-island.component.html',
   styleUrl: './update-status-island.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,32 +18,42 @@ export class UpdateStatusIslandComponent {
   private readonly userStore = inject(UserStore);
   readonly updateService = inject(AppUpdateService);
 
-  readonly visible = computed(() =>
-    this.updateService.status() !== 'idle' && this.userStore.isAdmin(),
+  readonly visible = computed(
+    () => this.updateService.status() !== 'idle' && !!this.userStore.currentUser(),
   );
 
   readonly icon = computed(() => {
     switch (this.updateService.status()) {
-      case 'done': return 'check_circle';
-      default: return 'system_update';
+      case 'done':
+        return 'check_circle';
+      default:
+        return 'system_update';
     }
   });
 
   readonly title = computed(() => {
     switch (this.updateService.status()) {
-      case 'updating': return 'Update in progress';
-      case 'restarting': return 'Zukan is restarting';
-      case 'done': return 'Update complete';
-      default: return '';
+      case 'updating':
+        return 'Update in progress';
+      case 'restarting':
+        return 'Zukan is restarting';
+      case 'done':
+        return 'Update complete';
+      default:
+        return '';
     }
   });
 
   readonly subtitle = computed(() => {
     switch (this.updateService.status()) {
-      case 'updating': return 'Pulling latest changes…';
-      case 'restarting': return 'Server restarting, please wait…';
-      case 'done': return 'Ready to reload';
-      default: return '';
+      case 'updating':
+        return 'Pulling latest changes…';
+      case 'restarting':
+        return 'Server restarting, please wait…';
+      case 'done':
+        return 'Ready to reload';
+      default:
+        return '';
     }
   });
 

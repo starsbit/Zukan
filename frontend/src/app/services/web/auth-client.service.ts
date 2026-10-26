@@ -3,7 +3,7 @@ import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
-import { TokenResponse, UserLogin, UserRegister, UserSelfRead } from '../../models/auth';
+import { TokenResponse, UserLogin } from '../../models/auth';
 import { RefreshTokenRequest } from '../../models/auth';
 
 @Injectable({ providedIn: 'root' })
@@ -11,8 +11,29 @@ export class AuthClientService {
   private readonly http = inject(HttpClient);
   private readonly base = inject(API_BASE_URL);
 
-  register(body: UserRegister): Observable<UserSelfRead> {
-    return this.http.post<UserSelfRead>(`${this.base}/api/v1/auth/register`, body);
+  configuration(): Observable<{ mode: 'local' | 'oidc'; setup_required: boolean }> {
+    return this.http.get<{ mode: 'local' | 'oidc'; setup_required: boolean }>(
+      `${this.base}/api/v1/auth/config`,
+    );
+  }
+  setup(username: string, password: string, setup_token: string): Observable<TokenResponse> {
+    return this.http.post<TokenResponse>(`${this.base}/api/v1/auth/setup`, {
+      username,
+      password,
+      setup_token,
+    });
+  }
+  startSso(returnUrl: string): void {
+    window.location.assign(
+      `${this.base}/api/v1/auth/oidc/start?return_url=${encodeURIComponent(returnUrl)}`,
+    );
+  }
+  exchange(code: string): Observable<TokenResponse> {
+    return this.http.post<TokenResponse>(
+      `${this.base}/api/v1/auth/oidc/exchange`,
+      { code },
+      { withCredentials: true },
+    );
   }
 
   login(body: UserLogin): Observable<TokenResponse> {

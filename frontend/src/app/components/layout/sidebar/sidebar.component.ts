@@ -35,11 +35,6 @@ export class SidebarComponent {
       : {};
   }
 
-  storagePercent(user: UserRead): number {
-    if (!user.storage_quota_mb) return 0;
-    return Math.min(user.storage_used_mb / user.storage_quota_mb * 100, 100);
-  }
-
   formatMb(mb: number): string {
     if (mb >= 1024) {
       const gb = mb / 1024;
@@ -56,7 +51,6 @@ export class SidebarComponent {
         { icon: 'travel_explore', label: 'Browse', path: '/browse' },
         { icon: 'hub', label: 'Graph', path: '/graph/characters' },
         { icon: 'favorite', label: 'Favorites', path: '/favorites' },
-        { icon: 'auto_awesome', label: 'Gacha', path: '/gacha' },
       ],
     },
     {

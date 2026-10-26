@@ -1,15 +1,21 @@
 import uuid
 from datetime import datetime
-
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem
-from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
+from backend.app.models.processing import (
+    BatchStatus,
+    BatchType,
+    ImportBatch,
+    ImportBatchItem,
+)
+from backend.app.utils.media_classification import (
+    effective_nsfw_expr,
+    effective_sensitive_expr,
+)
 
 
 class ImportBatchRepository:
@@ -17,45 +23,55 @@ class ImportBatchRepository:
         self.db = db
 
     async def get_by_id(self, batch_id: uuid.UUID) -> ImportBatch | None:
-        return (await self.db.execute(select(ImportBatch).where(ImportBatch.id == batch_id))).scalar_one_or_none()
-
-    async def get_by_id_for_user(self, batch_id: uuid.UUID, user_id: uuid.UUID) -> ImportBatch | None:
         return (
-            await self.db.execute(
-                select(ImportBatch).where(ImportBatch.id == batch_id, ImportBatch.user_id == user_id)
-            )
+            await self.db.execute(select(ImportBatch).where(ImportBatch.id == batch_id))
         ).scalar_one_or_none()
 
-    async def list_for_user(self, user_id: uuid.UUID, *, offset: int, limit: int) -> list[ImportBatch]:
+    async def get_by_id_for_user(self, batch_id: uuid.UUID) -> ImportBatch | None:
         return (
-            await self.db.execute(
-                select(ImportBatch)
-                .where(ImportBatch.user_id == user_id)
-                .order_by(ImportBatch.created_at.desc())
-                .offset(offset)
-                .limit(limit)
-            )
-        ).scalars().all()
+            await self.db.execute(select(ImportBatch).where(ImportBatch.id == batch_id))
+        ).scalar_one_or_none()
 
-    async def count_for_user(self, user_id: uuid.UUID) -> int:
+    async def list_for_user(self, *, offset: int, limit: int) -> list[ImportBatch]:
         return (
-            await self.db.execute(select(func.count()).select_from(ImportBatch).where(ImportBatch.user_id == user_id))
+            (
+                await self.db.execute(
+                    select(ImportBatch)
+                    .where()
+                    .order_by(ImportBatch.created_at.desc())
+                    .offset(offset)
+                    .limit(limit)
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    async def count_for_user(self) -> int:
+        return (
+            await self.db.execute(select(func.count()).select_from(ImportBatch).where())
         ).scalar_one()
 
-    async def list_by_status(self, user_id: uuid.UUID, status: BatchStatus) -> list[ImportBatch]:
+    async def list_by_status(self, status: BatchStatus) -> list[ImportBatch]:
         return (
-            await self.db.execute(
-                select(ImportBatch)
-                .where(ImportBatch.user_id == user_id, ImportBatch.status == status)
-                .order_by(ImportBatch.created_at.desc())
+            (
+                await self.db.execute(
+                    select(ImportBatch)
+                    .where(ImportBatch.status == status)
+                    .order_by(ImportBatch.created_at.desc())
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
-    async def get_latest_for_user_by_type(self, user_id: uuid.UUID, batch_type: BatchType) -> ImportBatch | None:
+    async def get_latest_for_user_by_type(
+        self, batch_type: BatchType
+    ) -> ImportBatch | None:
         return (
             await self.db.execute(
                 select(ImportBatch)
-                .where(ImportBatch.user_id == user_id, ImportBatch.type == batch_type)
+                .where(ImportBatch.type == batch_type)
                 .order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc())
                 .limit(1)
             )
@@ -74,7 +90,11 @@ class ImportBatchItemRepository:
         self.db = db
 
     async def get_by_id(self, item_id: uuid.UUID) -> ImportBatchItem | None:
-        return (await self.db.execute(select(ImportBatchItem).where(ImportBatchItem.id == item_id))).scalar_one_or_none()
+        return (
+            await self.db.execute(
+                select(ImportBatchItem).where(ImportBatchItem.id == item_id)
+            )
+        ).scalar_one_or_none()
 
     async def list_for_batch(self, batch_id: uuid.UUID, *, offset: int, limit: int) -> list[ImportBatchItem]:
         return (
@@ -112,27 +132,23 @@ class ImportBatchItemRepository:
         ).scalars().all()
 
     async def list_all_review_candidates_for_user(
-        self,
-        user_id: uuid.UUID,
-        *,
-        batch_types: list[BatchType] | None = None,
+        self, *, batch_types: list[BatchType] | None = None
     ) -> list[ImportBatchItem]:
         has_character = _media_has_named_entity(MediaEntityType.character)
         has_series = _media_has_named_entity(MediaEntityType.series)
         stmt = (
             select(ImportBatchItem)
             .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
-            .join(User, User.id == ImportBatch.user_id)
+            .join(User, true())
             .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
-                selectinload(ImportBatchItem.media).selectinload(Media.uploader),
-                selectinload(ImportBatchItem.media).selectinload(Media.owner),
                 selectinload(ImportBatchItem.media).selectinload(Media.entities),
-                selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(ImportBatchItem.media)
+                .selectinload(Media.media_tags)
+                .selectinload(MediaTag.tag),
                 selectinload(ImportBatchItem.batch),
             )
             .where(
-                ImportBatch.user_id == user_id,
                 ImportBatchItem.media_id.is_not(None),
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
@@ -146,19 +162,21 @@ class ImportBatchItemRepository:
             stmt = stmt.where(ImportBatch.type.in_(batch_types))
         return (await self.db.execute(stmt)).scalars().all()
 
-    async def list_review_candidates_for_batch(self, batch_id: uuid.UUID) -> list[ImportBatchItem]:
+    async def list_review_candidates_for_batch(
+        self, batch_id: uuid.UUID
+    ) -> list[ImportBatchItem]:
         has_character = _media_has_named_entity(MediaEntityType.character)
         has_series = _media_has_named_entity(MediaEntityType.series)
         stmt = (
             select(ImportBatchItem)
             .join(ImportBatch, ImportBatch.id == ImportBatchItem.batch_id)
-            .join(User, User.id == ImportBatch.user_id)
+            .join(User, true())
             .join(Media, Media.id == ImportBatchItem.media_id)
             .options(
-                selectinload(ImportBatchItem.media).selectinload(Media.uploader),
-                selectinload(ImportBatchItem.media).selectinload(Media.owner),
                 selectinload(ImportBatchItem.media).selectinload(Media.entities),
-                selectinload(ImportBatchItem.media).selectinload(Media.media_tags).selectinload(MediaTag.tag),
+                selectinload(ImportBatchItem.media)
+                .selectinload(Media.media_tags)
+                .selectinload(MediaTag.tag),
             )
             .where(
                 ImportBatchItem.batch_id == batch_id,
@@ -173,7 +191,9 @@ class ImportBatchItemRepository:
         )
         return (await self.db.execute(stmt)).scalars().all()
 
-    async def list_review_summary_for_user(self, user_id: uuid.UUID) -> list[tuple[uuid.UUID, datetime, int]]:
+    async def list_review_summary_for_user(
+        self,
+    ) -> list[tuple[uuid.UUID, datetime, int]]:
         has_character = (
             select(MediaEntity.id)
             .where(
@@ -194,7 +214,6 @@ class ImportBatchItemRepository:
             .limit(1)
             .exists()
         )
-
         stmt = (
             select(
                 ImportBatch.id,
@@ -202,10 +221,9 @@ class ImportBatchItemRepository:
                 func.count(ImportBatchItem.id).label("unresolved_count"),
             )
             .join(ImportBatchItem, ImportBatch.id == ImportBatchItem.batch_id)
-            .join(User, User.id == ImportBatch.user_id)
+            .join(User, true())
             .join(Media, Media.id == ImportBatchItem.media_id)
             .where(
-                ImportBatch.user_id == user_id,
                 ImportBatch.type == BatchType.upload,
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,

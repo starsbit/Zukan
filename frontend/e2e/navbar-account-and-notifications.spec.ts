@@ -28,10 +28,10 @@ test.describe.serial('Navbar account settings and notifications', () => {
     await expect(page).toHaveURL('/');
 
     await page.getByRole('button', { name: 'Profile' }).click();
-    await page.getByRole('button', { name: 'Account Settings' }).click();
+    await page.getByRole('button', { name: 'Owner preferences' }).click();
 
     await expect(page.getByRole('dialog')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Account Settings' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Owner preferences' })).toBeVisible();
 
     const nsfwCheckbox = page.getByRole('checkbox', { name: 'Show NSFW content' });
     const thresholdInput = page.getByLabel('Tag Confidence Threshold');

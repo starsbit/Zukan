@@ -5,16 +5,26 @@ Its in the repository domain because it relates closely to SQL related logic.
 
 import re
 from datetime import datetime, timedelta, timezone
-
-from sqlalchemy import extract, exists, func, or_, select
+from sqlalchemy import extract, func, or_, select
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaTag, MediaType, MediaVisibility
+from backend.app.models.media import Media, MediaTag, MediaType
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import Tag
-from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
-from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_character_name_search, normalize_metadata_search, normalized_token_sequence_like_patterns
-
+from backend.app.schemas import (
+    MediaMetadataFilter,
+    NsfwFilter,
+    SensitiveFilter,
+    TagFilterMode,
+)
+from backend.app.utils.media_classification import (
+    effective_nsfw_expr,
+    effective_sensitive_expr,
+)
+from backend.app.utils.search import (
+    normalize_character_name_search,
+    normalize_metadata_search,
+    normalized_token_sequence_like_patterns,
+)
 
 
 def captured_timestamp_expr():
@@ -23,6 +33,7 @@ def captured_timestamp_expr():
 
 def uploaded_timestamp_expr():
     return Media.uploaded_at
+
 
 def apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | None, mode: TagFilterMode):
     if tags:
@@ -41,40 +52,13 @@ def apply_tag_filters(stmt, tags: list[str] | None, exclude_tags: list[str] | No
             stmt = stmt.where(~Media.id.in_(subq))
     return stmt
 
+
 def apply_character_name_filter(stmt, character_names: list[str] | None, mode: TagFilterMode = TagFilterMode.AND):
     return _apply_entity_name_filter(stmt, MediaEntityType.character, character_names, mode)
 
 
 def apply_series_name_filter(stmt, series_names: list[str] | None, mode: TagFilterMode = TagFilterMode.AND):
     return _apply_entity_name_filter(stmt, MediaEntityType.series, series_names, mode)
-
-
-def apply_owner_username_filter(stmt, owner_username: str | None):
-    normalized = _normalize_exact_username(owner_username)
-    if normalized is None:
-        return stmt
-
-    owner_match = exists(
-        select(1).where(
-            User.id == Media.owner_id,
-            func.lower(User.username) == normalized,
-        )
-    )
-    return stmt.where(owner_match)
-
-
-def apply_uploader_username_filter(stmt, uploader_username: str | None):
-    normalized = _normalize_exact_username(uploader_username)
-    if normalized is None:
-        return stmt
-
-    uploader_match = exists(
-        select(1).where(
-            User.id == Media.uploader_id,
-            func.lower(User.username) == normalized,
-        )
-    )
-    return stmt.where(uploader_match)
 
 
 def apply_ocr_text_filter(stmt, ocr_text: str | None):
@@ -100,16 +84,13 @@ def apply_ocr_text_filter(stmt, ocr_text: str | None):
         stmt = stmt.where(or_(exact_match, fuzzy_match))
     return stmt
 
+
 def apply_media_type_filters(stmt, media_type_filter: list[str] | None):
     if not media_type_filter:
         return stmt
     valid_values = [MediaType(value) for value in media_type_filter]
     return stmt.where(Media.media_type.in_(valid_values))
 
-def apply_visibility_filter(stmt, visibility: MediaVisibility | None):
-    if visibility is None:
-        return stmt
-    return stmt.where(Media.visibility == visibility)
 
 def apply_captured_at_filters(stmt, metadata: MediaMetadataFilter):
     captured_at = captured_timestamp_expr()
@@ -174,6 +155,7 @@ def _date_part_range(year: int | None, month: int | None, day: int | None) -> tu
         return start, datetime(year, month + 1, 1, tzinfo=timezone.utc)
     return start, datetime(year + 1, 1, 1, tzinfo=timezone.utc)
 
+
 def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     nsfw_expr = effective_nsfw_expr()
     if nsfw == NsfwFilter.DEFAULT:
@@ -194,6 +176,7 @@ def apply_sensitive_list_filter(stmt, user: User, sensitive: SensitiveFilter):
     if sensitive == SensitiveFilter.ONLY:
         return stmt.where(sensitive_expr.is_(True))
     return stmt
+
 
 def _build_fuzzy_ocr_like_pattern(term: str) -> str | None:
     normalized = re.sub(r"[^a-z0-9]+", "", term.lower())

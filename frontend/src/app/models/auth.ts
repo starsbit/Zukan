@@ -1,34 +1,14 @@
-export interface UserSelfRead {
-  id: string;
-  username: string;
-  email: string;
-  show_nsfw: boolean;
-  show_sensitive?: boolean;
-  tag_confidence_threshold: number;
-  library_classification_enabled?: boolean;
-  version: number;
-  created_at: string;
-}
-
 export interface UserRead {
   id: string;
   username: string;
   email: string;
-  is_admin: boolean;
   show_nsfw: boolean;
   show_sensitive?: boolean;
   tag_confidence_threshold: number;
   library_classification_enabled?: boolean;
   version: number;
   created_at: string;
-  storage_quota_mb: number;
   storage_used_mb: number;
-}
-
-export interface UserRegister {
-  username: string;
-  email: string;
-  password: string;
 }
 
 export interface UserLogin {

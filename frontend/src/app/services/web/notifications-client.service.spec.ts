@@ -7,9 +7,15 @@ import { API_BASE_URL } from './api.config';
 
 const mockNotifPage = { total: 0, next_cursor: null, has_more: false, page_size: 20, items: [] };
 const mockNotif = {
-  id: 'n1', user_id: 'u1', type: 'batch_done' as const,
-  title: 'Done', body: 'Upload complete', is_read: false,
-  link_url: null, data: null, created_at: '2026-01-01T00:00:00Z',
+  id: 'n1',
+  user_id: 'u1',
+  type: 'batch_done' as const,
+  title: 'Done',
+  body: 'Upload complete',
+  is_read: false,
+  link_url: null,
+  data: null,
+  created_at: '2026-01-01T00:00:00Z',
 };
 
 describe('NotificationsClientService', () => {
@@ -60,22 +66,6 @@ describe('NotificationsClientService', () => {
     const req = http.expectOne('/api/v1/me/notifications/read-all');
     expect(req.request.method).toBe('POST');
     req.flush(null, { status: 204, statusText: 'No Content' });
-  });
-
-  it('acceptInvite sends POST /api/v1/me/notifications/{id}/accept', () => {
-    service.acceptInvite('n1').subscribe(res => expect(res).toEqual(mockNotif));
-
-    const req = http.expectOne('/api/v1/me/notifications/n1/accept');
-    expect(req.request.method).toBe('POST');
-    req.flush(mockNotif);
-  });
-
-  it('rejectInvite sends POST /api/v1/me/notifications/{id}/reject', () => {
-    service.rejectInvite('n1').subscribe(res => expect(res).toEqual(mockNotif));
-
-    const req = http.expectOne('/api/v1/me/notifications/n1/reject');
-    expect(req.request.method).toBe('POST');
-    req.flush(mockNotif);
   });
 
   it('delete sends DELETE /api/v1/me/notifications/{id}', () => {

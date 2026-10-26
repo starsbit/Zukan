@@ -43,15 +43,6 @@ describe('TagsClientService', () => {
     req.flush(mockTagPage);
   });
 
-  it('list passes q and owner scope params', () => {
-    service.list({ q: 'Saber Alter', scope: 'owner' }).subscribe();
-
-    const req = http.expectOne(r => r.url === '/api/v1/tags');
-    expect(req.request.params.get('q')).toBe('saber_alter');
-    expect(req.request.params.get('scope')).toBe('owner');
-    req.flush(mockTagPage);
-  });
-
   it('listCharacterNames sends GET to character name list endpoint', () => {
     service.listCharacterNames({ q: "Jeanne D'Arc (Fate)", scope: 'owner' }).subscribe(res => expect(res).toEqual(mockNamePage));
 

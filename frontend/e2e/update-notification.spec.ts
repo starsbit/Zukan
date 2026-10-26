@@ -21,7 +21,7 @@ const FAKE_UPDATE_NOTIFICATION = {
 
 test.describe('Update notification - admin flow', () => {
   test.beforeEach(async ({ page }) => {
-    await seedAuthenticatedSession(page, { is_admin: true });
+    await seedAuthenticatedSession(page, { });
   });
 
   test('shows Update Now and Dismiss buttons for admin on app_update notification', async ({ page }) => {
@@ -158,29 +158,5 @@ test.describe('Update notification - admin flow', () => {
 
     await expect(page.getByText('Zukan 9.9.9 is available')).toHaveCount(0);
     expect(markReadCalled).toBe(true);
-  });
-
-  test('non-admin user does not see Update Now button on app_update notification', async ({ page }) => {
-    await seedAuthenticatedSession(page, { is_admin: false });
-
-    await page.route(/\/api\/v1\/me\/notifications(?:\?.*)?$/, async (route) => {
-      await route.fulfill({
-        json: {
-          items: [FAKE_UPDATE_NOTIFICATION],
-          total: 1,
-          next_cursor: null,
-          has_more: false,
-          page_size: 8,
-        },
-      });
-    });
-
-    await page.goto('/');
-    await page.getByRole('button', { name: 'Notifications' }).click();
-
-    await expect(page.getByText('Zukan 9.9.9 is available').first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Update Now' })).toHaveCount(0);
-    // Non-admin sees the generic "Mark as read" button instead
-    await expect(page.getByRole('button', { name: 'Mark as read' })).toBeVisible();
   });
 });

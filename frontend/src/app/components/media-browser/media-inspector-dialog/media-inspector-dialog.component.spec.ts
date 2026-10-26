@@ -4,7 +4,13 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { of, Subject, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MediaDetail, MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import {
+  MediaDetail,
+  MediaRead,
+  MediaType,
+  ProcessingStatus,
+  TaggingStatus,
+} from '../../../models/media';
 import { LibraryClassificationSuggestionResponse } from '../../../models/processing';
 import { MediaEntityType } from '../../../models/relations';
 import { GalleryStore } from '../../../services/gallery.store';
@@ -24,11 +30,6 @@ function makePasteEvent(text: string): ClipboardEvent & { preventDefault: Return
 function makeMedia(id = 'm1', overrides: Partial<MediaRead> = {}): MediaRead {
   return {
     id,
-    uploader_id: 'uploader-1',
-    uploader_username: 'shirou',
-    owner_id: 'owner-1',
-    owner_username: 'rin',
-    visibility: MediaVisibility.PUBLIC,
     filename: `${id}.jpg`,
     original_filename: `${id}-original.jpg`,
     media_type: MediaType.IMAGE,

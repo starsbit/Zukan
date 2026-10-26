@@ -4,23 +4,22 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { MediaService } from './media.service';
 import { API_BASE_URL } from './web/api.config';
-import { MediaType, TaggingStatus, ProcessingStatus, MediaVisibility } from '../models/media';
+import { MediaType, TaggingStatus, ProcessingStatus } from '../models/media';
 
 function makeMedia(id: string, overrides: Record<string, unknown> = {}) {
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'uploader',
-    owner_id: 'u1',
-    owner_username: 'owner',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: `${id}.jpg`,
     media_type: MediaType.IMAGE,
     metadata: {
-      file_size: 1024, width: 100, height: 100,
-      duration_seconds: null, frame_count: null,
-      mime_type: 'image/jpeg', captured_at: '2026-01-01T00:00:00Z',
+      file_size: 1024,
+      width: 100,
+      height: 100,
+      duration_seconds: null,
+      frame_count: null,
+      mime_type: 'image/jpeg',
+      captured_at: '2026-01-01T00:00:00Z',
     },
     version: 1,
     uploaded_at: '2026-01-01T00:00:00Z',
@@ -88,11 +87,10 @@ describe('MediaService', () => {
     });
 
     it('passes search params to the client', () => {
-      service.load({ tag: ['cat', 'night'], nsfw: 'include' as any, visibility: MediaVisibility.PUBLIC }).subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      service.load({ tag: ['cat', 'night'], nsfw: 'include' as any }).subscribe();
+      const req = http.expectOne((r) => r.url === '/api/v1/media/search');
       expect(req.request.params.getAll('tag')).toEqual(['cat', 'night']);
       expect(req.request.params.get('nsfw')).toBe('include');
-      expect(req.request.params.get('visibility')).toBe('public');
       req.flush(makePage([]));
     });
 
@@ -265,22 +263,6 @@ describe('MediaService', () => {
     });
   });
 
-  describe('batchUpdateVisibility()', () => {
-    it('updates visibility on matched items', () => {
-      service.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search')
-        .flush(makePage([makeMedia('m1'), makeMedia('m2')]));
-
-      service.batchUpdateVisibility(['m1'], MediaVisibility.PUBLIC).subscribe();
-      const req = http.expectOne('/api/v1/media');
-      expect(req.request.body).toEqual({ media_ids: ['m1'], visibility: MediaVisibility.PUBLIC });
-      req.flush({ processed: 1, skipped: 0 });
-
-      expect(service.items()[0].visibility).toBe(MediaVisibility.PUBLIC);
-      expect(service.items()[1].visibility).toBe(MediaVisibility.PRIVATE);
-    });
-  });
-
   describe('upload()', () => {
     it('sends POST /api/v1/media with FormData', () => {
       const file = new File(['data'], 'test.jpg', { type: 'image/jpeg' });
@@ -295,20 +277,6 @@ describe('MediaService', () => {
       expect(req.request.method).toBe('POST');
       expect(req.request.body).toBeInstanceOf(FormData);
       req.flush(mock);
-    });
-
-    it('passes visibility through upload params', () => {
-      const file = new File(['data'], 'test.jpg', { type: 'image/jpeg' });
-
-      service.upload([file], { visibility: MediaVisibility.PUBLIC }).subscribe();
-      const req = http.expectOne('/api/v1/media');
-
-      expect((req.request.body as FormData).get('visibility')).toBe('public');
-      req.flush({
-        batch_id: 'b1', batch_url: '/batches/b1', batch_items_url: '/batches/b1/items',
-        poll_after_seconds: 1, webhooks_supported: false,
-        accepted: 1, duplicates: 0, errors: 0, results: [],
-      });
     });
   });
 

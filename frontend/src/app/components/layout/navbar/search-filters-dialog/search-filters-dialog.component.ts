@@ -1,7 +1,10 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, FormControl, ReactiveFormsModule } from '@angular/forms';
-import { MatAutocompleteModule, MatAutocompleteSelectedEvent } from '@angular/material/autocomplete';
+import {
+  MatAutocompleteModule,
+  MatAutocompleteSelectedEvent,
+} from '@angular/material/autocomplete';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCheckboxModule } from '@angular/material/checkbox';
 import { MatChipsModule } from '@angular/material/chips';
@@ -11,7 +14,13 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatSelectModule } from '@angular/material/select';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
-import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
+import {
+  MediaType,
+  NsfwFilter,
+  SensitiveFilter,
+  TagFilterMode,
+  TaggingStatus,
+} from '../../../../models/media';
 import { AdvancedSearchFilters } from '../../../../services/navbar-search.service';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
 import { formatMetadataName } from '../../../../utils/media-display.utils';
@@ -76,11 +85,7 @@ export class SearchFiltersDialogComponent {
     { value: SensitiveFilter.INCLUDE, label: 'Include sensitive' },
     { value: SensitiveFilter.ONLY, label: 'Only sensitive' },
   ];
-  readonly visibilityOptions = [
-    { value: null, label: 'Any visibility' },
-    { value: MediaVisibility.PRIVATE, label: 'Private' },
-    { value: MediaVisibility.PUBLIC, label: 'Public' },
-  ];
+
   readonly favoriteOptions: Array<{ value: FavoriteFilterOption; label: string }> = [
     { value: 'any', label: 'Any media' },
     { value: 'only', label: 'Only favorites' },
@@ -116,9 +121,6 @@ export class SearchFiltersDialogComponent {
     sensitive: [this.data.filters.sensitive],
     status: [this.data.filters.status ?? null],
     favorited: [this.favoriteValueFromBoolean(this.data.filters.favorited)],
-    visibility: [this.data.filters.visibility],
-    ownerUsername: [this.data.filters.ownerUsername ?? ''],
-    uploaderUsername: [this.data.filters.uploaderUsername ?? ''],
     mediaTypes: [this.data.filters.mediaTypes],
     sortBy: [this.data.filters.sortBy],
     sortOrder: [this.data.filters.sortOrder],
@@ -137,25 +139,25 @@ export class SearchFiltersDialogComponent {
   });
 
   constructor() {
-    this.excludeTagInput.valueChanges.pipe(
-      takeUntilDestroyed(this.destroyRef),
-      debounceTime(150),
-      distinctUntilChanged(),
-      switchMap((value) => {
-        const query = value.trim();
-        if (!query) {
-          return of({ items: [] as { name: string }[] });
-        }
-        return this.tagsClient.list({ q: query, page_size: 8 });
-      }),
-    ).subscribe(({ items }) => {
-      const existing = new Set(this.excludeTagChips().map((t) => t.toLowerCase()));
-      this.excludeTagSuggestions.set(
-        items
-          .filter((tag) => !existing.has(tag.name.toLowerCase()))
-          .map((tag) => tag.name),
-      );
-    });
+    this.excludeTagInput.valueChanges
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        debounceTime(150),
+        distinctUntilChanged(),
+        switchMap((value) => {
+          const query = value.trim();
+          if (!query) {
+            return of({ items: [] as { name: string }[] });
+          }
+          return this.tagsClient.list({ q: query, page_size: 8 });
+        }),
+      )
+      .subscribe(({ items }) => {
+        const existing = new Set(this.excludeTagChips().map((t) => t.toLowerCase()));
+        this.excludeTagSuggestions.set(
+          items.filter((tag) => !existing.has(tag.name.toLowerCase())).map((tag) => tag.name),
+        );
+      });
   }
 
   addExcludeTag(value: string): void {
@@ -198,9 +200,6 @@ export class SearchFiltersDialogComponent {
       sensitive: value.sensitive ?? null,
       status: value.status ?? null,
       favorited: this.favoriteBooleanFromValue(value.favorited ?? 'any'),
-      visibility: value.visibility ?? null,
-      ownerUsername: (value.ownerUsername ?? '').trim() || null,
-      uploaderUsername: (value.uploaderUsername ?? '').trim() || null,
       mediaTypes: value.mediaTypes ?? [],
       sortBy: value.sortBy ?? null,
       sortOrder: value.sortOrder ?? null,
@@ -231,9 +230,6 @@ export class SearchFiltersDialogComponent {
       sensitive: null,
       status: null,
       favorited: null,
-      visibility: null,
-      ownerUsername: null,
-      uploaderUsername: null,
       mediaTypes: [],
       sortBy: null,
       sortOrder: null,

@@ -10,7 +10,6 @@ export class UserStore {
   private readonly _user = signal<UserRead | null>(null);
 
   readonly currentUser = this._user.asReadonly();
-  readonly isAdmin = computed(() => this._user()?.is_admin ?? false);
 
   load(): Observable<UserRead> {
     return this.client.getMe().pipe(tap(u => this._user.set(u)));
@@ -21,7 +20,7 @@ export class UserStore {
   }
 
   update(patch: Partial<UserRead>): void {
-    this._user.update((current) => current ? { ...current, ...patch } : current);
+    this._user.update((current) => (current ? { ...current, ...patch } : current));
   }
 
   clear(): void {

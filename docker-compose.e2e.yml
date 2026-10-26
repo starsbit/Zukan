@@ -26,6 +26,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:zukan@db:5432/zukan
       SECRET_KEY: e2e-secret-key-do-not-use-in-production
+      AUTH_MODE: local
+      SETUP_TOKEN: e2e-setup-token
       STORAGE_DIR: /tmp/e2e-storage
       MODEL_CACHE_DIR: /backend/model_cache
       TAGGER_MODEL_REPO: SmilingWolf/wd-vit-tagger-v3

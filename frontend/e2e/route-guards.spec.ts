@@ -66,20 +66,14 @@ test.describe.serial('Route guards', () => {
       await route.fulfill({
         json: {
           id: 'example-album',
-          owner_id: 'u1',
           name: 'Example Album',
           description: null,
-          access_role: 'owner',
           cover_media_id: null,
           preview_media: [],
           media_count: 0,
           created_at: '2026-03-28T12:00:00Z',
           updated_at: '2026-03-28T12:00:00Z',
           version: 1,
-          owner: {
-            id: 'u1',
-            username: TEST_ADMIN.username,
-          },
         },
       });
     });
@@ -129,7 +123,6 @@ test.describe.serial('Route guards', () => {
           id: 'u1',
           username: TEST_ADMIN.username,
           email: TEST_ADMIN.email,
-          is_admin: true,
           show_nsfw: false,
           show_sensitive: false,
           tag_confidence_threshold: 0.35,

@@ -1,17 +1,22 @@
 import uuid
 from dataclasses import dataclass
-
-from sqlalchemy import and_, delete, func, or_, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaVisibility
-from backend.app.models.relations import MediaEntity, MediaEntityType, MediaExternalRef, OwnedEntity
+from backend.app.models.media import Media
+from backend.app.models.relations import (
+    MediaEntity,
+    MediaEntityType,
+    MediaExternalRef,
+    OwnedEntity,
+)
 from backend.app.schemas import MetadataListScope
 from backend.app.utils.media_common import normalize_manual_entity_names
-from backend.app.utils.media_classification import effective_nsfw_expr, effective_sensitive_expr
-from backend.app.utils.search import normalize_metadata_search, normalized_token_sequence_like_patterns
+from backend.app.utils.search import (
+    normalize_metadata_search,
+    normalized_token_sequence_like_patterns,
+)
 
 
 @dataclass
@@ -21,19 +26,20 @@ class MetadataNameRow:
     media_count: int
 
 
-def _effective_media_owner_id(media) -> uuid.UUID:
-    owner_user_id = getattr(media, "owner_id", None) or getattr(media, "uploader_id", None)
-    if owner_user_id is None:
-        raise ValueError(f"Media {getattr(media, 'id', '<unknown>')} has no effective owner for entity operations")
-    return owner_user_id
-
-
 class MediaEntityRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
     async def get_by_media(self, media_id: uuid.UUID) -> list[MediaEntity]:
-        return (await self.db.execute(select(MediaEntity).where(MediaEntity.media_id == media_id))).scalars().all()
+        return (
+            (
+                await self.db.execute(
+                    select(MediaEntity).where(MediaEntity.media_id == media_id)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def get_entity_ids_by_media(self, media_id: uuid.UUID) -> set[uuid.UUID]:
         rows = (
@@ -120,46 +126,47 @@ class MediaEntityRepository:
         return (await self.db.execute(stmt)).scalar_one_or_none() is not None
 
     async def replace_media_entities(
-        self,
-        media: Media,
-        *,
-        entity_creates,
-        source: str,
+        self, media: Media, *, entity_creates, source: str
     ) -> None:
         existing_entities = await self.get_by_media(media.id)
-        touched_entity_ids = {entity.entity_id for entity in existing_entities if entity.entity_id is not None}
+        touched_entity_ids = {
+            entity.entity_id
+            for entity in existing_entities
+            if entity.entity_id is not None
+        }
         for entity in existing_entities:
             await self.db.delete(entity)
         await self.db.flush()
-
-        owner_user_id = _effective_media_owner_id(media)
         created_entity_ids: set[uuid.UUID] = set()
         seen_entity_keys: set[tuple[MediaEntityType, str]] = set()
         for entity_create in entity_creates:
             cleaned_name = entity_create.name.strip()
-            normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+            normalized_name = (
+                normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+            )
             entity_key = (entity_create.entity_type, normalized_name)
             if not cleaned_name or entity_key in seen_entity_keys:
                 continue
             seen_entity_keys.add(entity_key)
             owned_entity = await OwnedEntityRepository(self.db).get_or_create(
-                owner_user_id=owner_user_id,
-                entity_type=entity_create.entity_type,
-                name=cleaned_name,
+                entity_type=entity_create.entity_type, name=cleaned_name
             )
             created_entity_ids.add(owned_entity.id)
-            self.db.add(MediaEntity(
-                media_id=media.id,
-                entity_type=entity_create.entity_type,
-                entity_id=owned_entity.id,
-                name=owned_entity.name,
-                role=entity_create.role,
-                source=source,
-                confidence=entity_create.confidence,
-            ))
-
+            self.db.add(
+                MediaEntity(
+                    media_id=media.id,
+                    entity_type=entity_create.entity_type,
+                    entity_id=owned_entity.id,
+                    name=owned_entity.name,
+                    role=entity_create.role,
+                    source=source,
+                    confidence=entity_create.confidence,
+                )
+            )
         await self.db.flush()
-        await OwnedEntityRepository(self.db).recount_entity_ids(touched_entity_ids | created_entity_ids)
+        await OwnedEntityRepository(self.db).recount_entity_ids(
+            touched_entity_ids | created_entity_ids
+        )
 
     async def add_media_entities(
         self,
@@ -176,14 +183,20 @@ class MediaEntityRepository:
         preserved_names: set[str] = set()
         if replace_existing_type:
             existing = (
-                await self.db.execute(
-                    select(MediaEntity).where(
-                        MediaEntity.media_id == media.id,
-                        MediaEntity.entity_type == entity_type,
+                (
+                    await self.db.execute(
+                        select(MediaEntity).where(
+                            MediaEntity.media_id == media.id,
+                            MediaEntity.entity_type == entity_type,
+                        )
                     )
                 )
-            ).scalars().all()
-            touched_entity_ids |= {entity.entity_id for entity in existing if entity.entity_id is not None}
+                .scalars()
+                .all()
+            )
+            touched_entity_ids |= {
+                entity.entity_id for entity in existing if entity.entity_id is not None
+            }
             for entity in existing:
                 if source == "tagger" and entity.source != "tagger":
                     preserved_names.add(entity.name.casefold())
@@ -191,28 +204,25 @@ class MediaEntityRepository:
                 await self.db.delete(entity)
             if existing:
                 await self.db.flush()
-
-        owner_user_id = _effective_media_owner_id(media)
         created_entity_ids: set[uuid.UUID] = set()
         for name in normalize_manual_entity_names(names):
             if name.casefold() in preserved_names:
                 continue
             owned_entity = await owned_repo.get_or_create(
-                owner_user_id=owner_user_id,
-                entity_type=entity_type,
-                name=name,
+                entity_type=entity_type, name=name
             )
             created_entity_ids.add(owned_entity.id)
-            self.db.add(MediaEntity(
-                media_id=media.id,
-                entity_type=entity_type,
-                entity_id=owned_entity.id,
-                name=owned_entity.name,
-                role="primary",
-                source=source,
-                confidence=confidence,
-            ))
-
+            self.db.add(
+                MediaEntity(
+                    media_id=media.id,
+                    entity_type=entity_type,
+                    entity_id=owned_entity.id,
+                    name=owned_entity.name,
+                    role="primary",
+                    source=source,
+                    confidence=confidence,
+                )
+            )
         await self.db.flush()
         await owned_repo.recount_entity_ids(touched_entity_ids | created_entity_ids)
 
@@ -237,19 +247,23 @@ class MediaEntityRepository:
             for name in normalized_add_names
             if (normalize_metadata_search(name) or name.casefold()) not in remove_keys
         ]
-
         existing = (
-            await self.db.execute(
-                select(MediaEntity).where(
-                    MediaEntity.media_id == media.id,
-                    MediaEntity.entity_type == entity_type,
+            (
+                await self.db.execute(
+                    select(MediaEntity).where(
+                        MediaEntity.media_id == media.id,
+                        MediaEntity.entity_type == entity_type,
+                    )
                 )
             )
-        ).scalars().all()
-        touched_entity_ids = {entity.entity_id for entity in existing if entity.entity_id is not None}
+            .scalars()
+            .all()
+        )
+        touched_entity_ids = {
+            entity.entity_id for entity in existing if entity.entity_id is not None
+        }
         existing_keys: set[str] = set()
         changed = False
-
         for entity in existing:
             key = normalize_metadata_search(entity.name) or entity.name.casefold()
             if key in remove_keys:
@@ -257,11 +271,8 @@ class MediaEntityRepository:
                 changed = True
             else:
                 existing_keys.add(key)
-
         if changed:
             await self.db.flush()
-
-        owner_user_id = _effective_media_owner_id(media)
         owned_repo = OwnedEntityRepository(self.db)
         created_entity_ids: set[uuid.UUID] = set()
         for name in add_names_after_removal:
@@ -269,23 +280,22 @@ class MediaEntityRepository:
             if key in existing_keys:
                 continue
             owned_entity = await owned_repo.get_or_create(
-                owner_user_id=owner_user_id,
-                entity_type=entity_type,
-                name=name,
+                entity_type=entity_type, name=name
             )
             created_entity_ids.add(owned_entity.id)
             existing_keys.add(key)
-            self.db.add(MediaEntity(
-                media_id=media.id,
-                entity_type=entity_type,
-                entity_id=owned_entity.id,
-                name=owned_entity.name,
-                role="primary",
-                source=source,
-                confidence=confidence,
-            ))
+            self.db.add(
+                MediaEntity(
+                    media_id=media.id,
+                    entity_type=entity_type,
+                    entity_id=owned_entity.id,
+                    name=owned_entity.name,
+                    role="primary",
+                    source=source,
+                    confidence=confidence,
+                )
+            )
             changed = True
-
         if changed:
             await self.db.flush()
         await owned_repo.recount_entity_ids(touched_entity_ids | created_entity_ids)
@@ -332,10 +342,16 @@ class MediaEntityRepository:
         limit: int,
         scope: MetadataListScope,
     ) -> list[dict]:
-        entity_type_expr = func.coalesce(OwnedEntity.entity_type, MediaEntity.entity_type)
+        entity_type_expr = func.coalesce(
+            OwnedEntity.entity_type, MediaEntity.entity_type
+        )
         name_expr = func.coalesce(OwnedEntity.name, MediaEntity.name)
-        normalized_name_expr = func.coalesce(OwnedEntity.normalized_name, _normalized_media_entity_name_expr())
-        conditions = _metadata_name_query_conditions(name_expr, normalized_name_expr, query)
+        normalized_name_expr = func.coalesce(
+            OwnedEntity.normalized_name, _normalized_media_entity_name_expr()
+        )
+        conditions = _metadata_name_query_conditions(
+            name_expr, normalized_name_expr, query
+        )
         stmt = (
             select(
                 name_expr.label("name"),
@@ -350,24 +366,13 @@ class MediaEntityRepository:
                 or_(*conditions),
             )
             .group_by(name_expr)
-            .order_by(func.count(MediaEntity.media_id.distinct()).desc(), name_expr.asc())
+            .order_by(
+                func.count(MediaEntity.media_id.distinct()).desc(), name_expr.asc()
+            )
             .limit(limit)
         )
         if scope == MetadataListScope.OWNER:
-            stmt = stmt.where(Media.uploader_id == user.id)
-        elif not user.is_admin:
-            nsfw_expr = effective_nsfw_expr()
-            sensitive_expr = effective_sensitive_expr()
-            stmt = stmt.where(
-                or_(
-                    Media.uploader_id == user.id,
-                    and_(
-                        Media.visibility == MediaVisibility.public,
-                        nsfw_expr.is_(False) if not user.show_nsfw else True,
-                        sensitive_expr.is_(False) if not user.show_sensitive else True,
-                    ),
-                )
-            )
+            stmt = stmt.where()
         rows = (await self.db.execute(stmt)).all()
         return [{"name": row.name, "media_count": row.media_count} for row in rows]
 
@@ -384,18 +389,20 @@ class MediaEntityRepository:
                 OwnedEntity.id.label("id"),
                 OwnedEntity.name.label("name"),
                 OwnedEntity.media_count.label("media_count"),
-            ).where(
-                OwnedEntity.owner_user_id == user.id,
-                OwnedEntity.entity_type == entity_type,
-            )
+            ).where(OwnedEntity.entity_type == entity_type)
             if query:
-                conditions = _metadata_name_query_conditions(OwnedEntity.name, OwnedEntity.normalized_name, query)
+                conditions = _metadata_name_query_conditions(
+                    OwnedEntity.name, OwnedEntity.normalized_name, query
+                )
                 stmt = stmt.where(or_(*conditions))
             return stmt
-
-        entity_type_expr = func.coalesce(OwnedEntity.entity_type, MediaEntity.entity_type)
+        entity_type_expr = func.coalesce(
+            OwnedEntity.entity_type, MediaEntity.entity_type
+        )
         name_expr = func.coalesce(OwnedEntity.name, MediaEntity.name)
-        normalized_name_expr = func.coalesce(OwnedEntity.normalized_name, _normalized_media_entity_name_expr())
+        normalized_name_expr = func.coalesce(
+            OwnedEntity.normalized_name, _normalized_media_entity_name_expr()
+        )
         stmt = (
             select(
                 func.min(OwnedEntity.id).label("id"),
@@ -405,28 +412,14 @@ class MediaEntityRepository:
             .select_from(MediaEntity)
             .outerjoin(OwnedEntity, MediaEntity.entity_id == OwnedEntity.id)
             .join(Media, Media.id == MediaEntity.media_id)
-            .where(
-                entity_type_expr == entity_type,
-                Media.deleted_at.is_(None),
-            )
+            .where(entity_type_expr == entity_type, Media.deleted_at.is_(None))
             .group_by(name_expr)
         )
         if query:
-            conditions = _metadata_name_query_conditions(name_expr, normalized_name_expr, query)
-            stmt = stmt.where(or_(*conditions))
-        if not user.is_admin:
-            nsfw_expr = effective_nsfw_expr()
-            sensitive_expr = effective_sensitive_expr()
-            stmt = stmt.where(
-                or_(
-                    func.coalesce(OwnedEntity.owner_user_id, Media.owner_id, Media.uploader_id) == user.id,
-                    and_(
-                        Media.visibility == MediaVisibility.public,
-                        nsfw_expr.is_(False) if not user.show_nsfw else True,
-                        sensitive_expr.is_(False) if not user.show_sensitive else True,
-                    ),
-                )
+            conditions = _metadata_name_query_conditions(
+                name_expr, normalized_name_expr, query
             )
+            stmt = stmt.where(or_(*conditions))
         return stmt
 
     async def count_entity_names(
@@ -459,17 +452,14 @@ class OwnedEntityRepository:
     async def get_by_id(self, entity_id: uuid.UUID) -> OwnedEntity | None:
         return await self.db.get(OwnedEntity, entity_id, populate_existing=True)
 
-    async def get_by_owner_type_name(
-        self,
-        *,
-        owner_user_id: uuid.UUID,
-        entity_type: MediaEntityType,
-        name: str,
+    async def get_by_type_name(
+        self, *, entity_type: MediaEntityType, name: str
     ) -> OwnedEntity | None:
         cleaned_name = name.strip()
-        normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+        normalized_name = (
+            normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+        )
         stmt = select(OwnedEntity).where(
-            OwnedEntity.owner_user_id == owner_user_id,
             OwnedEntity.entity_type == entity_type,
             OwnedEntity.normalized_name == normalized_name,
         )
@@ -477,17 +467,14 @@ class OwnedEntityRepository:
         return result if isinstance(result, OwnedEntity) else None
 
     async def get_or_create(
-        self,
-        *,
-        owner_user_id: uuid.UUID,
-        entity_type: MediaEntityType,
-        name: str,
+        self, *, entity_type: MediaEntityType, name: str
     ) -> OwnedEntity:
         cleaned_name = name.strip()
-        normalized_name = normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+        normalized_name = (
+            normalize_metadata_search(cleaned_name) or cleaned_name.casefold()
+        )
         if not hasattr(self.db, "sync_session"):
             created = OwnedEntity(
-                owner_user_id=owner_user_id,
                 entity_type=entity_type,
                 name=cleaned_name,
                 normalized_name=normalized_name,
@@ -495,31 +482,22 @@ class OwnedEntityRepository:
             self.db.add(created)
             await self.db.flush()
             return created
-
         stmt = (
             insert(OwnedEntity)
             .values(
-                owner_user_id=owner_user_id,
                 entity_type=entity_type,
                 name=cleaned_name,
                 normalized_name=normalized_name,
             )
             .on_conflict_do_update(
-                index_elements=[
-                    OwnedEntity.owner_user_id,
-                    OwnedEntity.entity_type,
-                    OwnedEntity.normalized_name,
-                ],
-                set_={
-                    "name": cleaned_name,
-                    "updated_at": func.now(),
-                },
+                index_elements=[OwnedEntity.entity_type, OwnedEntity.normalized_name],
+                set_={"name": cleaned_name, "updated_at": func.now()},
             )
             .returning(OwnedEntity.id)
         )
         entity_id = (await self.db.execute(stmt)).scalar_one()
         entity = await self.db.get(OwnedEntity, entity_id, populate_existing=True)
-        if entity is None:  # pragma: no cover - returning id should always resolve.
+        if entity is None:
             raise RuntimeError(f"Upserted owned entity {entity_id} could not be loaded")
         return entity
 
@@ -564,21 +542,24 @@ class MediaExternalRefRepository:
 
     async def get_by_media(self, media_id: uuid.UUID) -> list[MediaExternalRef]:
         return (
-            await self.db.execute(select(MediaExternalRef).where(MediaExternalRef.media_id == media_id))
-        ).scalars().all()
+            (
+                await self.db.execute(
+                    select(MediaExternalRef).where(
+                        MediaExternalRef.media_id == media_id
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     async def get_for_user_by_provider_and_external_id(
-        self,
-        *,
-        user_id: uuid.UUID,
-        provider: str,
-        external_id: str,
+        self, *, provider: str, external_id: str
     ) -> MediaExternalRef | None:
         stmt = (
             select(MediaExternalRef)
             .join(Media, Media.id == MediaExternalRef.media_id)
             .where(
-                Media.uploader_id == user_id,
                 Media.deleted_at.is_(None),
                 MediaExternalRef.provider == provider,
                 MediaExternalRef.external_id == external_id,

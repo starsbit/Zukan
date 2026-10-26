@@ -1,4 +1,4 @@
-import { MediaListState, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../models/media';
+import { MediaListState, MediaType, ProcessingStatus, TaggingStatus } from '../models/media';
 import { describe, expect, it } from 'vitest';
 import {
   buildTodayStoriesParams,
@@ -9,23 +9,26 @@ import {
 
 describe('today-stories utils', () => {
   it('builds today-years-ago params while preserving page scope filters', () => {
-    expect(buildTodayStoriesParams({
+    expect(
+      buildTodayStoriesParams(
+        {
+          state: MediaListState.ACTIVE,
+          favorited: true,
+          media_type: [MediaType.VIDEO],
+          tag: ['archived'],
+          after: 'cursor-1',
+          page_size: 200,
+          include_total: true,
+          captured_year: 2024,
+          captured_after: '2024-04-02T00:00:00Z',
+          captured_before: '2024-04-02T23:59:59Z',
+          sort_by: 'uploaded_at',
+          sort_order: 'asc',
+        },
+        new Date('2026-04-02T12:00:00'),
+      ),
+    ).toEqual({
       state: MediaListState.ACTIVE,
-      visibility: MediaVisibility.PUBLIC,
-      favorited: true,
-      media_type: [MediaType.VIDEO],
-      tag: ['archived'],
-      after: 'cursor-1',
-      page_size: 200,
-      include_total: true,
-      captured_year: 2024,
-      captured_after: '2024-04-02T00:00:00Z',
-      captured_before: '2024-04-02T23:59:59Z',
-      sort_by: 'uploaded_at',
-      sort_order: 'asc',
-    }, new Date('2026-04-02T12:00:00'))).toEqual({
-      state: MediaListState.ACTIVE,
-      visibility: MediaVisibility.PUBLIC,
       favorited: true,
       media_type: [MediaType.VIDEO],
       tag: ['archived'],
@@ -65,9 +68,6 @@ describe('today-stories utils', () => {
 function buildMedia(id: string, capturedAt: string) {
   return {
     id,
-    uploader_id: null,
-    owner_id: null,
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: `${id}.jpg`,
     media_type: MediaType.IMAGE,

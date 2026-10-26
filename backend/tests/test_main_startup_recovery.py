@@ -1,15 +1,11 @@
 from __future__ import annotations
-
 import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-
 import pytest
-
 from backend.app.main import _mark_tagging_job_failed, _recover_pending_media_jobs, _retry_failed_media_jobs, lifespan
 from backend.app.models.processing import BatchStatus, ItemStatus, ProcessingStep
-
 
 class _ScalarResult:
     def __init__(self, rows):
@@ -20,7 +16,6 @@ class _ScalarResult:
 
     def all(self):
         return self._rows
-
 
 class _Session:
     def __init__(self, media_rows, batch_item_rows):
@@ -36,7 +31,6 @@ class _Session:
             return _ScalarResult(self._batch_item_rows)
         raise AssertionError(f"Unexpected query: {text}")
 
-
 class _SessionContext:
     def __init__(self, session):
         self._session = session
@@ -46,7 +40,6 @@ class _SessionContext:
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
-
 
 @pytest.mark.asyncio
 async def test_recover_pending_media_jobs_requeues_unfinished_work():
@@ -69,7 +62,6 @@ async def test_recover_pending_media_jobs_requeues_unfinished_work():
     enqueued_ids = [call.args[0] for call in queue.put.await_args_list]
     assert enqueued_ids == [media_1.id, media_2.id, batch_item_2.media_id]
 
-
 class _RetrySession:
     def __init__(self, media_rows, batch_item_rows, batch_rows):
         self._results = [
@@ -83,7 +75,6 @@ class _RetrySession:
         if not self._results:
             raise AssertionError(f"Unexpected query: {stmt}")
         return self._results.pop(0)
-
 
 @pytest.mark.asyncio
 async def test_retry_failed_media_jobs_requeues_failed_media_and_resets_upload_items():
@@ -145,7 +136,6 @@ async def test_retry_failed_media_jobs_requeues_failed_media_and_resets_upload_i
     session.commit.assert_awaited_once()
     assert [call.args[0] for call in queue.put.await_args_list] == [media_1.id, media_2.id]
 
-
 @pytest.mark.asyncio
 async def test_mark_tagging_job_failed_swallows_failure_bookkeeping_errors():
     with (
@@ -161,7 +151,6 @@ async def test_mark_tagging_job_failed_swallows_failure_bookkeeping_errors():
     processing_cls.return_value.mark_tagging_failure.assert_awaited_once()
     upload_cls.return_value.mark_upload_batch_item_failed.assert_awaited_once()
 
-
 class _CancelledTask:
     def cancel(self):
         return None
@@ -171,7 +160,6 @@ class _CancelledTask:
             raise asyncio.CancelledError
 
         return _cancelled().__await__()
-
 
 @pytest.mark.asyncio
 async def test_lifespan_runs_database_repair_before_background_workers():
@@ -200,23 +188,8 @@ async def test_lifespan_runs_database_repair_before_background_workers():
         calls.append("create_task")
         coro.close()
         return _CancelledTask()
-
-    with (
-        patch("backend.app.main.init_db", AsyncMock(side_effect=_init_db)),
-        patch("backend.app.main.repair_database_after_migrations", AsyncMock(side_effect=_repair)),
-        patch("backend.app.main._ensure_admin_user", AsyncMock(side_effect=_ensure_admin)),
-        patch("backend.app.main.initialize_library", AsyncMock()),
-        patch("backend.app.main.acquire_storage_lease", AsyncMock(return_value=None)),
-        patch("backend.app.main.release_storage_lease", AsyncMock()),
-        patch("backend.app.main.resume_migrations", AsyncMock()),
-        patch("backend.app.main._recover_pending_media_jobs", AsyncMock(side_effect=_recover_media)),
-        patch("backend.app.main._recover_pending_embedding_backfill_jobs", AsyncMock(side_effect=_recover_embeddings)),
-        patch("backend.app.main.health_monitor.start"),
-        patch("backend.app.main.health_monitor.stop", AsyncMock()),
-        patch("backend.app.main.asyncio.create_task", side_effect=_fake_create_task),
-    ):
+    with patch('backend.app.main.init_db', AsyncMock(side_effect=_init_db)), patch('backend.app.main.repair_database_after_migrations', AsyncMock(side_effect=_repair)), patch('backend.app.main.initialize_authentication', AsyncMock(side_effect=_ensure_admin)), patch('backend.app.main.initialize_library', AsyncMock()), patch('backend.app.main.acquire_storage_lease', AsyncMock(return_value=None)), patch('backend.app.main.release_storage_lease', AsyncMock()), patch('backend.app.main.resume_migrations', AsyncMock()), patch('backend.app.main._recover_pending_media_jobs', AsyncMock(side_effect=_recover_media)), patch('backend.app.main._recover_pending_embedding_backfill_jobs', AsyncMock(side_effect=_recover_embeddings)), patch('backend.app.main.health_monitor.start'), patch('backend.app.main.health_monitor.stop', AsyncMock()), patch('backend.app.main.asyncio.create_task', side_effect=_fake_create_task):
         async with lifespan(SimpleNamespace()):
-            calls.append("yielded")
-
-    assert calls.index("init_db") < calls.index("repair") < calls.index("ensure_admin")
-    assert calls.index("repair") < calls.index("create_task")
+            calls.append('yielded')
+    assert calls.index('init_db') < calls.index('repair') < calls.index('ensure_admin')
+    assert calls.index('repair') < calls.index('create_task')

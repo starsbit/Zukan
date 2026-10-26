@@ -11,7 +11,7 @@ function createFixture(status: UpdateStatus, isAdmin: boolean) {
     status: signal<UpdateStatus>(status),
     dismiss: vi.fn(),
   };
-  const userStore = { isAdmin: signal(isAdmin) };
+  const userStore = { currentUser: signal(isAdmin ? {} : null) };
 
   TestBed.configureTestingModule({
     imports: [UpdateStatusIslandComponent, NoopAnimationsModule],

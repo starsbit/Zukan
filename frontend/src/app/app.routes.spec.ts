@@ -1,6 +1,5 @@
 import '@angular/compiler';
 import { describe, expect, it } from 'vitest';
-import { adminGuard } from './guards/admin.guard';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
 import { routes } from './app.routes';
@@ -20,7 +19,16 @@ describe('routes', () => {
   });
 
   it('protects the authenticated pages', () => {
-    const protectedPaths = ['browse', 'media/:mediaId', 'graph/characters', 'album', 'album/:albumId', 'favorites', 'gacha', 'gacha/:tab', 'tags', 'trash'];
+    const protectedPaths = [
+      'browse',
+      'media/:mediaId',
+      'graph/characters',
+      'album',
+      'album/:albumId',
+      'favorites',
+      'tags',
+      'trash',
+    ];
 
     for (const path of protectedPaths) {
       const route = routes.find((candidate) => candidate.path === path);
@@ -37,7 +45,7 @@ describe('routes', () => {
   it('protects admin with adminGuard', () => {
     const adminRoute = routes.find((route) => route.path === 'admin');
 
-    expect(adminRoute?.canActivate).toEqual([adminGuard]);
+    expect(adminRoute?.canActivate).toEqual([authGuard]);
   });
 
   it('redirects unknown routes to the root gallery route', () => {

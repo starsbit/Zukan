@@ -1,9 +1,25 @@
 import { inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { HttpEvent, HttpEventType, HttpResponse } from '@angular/common/http';
-import { catchError, EMPTY, filter, finalize, map, Observable, shareReplay, tap, throwError } from 'rxjs';
+import {
+  catchError,
+  EMPTY,
+  filter,
+  finalize,
+  map,
+  Observable,
+  shareReplay,
+  tap,
+  throwError,
+} from 'rxjs';
 import { MediaClientService, MediaSearchParams, UploadParams } from './web/media-client.service';
 import { BlobUrlCache } from '../utils/blob-url.utils';
-import { MediaCursorPage, MediaDetail, MediaEntityBatchUpdate, MediaRead, MediaUpdate, MediaVisibility } from '../models/media';
+import {
+  MediaCursorPage,
+  MediaDetail,
+  MediaEntityBatchUpdate,
+  MediaRead,
+  MediaUpdate,
+} from '../models/media';
 import { BatchUploadResponse, TaggingJobQueuedResponse, UrlIngestRequest } from '../models/uploads';
 import { BulkResult } from '../models/common';
 import { CharacterSuggestion, MetadataListScope, SeriesSuggestion } from '../models/tags';
@@ -151,19 +167,8 @@ export class MediaService implements OnDestroy {
     return this.client.batchUpdate({ media_ids: ids, favorited }).pipe(
       tap(() => {
         const set = new Set(ids);
-        this._items.update(items =>
-          items.map(item => set.has(item.id) ? { ...item, is_favorited: favorited } : item),
-        );
-      }),
-    );
-  }
-
-  batchUpdateVisibility(ids: string[], visibility: MediaVisibility): Observable<BulkResult> {
-    return this.client.batchUpdate({ media_ids: ids, visibility }).pipe(
-      tap(() => {
-        const set = new Set(ids);
-        this._items.update(items =>
-          items.map(item => set.has(item.id) ? { ...item, visibility } : item),
+        this._items.update((items) =>
+          items.map((item) => (set.has(item.id) ? { ...item, is_favorited: favorited } : item)),
         );
       }),
     );
@@ -260,21 +265,19 @@ export class MediaService implements OnDestroy {
   }
 
   private _patchItem(updated: MediaRead): void {
-    this._items.update(items =>
-      items.map(item => item.id === updated.id ? updated : item),
-    );
+    this._items.update((items) => items.map((item) => (item.id === updated.id ? updated : item)));
   }
 
   private _removeItem(id: string): void {
-    this._items.update(items => items.filter(item => item.id !== id));
-    this._total.update(t => t != null ? t - 1 : null);
+    this._items.update((items) => items.filter((item) => item.id !== id));
+    this._total.update((t) => (t != null ? t - 1 : null));
   }
 
   private _removeItems(ids: string[]): void {
     const set = new Set(ids);
     const before = this._items().length;
-    this._items.update(items => items.filter(item => !set.has(item.id)));
+    this._items.update((items) => items.filter((item) => !set.has(item.id)));
     const removed = before - this._items().length;
-    this._total.update(t => t != null ? t - removed : null);
+    this._total.update((t) => (t != null ? t - removed : null));
   }
 }

@@ -5,25 +5,41 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { StoragePanelComponent } from './storage-panel.component';
 import { API_BASE_URL } from '../../services/web/api.config';
 
-const status = {root: '/library', generated_dir: '.zukan', discovery_owner_id: 'u1', scan_interval_seconds: 3600,
-  available: true, scanning: false, last_scan: null, migration: null, conflicts: []};
+const status = {
+  root: '/library',
+  generated_dir: '.zukan',
+  scan_interval_seconds: 3600,
+  available: true,
+  scanning: false,
+  last_scan: null,
+  migration: null,
+  conflicts: [],
+};
 
 describe('StoragePanelComponent', () => {
   let http: HttpTestingController;
   function create() {
-    TestBed.configureTestingModule({imports: [StoragePanelComponent], providers: [provideHttpClient(), provideHttpClientTesting(), {provide: API_BASE_URL, useValue: ''}]});
+    TestBed.configureTestingModule({
+      imports: [StoragePanelComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: API_BASE_URL, useValue: '' },
+      ],
+    });
     http = TestBed.inject(HttpTestingController);
     const fixture = TestBed.createComponent(StoragePanelComponent);
     http.expectOne('/api/v1/admin/storage').flush(status);
-    http.expectOne(r => r.url.endsWith('/admin/users')).flush({items: [{id: 'u1', username: 'admin'}], total: 1});
     fixture.detectChanges();
     return fixture;
   }
-  afterEach(() => { http.verify(); });
+  afterEach(() => {
+    http.verify();
+  });
   it('loads persistent settings and shows unavailable metadata retention', () => {
     const fixture = create();
-    expect(fixture.componentInstance.ownerId).toBe('u1');
-    fixture.componentInstance.status.set({...status, available: false}); fixture.detectChanges();
+    fixture.componentInstance.status.set({ ...status, available: false });
+    fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('metadata retained');
     fixture.destroy();
   });
@@ -52,13 +68,5 @@ describe('StoragePanelComponent', () => {
     http.expectOne('/api/v1/admin/storage').flush(status);
     expect(c.maintenanceResult()).toContain('1 records deleted');
     expect(c.maintenance()).toBeNull(); fixture.destroy();
-  });
-  it('saves the discovery owner and scan interval without patching the root', () => {
-    const fixture = create(); const c = fixture.componentInstance;
-    c.scanInterval = 0; c.save();
-    const request = http.expectOne('/api/v1/admin/storage');
-    expect(request.request.method).toBe('PATCH');
-    expect(request.request.body).toEqual({generated_dir: '.zukan', discovery_owner_id: 'u1', scan_interval_seconds: 0});
-    request.flush(status); http.expectOne('/api/v1/admin/storage').flush(status); fixture.destroy();
   });
 });

@@ -8,7 +8,7 @@ const transparentWebp = Buffer.from(
 
 test.describe('Character graph', () => {
   test('renders a graph and opens character details from search', async ({ page }) => {
-    await seedAuthenticatedSession(page, { is_admin: false });
+    await seedAuthenticatedSession(page, { });
 
     await page.route('**/api/v1/graphs/characters/search**', async (route) => {
       await route.fulfill({

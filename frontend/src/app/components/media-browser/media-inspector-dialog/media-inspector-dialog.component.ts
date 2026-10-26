@@ -28,7 +28,13 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { debounceTime, distinctUntilChanged, of, switchMap } from 'rxjs';
-import { MediaDetail, MediaRead, MediaType, ProcessingStatus, RelatedMediaRead } from '../../../models/media';
+import {
+  MediaDetail,
+  MediaRead,
+  MediaType,
+  ProcessingStatus,
+  RelatedMediaRead,
+} from '../../../models/media';
 import {
   ImportBatchRecommendationSuggestionRead,
   LibraryClassificationFeedbackCreate,
@@ -51,7 +57,6 @@ import {
   formatMetadataName,
   formatMediaType,
   formatProcessingStatus,
-  formatVisibility,
   humanizeBackendLabel,
 } from '../../../utils/media-display.utils';
 import { commaSeparatedPasteValues } from '../../../utils/comma-separated-paste.utils';
@@ -134,8 +139,12 @@ export class MediaInspectorDialogComponent {
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly breakpointObserver = inject(BreakpointObserver);
-  private readonly dialogRef = inject(MatDialogRef<MediaInspectorDialogComponent>, { optional: true });
-  protected readonly data = inject<MediaInspectorDialogData | null>(MAT_DIALOG_DATA, { optional: true });
+  private readonly dialogRef = inject(MatDialogRef<MediaInspectorDialogComponent>, {
+    optional: true,
+  });
+  protected readonly data = inject<MediaInspectorDialogData | null>(MAT_DIALOG_DATA, {
+    optional: true,
+  });
   private readonly galleryStore = inject(GalleryStore);
   private readonly mediaService = inject(MediaService);
   private readonly snackBar = inject(MatSnackBar);
@@ -222,7 +231,6 @@ export class MediaInspectorDialogComponent {
       },
       { label: 'Captured at', value: formatDateTime(media.metadata.captured_at) },
       { label: 'Added at', value: formatDateTime(media.uploaded_at) },
-      { label: 'Visibility', value: formatVisibility(media.visibility) },
       { label: 'NSFW', value: media.is_nsfw ? 'Yes' : 'No' },
       { label: 'Sensitive', value: media.is_sensitive ? 'Yes' : 'No' },
       { label: 'Tagging status', value: formatProcessingStatus(media.tagging_status) },
@@ -232,23 +240,13 @@ export class MediaInspectorDialogComponent {
   });
   readonly uploadFields = computed<InspectorField[]>(() => {
     const media = this.media();
-    return [
-      { label: 'Uploaded at', value: formatDateTime(media.uploaded_at) },
-    ].filter((field) => field.value);
+    return [{ label: 'Uploaded at', value: formatDateTime(media.uploaded_at) }].filter(
+      (field) => field.value,
+    );
   });
-  readonly authorFields = computed<InspectorField[]>(() => {
-    const media = this.media();
-    return [
-      { label: 'Owner', value: media.owner_username ?? '' },
-      { label: 'Uploaded by', value: media.uploader_username ?? '' },
-    ].filter((field) => field.value);
-  });
-  readonly characters = computed(() =>
-    this.entityDisplayItems(MediaEntityType.CHARACTER),
-  );
-  readonly series = computed(() =>
-    this.entityDisplayItems(MediaEntityType.SERIES),
-  );
+  readonly authorFields = computed<InspectorField[]>(() => []);
+  readonly characters = computed(() => this.entityDisplayItems(MediaEntityType.CHARACTER));
+  readonly series = computed(() => this.entityDisplayItems(MediaEntityType.SERIES));
   readonly externalRefs = computed(() =>
     (this.detail()?.external_refs ?? []).map((ref) => ({
       label: humanizeBackendLabel(ref.provider),
@@ -298,7 +296,8 @@ export class MediaInspectorDialogComponent {
   constructor() {
     effect(() => {
       const items = this.initialItems() ?? this.data?.items ?? [];
-      const activeMediaId = this.activeMediaId() ?? this.data?.activeMediaId ?? items[0]?.id ?? null;
+      const activeMediaId =
+        this.activeMediaId() ?? this.data?.activeMediaId ?? items[0]?.id ?? null;
       untracked(() => this.configureMedia(items, activeMediaId));
     });
 
@@ -1317,7 +1316,12 @@ export class MediaInspectorDialogComponent {
     }
 
     const tagName = target.tagName.toLowerCase();
-    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+    return (
+      tagName === 'input' ||
+      tagName === 'textarea' ||
+      tagName === 'select' ||
+      target.isContentEditable
+    );
   }
 
   private beginSinglePointerGesture(pointerId: number, pointer: PointerTracker): void {
@@ -1657,9 +1661,11 @@ export class MediaInspectorDialogComponent {
       return false;
     }
 
-    return target.closest(
-      'button, a, input, textarea, select, option, [role="button"], [contenteditable="true"], .mat-mdc-chip, .mat-mdc-chip-row, .mat-mdc-option',
-    ) != null;
+    return (
+      target.closest(
+        'button, a, input, textarea, select, option, [role="button"], [contenteditable="true"], .mat-mdc-chip, .mat-mdc-chip-row, .mat-mdc-option',
+      ) != null
+    );
   }
 
   private isMediaTarget(target: EventTarget | null): boolean {

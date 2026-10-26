@@ -1,23 +1,6 @@
 import uuid
 from datetime import datetime
-
-from pydantic import BaseModel, EmailStr, Field
-
-
-class UserRegister(BaseModel):
-    username: str = Field(min_length=3, max_length=64)
-    email: EmailStr
-    password: str = Field(min_length=8)
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "username": "saber",
-                "email": "saber@starsbit.space",
-                "password": "super-secret-passphrase",
-            }
-        }
-    }
+from pydantic import BaseModel, Field
 
 
 class UserLogin(BaseModel):
@@ -59,16 +42,13 @@ class UserRead(BaseModel):
     id: uuid.UUID
     username: str
     email: str
-    is_admin: bool
     show_nsfw: bool
     show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     library_classification_enabled: bool
     version: int
     created_at: datetime
-    storage_quota_mb: int
     storage_used_mb: int = 0
-
     model_config = {
         "from_attributes": True,
         "json_schema_extra": {
@@ -76,7 +56,6 @@ class UserRead(BaseModel):
                 "id": "fe1db6af-8f07-4b07-85cd-5676d7f7aa19",
                 "username": "saber",
                 "email": "saber@starsbit.space",
-                "is_admin": False,
                 "show_nsfw": False,
                 "show_sensitive": False,
                 "tag_confidence_threshold": 0.85,
@@ -164,10 +143,3 @@ class APIKeyCreateResponse(APIKeyStatusResponse):
             }
         }
     }
-
-
-class UserListResponse(BaseModel):
-    total: int
-    page: int
-    page_size: int
-    items: list[UserRead]

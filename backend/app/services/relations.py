@@ -1,17 +1,23 @@
 from __future__ import annotations
-
 import logging
 import uuid
 from datetime import datetime, timezone
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.models.media import Media
 from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.repositories.relations import MediaEntityRepository, OwnedEntityRepository
-from backend.app.repositories.tags import effective_media_owner_id
-from backend.app.schemas import EntityCreate, ExternalRefCreate, MetadataListScope, MetadataNameListResponse, MetadataNameRead, TagManagementResult
+from backend.app.repositories.relations import (
+    MediaEntityRepository,
+    OwnedEntityRepository,
+)
+from backend.app.schemas import (
+    EntityCreate,
+    ExternalRefCreate,
+    MetadataListScope,
+    MetadataNameListResponse,
+    MetadataNameRead,
+    TagManagementResult,
+)
 from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 
 logger = logging.getLogger(__name__)
@@ -153,24 +159,31 @@ class RelationService:
         )
         return TagManagementResult(matched_media=len(matches), trashed_media=trashed, already_trashed=already_trashed)
 
-    async def _clear_entity_name(self, user, *, entity_type: MediaEntityType, name: str) -> TagManagementResult:
-        owned_entity = await OwnedEntityRepository(self._db).get_by_owner_type_name(
-            owner_user_id=user.id,
-            entity_type=entity_type,
-            name=name,
+    async def _clear_entity_name(
+        self, user, *, entity_type: MediaEntityType, name: str
+    ) -> TagManagementResult:
+        owned_entity = await OwnedEntityRepository(self._db).get_by_type_name(
+            entity_type=entity_type, name=name
         )
         if owned_entity is None:
-            return TagManagementResult(matched_media=0, updated_media=0, deleted_source=True)
-
-        media_rows = await self._media_rows_for_owned_entity(user, owned_entity_id=owned_entity.id)
+            return TagManagementResult(
+                matched_media=0, updated_media=0, deleted_source=True
+            )
+        media_rows = await self._media_rows_for_owned_entity(
+            user, owned_entity_id=owned_entity.id
+        )
         accessible_ids = {m.id for m in media_rows}
         repo = MediaEntityRepository(self._db)
-        entities = await repo.get_entities_for_owned_entity(owned_entity.id, media_ids=accessible_ids)
+        entities = await repo.get_entities_for_owned_entity(
+            owned_entity.id, media_ids=accessible_ids
+        )
         for entity in entities:
             await self._db.delete(entity)
         await self._db.flush()
         await OwnedEntityRepository(self._db).recount_entity_ids({owned_entity.id})
-        deleted_source = await OwnedEntityRepository(self._db).get_by_id(owned_entity.id) is None
+        deleted_source = (
+            await OwnedEntityRepository(self._db).get_by_id(owned_entity.id) is None
+        )
         await self._db.commit()
         logger.info(
             "Cleared entities user_id=%s entity_type=%s name=%s matched_media=%s deleted_source=%s",
@@ -187,54 +200,50 @@ class RelationService:
         )
 
     async def _merge_entity_name(
-        self,
-        user,
-        *,
-        entity_type: MediaEntityType,
-        source_name: str,
-        target_name: str,
+        self, user, *, entity_type: MediaEntityType, source_name: str, target_name: str
     ) -> TagManagementResult:
         normalized_target = target_name.strip()
         if not normalized_target or normalized_target == source_name:
             return TagManagementResult(matched_media=0, updated_media=0)
-
-        owner_user_id = user.id
         owned_repo = OwnedEntityRepository(self._db)
-        source_entity = await owned_repo.get_by_owner_type_name(
-            owner_user_id=owner_user_id,
-            entity_type=entity_type,
-            name=source_name,
+        source_entity = await owned_repo.get_by_type_name(
+            entity_type=entity_type, name=source_name
         )
         if source_entity is None:
-            return TagManagementResult(matched_media=0, updated_media=0, deleted_source=True)
-
+            return TagManagementResult(
+                matched_media=0, updated_media=0, deleted_source=True
+            )
         target_entity = await owned_repo.get_or_create(
-            owner_user_id=owner_user_id,
-            entity_type=entity_type,
-            name=normalized_target,
+            entity_type=entity_type, name=normalized_target
         )
         if target_entity.id == source_entity.id:
             return TagManagementResult(matched_media=0, updated_media=0)
-
-        source_media_rows = await self._media_rows_for_owned_entity(user, owned_entity_id=source_entity.id)
+        source_media_rows = await self._media_rows_for_owned_entity(
+            user, owned_entity_id=source_entity.id
+        )
         source_media_ids = {media.id for media in source_media_rows}
         repo = MediaEntityRepository(self._db)
-        source_links = await repo.get_entities_for_owned_entity(source_entity.id, media_ids=source_media_ids)
-        target_links = await repo.get_entities_for_owned_entity(target_entity.id, media_ids=source_media_ids)
+        source_links = await repo.get_entities_for_owned_entity(
+            source_entity.id, media_ids=source_media_ids
+        )
+        target_links = await repo.get_entities_for_owned_entity(
+            target_entity.id, media_ids=source_media_ids
+        )
         target_by_media_id = {entity.media_id: entity for entity in target_links}
         updated_media_ids: set[uuid.UUID] = set()
-
         for source_link in source_links:
             target_link = target_by_media_id.get(source_link.media_id)
             if target_link is not None:
-                if target_link.confidence is None and source_link.confidence is not None:
+                if (
+                    target_link.confidence is None
+                    and source_link.confidence is not None
+                ):
                     target_link.confidence = source_link.confidence
                 await self._db.delete(source_link)
             else:
                 source_link.entity_id = target_entity.id
                 source_link.name = target_entity.name
             updated_media_ids.add(source_link.media_id)
-
         await self._db.flush()
         await owned_repo.recount_entity_ids({source_entity.id, target_entity.id})
         deleted_source = await owned_repo.get_by_id(source_entity.id) is None
@@ -319,8 +328,6 @@ class RelationService:
 
 def _manageable_media_stmt(user):
     stmt = select(Media)
-    if not user.is_admin:
-        stmt = stmt.where((Media.uploader_id == user.id) | (Media.owner_id == user.id))
     return stmt
 
 

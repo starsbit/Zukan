@@ -5,12 +5,15 @@ import { AuthSessionService } from './auth-session.service';
 import { UserStore } from './user.store';
 import { AuthStore, LOCAL_STORAGE, SESSION_STORAGE } from './web/auth.store';
 
-const mockTokens = { access_token: 'access-abc', refresh_token: 'refresh-xyz', token_type: 'bearer' };
+const mockTokens = {
+  access_token: 'access-abc',
+  refresh_token: 'refresh-xyz',
+  token_type: 'bearer',
+};
 const mockUser = {
   id: 'u1',
   username: 'saber',
   email: 'saber@example.com',
-  is_admin: false,
   show_nsfw: false,
   tag_confidence_threshold: 0.5,
   version: 1,

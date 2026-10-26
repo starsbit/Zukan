@@ -4,13 +4,11 @@ from backend.app.config import settings
 from backend.app.utils.library_paths import contained_path, resolve_media_path, stored_path
 from backend.app.services.library_storage import file_digest, copy_verified, inspect_destination, discover_paths, ensure_marker, storage_available
 
-
 @pytest.fixture
 def library(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, 'storage_dir', tmp_path)
     monkeypatch.setattr(settings, 'library_paths_relative', True)
     return tmp_path
-
 
 def test_relative_paths_are_contained(library):
     assert resolve_media_path('anime/a.png') == library / 'anime/a.png'
@@ -21,7 +19,6 @@ def test_relative_paths_are_contained(library):
     (library / 'link').symlink_to(library / 'anime')
     with pytest.raises(ValueError):
         resolve_media_path('link/a.png')
-
 
 def test_copy_is_verified_idempotent_and_never_overwrites(library, tmp_path):
     source = library / 'source.png'
@@ -37,7 +34,6 @@ def test_copy_is_verified_idempotent_and_never_overwrites(library, tmp_path):
         copy_verified(source, target, entry, 'job')
     assert target.read_bytes() == b'different'
 
-
 def test_destination_validation_overlap_and_conflict(tmp_path):
     source = tmp_path / 'source'; source.mkdir()
     target = tmp_path / 'target'; target.mkdir()
@@ -51,7 +47,6 @@ def test_destination_validation_overlap_and_conflict(tmp_path):
     with pytest.raises(ValueError):
         inspect_destination(str(target), entries, source)
 
-
 def test_scan_excludes_hidden_temporary_and_symlinks(library):
     (library / '.zukan').mkdir()
     (library / '.zukan' / 'thumb.png').write_bytes(b'x')
@@ -60,13 +55,11 @@ def test_scan_excludes_hidden_temporary_and_symlinks(library):
     (library / 'link.png').symlink_to(library / 'a.png')
     assert list(discover_paths(library)) == [library / 'a.png']
 
-
 def test_identity_distinguishes_disconnected_mount(library):
     identity = ensure_marker(library)
     assert storage_available(library, identity)
     (library / '.zukan-library-id').unlink()
     assert not storage_available(library, identity)
-
 
 @pytest.mark.asyncio
 async def test_migration_drains_writes_allows_reads_and_freezes_cutover(library, monkeypatch):
@@ -92,20 +85,6 @@ async def test_migration_drains_writes_allows_reads_and_freezes_cutover(library,
     finish.set(); await migration
     assert not gate.paused and not gate.frozen
 
-
-def test_copy_supports_shares_without_hardlinks(library, monkeypatch):
-    import errno
-    import os
-    source = library / 'source'; source.write_bytes(b'original')
-    target = library / 'target'
-    size, digest = file_digest(source)
-    def unsupported(*args):
-        raise OSError(errno.ENOTSUP, 'Hard links unavailable')
-    monkeypatch.setattr(os, 'link', unsupported)
-    copy_verified(source, target, {'size': size, 'sha256': digest}, 'job')
-    assert target.read_bytes() == b'original'
-
-
 def test_cleanup_recovers_staged_source_and_retains_changed_data(library):
     from backend.app.services.library_storage import cleanup_verified_source
     source = library / 'source'; destination = library / 'destination'
@@ -118,18 +97,3 @@ def test_cleanup_recovers_staged_source_and_retains_changed_data(library):
     with pytest.raises(ValueError):
         cleanup_verified_source(source, destination, entry, 'job')
     assert source.read_bytes() == b'external change'
-
-
-def test_copy_repairs_permissions_changed_by_share_publication(library, monkeypatch):
-    from backend.app.services import library_storage as service
-    source = library / 'source.jpg'; source.write_bytes(b'original')
-    target = library / 'copy.jpg'
-    publish = service.publish_without_overwrite
-    def nas_publish(temp, dest):
-        publish(temp, dest)
-        dest.chmod(0)
-    monkeypatch.setattr(service, 'publish_without_overwrite', nas_publish)
-    size, digest = file_digest(source)
-    copy_verified(source, target, {'size': size, 'sha256': digest}, 'job')
-    assert target.stat().st_mode & 0o777 == 0o644
-    assert target.read_bytes() == source.read_bytes()

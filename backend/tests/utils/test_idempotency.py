@@ -1,12 +1,8 @@
 from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
-
 import pytest
-
 from backend.app.errors.error import AppError
 from backend.app.utils.idempotency import IdempotencyStore, idempotency_body_hash, idempotency_scope
-
 
 @pytest.mark.asyncio
 async def test_idempotency_store_remember_and_replay():
@@ -15,7 +11,6 @@ async def test_idempotency_store_remember_and_replay():
     replay = await store.get_replay(scope="u:POST:/x", idempotency_key="k", body_hash="h")
     assert replay == (201, {"ok": True})
 
-
 @pytest.mark.asyncio
 async def test_idempotency_store_conflict_on_body_hash_mismatch():
     store = IdempotencyStore(ttl_seconds=3600)
@@ -23,7 +18,6 @@ async def test_idempotency_store_conflict_on_body_hash_mismatch():
     with pytest.raises(AppError) as exc:
         await store.get_replay(scope="s", idempotency_key="k", body_hash="h2")
     assert exc.value.status_code == 409
-
 
 @pytest.mark.asyncio
 async def test_idempotency_store_cleanup_expired_entries():
@@ -34,7 +28,6 @@ async def test_idempotency_store_cleanup_expired_entries():
     replay = await store.get_replay(scope="s", idempotency_key="k", body_hash="h")
     assert replay is None
 
-
 def test_idempotency_helpers():
-    assert idempotency_scope(user_id=1, method="post", path="/x") == "1:POST:/x"
-    assert idempotency_body_hash({"a": 1, "b": 2}) == idempotency_body_hash({"b": 2, "a": 1})
+    assert idempotency_scope(method='post', path='/x') == 'owner:POST:/x'
+    assert idempotency_body_hash({'a': 1, 'b': 2}) == idempotency_body_hash({'b': 2, 'a': 1})

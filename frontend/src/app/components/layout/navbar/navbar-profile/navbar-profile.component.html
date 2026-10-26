@@ -1,9 +1,4 @@
-<button
-  mat-mini-fab
-  type="button"
-  [matMenuTriggerFor]="profileMenu"
-  aria-label="Profile"
->
+<button mat-mini-fab type="button" [matMenuTriggerFor]="profileMenu" aria-label="Profile">
   <span>{{ avatarLetter() }}</span>
 </button>
 
@@ -22,10 +17,10 @@
     <div class="profile-actions">
       <button mat-stroked-button type="button" (click)="openSettings()">
         <mat-icon>settings</mat-icon>
-        <span>Account Settings</span>
+        <span>Owner preferences</span>
       </button>
 
-      @if (isAdmin()) {
+      @if (authenticated()) {
         <a mat-stroked-button routerLink="/admin">
           <mat-icon>build</mat-icon>
           <span>Administration</span>

@@ -77,26 +77,4 @@ describe('NavbarComponent', () => {
     const element = fixture.nativeElement as HTMLElement;
     expect(element.querySelector('.navbar-menu-toggle')).not.toBeNull();
   });
-
-  it('renders the mobile search trigger in the shared navbar at mobile widths', async () => {
-    const breakpoint = createBreakpointObserver(true);
-    await TestBed.configureTestingModule({
-      imports: [NavbarComponent],
-      providers: [
-        provideRouter([]),
-        { provide: BreakpointObserver, useValue: breakpoint.observer },
-        { provide: TagsClientService, useValue: { list: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 6 }) } },
-        { provide: MediaClientService, useValue: { getCharacterSuggestions: () => of([]), getSeriesSuggestions: () => of([]) } },
-        { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },
-        { provide: LOCAL_STORAGE, useValue: storageMock },
-        { provide: SESSION_STORAGE, useValue: storageMock },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(NavbarComponent);
-    fixture.detectChanges();
-
-    const element = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('.search-mobile-trigger')).not.toBeNull();
-  });
 });

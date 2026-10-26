@@ -13,7 +13,6 @@ describe('NavbarProfileComponent', () => {
       id: 'u1',
       username: 'stars',
       email: 'saber@starsbit.space',
-      is_admin: isAdmin,
       show_nsfw: false,
       tag_confidence_threshold: 0.5,
       version: 1,
@@ -45,7 +44,7 @@ describe('NavbarProfileComponent', () => {
     const overlayText = overlayContainer.getContainerElement().textContent ?? '';
     expect(overlayText).toContain('stars');
     expect(overlayText).toContain('saber@starsbit.space');
-    expect(overlayText).not.toContain('Administration');
+    expect(overlayText).toContain('Administration');
   });
 
   it('shows the admin action only for admins', async () => {

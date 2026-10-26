@@ -8,14 +8,15 @@ from backend.app.routers.deps import admin_user
 from backend.app.services import library_storage as service
 from backend.app.services import storage_maintenance
 
-router = APIRouter(prefix='/admin/storage', tags=['admin'], dependencies=[Depends(admin_user)])
+router = APIRouter(
+    prefix="/admin/storage", tags=["admin"], dependencies=[Depends(admin_user)]
+)
 media_queue = None
 
 
 class StorageSettingsUpdate(BaseModel):
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra="forbid")
     generated_dir: str | None = Field(default=None, min_length=1, max_length=512)
-    discovery_owner_id: uuid.UUID | None = None
     scan_interval_seconds: int | None = Field(default=None, ge=0)
 
 
@@ -57,15 +58,15 @@ async def get_storage(db: AsyncSession = Depends(get_db)):
     return await service.get_storage_status(db)
 
 
-@router.patch('')
-async def update_storage(body: StorageSettingsUpdate, db: AsyncSession = Depends(get_db)):
+@router.patch("")
+async def update_storage(
+    body: StorageSettingsUpdate, db: AsyncSession = Depends(get_db)
+):
     changes = body.model_dump(exclude_unset=True)
-    if 'generated_dir' in changes and changes['generated_dir'] is None:
-        raise HTTPException(422, 'Generated directory cannot be null')
-    if 'scan_interval_seconds' in changes and changes['scan_interval_seconds'] is None:
-        raise HTTPException(422, 'Scan interval cannot be null')
-    if changes.get('discovery_owner_id'):
-        changes['discovery_owner_id'] = str(changes['discovery_owner_id'])
+    if "generated_dir" in changes and changes["generated_dir"] is None:
+        raise HTTPException(422, "Generated directory cannot be null")
+    if "scan_interval_seconds" in changes and changes["scan_interval_seconds"] is None:
+        raise HTTPException(422, "Scan interval cannot be null")
     return await call(service.update_storage_settings(db, changes))
 
 

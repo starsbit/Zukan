@@ -1,5 +1,19 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { catchError, concatMap, EMPTY, expand, forkJoin, from, map, Observable, of, reduce, switchMap, tap, throwError } from 'rxjs';
+import {
+  catchError,
+  concatMap,
+  EMPTY,
+  expand,
+  forkJoin,
+  from,
+  map,
+  Observable,
+  of,
+  reduce,
+  switchMap,
+  tap,
+  throwError,
+} from 'rxjs';
 import { MediaClientService, MediaSearchParams } from './web/media-client.service';
 import { groupByDay, groupTimelineByYear } from '../utils/gallery-grouping.utils';
 import {
@@ -7,7 +21,6 @@ import {
   MediaAnnotationBatchUpdate,
   MediaRead,
   MediaType,
-  MediaVisibility,
   ProcessingStatus,
   TaggingStatus,
 } from '../models/media';
@@ -56,7 +69,11 @@ export class GalleryStore {
     const optimisticById = new Map(optimistic.map((item) => [item.id, item]));
     const serverItems = loadedItems.map((item) => {
       const optimisticMatch = optimisticById.get(item.id);
-      if (!optimisticMatch || !this.isStillProcessing(item) || !optimisticMatch.client_preview_url) {
+      if (
+        !optimisticMatch ||
+        !this.isStillProcessing(item) ||
+        !optimisticMatch.client_preview_url
+      ) {
         return item;
       }
 
@@ -71,10 +88,7 @@ export class GalleryStore {
     const serverIds = new Set(serverItems.map((item) => item.id));
     const unresolvedOptimistic = optimistic.filter((item) => !serverIds.has(item.id));
 
-    return this.sortItems([
-      ...unresolvedOptimistic,
-      ...serverItems,
-    ]);
+    return this.sortItems([...unresolvedOptimistic, ...serverItems]);
   });
   readonly hasMore = computed(() => this.months().some((month) => month.hasMore));
   readonly total = computed(() => {
@@ -84,7 +98,9 @@ export class GalleryStore {
     }
 
     const serverIds = new Set(this.loadedItems().map((item) => item.id));
-    const unresolvedOptimisticCount = this._optimisticItems().filter((item) => !serverIds.has(item.id)).length;
+    const unresolvedOptimisticCount = this._optimisticItems().filter(
+      (item) => !serverIds.has(item.id),
+    ).length;
     return total + unresolvedOptimisticCount;
   });
   readonly loading = this._loading.asReadonly();
@@ -261,7 +277,7 @@ export class GalleryStore {
         matched = true;
         next.set(monthKey, {
           ...month,
-          items: month.items.map((item) => item.id === updated.id ? updated : item),
+          items: month.items.map((item) => (item.id === updated.id ? updated : item)),
         });
       }
       if (!matched) {
@@ -303,23 +319,21 @@ export class GalleryStore {
     );
   }
 
-  addAcceptedUploads(files: File[], visibility: MediaVisibility, batchId: string, mediaIds: Array<string | null>): void {
-    const accepted = files
-      .map((file, index) => this.buildOptimisticMedia(file, visibility, batchId, mediaIds[index] ?? null));
+  addAcceptedUploads(files: File[], batchId: string, mediaIds: Array<string | null>): void {
+    const accepted = files.map((file, index) =>
+      this.buildOptimisticMedia(file, batchId, mediaIds[index] ?? null),
+    );
 
     this._optimisticItems.update((items) => {
       const existingIds = new Set(items.map((item) => item.id));
-      return [
-        ...accepted.filter((item) => !existingIds.has(item.id)),
-        ...items,
-      ];
+      return [...accepted.filter((item) => !existingIds.has(item.id)), ...items];
     });
   }
 
   removeItem(id: string): void {
     this.dropOptimisticItems([id]);
     this.removeLoadedItems([id]);
-    this._total.update((t) => t != null ? t - 1 : null);
+    this._total.update((t) => (t != null ? t - 1 : null));
   }
 
   removeItems(ids: string[]): void {
@@ -328,34 +342,12 @@ export class GalleryStore {
     const before = this.loadedItems().length;
     this.removeLoadedItems(ids);
     const removed = before - this.loadedItems().length;
-    this._total.update((t) => t != null ? t - removed : null);
+    this._total.update((t) => (t != null ? t - removed : null));
   }
 
   batchDelete(ids: string[]): Observable<{ processed: number; skipped: number }> {
     return this.client.batchDelete({ media_ids: ids }).pipe(
       tap(() => this.removeItems(ids)),
-      switchMap((result) =>
-        this.refresh().pipe(
-          map(() => result),
-        ),
-      ),
-    );
-  }
-
-  batchUpdateVisibility(ids: string[], visibility: MediaVisibility): Observable<{ processed: number; skipped: number }> {
-    if (ids.length === 0) {
-      return of({ processed: 0, skipped: 0 });
-    }
-
-    return from(this.chunkIds(ids, GalleryStore.BULK_MUTATION_CHUNK_SIZE)).pipe(
-      concatMap((chunk) => this.client.batchUpdate({ media_ids: chunk, visibility })),
-      reduce(
-        (acc, result) => ({
-          processed: acc.processed + result.processed,
-          skipped: acc.skipped + result.skipped,
-        }),
-        { processed: 0, skipped: 0 },
-      ),
       switchMap((result) =>
         this.refresh().pipe(
           map(() => result),
@@ -483,19 +475,11 @@ export class GalleryStore {
     this._timelineLoading.set(false);
   }
 
-  private buildOptimisticMedia(
-    file: File,
-    visibility: MediaVisibility,
-    batchId: string,
-    mediaId: string | null,
-  ): MediaRead {
+  private buildOptimisticMedia(file: File, batchId: string, mediaId: string | null): MediaRead {
     const mediaType = this.mediaTypeFromFile(file);
 
     return {
       id: mediaId ?? `optimistic:${batchId}:${file.name}:${file.lastModified}:${file.size}`,
-      uploader_id: null,
-      owner_id: null,
-      visibility,
       filename: file.name,
       original_filename: file.name,
       media_type: mediaType,
@@ -516,18 +500,17 @@ export class GalleryStore {
       is_nsfw: false,
       tagging_status: TaggingStatus.PENDING,
       tagging_error: null,
-      thumbnail_status: mediaType === MediaType.VIDEO
-        ? ProcessingStatus.NOT_APPLICABLE
-        : ProcessingStatus.PENDING,
-      poster_status: mediaType === MediaType.VIDEO
-        ? ProcessingStatus.PENDING
-        : ProcessingStatus.NOT_APPLICABLE,
+      thumbnail_status:
+        mediaType === MediaType.VIDEO ? ProcessingStatus.NOT_APPLICABLE : ProcessingStatus.PENDING,
+      poster_status:
+        mediaType === MediaType.VIDEO ? ProcessingStatus.PENDING : ProcessingStatus.NOT_APPLICABLE,
       ocr_text: null,
       is_favorited: false,
       favorite_count: 0,
-      client_preview_url: mediaType === MediaType.IMAGE || mediaType === MediaType.GIF
-        ? URL.createObjectURL(file)
-        : null,
+      client_preview_url:
+        mediaType === MediaType.IMAGE || mediaType === MediaType.GIF
+          ? URL.createObjectURL(file)
+          : null,
       client_is_optimistic: true,
       client_batch_id: batchId,
       client_source_filename: file.name,
@@ -719,12 +702,16 @@ export class GalleryStore {
 
   private isStillProcessing(item: MediaRead): boolean {
     if (item.media_type === MediaType.VIDEO) {
-      return item.poster_status === ProcessingStatus.PENDING
-        || item.poster_status === ProcessingStatus.PROCESSING;
+      return (
+        item.poster_status === ProcessingStatus.PENDING ||
+        item.poster_status === ProcessingStatus.PROCESSING
+      );
     }
 
-    return item.thumbnail_status === ProcessingStatus.PENDING
-      || item.thumbnail_status === ProcessingStatus.PROCESSING;
+    return (
+      item.thumbnail_status === ProcessingStatus.PENDING ||
+      item.thumbnail_status === ProcessingStatus.PROCESSING
+    );
   }
 
   private fetchAllMatchingIds(): Observable<string[]> {
@@ -746,10 +733,7 @@ export class GalleryStore {
           after: page.next_cursor,
         });
       }),
-      reduce((ids, page) => ([
-        ...ids,
-        ...page.items.map((item) => item.id),
-      ]), [] as string[]),
+      reduce((ids, page) => [...ids, ...page.items.map((item) => item.id)], [] as string[]),
     );
   }
 

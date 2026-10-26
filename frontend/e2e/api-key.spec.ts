@@ -15,7 +15,7 @@ async function getAccessToken(page: Page): Promise<string> {
 
 async function openAccountSettings(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Profile' }).click();
-  await page.getByRole('button', { name: 'Account Settings' }).click();
+  await page.getByRole('button', { name: 'Owner preferences' }).click();
   await expect(page.locator('zukan-user-settings-dialog')).toBeVisible();
 }
 

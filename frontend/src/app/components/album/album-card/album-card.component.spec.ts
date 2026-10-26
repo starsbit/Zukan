@@ -2,7 +2,6 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { AlbumAccessRole } from '../../../models/albums';
 import { MediaService } from '../../../services/media.service';
 import { AlbumsClientService } from '../../../services/web/albums-client.service';
 import { AlbumCardComponent } from './album-card.component';
@@ -26,19 +25,10 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Preview album',
       description: 'desc',
       cover_media_id: null,
-      preview_media: [
-        { id: 'm1' },
-        { id: 'm2' },
-        { id: 'm3' },
-        { id: 'm4' },
-        { id: 'm5' },
-      ],
+      preview_media: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }, { id: 'm4' }, { id: 'm5' }],
       media_count: 5,
       version: 1,
       created_at: '2026-03-20T00:00:00Z',
@@ -78,17 +68,10 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Preview album',
       description: 'desc',
       cover_media_id: null,
-      preview_media: [
-        { id: 'm1' },
-        { id: 'm2' },
-        { id: 'm3' },
-      ],
+      preview_media: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }],
       media_count: 3,
       version: 1,
       created_at: '2026-03-20T00:00:00Z',
@@ -111,14 +94,11 @@ describe('AlbumCardComponent', () => {
   it('fetches more album media for previews when the album payload only contains one preview item', async () => {
     const getThumbnailUrl = vi.fn((id: string) => of(`blob:${id}`));
     const albumsClient = {
-      listMedia: vi.fn(() => of({
-        items: [
-          { id: 'm1' },
-          { id: 'm2' },
-          { id: 'm3' },
-          { id: 'm4' },
-        ],
-      })),
+      listMedia: vi.fn(() =>
+        of({
+          items: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }, { id: 'm4' }],
+        }),
+      ),
     };
 
     await TestBed.configureTestingModule({
@@ -133,9 +113,6 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Preview album',
       description: 'desc',
       cover_media_id: null,
@@ -179,16 +156,10 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Cover album',
       description: null,
       cover_media_id: 'cover-1',
-      preview_media: [
-        { id: 'm2' },
-        { id: 'm3' },
-      ],
+      preview_media: [{ id: 'm2' }, { id: 'm3' }],
       media_count: 4,
       version: 1,
       created_at: '2026-03-20T00:00:00Z',
@@ -215,14 +186,11 @@ describe('AlbumCardComponent', () => {
   it('keeps the grid layout for backend-default covers when preview media starts with the cover id', async () => {
     const getThumbnailUrl = vi.fn((id: string) => of(`blob:${id}`));
     const albumsClient = {
-      listMedia: vi.fn(() => of({
-        items: [
-          { id: 'm1' },
-          { id: 'm2' },
-          { id: 'm3' },
-          { id: 'm4' },
-        ],
-      })),
+      listMedia: vi.fn(() =>
+        of({
+          items: [{ id: 'm1' }, { id: 'm2' }, { id: 'm3' }, { id: 'm4' }],
+        }),
+      ),
     };
 
     await TestBed.configureTestingModule({
@@ -237,9 +205,6 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Auto cover album',
       description: null,
       cover_media_id: 'm1',
@@ -282,9 +247,6 @@ describe('AlbumCardComponent', () => {
     const fixture = TestBed.createComponent(AlbumCardComponent);
     fixture.componentRef.setInput('album', {
       id: 'a1',
-      owner_id: 'u1',
-      owner: { id: 'u1', username: 'owner' },
-      access_role: AlbumAccessRole.OWNER,
       name: 'Single album',
       description: null,
       cover_media_id: 'cover-1',

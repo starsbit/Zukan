@@ -22,11 +22,6 @@ export enum ProcessingStatus {
   NOT_APPLICABLE = 'not_applicable',
 }
 
-export enum MediaVisibility {
-  PRIVATE = 'private',
-  PUBLIC = 'public',
-}
-
 export enum MediaListState {
   ACTIVE = 'active',
   TRASHED = 'trashed',
@@ -69,11 +64,6 @@ export interface TagWithConfidence {
 
 export interface MediaRead {
   id: string;
-  uploader_id: string | null;
-  uploader_username?: string | null;
-  owner_id: string | null;
-  owner_username?: string | null;
-  visibility: MediaVisibility;
   file_status?: 'available' | 'missing' | 'changed';
   filename: string;
   original_filename: string | null;
@@ -123,7 +113,6 @@ export interface MediaUpdate {
   metadata?: MediaMetadataUpdate | null;
   deleted?: boolean | null;
   favorited?: boolean | null;
-  visibility?: MediaVisibility | null;
   metadata_review_dismissed?: boolean | null;
   ocr_text_override?: string | null;
   is_nsfw_override?: boolean | null;
@@ -140,7 +129,6 @@ export interface MediaListParams {
   sort_by?: string;
   sort_order?: 'asc' | 'desc';
   state?: MediaListState;
-  visibility?: MediaVisibility;
   tags?: string[];
   tag_mode?: TagFilterMode;
   nsfw_filter?: NsfwFilter;
@@ -165,7 +153,6 @@ export interface MediaBatchUpdate {
   media_ids: string[];
   deleted?: boolean | null;
   favorited?: boolean | null;
-  visibility?: MediaVisibility | null;
   metadata_review_dismissed?: boolean | null;
 }
 

@@ -51,7 +51,11 @@ export class ReviewReminderService {
     userId: string,
     summary: ImportBatchReviewSummaryResponse,
   ): NotificationRead | null {
-    if (summary.unresolved_count <= 0 || summary.review_batch_ids.length === 0 || !summary.latest_batch_id) {
+    if (
+      summary.unresolved_count <= 0 ||
+      summary.review_batch_ids.length === 0 ||
+      !summary.latest_batch_id
+    ) {
       return null;
     }
 
@@ -64,7 +68,6 @@ export class ReviewReminderService {
 
     return {
       id: `review-reminder:${signature}`,
-      user_id: userId,
       type: NotificationType.METADATA_REVIEW,
       title: 'Some uploaded media still need names',
       body: `${unresolvedCount} uploaded file${unresolvedCount === 1 ? '' : 's'} still need character or series names.`,
@@ -88,7 +91,7 @@ export class ReviewReminderService {
 
     try {
       const parsed = JSON.parse(raw);
-      return typeof parsed === 'object' && parsed ? parsed as Record<string, string> : {};
+      return typeof parsed === 'object' && parsed ? (parsed as Record<string, string>) : {};
     } catch {
       return {};
     }

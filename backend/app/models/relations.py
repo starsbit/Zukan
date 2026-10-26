@@ -1,11 +1,22 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.app.models.media import Media
 import uuid
 from datetime import datetime
 from enum import Enum
-
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from backend.app.database import Base
 
 
@@ -15,31 +26,32 @@ class MediaEntityType(str, Enum):
 
 
 class OwnedEntity(Base):
-    __tablename__ = "owned_entities"
     __table_args__ = (
-        UniqueConstraint("owner_user_id", "entity_type", "normalized_name", name="uq_owned_entities_owner_type_normalized_name"),
-        Index("ix_owned_entities_owner_type_media_count_name", "owner_user_id", "entity_type", "media_count", "name"),
+        UniqueConstraint(
+            "entity_type", "normalized_name", name="uq_entities_type_normalized_name"
+        ),
     )
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    owner_user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+    __tablename__ = "owned_entities"
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     entity_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(512), nullable=False)
-    normalized_name: Mapped[str] = mapped_column(String(512), nullable=False, index=True)
-    media_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
+    normalized_name: Mapped[str] = mapped_column(
+        String(512), nullable=False, index=True
     )
-
-    media_entities: Mapped[list["MediaEntity"]] = relationship("MediaEntity", back_populates="owned_entity") # type: ignore
+    media_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    media_entities: Mapped[list["MediaEntity"]] = relationship(
+        "MediaEntity", back_populates="owned_entity"
+    )
 
 
 class MediaEntity(Base):

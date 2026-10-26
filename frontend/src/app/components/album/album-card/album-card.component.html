@@ -9,8 +9,11 @@
     @if (previewUrls().length > 0) {
       <div class="album-card__preview-grid" [attr.data-layout]="previewLayout()">
         @for (url of visiblePreviewUrls(); track url; let index = $index) {
-          <div class="album-card__preview-tile" [class.album-card__preview-tile--hero]="previewLayout() === 'trio' && index === 0">
-            <img [src]="url" alt="" loading="lazy">
+          <div
+            class="album-card__preview-tile"
+            [class.album-card__preview-tile--hero]="previewLayout() === 'trio' && index === 0"
+          >
+            <img [src]="url" alt="" loading="lazy" />
           </div>
         }
         @if (previewOverflowCount() > 0) {
@@ -26,10 +29,7 @@
   </div>
 
   <mat-card-content class="album-card__body">
-    <div class="album-card__meta">
-      <mat-chip class="album-card__chip">{{ accessLabel() }}</mat-chip>
-      <span class="album-card__owner">by {{ ownerName() }}</span>
-    </div>
+    <div class="album-card__meta"></div>
 
     <mat-card-title>{{ album().name }}</mat-card-title>
     <p>{{ album().description || 'No description yet.' }}</p>
@@ -43,11 +43,7 @@
           <mat-icon aria-hidden="true">edit</mat-icon>
         </button>
       }
-      @if (allowInvite()) {
-        <button mat-icon-button type="button" aria-label="Invite to album" (click)="onInvite($event)">
-          <mat-icon aria-hidden="true">person_add</mat-icon>
-        </button>
-      }
+
       @if (allowDelete()) {
         <button mat-icon-button type="button" aria-label="Delete album" (click)="onDelete($event)">
           <mat-icon aria-hidden="true">delete</mat-icon>

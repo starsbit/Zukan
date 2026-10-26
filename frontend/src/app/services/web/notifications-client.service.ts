@@ -36,20 +36,6 @@ export class NotificationsClientService {
     return this.http.post<void>(`${this.base}/api/v1/me/notifications/read-all`, null);
   }
 
-  acceptInvite(id: string): Observable<NotificationRead> {
-    return this.http.post<NotificationRead>(
-      `${this.base}/api/v1/me/notifications/${id}/accept`,
-      null,
-    );
-  }
-
-  rejectInvite(id: string): Observable<NotificationRead> {
-    return this.http.post<NotificationRead>(
-      `${this.base}/api/v1/me/notifications/${id}/reject`,
-      null,
-    );
-  }
-
   delete(id: string): Observable<void> {
     return this.http.delete<void>(`${this.base}/api/v1/me/notifications/${id}`);
   }

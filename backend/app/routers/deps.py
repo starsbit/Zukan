@@ -1,52 +1,48 @@
-from fastapi import Depends, status
-from fastapi.security import HTTPBasic, HTTPBasicCredentials, OAuth2PasswordBearer
+import uuid
+from datetime import UTC, datetime
+from fastapi import Depends, Request
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from backend.app.database import AsyncSessionLocal, get_db
-from backend.app.errors.auth import admin_required, invalid_token, not_authenticated, user_not_found
+from backend.app.database import get_db
 from backend.app.errors.error import AppError
-from backend.app.models.auth import User
-from backend.app.utils.tokens import decode_access_token
+from backend.app.models.auth import AuthSession, User
+from backend.app.services.auth import AuthService
+from backend.app.utils.tokens import decode_access_claims
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
-docs_basic = HTTPBasic()
 
 
 async def current_user(
+    token: str | None = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)
+) -> User:
+    service = AuthService(db)
+    if token:
+        claims = decode_access_claims(token)
+        if claims:
+            session = await db.get(AuthSession, uuid.UUID(claims["sid"]))
+            if (
+                session
+                and (not session.revoked)
+                and (session.expires_at.replace(tzinfo=UTC) > datetime.now(UTC))
+            ):
+                user = await service.get_user_by_id(uuid.UUID(claims["sub"]))
+                if user:
+                    return user
+        if token.startswith("zk_"):
+            user = await service.get_user_by_api_key(token)
+            if user:
+                return user
+    raise AppError(
+        status_code=401, code="not_authenticated", detail="Not authenticated"
+    )
+
+
+admin_user = current_user
+
+
+async def docs_user(
+    request: Request,
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if token is not None:
-        from backend.app.services.auth import AuthService
-        service = AuthService(db)
-        user_id = decode_access_token(token)
-        if user_id is not None:
-            user = await service.get_user_by_id(user_id)
-            if user is None:
-                raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=user_not_found, detail="User not found")
-            return user
-        user = await service.get_user_by_api_key(token)
-        if user is not None:
-            return user
-        raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=invalid_token, detail="Invalid token")
-    raise AppError(status_code=status.HTTP_401_UNAUTHORIZED, code=not_authenticated, detail="Not authenticated")
-
-
-async def admin_user(user: User = Depends(current_user)) -> User:
-    if not user.is_admin:
-        raise AppError(status_code=status.HTTP_403_FORBIDDEN, code=admin_required, detail="Admin access required")
-    return user
-
-
-async def docs_user(credentials: HTTPBasicCredentials = Depends(docs_basic)) -> User:
-    async with AsyncSessionLocal() as db:
-        from backend.app.services.auth import AuthService
-        user = await AuthService(db).authenticate_basic_user(credentials.username, credentials.password)
-        if user is None:
-            from fastapi import HTTPException
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unauthorized",
-                headers={"WWW-Authenticate": "Basic"},
-            )
-        return user
+    return await current_user(token or request.cookies.get("zukan_docs"), db)

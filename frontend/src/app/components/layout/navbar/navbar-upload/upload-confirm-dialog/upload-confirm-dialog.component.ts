@@ -9,9 +9,7 @@ export interface UploadConfirmDialogData {
   fileCount: number;
 }
 
-export interface UploadConfirmDialogResult {
-  isPublic: boolean;
-}
+export interface UploadConfirmDialogResult {}
 
 @Component({
   selector: 'zukan-upload-confirm-dialog',
@@ -24,10 +22,8 @@ export class UploadConfirmDialogComponent {
   protected readonly data = inject<UploadConfirmDialogData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<UploadConfirmDialogComponent>);
 
-  protected readonly isPublic = signal(false);
-
   protected confirm(): void {
-    this.dialogRef.close({ isPublic: this.isPublic() } satisfies UploadConfirmDialogResult);
+    this.dialogRef.close({} satisfies UploadConfirmDialogResult);
   }
 
   protected cancel(): void {

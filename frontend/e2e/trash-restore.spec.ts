@@ -49,8 +49,6 @@ async function uploadPngs(
       );
     }
 
-    form.append('visibility', 'private');
-
     const response = await fetch('/api/v1/media', {
       method: 'POST',
       headers: { Authorization: `Bearer ${authToken}` },

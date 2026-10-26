@@ -1,27 +1,29 @@
 from __future__ import annotations
 from backend.app.utils.library_paths import resolve_media_path
-
 import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
 from backend.app.config import settings
 from backend.app.errors.error import AppError
 from backend.app.errors.tags import tag_not_found
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag
-from backend.app.models.relations import MediaEntity, MediaEntityType
+from backend.app.models.relations import MediaEntityType
 from backend.app.models.tags import Tag
 from backend.app.repositories.media import MediaRepository
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
-from backend.app.schemas import CATEGORY_NAMES, MetadataListScope, TagListResponse, TagManagementResult, TagRead
+from backend.app.schemas import (
+    CATEGORY_NAMES,
+    MetadataListScope,
+    TagListResponse,
+    TagManagementResult,
+    TagRead,
+)
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.utils.pagination import decode_cursor_typed, encode_cursor
 from backend.app.utils.tagging import (
@@ -56,8 +58,6 @@ class TagService:
 
     async def get_manageable_tag_by_id(self, user: User, tag_id: int) -> Tag:
         tag = await self.get_tag_by_id(tag_id)
-        if not user.is_admin and tag.owner_user_id != user.id:
-            raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
         return tag
 
     async def list_tags(
@@ -73,22 +73,29 @@ class TagService:
         scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
     ) -> TagListResponse:
         tags_repo = TagRepository(self._db)
-        total = await tags_repo.count_accessible(user, category=category, query=query, scope=scope)
-        tag_list = await tags_repo.list_accessible(user, category=category, query=query, scope=scope)
-
+        total = await tags_repo.count_accessible(
+            user=user, category=category, query=query, scope=scope
+        )
+        tag_list = await tags_repo.list_accessible(
+            user=user, category=category, query=query, scope=scope
+        )
         reverse = sort_order == "desc"
         if sort_by == "name":
-            tag_list = sorted(tag_list, key=lambda row: (row.name, row.id), reverse=reverse)
+            tag_list = sorted(
+                tag_list, key=lambda row: (row.name, row.id), reverse=reverse
+            )
         else:
-            tag_list = sorted(tag_list, key=lambda row: (row.media_count, row.id), reverse=reverse)
-
+            tag_list = sorted(
+                tag_list, key=lambda row: (row.media_count, row.id), reverse=reverse
+            )
         if after:
             value_type = "str" if sort_by == "name" else "int"
             decoded = decode_cursor_typed(after, value_type, id_type="int")
             if decoded is not None:
                 cursor_val, cursor_id = decoded
                 tag_list = [
-                    row for row in tag_list
+                    row
+                    for row in tag_list
                     if _tag_row_after_cursor(
                         row,
                         sort_by=sort_by,
@@ -97,16 +104,13 @@ class TagService:
                         cursor_id=cursor_id,
                     )
                 ]
-
         has_more = len(tag_list) > page_size
         tag_list = tag_list[:page_size]
-
         next_cursor = None
         if has_more and tag_list:
             last = tag_list[-1]
             sort_val = last.name if sort_by == "name" else last.media_count
             next_cursor = encode_cursor(sort_val, last.id)
-
         return TagListResponse(
             total=total,
             next_cursor=next_cursor,
@@ -177,40 +181,55 @@ class TagService:
         cleaned_name = new_name.strip()
         if not cleaned_name or cleaned_name == tag.name:
             return TagManagementResult(matched_media=tag.media_count, updated_media=0)
-
         tags_repo = TagRepository(self._db)
-        existing_tag = await tags_repo.get_by_name(tag.owner_user_id, cleaned_name)
+        existing_tag = await tags_repo.get_by_name(cleaned_name)
         if existing_tag is not None and existing_tag.id != tag.id:
             return await self.merge_tag(user, source_tag=tag, target_tag=existing_tag)
-
         tag.name = cleaned_name
         await self._db.commit()
-        logger.info("Renamed tag user_id=%s tag_id=%s new_name=%s", user.id, tag.id, cleaned_name)
-        return TagManagementResult(matched_media=tag.media_count, updated_media=tag.media_count)
+        logger.info(
+            "Renamed tag user_id=%s tag_id=%s new_name=%s",
+            user.id,
+            tag.id,
+            cleaned_name,
+        )
+        return TagManagementResult(
+            matched_media=tag.media_count, updated_media=tag.media_count
+        )
 
     async def merge_tag_by_id(self, user, *, tag_id: int, target_tag_id: int) -> TagManagementResult:
         source_tag = await self.get_manageable_tag_by_id(user, tag_id)
         target_tag = await self.get_manageable_tag_by_id(user, target_tag_id)
         return await self.merge_tag(user, source_tag=source_tag, target_tag=target_tag)
 
-    async def merge_tag(self, user, *, source_tag: Tag, target_tag: Tag) -> TagManagementResult:
+    async def merge_tag(
+        self, user, *, source_tag: Tag, target_tag: Tag
+    ) -> TagManagementResult:
         if source_tag.id == target_tag.id:
             return TagManagementResult(matched_media=0, updated_media=0)
-        if source_tag.owner_user_id != target_tag.owner_user_id:
-            raise AppError(status_code=404, code=tag_not_found, detail="Tag not found")
-
         tags_repo = TagRepository(self._db)
         media_rows = (
-            await self._db.execute(
-                _manageable_media_stmt(user)
-                .where(Media.id.in_(select(MediaTag.media_id).where(MediaTag.tag_id == source_tag.id)))
-                .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
+            (
+                await self._db.execute(
+                    _manageable_media_stmt(user)
+                    .where(
+                        Media.id.in_(
+                            select(MediaTag.media_id).where(
+                                MediaTag.tag_id == source_tag.id
+                            )
+                        )
+                    )
+                    .options(selectinload(Media.media_tags).selectinload(MediaTag.tag))
+                )
             )
-        ).scalars().all()
-
+            .scalars()
+            .all()
+        )
         updated = 0
         for media in media_rows:
-            next_payloads = _merge_media_tag_payloads(media, source_tag=source_tag, target_tag=target_tag)
+            next_payloads = _merge_media_tag_payloads(
+                media, source_tag=source_tag, target_tag=target_tag
+            )
             if next_payloads is None:
                 continue
             await tags_repo.set_media_tag_links(media, next_payloads)
@@ -218,7 +237,6 @@ class TagService:
             media.is_nsfw = tag_names_mark_nsfw(remaining_names)
             media.is_sensitive = tag_names_mark_sensitive(remaining_names)
             updated += 1
-
         await self._db.flush()
         remaining = await tags_repo.get_by_id(source_tag.id)
         deleted_source = remaining is None
@@ -319,26 +337,34 @@ class TagService:
         assert last_error is not None
         raise last_error
 
-    async def _store_tagging_result(self, media: Media, tagging_result: TaggingResult) -> None:
-        uploader = None
-        if media.uploader_id is not None:
-            uploader = await self._db.get(User, media.uploader_id)
-        tag_threshold = uploader.tag_confidence_threshold if uploader is not None else settings.tagger_threshold_general
-
+    async def _store_tagging_result(
+        self, media: Media, tagging_result: TaggingResult
+    ) -> None:
+        uploader = await self._db.scalar(select(User))
+        tag_threshold = (
+            uploader.tag_confidence_threshold
+            if uploader is not None
+            else settings.tagger_threshold_general
+        )
         filtered_predictions = [
-            p for p in tagging_result.predictions
+            p
+            for p in tagging_result.predictions
             if p.category == 9 or p.confidence >= tag_threshold
         ]
-
-        tag_payloads = [(p.name, p.category, p.confidence) for p in filtered_predictions]
+        tag_payloads = [
+            (p.name, p.category, p.confidence) for p in filtered_predictions
+        ]
         await TagRepository(self._db).set_media_tag_links(media, tag_payloads)
         filtered_tag_names = [p.name for p in filtered_predictions]
-        media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(filtered_tag_names)
-        media.is_sensitive = tagging_result.is_sensitive or tag_names_mark_sensitive(filtered_tag_names)
+        media.is_nsfw = tagging_result.is_nsfw or tag_names_mark_nsfw(
+            filtered_tag_names
+        )
+        media.is_sensitive = tagging_result.is_sensitive or tag_names_mark_sensitive(
+            filtered_tag_names
+        )
         media.tagging_status = "done"
         media.tagging_error = None
         media.tagging_finished_at = datetime.now(timezone.utc)
-
         entity_predictions = [
             (MediaEntityType.character, prediction)
             for prediction in filtered_predictions
@@ -354,8 +380,16 @@ class TagService:
                 continue
             seen_entities.add(key)
         entity_repo = MediaEntityRepository(self._db)
-        character_names = [prediction.name for entity_type, prediction in entity_predictions if entity_type == MediaEntityType.character]
-        series_names = [prediction.name for entity_type, prediction in entity_predictions if entity_type == MediaEntityType.series]
+        character_names = [
+            prediction.name
+            for entity_type, prediction in entity_predictions
+            if entity_type == MediaEntityType.character
+        ]
+        series_names = [
+            prediction.name
+            for entity_type, prediction in entity_predictions
+            if entity_type == MediaEntityType.series
+        ]
         await entity_repo.add_media_entities(
             media,
             entity_type=MediaEntityType.character,
@@ -372,15 +406,19 @@ class TagService:
             confidence=None,
             replace_existing_type=True,
         )
-
         if character_names or series_names:
-            by_name = {prediction.name: prediction.confidence for _, prediction in entity_predictions}
+            by_name = {
+                prediction.name: prediction.confidence
+                for _, prediction in entity_predictions
+            }
             for entity in await entity_repo.get_by_media(media.id):
-                if entity.entity_type not in {MediaEntityType.character, MediaEntityType.series}:
+                if entity.entity_type not in {
+                    MediaEntityType.character,
+                    MediaEntityType.series,
+                }:
                     continue
                 if entity.source == "tagger":
                     entity.confidence = by_name.get(entity.name, entity.confidence)
-
         await self._db.commit()
         logger.info(
             "Tagging finished media_id=%s filtered_tags=%s entities=%s is_nsfw=%s is_sensitive=%s",
@@ -394,10 +432,6 @@ class TagService:
 
 def _manageable_media_stmt(user):
     stmt = select(Media)
-    if not user.is_admin:
-        stmt = stmt.where(
-            (Media.uploader_id == user.id) | (Media.owner_id == user.id)
-        )
     return stmt
 
 

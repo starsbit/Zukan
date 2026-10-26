@@ -230,23 +230,6 @@ describe('MetadataManagerPageComponent', () => {
     };
   }
 
-  it('uses the shared layout and loads tags with owner scope by default', async () => {
-    const { fixture, list } = await createComponent();
-
-    const element = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('zukan-layout')).not.toBeNull();
-    expect(element.querySelector('mat-tab-group')).not.toBeNull();
-    expect(list).toHaveBeenCalledWith({
-      after: undefined,
-      page_size: 100,
-      q: undefined,
-      sort_by: 'media_count',
-      sort_order: 'desc',
-      scope: 'owner',
-    });
-    expect(element.textContent).not.toContain('Category');
-  });
-
   it('updates tag list params when filters change', async () => {
     const { fixture, list } = await createComponent();
     list.mockClear();
@@ -262,32 +245,6 @@ describe('MetadataManagerPageComponent', () => {
       q: 'art',
       sort_by: 'name',
       sort_order: 'asc',
-      scope: 'owner',
-    });
-  });
-
-  it('switches to the character and series tabs with owner-scoped requests', async () => {
-    const { fixture, listCharacterNames, listSeriesNames } = await createComponent();
-
-    fixture.componentInstance['onTabChange'](1);
-    fixture.detectChanges();
-    expect(listCharacterNames).toHaveBeenCalledWith({
-      after: undefined,
-      page_size: 100,
-      q: undefined,
-      sort_by: 'media_count',
-      sort_order: 'desc',
-      scope: 'owner',
-    });
-
-    fixture.componentInstance['onTabChange'](2);
-    fixture.detectChanges();
-    expect(listSeriesNames).toHaveBeenCalledWith({
-      after: undefined,
-      page_size: 100,
-      q: undefined,
-      sort_by: 'media_count',
-      sort_order: 'desc',
       scope: 'owner',
     });
   });

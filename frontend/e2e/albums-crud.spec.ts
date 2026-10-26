@@ -49,8 +49,6 @@ async function uploadPngs(
       );
     }
 
-    form.append('visibility', 'private');
-
     const response = await fetch('/api/v1/media', {
       method: 'POST',
       headers: { Authorization: `Bearer ${authToken}` },
@@ -219,9 +217,6 @@ test.describe.serial('Albums CRUD', () => {
         json: {
           items: uploadedIds.map((id, index) => ({
             id,
-            uploader_id: 'u1',
-            owner_id: 'u1',
-            visibility: 'private',
             filename: `album-e2e-${index + 1}.png`,
             original_filename: null,
             media_type: 'image',

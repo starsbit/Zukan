@@ -1,4 +1,14 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
@@ -6,7 +16,7 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { RouterLink } from '@angular/router';
 import { LazyViewportDirective } from '../../../directives/lazy-viewport.directive';
-import { AlbumAccessRole, AlbumRead } from '../../../models/albums';
+import { AlbumRead } from '../../../models/albums';
 import { MediaService } from '../../../services/media.service';
 import { AlbumsClientService } from '../../../services/web/albums-client.service';
 import {
@@ -17,7 +27,14 @@ import {
 
 @Component({
   selector: 'zukan-album-card',
-  imports: [LazyViewportDirective, MatButtonModule, MatCardModule, MatChipsModule, MatIconModule, RouterLink],
+  imports: [
+    LazyViewportDirective,
+    MatButtonModule,
+    MatCardModule,
+    MatChipsModule,
+    MatIconModule,
+    RouterLink,
+  ],
   templateUrl: './album-card.component.html',
   styleUrl: './album-card.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -25,11 +42,9 @@ import {
 export class AlbumCardComponent {
   readonly album = input.required<AlbumRead>();
   readonly allowEdit = input(false);
-  readonly allowInvite = input(false);
   readonly allowDelete = input(false);
 
   readonly editRequested = output<AlbumRead>();
-  readonly inviteRequested = output<AlbumRead>();
   readonly deleteRequested = output<AlbumRead>();
 
   private readonly destroyRef = inject(DestroyRef);
@@ -42,18 +57,6 @@ export class AlbumCardComponent {
   readonly visiblePreviewUrls = computed(() => this.previewUrls().slice(0, 4));
   readonly previewOverflowCount = computed(() => Math.max(this.previewUrls().length - 4, 0));
   readonly previewLayout = computed(() => getAlbumPreviewLayout(this.visiblePreviewUrls().length));
-
-  readonly accessLabel = computed(() => {
-    switch (this.album().access_role) {
-      case AlbumAccessRole.OWNER:
-        return 'Owner';
-      case AlbumAccessRole.EDITOR:
-        return 'Can edit';
-      default:
-        return 'View only';
-    }
-  });
-  readonly ownerName = computed(() => this.album().owner?.username ?? 'Unknown');
   readonly hasExplicitCover = computed(() => hasExplicitAlbumCover(this.album()));
 
   constructor() {
@@ -81,11 +84,6 @@ export class AlbumCardComponent {
   onDelete(event: Event): void {
     event.stopPropagation();
     this.deleteRequested.emit(this.album());
-  }
-
-  onInvite(event: Event): void {
-    event.stopPropagation();
-    this.inviteRequested.emit(this.album());
   }
 
   private loadPreviewUrls(): void {

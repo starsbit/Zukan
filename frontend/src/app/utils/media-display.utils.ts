@@ -1,4 +1,4 @@
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../models/media';
 
 const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
@@ -145,10 +145,6 @@ export function formatMediaType(value: MediaType | string | null | undefined): s
   }
 
   return humanizeBackendLabel(value);
-}
-
-export function formatVisibility(value: MediaVisibility | string | null | undefined): string {
-  return humanizeBackendLabel(value ?? '');
 }
 
 export function formatProcessingStatus(value: ProcessingStatus | TaggingStatus | string | null | undefined): string {

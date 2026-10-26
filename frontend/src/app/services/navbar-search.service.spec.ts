@@ -1,11 +1,11 @@
-import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
+import { MediaType, NsfwFilter, SensitiveFilter, TagFilterMode } from '../models/media';
 import { NavbarSearchService } from './navbar-search.service';
 
 function paramReader(params: Record<string, string | string[]> = {}) {
   return {
     get(name: string): string | null {
       const value = params[name];
-      return Array.isArray(value) ? value[0] ?? null : value ?? null;
+      return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
     },
     getAll(name: string): string[] {
       const value = params[name];
@@ -84,9 +84,6 @@ describe('NavbarSearchService', () => {
         sensitive: null,
         status: null,
         favorited: null,
-        visibility: null,
-        ownerUsername: null,
-        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,
@@ -121,9 +118,6 @@ describe('NavbarSearchService', () => {
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
-      visibility: MediaVisibility.PUBLIC,
-      ownerUsername: 'owner_user',
-      uploaderUsername: 'uploader_user',
       mediaTypes: [MediaType.IMAGE],
       sortBy: 'captured_at',
       sortOrder: 'desc',
@@ -144,9 +138,6 @@ describe('NavbarSearchService', () => {
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       favorited: true,
-      visibility: MediaVisibility.PUBLIC,
-      owner_username: 'owner_user',
-      uploader_username: 'uploader_user',
       media_type: [MediaType.IMAGE],
       sort_by: 'captured_at',
       sort_order: 'desc',
@@ -159,13 +150,11 @@ describe('NavbarSearchService', () => {
     service.setAdvancedFilters({
       excludeTags: ['spoiler'],
       characterMode: TagFilterMode.OR,
-      visibility: MediaVisibility.PUBLIC,
-      ownerUsername: 'owner_user',
       mediaTypes: [MediaType.VIDEO],
       uploadedBeforeYear: 2027,
     });
 
-    expect(service.activeAdvancedFilterCount()).toBe(6);
+    expect(service.activeAdvancedFilterCount()).toBe(4);
   });
 
   it('normalizes advanced filters and preserves false-y filter values in applied params', () => {
@@ -175,8 +164,6 @@ describe('NavbarSearchService', () => {
       seriesMode: TagFilterMode.AND,
       status: ' reviewed ',
       favorited: false,
-      ownerUsername: ' Owner_User ',
-      uploaderUsername: ' Uploader_User ',
       mediaTypes: [MediaType.GIF, MediaType.VIDEO],
       capturedAfter: ' 2026-03-01T00:00 ',
       capturedBefore: ' 2026-03-31T23:59 ',
@@ -193,8 +180,6 @@ describe('NavbarSearchService', () => {
       seriesMode: TagFilterMode.AND,
       status: 'reviewed',
       favorited: false,
-      ownerUsername: 'Owner_User',
-      uploaderUsername: 'Uploader_User',
       mediaTypes: [MediaType.GIF, MediaType.VIDEO],
       capturedAfter: '2026-03-01T00:00',
       capturedBefore: '2026-03-31T23:59',
@@ -209,8 +194,6 @@ describe('NavbarSearchService', () => {
       series_mode: TagFilterMode.AND,
       status: 'reviewed',
       favorited: false,
-      owner_username: 'Owner_User',
-      uploader_username: 'Uploader_User',
       media_type: [MediaType.GIF, MediaType.VIDEO],
       captured_after: '2026-03-01T00:00',
       captured_before: '2026-03-31T23:59',
@@ -239,29 +222,28 @@ describe('NavbarSearchService', () => {
   });
 
   it('hydrates draft and applied state from query params', () => {
-    service.hydrateFromQueryParams(paramReader({
-      tag: ['Saber', 'saber', ''],
-      character_name: ['Rin Tohsaka'],
-      series_name: ['Fate/stay night'],
-      ocr_text: 'Excalibur',
-      exclude_tag: ['spoiler'],
-      mode: 'and',
-      character_mode: 'or',
-      series_mode: 'and',
-      nsfw: 'include',
-      sensitive: 'only',
-      favorited: 'false',
-      visibility: 'public',
-      owner_username: ' rin ',
-      uploader_username: ' shirou ',
-      media_type: ['image', 'video', 'invalid'],
-      sort_by: 'captured_at',
-      sort_order: 'asc',
-      captured_year: '2026',
-      captured_month: '4',
-      captured_day: '24',
-      uploaded_before_year: '2025',
-    }));
+    service.hydrateFromQueryParams(
+      paramReader({
+        tag: ['Saber', 'saber', ''],
+        character_name: ['Rin Tohsaka'],
+        series_name: ['Fate/stay night'],
+        ocr_text: 'Excalibur',
+        exclude_tag: ['spoiler'],
+        mode: 'and',
+        character_mode: 'or',
+        series_mode: 'and',
+        nsfw: 'include',
+        sensitive: 'only',
+        favorited: 'false',
+        media_type: ['image', 'video', 'invalid'],
+        sort_by: 'captured_at',
+        sort_order: 'asc',
+        captured_year: '2026',
+        captured_month: '4',
+        captured_day: '24',
+        uploaded_before_year: '2025',
+      }),
+    );
 
     expect(service.draftChips()).toEqual([
       { type: 'tag', value: 'Saber' },
@@ -281,9 +263,6 @@ describe('NavbarSearchService', () => {
       nsfw: NsfwFilter.INCLUDE,
       sensitive: SensitiveFilter.ONLY,
       favorited: false,
-      visibility: MediaVisibility.PUBLIC,
-      owner_username: 'rin',
-      uploader_username: 'shirou',
       media_type: [MediaType.IMAGE, MediaType.VIDEO],
       sort_by: 'captured_at',
       sort_order: 'asc',
@@ -349,19 +328,6 @@ describe('NavbarSearchService', () => {
     expect(service.draftChips()).toEqual([{ type: 'tag', value: 'Saber' }]);
   });
 
-  it('adds metadata filters through the shared helper', () => {
-    service.addMetadataFilter('tag', 'Saber');
-    service.addMetadataFilter('character', 'Rin Tohsaka');
-    service.addMetadataFilter('series', 'Fate/stay night');
-    service.addMetadataFilter('tag', 'saber');
-
-    expect(service.draftChips()).toEqual([
-      { type: 'tag', value: 'Saber' },
-      { type: 'character', value: 'Rin Tohsaka' },
-      { type: 'series', value: 'Fate/stay night' },
-    ]);
-  });
-
   it('removing chips updates the applied search immediately', () => {
     service.addTag('Saber');
     service.addCharacter('Rin');
@@ -400,9 +366,6 @@ describe('NavbarSearchService', () => {
         sensitive: null,
         status: null,
         favorited: null,
-        visibility: null,
-        ownerUsername: null,
-        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,

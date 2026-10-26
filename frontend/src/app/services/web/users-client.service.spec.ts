@@ -6,9 +6,13 @@ import { UsersClientService } from './users-client.service';
 import { API_BASE_URL } from './api.config';
 
 const mockUser = {
-  id: 'u1', username: 'saber', email: 'saber@test.com',
-  is_admin: false, show_nsfw: false, tag_confidence_threshold: 0.35,
-  version: 1, created_at: '2026-01-01T00:00:00Z',
+  id: 'u1',
+  username: 'saber',
+  email: 'saber@test.com',
+  show_nsfw: false,
+  tag_confidence_threshold: 0.35,
+  version: 1,
+  created_at: '2026-01-01T00:00:00Z',
 };
 
 const mockApiKeyStatus = {

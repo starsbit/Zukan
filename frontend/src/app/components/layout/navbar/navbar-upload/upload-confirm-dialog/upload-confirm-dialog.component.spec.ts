@@ -30,45 +30,6 @@ describe('UploadConfirmDialogComponent', () => {
     expect(el.textContent).toContain('5 files selected');
   });
 
-  it('renders the public checkbox unchecked by default', async () => {
-    const { el } = await createComponent();
-    const checkbox = el.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    expect(checkbox?.checked).toBe(false);
-  });
-
-  it('renders the info icon', async () => {
-    const { el } = await createComponent();
-    const icon = el.querySelector('mat-icon.info-icon');
-    expect(icon).not.toBeNull();
-  });
-
-  it('confirm() closes with isPublic=false when checkbox is unchecked', async () => {
-    const { fixture, close } = await createComponent();
-    const component = fixture.componentInstance as InstanceType<typeof UploadConfirmDialogComponent> & {
-      confirm: () => void;
-    };
-
-    component['confirm']();
-
-    expect(close).toHaveBeenCalledWith({ isPublic: false });
-  });
-
-  it('confirm() closes with isPublic=true after checking the checkbox', async () => {
-    const { fixture, el, close } = await createComponent();
-    const component = fixture.componentInstance as InstanceType<typeof UploadConfirmDialogComponent> & {
-      isPublic: { set: (v: boolean) => void };
-      confirm: () => void;
-    };
-
-    const checkbox = el.querySelector<HTMLInputElement>('input[type="checkbox"]');
-    checkbox?.click();
-    fixture.detectChanges();
-
-    component['confirm']();
-
-    expect(close).toHaveBeenCalledWith({ isPublic: true });
-  });
-
   it('cancel() closes with no value', async () => {
     const { fixture, close } = await createComponent();
     const component = fixture.componentInstance as InstanceType<typeof UploadConfirmDialogComponent> & {
@@ -88,7 +49,7 @@ describe('UploadConfirmDialogComponent', () => {
 
     uploadBtn?.click();
 
-    expect(close).toHaveBeenCalledWith({ isPublic: false });
+    expect(close).toHaveBeenCalledWith({});
   });
 
   it('Cancel button calls cancel()', async () => {

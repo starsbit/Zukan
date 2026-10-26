@@ -1,35 +1,40 @@
 from __future__ import annotations
-
 from collections import Counter, defaultdict
 from collections.abc import Coroutine
 from datetime import datetime, timezone
 from itertools import combinations
 import logging
-import math
 import re
 import time
 import uuid
 from typing import Any
-
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
-
 from backend.app.errors.error import AppError
 from backend.app.models.auth import User
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.models.processing import (
+    BatchStatus,
+    BatchType,
+    ImportBatch,
+    ImportBatchItem,
+    ItemStatus,
+    ProcessingStep,
+)
 from backend.app.models.tags import MediaTag
 from backend.app.repositories.media_interactions import UserFavoriteRepository
-from backend.app.repositories.processing import ImportBatchItemRepository, ImportBatchRepository
+from backend.app.repositories.processing import (
+    ImportBatchItemRepository,
+    ImportBatchRepository,
+)
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.services.library_matching import MediaSimilarityMatcher
 from backend.app.schemas import (
     ImportBatchItemListResponse,
     ImportBatchListResponse,
     ImportBatchMergedReviewResponse,
-    ImportBatchRead,
     ImportBatchRecommendationGroupRead,
     ImportBatchRecommendationSignalRead,
     ImportBatchRecommendationSuggestionRead,
@@ -38,15 +43,17 @@ from backend.app.schemas import (
     ImportBatchReviewSummaryResponse,
 )
 from backend.app.utils.media_projections import build_media_read
-from backend.app.utils.pagination import apply_cursor_where_expr, decode_cursor_typed, encode_cursor
+from backend.app.utils.pagination import (
+    apply_cursor_where_expr,
+    decode_cursor_typed,
+    encode_cursor,
+)
 
-TOKEN_RE = re.compile(r"[a-z0-9]+")
+TOKEN_RE = re.compile("[a-z0-9]+")
 MAX_GROUP_SUGGESTIONS = 3
 TAG_SIMILARITY_THRESHOLD = 0.34
 PAIR_SCORE_THRESHOLD = 0.36
-
 logger = logging.getLogger(__name__)
-
 SuggestionSource = Coroutine[Any, Any, list[ImportBatchRecommendationSuggestionRead]]
 
 
@@ -61,16 +68,11 @@ class ProcessingService:
         self._similarity = MediaSimilarityMatcher()
 
     async def list_batches(
-        self,
-        user_id: uuid.UUID,
-        *,
-        after: str | None = None,
-        page_size: int = 20,
+        self, *, after: str | None = None, page_size: int = 20
     ) -> ImportBatchListResponse:
         repo = ImportBatchRepository(self._db)
-        total = await repo.count_for_user(user_id)
-        stmt = select(ImportBatch).where(ImportBatch.user_id == user_id)
-
+        total = await repo.count_for_user()
+        stmt = select(ImportBatch).where()
         if after:
             decoded = decode_cursor_typed(after, "datetime")
             if decoded is not None:
@@ -83,16 +85,23 @@ class ProcessingService:
                     cursor_val=cursor_val,
                     cursor_id=cursor_id,
                 )
-
-        rows = (await self._db.execute(stmt.order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc()).limit(page_size + 1))).scalars().all()
+        rows = (
+            (
+                await self._db.execute(
+                    stmt.order_by(
+                        ImportBatch.created_at.desc(), ImportBatch.id.desc()
+                    ).limit(page_size + 1)
+                )
+            )
+            .scalars()
+            .all()
+        )
         has_more = len(rows) > page_size
         rows = rows[:page_size]
-
         next_cursor = None
         if has_more and rows:
             last = rows[-1]
             next_cursor = encode_cursor(last.created_at, last.id)
-
         return ImportBatchListResponse(
             total=total,
             next_cursor=next_cursor,
@@ -101,24 +110,20 @@ class ProcessingService:
             items=list(rows),
         )
 
-    async def get_batch_for_user(self, batch_id: uuid.UUID, user_id: uuid.UUID) -> ImportBatch:
-        batch = await ImportBatchRepository(self._db).get_by_id_for_user(batch_id, user_id)
+    async def get_batch_for_user(self, batch_id: uuid.UUID) -> ImportBatch:
+        batch = await ImportBatchRepository(self._db).get_by_id_for_user(batch_id)
         if batch is None:
-            raise AppError(status_code=404, code="batch_not_found", detail="Batch not found")
+            raise AppError(
+                status_code=404, code="batch_not_found", detail="Batch not found"
+            )
         return batch
 
     async def list_batch_items(
-        self,
-        batch_id: uuid.UUID,
-        user_id: uuid.UUID,
-        *,
-        after: str | None = None,
-        page_size: int = 50,
+        self, batch_id: uuid.UUID, *, after: str | None = None, page_size: int = 50
     ) -> ImportBatchItemListResponse:
-        await self.get_batch_for_user(batch_id, user_id)
+        await self.get_batch_for_user(batch_id)
         total = await ImportBatchItemRepository(self._db).count_for_batch(batch_id)
         stmt = select(ImportBatchItem).where(ImportBatchItem.batch_id == batch_id)
-
         if after:
             decoded = decode_cursor_typed(after, "datetime")
             if decoded is not None:
@@ -131,20 +136,23 @@ class ProcessingService:
                     cursor_val=cursor_val,
                     cursor_id=cursor_id,
                 )
-
         rows = (
-            await self._db.execute(
-                stmt.order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc()).limit(page_size + 1)
+            (
+                await self._db.execute(
+                    stmt.order_by(
+                        ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc()
+                    ).limit(page_size + 1)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         has_more = len(rows) > page_size
         rows = rows[:page_size]
-
         next_cursor = None
         if has_more and rows:
             last = rows[-1]
             next_cursor = encode_cursor(last.updated_at, last.id)
-
         return ImportBatchItemListResponse(
             total=total,
             next_cursor=next_cursor,
@@ -154,68 +162,55 @@ class ProcessingService:
         )
 
     async def list_all_review_items(
-        self,
-        user_id: uuid.UUID,
-        *,
-        include_recommendations: bool = False,
+        self, *, include_recommendations: bool = False
     ) -> ImportBatchReviewListResponse:
         started_at = time.perf_counter()
-        candidates = await ImportBatchItemRepository(self._db).list_all_review_candidates_for_user(
-            user_id,
-            batch_types=[BatchType.upload],
-        )
+        candidates = await ImportBatchItemRepository(
+            self._db
+        ).list_all_review_candidates_for_user(batch_types=[BatchType.upload])
         items, review_candidates = await self._build_review_items_from_candidates(
-            candidates,
-            user_id,
-            include_suggestions=include_recommendations,
+            candidates, include_suggestions=include_recommendations
         )
-
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
             logger.info(
                 "Building cross-batch recommendations user_id=%s review_item_count=%d",
-                user_id,
+                None,
                 len(items),
             )
             groups_started_at = time.perf_counter()
-            recommendation_groups = await self._build_recommendation_groups(items, review_candidates, user_id)
+            recommendation_groups = await self._build_recommendation_groups(
+                items, review_candidates
+            )
             logger.info(
                 "Built cross-batch recommendations user_id=%s review_item_count=%d group_count=%d elapsed_ms=%.1f",
-                user_id,
+                None,
                 len(items),
                 len(recommendation_groups),
                 _elapsed_ms(groups_started_at),
             )
-
         logger.info(
             "Listed all review items user_id=%s raw_candidates=%d review_items=%d include_recommendations=%s recommendation_groups=%d elapsed_ms=%.1f",
-            user_id,
+            None,
             len(candidates),
             len(items),
             include_recommendations,
             len(recommendation_groups),
             _elapsed_ms(started_at),
         )
-
         return ImportBatchReviewListResponse(
-            total=len(items),
-            items=items,
-            recommendation_groups=recommendation_groups,
+            total=len(items), items=items, recommendation_groups=recommendation_groups
         )
 
     async def merge_review_batches(
-        self,
-        user_id: uuid.UUID,
-        *,
-        include_recommendations: bool = False,
-        force_refresh: bool = False,
+        self, *, include_recommendations: bool = False, force_refresh: bool = False
     ) -> ImportBatchMergedReviewResponse:
         batch_repo = ImportBatchRepository(self._db)
-        merged_batch = await batch_repo.get_latest_for_user_by_type(user_id, BatchType.review_merge)
-
+        merged_batch = await batch_repo.get_latest_for_user_by_type(
+            BatchType.review_merge
+        )
         if merged_batch is None:
             merged_batch = ImportBatch(
-                user_id=user_id,
                 type=BatchType.review_merge,
                 status=BatchStatus.done,
                 total_items=0,
@@ -227,34 +222,29 @@ class ProcessingService:
             self._db.add(merged_batch)
             await self._db.flush()
             force_refresh = True
-
-        if not force_refresh and await self._merged_review_batch_needs_refresh(merged_batch, user_id):
+        if not force_refresh and await self._merged_review_batch_needs_refresh(
+            merged_batch
+        ):
             force_refresh = True
-
         if force_refresh:
-            await self._refresh_merged_review_batch(merged_batch, user_id)
-
+            await self._refresh_merged_review_batch(merged_batch)
         review = await self.list_batch_review_items(
             merged_batch.id,
-            user_id,
             include_recommendations=include_recommendations,
             force_refresh=force_refresh,
         )
         return ImportBatchMergedReviewResponse(
-            merged_batch_id=merged_batch.id,
-            **review.model_dump(),
+            merged_batch_id=merged_batch.id, **review.model_dump()
         )
 
-    async def get_review_summary(self, user_id: uuid.UUID) -> ImportBatchReviewSummaryResponse:
-        rows = await ImportBatchItemRepository(self._db).list_review_summary_for_user(user_id)
-        unresolved_count = sum(unresolved for _, _, unresolved in rows)
+    async def get_review_summary(self) -> ImportBatchReviewSummaryResponse:
+        rows = await ImportBatchItemRepository(self._db).list_review_summary_for_user()
+        unresolved_count = sum((unresolved for _, _, unresolved in rows))
         review_batch_ids = [batch_id for batch_id, _, _ in rows]
-
         latest_batch_id: uuid.UUID | None = None
         latest_batch_created_at: datetime | None = None
         if rows:
             latest_batch_id, latest_batch_created_at, _ = rows[0]
-
         return ImportBatchReviewSummaryResponse(
             unresolved_count=unresolved_count,
             review_batch_ids=review_batch_ids,
@@ -265,20 +255,18 @@ class ProcessingService:
     async def list_batch_review_items(
         self,
         batch_id: uuid.UUID,
-        user_id: uuid.UUID,
         *,
         include_recommendations: bool = False,
         force_refresh: bool = False,
     ) -> ImportBatchReviewListResponse:
         started_at = time.perf_counter()
-        batch = await self.get_batch_for_user(batch_id, user_id)
-        candidates = await ImportBatchItemRepository(self._db).list_review_candidates_for_batch(batch_id)
+        batch = await self.get_batch_for_user(batch_id)
+        candidates = await ImportBatchItemRepository(
+            self._db
+        ).list_review_candidates_for_batch(batch_id)
         items, review_candidates = await self._build_review_items_from_candidates(
-            candidates,
-            user_id,
-            include_suggestions=include_recommendations,
+            candidates, include_suggestions=include_recommendations
         )
-
         recommendation_groups: list[ImportBatchRecommendationGroupRead] = []
         if include_recommendations:
             if force_refresh:
@@ -289,7 +277,9 @@ class ProcessingService:
                     force_refresh,
                 )
                 groups_started_at = time.perf_counter()
-                recommendation_groups = await self._build_recommendation_groups(items, review_candidates, user_id)
+                recommendation_groups = await self._build_recommendation_groups(
+                    items, review_candidates
+                )
                 serialized = [g.model_dump(mode="json") for g in recommendation_groups]
                 await self._db.execute(
                     update(ImportBatch)
@@ -325,11 +315,10 @@ class ProcessingService:
                     len(items),
                     force_refresh,
                 )
-
         logger.info(
             "Listed batch review items batch_id=%s user_id=%s raw_candidates=%d review_items=%d include_recommendations=%s force_refresh=%s recommendation_groups=%d elapsed_ms=%.1f",
             batch_id,
-            user_id,
+            None,
             len(candidates),
             len(items),
             include_recommendations,
@@ -337,50 +326,60 @@ class ProcessingService:
             len(recommendation_groups),
             _elapsed_ms(started_at),
         )
-
         return ImportBatchReviewListResponse(
-            total=len(items),
-            items=items,
-            recommendation_groups=recommendation_groups,
+            total=len(items), items=items, recommendation_groups=recommendation_groups
         )
 
     async def _build_review_items_from_candidates(
-        self,
-        candidates: list[ImportBatchItem],
-        user_id: uuid.UUID,
-        *,
-        include_suggestions: bool = False,
+        self, candidates: list[ImportBatchItem], *, include_suggestions: bool = False
     ) -> tuple[list[ImportBatchReviewItemRead], list[ImportBatchItem]]:
         started_at = time.perf_counter()
         media_ids = [item.media.id for item in candidates if item.media is not None]
         favorite_repo = UserFavoriteRepository(self._db)
-        favorited = await favorite_repo.get_favorited_ids(user_id, media_ids)
+        favorited = await favorite_repo.get_favorited_ids(media_ids)
         favorite_counts = await favorite_repo.get_favorite_counts(media_ids)
-
         items: list[ImportBatchReviewItemRead] = []
         review_candidates: list[ImportBatchItem] = []
         for item in candidates:
             media = item.media
-            if media is None or media.deleted_at is not None or media.tagging_status != TaggingStatus.DONE:
+            if (
+                media is None
+                or media.deleted_at is not None
+                or media.tagging_status != TaggingStatus.DONE
+            ):
                 continue
             if media.metadata_review_dismissed:
                 continue
-
-            has_character = any(entity.entity_type == MediaEntityType.character and entity.name.strip() for entity in media.entities)
-            has_series = any(entity.entity_type == MediaEntityType.series and entity.name.strip() for entity in media.entities)
+            has_character = any(
+                (
+                    entity.entity_type == MediaEntityType.character
+                    and entity.name.strip()
+                    for entity in media.entities
+                )
+            )
+            has_series = any(
+                (
+                    entity.entity_type == MediaEntityType.series and entity.name.strip()
+                    for entity in media.entities
+                )
+            )
             if has_character and has_series:
                 continue
-
             suggested_characters: list[ImportBatchRecommendationSuggestionRead] = []
             suggested_series: list[ImportBatchRecommendationSuggestionRead] = []
             if include_suggestions:
-                suggested_characters = self._cached_review_suggestions(media.review_suggested_characters)
-                suggested_series = self._cached_review_suggestions(media.review_suggested_series)
-
+                suggested_characters = self._cached_review_suggestions(
+                    media.review_suggested_characters
+                )
+                suggested_series = self._cached_review_suggestions(
+                    media.review_suggested_series
+                )
             items.append(
                 ImportBatchReviewItemRead(
                     batch_item_id=item.id,
-                    media=build_media_read(media, media.id in favorited, favorite_counts.get(media.id, 0)),
+                    media=build_media_read(
+                        media, media.id in favorited, favorite_counts.get(media.id, 0)
+                    ),
                     entities=[
                         {
                             "id": entity.id,
@@ -401,40 +400,36 @@ class ProcessingService:
                 )
             )
             review_candidates.append(item)
-
         logger.info(
             "Built review items user_id=%s raw_candidates=%d active_media=%d review_items=%d include_suggestions=%s elapsed_ms=%.1f",
-            user_id,
+            None,
             len(candidates),
             len(media_ids),
             len(items),
             include_suggestions,
             _elapsed_ms(started_at),
         )
-        return items, review_candidates
+        return (items, review_candidates)
 
-    async def precompute_review_suggestions_for_media(self, media_id: uuid.UUID) -> bool:
+    async def precompute_review_suggestions_for_media(
+        self, media_id: uuid.UUID
+    ) -> bool:
         media = await self._load_review_media(media_id)
-        if media is None or media.uploader_id is None:
+        if media is None:
             return False
         if not self._media_needs_missing_name_review(media):
             return False
-        if not await self._is_library_classification_enabled(media.uploader_id):
+        if not await self._is_library_classification_enabled():
             return False
-
-        result = await self._library_enrichment.enrich_media(
-            media.id,
-            user_id=media.uploader_id,
-            apply=True,
-        )
+        result = await self._library_enrichment.enrich_media(media.id, apply=True)
         refreshed_media = await self._load_review_media(media.id) or media
         self._store_review_suggestions_from_result(refreshed_media, result)
         await self._invalidate_recommendation_groups_for_media(refreshed_media.id)
         await self._db.commit()
         return True
 
-    async def _is_library_classification_enabled(self, user_id: uuid.UUID) -> bool:
-        user = await self._db.get(User, user_id)
+    async def _is_library_classification_enabled(self) -> bool:
+        user = await self._db.scalar(select(User))
         return isinstance(user, User) and bool(user.library_classification_enabled)
 
     async def _load_review_media(self, media_id: uuid.UUID) -> Media | None:
@@ -442,8 +437,6 @@ class ProcessingService:
             await self._db.execute(
                 select(Media)
                 .options(
-                    selectinload(Media.uploader),
-                    selectinload(Media.owner),
                     selectinload(Media.entities),
                     selectinload(Media.media_tags).selectinload(MediaTag.tag),
                 )
@@ -499,13 +492,13 @@ class ProcessingService:
             .values(recommendation_groups=None, recommendations_computed_at=None)
         )
 
-    async def _load_deduped_review_candidates_for_user(self, user_id: uuid.UUID) -> list[ImportBatchItem]:
-        candidates = await ImportBatchItemRepository(self._db).list_all_review_candidates_for_user(
-            user_id,
-            batch_types=[BatchType.upload],
+    async def _load_deduped_review_candidates_for_user(self) -> list[ImportBatchItem]:
+        candidates = await ImportBatchItemRepository(
+            self._db
+        ).list_all_review_candidates_for_user(batch_types=[BatchType.upload])
+        _, review_candidates = await self._build_review_items_from_candidates(
+            candidates
         )
-        _, review_candidates = await self._build_review_items_from_candidates(candidates, user_id)
-
         deduped_candidates: list[ImportBatchItem] = []
         seen_media_ids: set[uuid.UUID] = set()
         for candidate in review_candidates:
@@ -514,28 +507,39 @@ class ProcessingService:
                 continue
             seen_media_ids.add(media.id)
             deduped_candidates.append(candidate)
-
         return deduped_candidates
 
-    async def _merged_review_batch_needs_refresh(self, merged_batch: ImportBatch, user_id: uuid.UUID) -> bool:
-        deduped_candidates = await self._load_deduped_review_candidates_for_user(user_id)
-        current_media_ids = {candidate.media.id for candidate in deduped_candidates if candidate.media is not None}
+    async def _merged_review_batch_needs_refresh(
+        self, merged_batch: ImportBatch
+    ) -> bool:
+        deduped_candidates = await self._load_deduped_review_candidates_for_user()
+        current_media_ids = {
+            candidate.media.id
+            for candidate in deduped_candidates
+            if candidate.media is not None
+        }
         existing_media_ids = [
             media_id
             for media_id in (
                 await self._db.execute(
                     select(ImportBatchItem.media_id)
-                    .where(ImportBatchItem.batch_id == merged_batch.id, ImportBatchItem.media_id.is_not(None))
-                    .order_by(ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc())
+                    .where(
+                        ImportBatchItem.batch_id == merged_batch.id,
+                        ImportBatchItem.media_id.is_not(None),
+                    )
+                    .order_by(
+                        ImportBatchItem.updated_at.desc(), ImportBatchItem.id.desc()
+                    )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
             if media_id is not None
         ]
         return set(existing_media_ids) != current_media_ids
 
-    async def _refresh_merged_review_batch(self, merged_batch: ImportBatch, user_id: uuid.UUID) -> None:
-        deduped_candidates = await self._load_deduped_review_candidates_for_user(user_id)
-
+    async def _refresh_merged_review_batch(self, merged_batch: ImportBatch) -> None:
+        deduped_candidates = await self._load_deduped_review_candidates_for_user()
         await self._db.execute(
             delete(ImportBatchItem).where(ImportBatchItem.batch_id == merged_batch.id)
         )
@@ -550,7 +554,6 @@ class ProcessingService:
                     progress_percent=100,
                 )
             )
-
         now = datetime.now(timezone.utc)
         merged_batch.status = BatchStatus.done
         merged_batch.total_items = len(deduped_candidates)
@@ -570,35 +573,40 @@ class ProcessingService:
         self,
         review_items: list[ImportBatchReviewItemRead],
         candidates: list[ImportBatchItem],
-        user_id: uuid.UUID,
     ) -> list[ImportBatchRecommendationGroupRead]:
         started_at = time.perf_counter()
         review_item_by_media_id = {item.media.id: item for item in review_items}
-        review_candidates = [candidate for candidate in candidates if candidate.media and candidate.media.id in review_item_by_media_id]
-        logger.info("Building recommendation groups candidate_count=%d", len(review_candidates))
+        review_candidates = [
+            candidate
+            for candidate in candidates
+            if candidate.media and candidate.media.id in review_item_by_media_id
+        ]
+        logger.info(
+            "Building recommendation groups candidate_count=%d", len(review_candidates)
+        )
         if len(review_candidates) < 2:
             logger.info("Skipping grouping: fewer than 2 candidates")
             return []
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         grouped_ids: set[uuid.UUID] = set()
-
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
             entity_groups, entity_grouped_ids = await self._build_entity_name_groups(
-                remaining, review_item_by_media_id, len(groups), user_id
+                remaining, review_item_by_media_id, len(groups)
             )
             groups.extend(entity_groups)
             grouped_ids |= entity_grouped_ids
-
         remaining = [c for c in review_candidates if c.media.id not in grouped_ids]
         if len(remaining) >= 2:
-            groups.extend(await self._build_similarity_groups(remaining, review_item_by_media_id, len(groups), user_id))
-
+            groups.extend(
+                await self._build_similarity_groups(
+                    remaining, review_item_by_media_id, len(groups)
+                )
+            )
         groups.sort(key=lambda group: (-group.confidence, -group.item_count, group.id))
         logger.info(
             "Recommendation groups built user_id=%s candidate_count=%d group_count=%d grouped_items=%d elapsed_ms=%.1f",
-            user_id,
+            None,
             len(review_candidates),
             len(groups),
             len({media_id for group in groups for media_id in group.media_ids}),
@@ -611,48 +619,61 @@ class ProcessingService:
         candidates: list[ImportBatchItem],
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         group_index_start: int,
-        user_id: uuid.UUID,
     ) -> tuple[list[ImportBatchRecommendationGroupRead], set[uuid.UUID]]:
         series_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
         series_names_by_key: dict[str, str] = {}
-        series_character_buckets: dict[tuple[str, str], list[ImportBatchItem]] = defaultdict(list)
+        series_character_buckets: dict[tuple[str, str], list[ImportBatchItem]] = (
+            defaultdict(list)
+        )
         character_names_by_key: dict[tuple[str, str], str] = {}
         character_buckets: dict[str, list[ImportBatchItem]] = defaultdict(list)
-
         for candidate in candidates:
             review_item = review_item_by_media_id[candidate.media.id]
-            if review_item.missing_character and not review_item.missing_series:
+            if review_item.missing_character and (not review_item.missing_series):
                 series_name = next(
-                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.series and e.name.strip()),
+                    (
+                        e.name.strip()
+                        for e in candidate.media.entities
+                        if e.entity_type == MediaEntityType.series and e.name.strip()
+                    ),
                     None,
                 )
                 if series_name is not None:
                     series_key = series_name.casefold()
                     series_buckets[series_key].append(candidate)
                     series_names_by_key.setdefault(series_key, series_name)
-                    suggested_character = self._best_suggested_entity_name(review_item.suggested_characters)
+                    suggested_character = self._best_suggested_entity_name(
+                        review_item.suggested_characters
+                    )
                     if suggested_character is not None:
                         bucket_key = (series_key, suggested_character.casefold())
                         series_character_buckets[bucket_key].append(candidate)
-                        character_names_by_key.setdefault(bucket_key, suggested_character)
-            elif review_item.missing_series and not review_item.missing_character:
+                        character_names_by_key.setdefault(
+                            bucket_key, suggested_character
+                        )
+            elif review_item.missing_series and (not review_item.missing_character):
                 char_name = next(
-                    (e.name.strip() for e in candidate.media.entities if e.entity_type == MediaEntityType.character and e.name.strip()),
+                    (
+                        e.name.strip()
+                        for e in candidate.media.entities
+                        if e.entity_type == MediaEntityType.character and e.name.strip()
+                    ),
                     None,
                 )
                 if char_name is not None:
                     character_buckets[char_name.casefold()].append(candidate)
-
         logger.info(
             "Entity buckets built series_buckets=%s character_buckets=%s",
             {k: len(v) for k, v in series_buckets.items()},
             {k: len(v) for k, v in character_buckets.items()},
         )
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         grouped_ids: set[uuid.UUID] = set()
-
-        for bucket_key, bucket_candidates in sorted(series_character_buckets.items(), key=lambda item: len(item[1]), reverse=True):
+        for bucket_key, bucket_candidates in sorted(
+            series_character_buckets.items(),
+            key=lambda item: len(item[1]),
+            reverse=True,
+        ):
             if len(bucket_candidates) < 2:
                 continue
             series_name = series_names_by_key.get(bucket_key[0])
@@ -662,33 +683,37 @@ class ProcessingService:
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
-                extra_character_suggestions=self._build_named_suggestions([character_name] if character_name else []),
-                extra_series_suggestions=self._build_named_suggestions([series_name] if series_name else []),
+                extra_character_suggestions=self._build_named_suggestions(
+                    [character_name] if character_name else []
+                ),
+                extra_series_suggestions=self._build_named_suggestions(
+                    [series_name] if series_name else []
+                ),
                 confidence_override=0.92,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in bucket_candidates)
-
+            grouped_ids.update((c.media.id for c in bucket_candidates))
         for series_key, bucket_candidates in series_buckets.items():
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if len(ungrouped) < 2:
                 continue
             series_name = series_names_by_key.get(series_key)
-            extra_series_suggestions = self._build_named_suggestions([series_name] if series_name else [])
+            extra_series_suggestions = self._build_named_suggestions(
+                [series_name] if series_name else []
+            )
             group = await self._build_recommendation_group(
                 ungrouped,
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
                 extra_series_suggestions=extra_series_suggestions,
-                confidence_override=0.90,
+                confidence_override=0.9,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in ungrouped)
-
-        for bucket_candidates in sorted(character_buckets.values(), key=len, reverse=True):
+            grouped_ids.update((c.media.id for c in ungrouped))
+        for bucket_candidates in sorted(
+            character_buckets.values(), key=len, reverse=True
+        ):
             ungrouped = [c for c in bucket_candidates if c.media.id not in grouped_ids]
             if not ungrouped:
                 continue
@@ -699,33 +724,32 @@ class ProcessingService:
                 review_item_by_media_id,
                 {},
                 group_index_start + len(groups),
-                user_id,
-                confidence_override=0.80,
+                confidence_override=0.8,
             )
             groups.append(group)
-            grouped_ids.update(c.media.id for c in ungrouped)
-
-        return groups, grouped_ids
+            grouped_ids.update((c.media.id for c in ungrouped))
+        return (groups, grouped_ids)
 
     async def _build_similarity_groups(
         self,
         candidates: list[ImportBatchItem],
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         group_index_start: int,
-        user_id: uuid.UUID,
     ) -> list[ImportBatchRecommendationGroupRead]:
         started_at = time.perf_counter()
         batch_tag_counts = Counter()
         for candidate in candidates:
             for tag_name, _, _ in self._iter_groupable_tags(candidate):
                 batch_tag_counts[tag_name] += 1
-
         adjacency: dict[uuid.UUID, set[uuid.UUID]] = defaultdict(set)
         pair_scores: dict[frozenset[uuid.UUID], float] = {}
-
-        candidate_pairs = self._candidate_pairs_from_shared_signals(candidates, batch_tag_counts)
+        candidate_pairs = self._candidate_pairs_from_shared_signals(
+            candidates, batch_tag_counts
+        )
         for left, right in candidate_pairs:
-            score = self._pair_similarity(left, right, batch_tag_counts, len(candidates))
+            score = self._pair_similarity(
+                left, right, batch_tag_counts, len(candidates)
+            )
             if score < PAIR_SCORE_THRESHOLD:
                 continue
             left_id = left.media.id
@@ -733,14 +757,12 @@ class ProcessingService:
             adjacency[left_id].add(right_id)
             adjacency[right_id].add(left_id)
             pair_scores[frozenset((left_id, right_id))] = score
-
         groups: list[ImportBatchRecommendationGroupRead] = []
         visited: set[uuid.UUID] = set()
         for candidate in candidates:
             media_id = candidate.media.id
             if media_id in visited or media_id not in adjacency:
                 continue
-
             component_ids: list[uuid.UUID] = []
             stack = [media_id]
             while stack:
@@ -749,25 +771,29 @@ class ProcessingService:
                     continue
                 visited.add(current)
                 component_ids.append(current)
-                stack.extend(neighbor for neighbor in adjacency[current] if neighbor not in visited)
-
+                stack.extend(
+                    (
+                        neighbor
+                        for neighbor in adjacency[current]
+                        if neighbor not in visited
+                    )
+                )
             if len(component_ids) < 2:
                 continue
-
-            component_candidates = [c for c in candidates if c.media.id in set(component_ids)]
+            component_candidates = [
+                c for c in candidates if c.media.id in set(component_ids)
+            ]
             groups.append(
                 await self._build_recommendation_group(
                     component_candidates,
                     review_item_by_media_id,
                     pair_scores,
                     group_index_start + len(groups),
-                    user_id,
                 )
             )
-
         logger.info(
             "Similarity recommendation groups built user_id=%s candidates=%d candidate_pairs=%d accepted_pairs=%d groups=%d elapsed_ms=%.1f",
-            user_id,
+            None,
             len(candidates),
             len(candidate_pairs),
             len(pair_scores),
@@ -818,46 +844,66 @@ class ProcessingService:
         review_item_by_media_id: dict[uuid.UUID, ImportBatchReviewItemRead],
         pair_scores: dict[frozenset[uuid.UUID], float],
         group_index: int,
-        user_id: uuid.UUID,
         *,
-        extra_character_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
-        extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead] | None = None,
+        extra_character_suggestions: list[ImportBatchRecommendationSuggestionRead]
+        | None = None,
+        extra_series_suggestions: list[ImportBatchRecommendationSuggestionRead]
+        | None = None,
         confidence_override: float | None = None,
     ) -> ImportBatchRecommendationGroupRead:
         media_ids = [candidate.media.id for candidate in candidates]
         pair_values = [
-            pair_scores[key]
-            for key in pair_scores
-            if key.issubset(set(media_ids))
+            pair_scores[key] for key in pair_scores if key.issubset(set(media_ids))
         ]
-        confidence = confidence_override if confidence_override is not None else (
-            round(sum(pair_values) / len(pair_values), 3) if pair_values else PAIR_SCORE_THRESHOLD
+        confidence = (
+            confidence_override
+            if confidence_override is not None
+            else round(sum(pair_values) / len(pair_values), 3)
+            if pair_values
+            else PAIR_SCORE_THRESHOLD
         )
-
-        missing_character_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_character)
-        missing_series_count = sum(1 for media_id in media_ids if review_item_by_media_id[media_id].missing_series)
-
+        missing_character_count = sum(
+            (
+                1
+                for media_id in media_ids
+                if review_item_by_media_id[media_id].missing_character
+            )
+        )
+        missing_series_count = sum(
+            (
+                1
+                for media_id in media_ids
+                if review_item_by_media_id[media_id].missing_series
+            )
+        )
         character_sources: list[SuggestionSource] = []
         if extra_character_suggestions:
             character_sources.append(_resolved(extra_character_suggestions))
-        character_sources.extend([
-            self._build_name_suggestions(candidates, MediaEntityType.character),
-            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.character),
-        ])
+        character_sources.extend(
+            [
+                self._build_name_suggestions(candidates, MediaEntityType.character),
+                self._infer_entity_suggestions_from_library(
+                    candidates, MediaEntityType.character
+                ),
+            ]
+        )
         suggested_characters = await self._collect_suggestions(character_sources)
-
         series_sources: list[SuggestionSource] = []
         if extra_series_suggestions:
             series_sources.append(_resolved(extra_series_suggestions))
-        series_sources.extend([
-            self._build_name_suggestions(candidates, MediaEntityType.series),
-            self._infer_entity_suggestions_from_library(user_id, candidates, MediaEntityType.series),
-            self._infer_series_suggestions_from_characters(user_id, [s.name for s in suggested_characters]),
-        ])
+        series_sources.extend(
+            [
+                self._build_name_suggestions(candidates, MediaEntityType.series),
+                self._infer_entity_suggestions_from_library(
+                    candidates, MediaEntityType.series
+                ),
+                self._infer_series_suggestions_from_characters(
+                    [s.name for s in suggested_characters]
+                ),
+            ]
+        )
         suggested_series = await self._collect_suggestions(series_sources)
-
         shared_signals = self._build_shared_signals(candidates)
-
         return ImportBatchRecommendationGroupRead(
             id=f"batch-group-{group_index + 1}",
             media_ids=media_ids,
@@ -883,16 +929,16 @@ class ProcessingService:
         return results
 
     async def _infer_entity_suggestions_from_library(
-        self,
-        user_id: uuid.UUID,
-        candidates: list[ImportBatchItem],
-        entity_type: MediaEntityType,
+        self, candidates: list[ImportBatchItem], entity_type: MediaEntityType
     ) -> list[ImportBatchRecommendationSuggestionRead]:
         shared_tag_weights = self._shared_tag_weights(candidates)
         if not shared_tag_weights:
             return []
-
-        current_media_ids = [candidate.media.id for candidate in candidates if candidate.media is not None]
+        current_media_ids = [
+            candidate.media.id
+            for candidate in candidates
+            if candidate.media is not None
+        ]
         stmt = (
             select(
                 MediaEntity.name.label("name"),
@@ -905,7 +951,6 @@ class ProcessingService:
                 MediaEntity.entity_type == entity_type,
                 MediaEntity.name != "",
                 Media.deleted_at.is_(None),
-                Media.uploader_id == user_id,
                 MediaTag.tag_id.in_(list(shared_tag_weights)),
                 Media.id.not_in(current_media_ids),
             )
@@ -914,7 +959,6 @@ class ProcessingService:
         rows = self._result_rows(await self._db.execute(stmt))
         if not rows:
             return []
-
         name_scores: dict[str, float] = defaultdict(float)
         for row in rows:
             name = row.name.strip() if row.name else ""
@@ -925,37 +969,29 @@ class ProcessingService:
             if tag_weight <= 0 or media_count <= 0:
                 continue
             name_scores[name] += tag_weight * media_count
-
         if not name_scores:
             return []
-
-        sorted_scores = sorted(name_scores.items(), key=lambda item: (-item[1], item[0].casefold()))
+        sorted_scores = sorted(
+            name_scores.items(), key=lambda item: (-item[1], item[0].casefold())
+        )
         max_score = sorted_scores[0][1] or 1.0
         return [
             ImportBatchRecommendationSuggestionRead(
-                name=name,
-                confidence=round(score / max_score, 3),
+                name=name, confidence=round(score / max_score, 3)
             )
             for name, score in sorted_scores[:MAX_GROUP_SUGGESTIONS]
         ]
 
     async def _infer_series_suggestions_from_characters(
-        self,
-        user_id: uuid.UUID,
-        character_names: list[str],
+        self, character_names: list[str]
     ) -> list[ImportBatchRecommendationSuggestionRead]:
         if not character_names:
             return []
-
         character_model = aliased(MediaEntity)
         series_model = aliased(MediaEntity)
-
         count_expr = func.count(series_model.media_id.distinct())
         stmt = (
-            select(
-                series_model.name.label("name"),
-                count_expr.label("media_count"),
-            )
+            select(series_model.name.label("name"), count_expr.label("media_count"))
             .join(character_model, character_model.media_id == series_model.media_id)
             .join(Media, Media.id == series_model.media_id)
             .where(
@@ -963,7 +999,6 @@ class ProcessingService:
                 character_model.entity_type == MediaEntityType.character,
                 character_model.name.in_(character_names),
                 Media.deleted_at.is_(None),
-                Media.uploader_id == user_id,
             )
             .group_by(series_model.name)
             .order_by(count_expr.desc(), series_model.name.asc())
@@ -972,12 +1007,11 @@ class ProcessingService:
         rows = self._result_rows(await self._db.execute(stmt))
         if not rows:
             return []
-
-        max_count = max(int(row.media_count or 0) for row in rows) or 1
+        max_count = max((int(row.media_count or 0) for row in rows)) or 1
         return [
             ImportBatchRecommendationSuggestionRead(
                 name=row.name,
-                confidence=round((int(row.media_count or 0) / max_count), 3),
+                confidence=round(int(row.media_count or 0) / max_count, 3),
             )
             for row in rows
             if row.name

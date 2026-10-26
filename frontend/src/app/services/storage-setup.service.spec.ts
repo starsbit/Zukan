@@ -10,7 +10,7 @@ import { StorageSetupService } from './storage-setup.service';
 import { UserStore } from './user.store';
 import { API_BASE_URL } from './web/api.config';
 
-const admin = {id: 'admin-id', is_admin: true};
+const admin = { id: 'admin-id' };
 describe('StorageSetupService', () => {
   function setup(user: typeof admin | null = admin, url = '/gallery') {
     const currentUser = signal(user);
@@ -33,14 +33,6 @@ describe('StorageSetupService', () => {
     expect(s.navigate).toHaveBeenCalledWith(['/admin'], {fragment: 'storage'});
     s.events.next(new NavigationEnd(1, '/browse', '/browse')); TestBed.tick();
     s.http.expectNone('/api/v1/admin/storage'); s.http.verify();
-  });
-  it('does not prompt users without admin access or interrupt initial credential setup', () => {
-    const s = setup({...admin, is_admin: false}); s.http.expectNone('/api/v1/admin/storage');
-    s.currentUser.set(admin); s.events.next(new NavigationEnd(1, '/login', '/login')); TestBed.tick();
-    s.http.expectNone('/api/v1/admin/storage');
-    s.events.next(new NavigationEnd(2, '/gallery', '/gallery')); TestBed.tick();
-    s.http.expectOne('/api/v1/admin/storage').flush({root: '/library', folder_configured: false, migration: null});
-    expect(s.open).toHaveBeenCalledOnce(); s.http.verify();
   });
   it('does not prompt once a folder has been confirmed', () => {
     const s = setup(); s.http.expectOne('/api/v1/admin/storage').flush({root: '/library', folder_configured: true, migration: null});

@@ -1,15 +1,12 @@
 from __future__ import annotations
-
 import json
 from datetime import datetime, timezone
 import io
 from types import SimpleNamespace
 import uuid
-
 from starlette.requests import Request as StarletteRequest
-
 from backend.app.config import settings
-from backend.app.models.media import MediaType, MediaVisibility, ProcessingStatus, TaggingStatus
+from backend.app.models.media import MediaType, ProcessingStatus, TaggingStatus
 from backend.app.models.relations import MediaEntityType
 from backend.app.schemas import ImportBatchRecommendationSuggestionRead
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
@@ -19,7 +16,6 @@ from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.utils.idempotency import IdempotencyStore
-
 
 def _media_read_payload(media_id: str) -> dict:
     now = datetime.now(timezone.utc).isoformat()
@@ -60,34 +56,11 @@ def _media_read_payload(media_id: str) -> dict:
         "favorite_count": 0,
     }
 
-
 def _preview_media(media_id: uuid.UUID, **overrides):
-    media = SimpleNamespace(
-        id=media_id,
-        deleted_at=None,
-        visibility=MediaVisibility.public,
-        tagging_status=TaggingStatus.DONE,
-        thumbnail_status=ProcessingStatus.DONE,
-        poster_status=ProcessingStatus.NOT_APPLICABLE,
-        media_type=MediaType.IMAGE,
-        thumbnail_path="/tmp/thumb.webp",
-        poster_path=None,
-        original_filename="shared & preview.webp",
-        filename="shared.webp",
-        version=7,
-        width=1280,
-        height=720,
-        duration_seconds=None,
-        media_tags=[
-            SimpleNamespace(tag=SimpleNamespace(name="safe")),
-            SimpleNamespace(tag=SimpleNamespace(name="landscape")),
-        ],
-        entities=[],
-    )
+    media = SimpleNamespace(id=media_id, deleted_at=None, tagging_status=TaggingStatus.DONE, thumbnail_status=ProcessingStatus.DONE, poster_status=ProcessingStatus.NOT_APPLICABLE, media_type=MediaType.IMAGE, thumbnail_path='/tmp/thumb.webp', poster_path=None, original_filename='shared & preview.webp', filename='shared.webp', version=7, width=1280, height=720, duration_seconds=None, media_tags=[SimpleNamespace(tag=SimpleNamespace(name='safe')), SimpleNamespace(tag=SimpleNamespace(name='landscape'))], entities=[])
     for key, value in overrides.items():
         setattr(media, key, value)
     return media
-
 
 def test_upload_media_contract(api_client, monkeypatch):
     captured = {}
@@ -147,7 +120,6 @@ def test_upload_media_contract(api_client, monkeypatch):
     assert captured["external_refs_values"][0][0].url == "https://x.com/example/status/1"
     assert captured["external_refs_values"][0][0].external_id is None
 
-
 def test_upload_media_uses_configured_multipart_max_files(api_client, monkeypatch):
     captured = {}
 
@@ -193,7 +165,6 @@ def test_upload_media_uses_configured_multipart_max_files(api_client, monkeypatc
 
     assert response.status_code == 202
     assert captured["max_files"] == 5001
-
 
 def test_upload_media_with_annotations_contract(api_client, monkeypatch):
     captured = {}
@@ -263,7 +234,6 @@ def test_upload_media_with_annotations_contract(api_client, monkeypatch):
     assert captured["external_refs_values"][0][0].provider == "twitter"
     assert captured["external_refs_values"][0][0].url == "https://x.com/example/status/1"
 
-
 def test_upload_media_with_annotations_requires_at_least_one_annotation(api_client):
     response = api_client.post(
         "/api/v1/media/annotated",
@@ -274,7 +244,6 @@ def test_upload_media_with_annotations_requires_at_least_one_annotation(api_clie
     payload = response.json()
     assert payload["code"] == "validation_error"
     assert payload["request_id"] == response.headers["x-request-id"]
-
 
 def test_upload_media_rejects_invalid_external_refs_json(api_client):
     response = api_client.post(
@@ -290,7 +259,6 @@ def test_upload_media_rejects_invalid_external_refs_json(api_client):
     assert payload["code"] == "validation_error"
     assert payload["request_id"] == response.headers["x-request-id"]
 
-
 def test_upload_media_rejects_external_ref_count_mismatch(api_client):
     response = api_client.post(
         "/api/v1/media",
@@ -305,7 +273,6 @@ def test_upload_media_rejects_external_ref_count_mismatch(api_client):
     payload = response.json()
     assert payload["code"] == "validation_error"
     assert payload["request_id"] == response.headers["x-request-id"]
-
 
 def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
     captured = {}
@@ -354,58 +321,31 @@ def test_ingest_url_contract_accepts_captured_at(api_client, monkeypatch):
     assert captured["external_refs"][0].provider == "twitter"
     assert captured["external_refs"][0].url == "https://x.com/example/status/1"
 
-
 def test_list_media_contract(api_client, monkeypatch):
     captured = {}
 
     async def _fake_list(self, **kwargs):
         captured.update(kwargs)
-        return {"total": 0, "next_cursor": None, "has_more": False, "page_size": 5, "items": []}
-
-    monkeypatch.setattr(MediaQueryService, "list_media", _fake_list)
-
-    response = api_client.get("/api/v1/media", params={"page_size": 5})
-
+        return {'total': 0, 'next_cursor': None, 'has_more': False, 'page_size': 5, 'items': []}
+    monkeypatch.setattr(MediaQueryService, 'list_media', _fake_list)
+    response = api_client.get('/api/v1/media', params={'page_size': 5})
     assert response.status_code == 200
-    assert response.json()["page_size"] == 5
-    assert captured["owner_username"] is None
-    assert captured["uploader_username"] is None
-
+    assert response.json()['page_size'] == 5
 
 def test_search_media_contract(api_client, monkeypatch):
     captured = {}
 
     async def _fake_list(self, **kwargs):
         captured.update(kwargs)
-        return {"total": 0, "next_cursor": None, "has_more": False, "page_size": 6, "items": []}
-
-    monkeypatch.setattr(MediaQueryService, "list_media", _fake_list)
-
-    response = api_client.get(
-        "/api/v1/media/search",
-        params=[
-            ("page_size", "6"),
-            ("ocr_text", "fate"),
-            ("character_name", "Rin"),
-            ("character_name", "Saber"),
-            ("series_name", "Fate"),
-            ("series_name", "Tsukihime"),
-            ("character_mode", "or"),
-            ("series_mode", "and"),
-            ("owner_username", "owner_user"),
-            ("uploader_username", "Uploader_User"),
-        ],
-    )
-
+        return {'total': 0, 'next_cursor': None, 'has_more': False, 'page_size': 6, 'items': []}
+    monkeypatch.setattr(MediaQueryService, 'list_media', _fake_list)
+    response = api_client.get('/api/v1/media/search', params=[('page_size', '6'), ('ocr_text', 'fate'), ('character_name', 'Rin'), ('character_name', 'Saber'), ('series_name', 'Fate'), ('series_name', 'Tsukihime'), ('character_mode', 'or'), ('series_mode', 'and'), ('owner_username', 'owner_user'), ('uploader_username', 'Uploader_User')])
     assert response.status_code == 200
-    assert response.json()["page_size"] == 6
-    assert captured["character_names"] == ["Rin", "Saber"]
-    assert captured["series_names"] == ["Fate", "Tsukihime"]
-    assert captured["character_mode"] == "or"
-    assert captured["series_mode"] == "and"
-    assert captured["owner_username"] == "owner_user"
-    assert captured["uploader_username"] == "Uploader_User"
-
+    assert response.json()['page_size'] == 6
+    assert captured['character_names'] == ['Rin', 'Saber']
+    assert captured['series_names'] == ['Fate', 'Tsukihime']
+    assert captured['character_mode'] == 'or'
+    assert captured['series_mode'] == 'and'
 
 def test_media_timeline_contract(api_client, monkeypatch):
     captured = {}
@@ -413,163 +353,91 @@ def test_media_timeline_contract(api_client, monkeypatch):
     async def _fake_timeline(self, user, **kwargs):
         captured.update(kwargs)
         return {"buckets": []}
-
-    monkeypatch.setattr(MediaQueryService, "get_timeline", _fake_timeline)
-
-    response = api_client.get(
-        "/api/v1/media/timeline",
-        params=[
-            ("tag", "safe"),
-            ("status", "reviewed"),
-            ("favorited", "false"),
-            ("character_name", "Rin"),
-            ("character_name", "Saber"),
-            ("series_name", "Fate"),
-            ("character_mode", "or"),
-            ("series_mode", "and"),
-            ("owner_username", "owner_user"),
-            ("uploader_username", "Uploader_User"),
-        ],
-    )
-
+    monkeypatch.setattr(MediaQueryService, 'get_timeline', _fake_timeline)
+    response = api_client.get('/api/v1/media/timeline', params=[('tag', 'safe'), ('status', 'reviewed'), ('favorited', 'false'), ('character_name', 'Rin'), ('character_name', 'Saber'), ('series_name', 'Fate'), ('character_mode', 'or'), ('series_mode', 'and'), ('owner_username', 'owner_user'), ('uploader_username', 'Uploader_User')])
     assert response.status_code == 200
-    assert response.json() == {"buckets": []}
-    assert captured["tags"] == ["safe"]
-    assert captured["status_filter"] == "reviewed"
-    assert captured["favorited"] is False
-    assert captured["character_names"] == ["Rin", "Saber"]
-    assert captured["series_names"] == ["Fate"]
-    assert captured["character_mode"] == "or"
-    assert captured["series_mode"] == "and"
-    assert captured["owner_username"] == "owner_user"
-    assert captured["uploader_username"] == "Uploader_User"
-
+    assert response.json() == {'buckets': []}
+    assert captured['tags'] == ['safe']
+    assert captured['status_filter'] == 'reviewed'
+    assert captured['favorited'] is False
+    assert captured['character_names'] == ['Rin', 'Saber']
+    assert captured['series_names'] == ['Fate']
+    assert captured['character_mode'] == 'or'
+    assert captured['series_mode'] == 'and'
 
 def test_character_suggestions_contract(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_list(self, user, q, limit, scope="accessible"):
-        captured.update({"q": q, "limit": limit, "scope": scope})
-        return [{"name": "Saber", "media_count": 3}]
-
-    monkeypatch.setattr(MediaQueryService, "list_character_suggestions", _fake_list)
-
-    response = api_client.get("/api/v1/media/character-suggestions", params={"q": "Sab", "limit": 5, "scope": "owner"})
-
+    async def _fake_list(self, user, q, limit, scope='accessible'):
+        captured.update({'q': q, 'limit': limit, 'scope': scope})
+        return [{'name': 'Saber', 'media_count': 3}]
+    monkeypatch.setattr(MediaQueryService, 'list_character_suggestions', _fake_list)
+    response = api_client.get('/api/v1/media/character-suggestions', params={'q': 'Sab', 'limit': 5, 'scope': 'owner'})
     assert response.status_code == 200
-    assert response.json() == [{"name": "Saber", "media_count": 3}]
-    assert captured == {"q": "Sab", "limit": 5, "scope": "owner"}
-
+    assert response.json() == [{'name': 'Saber', 'media_count': 3}]
+    assert captured == {'q': 'Sab', 'limit': 5, 'scope': 'owner'}
 
 def test_series_suggestions_contract(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_list(self, user, q, limit, scope="accessible"):
-        captured.update({"q": q, "limit": limit, "scope": scope})
-        return [{"name": "Fate/stay night", "media_count": 4}]
-
-    monkeypatch.setattr(MediaQueryService, "list_series_suggestions", _fake_list)
-
-    response = api_client.get("/api/v1/media/series-suggestions", params={"q": "Fate", "limit": 6, "scope": "owner"})
-
+    async def _fake_list(self, user, q, limit, scope='accessible'):
+        captured.update({'q': q, 'limit': limit, 'scope': scope})
+        return [{'name': 'Fate/stay night', 'media_count': 4}]
+    monkeypatch.setattr(MediaQueryService, 'list_series_suggestions', _fake_list)
+    response = api_client.get('/api/v1/media/series-suggestions', params={'q': 'Fate', 'limit': 6, 'scope': 'owner'})
     assert response.status_code == 200
-    assert response.json() == [{"name": "Fate/stay night", "media_count": 4}]
-    assert captured == {"q": "Fate", "limit": 6, "scope": "owner"}
-
+    assert response.json() == [{'name': 'Fate/stay night', 'media_count': 4}]
+    assert captured == {'q': 'Fate', 'limit': 6, 'scope': 'owner'}
 
 def test_character_suggestions_contract(api_client, monkeypatch):
-    async def _fake_suggestions(self, user, q, limit, scope="accessible"):
-        assert scope == "accessible"
-        return [{"name": "Saber", "media_count": 2}]
 
-    monkeypatch.setattr(MediaQueryService, "list_character_suggestions", _fake_suggestions)
-
-    response = api_client.get("/api/v1/media/character-suggestions", params={"q": "Sa", "limit": 10})
-
+    async def _fake_suggestions(self, user, q, limit, scope='accessible'):
+        assert scope == 'accessible'
+        return [{'name': 'Saber', 'media_count': 2}]
+    monkeypatch.setattr(MediaQueryService, 'list_character_suggestions', _fake_suggestions)
+    response = api_client.get('/api/v1/media/character-suggestions', params={'q': 'Sa', 'limit': 10})
     assert response.status_code == 200
-    assert response.json()[0]["name"] == "Saber"
-
+    assert response.json()[0]['name'] == 'Saber'
 
 def test_series_suggestions_contract(api_client, monkeypatch):
-    async def _fake_suggestions(self, user, q, limit, scope="accessible"):
-        assert q == "S"
+
+    async def _fake_suggestions(self, user, q, limit, scope='accessible'):
+        assert q == 'S'
         assert limit == 6
-        assert scope == "accessible"
-        return [{"name": "Fate/stay night", "media_count": 2}]
-
-    monkeypatch.setattr(MediaQueryService, "list_series_suggestions", _fake_suggestions)
-
-    response = api_client.get("/api/v1/media/series-suggestions", params={"q": "S", "limit": 6})
-
+        assert scope == 'accessible'
+        return [{'name': 'Fate/stay night', 'media_count': 2}]
+    monkeypatch.setattr(MediaQueryService, 'list_series_suggestions', _fake_suggestions)
+    response = api_client.get('/api/v1/media/series-suggestions', params={'q': 'S', 'limit': 6})
     assert response.status_code == 200
-    assert response.json()[0]["name"] == "Fate/stay night"
-
+    assert response.json()[0]['name'] == 'Fate/stay night'
 
 def test_library_classification_suggestions_contract(api_client, monkeypatch):
     media_id = uuid.uuid4()
 
-    async def _fake_enrich(self, requested_media_id, *, user_id, apply=True, target_media=None):
+    async def _fake_enrich(self, requested_media_id, *, apply=True, target_media=None):
         assert requested_media_id == media_id
         assert apply is False
-        return SimpleNamespace(
-            suggestions={
-                MediaEntityType.character: [
-                    ImportBatchRecommendationSuggestionRead(
-                        name="Saber",
-                        confidence=0.92,
-                        source="prototype",
-                        model_version="clip_onnx_v1",
-                        visual_similarity=0.88,
-                        explanation="Matched trusted examples.",
-                    )
-                ],
-                MediaEntityType.series: [
-                    ImportBatchRecommendationSuggestionRead(name="Fate/stay night", confidence=0.8)
-                ],
-            },
-            metadata={},
-        )
-
-    monkeypatch.setattr(MediaLibraryEnrichmentService, "enrich_media", _fake_enrich)
-
-    response = api_client.get(f"/api/v1/media/{media_id}/library-classification-suggestions")
-
+        return SimpleNamespace(suggestions={MediaEntityType.character: [ImportBatchRecommendationSuggestionRead(name='Saber', confidence=0.92, source='prototype', model_version='clip_onnx_v1', visual_similarity=0.88, explanation='Matched trusted examples.')], MediaEntityType.series: [ImportBatchRecommendationSuggestionRead(name='Fate/stay night', confidence=0.8)]}, metadata={})
+    monkeypatch.setattr(MediaLibraryEnrichmentService, 'enrich_media', _fake_enrich)
+    response = api_client.get(f'/api/v1/media/{media_id}/library-classification-suggestions')
     assert response.status_code == 200
     payload = response.json()
-    assert payload["suggested_characters"][0]["name"] == "Saber"
-    assert payload["suggested_characters"][0]["source"] == "prototype"
-    assert payload["suggested_series"][0]["name"] == "Fate/stay night"
-
+    assert payload['suggested_characters'][0]['name'] == 'Saber'
+    assert payload['suggested_characters'][0]['source'] == 'prototype'
+    assert payload['suggested_series'][0]['name'] == 'Fate/stay night'
 
 def test_library_classification_feedback_bulk_contract(api_client, monkeypatch):
     captured = {}
 
-    async def _fake_record_bulk(self, user_id, payloads):
-        captured["count"] = len(payloads)
-        captured["action"] = payloads[0].action
-        return {"processed": len(payloads), "skipped": 0}
-
-    monkeypatch.setattr(MediaLibraryEnrichmentService, "record_feedback_bulk", _fake_record_bulk)
-
-    response = api_client.post(
-        "/api/v1/media/library-classification-feedback/bulk",
-        json={
-            "items": [
-                {
-                    "media_id": str(uuid.uuid4()),
-                    "entity_type": "character",
-                    "suggested_name": "Saber",
-                    "action": "accepted",
-                    "source": "prototype",
-                }
-            ]
-        },
-    )
-
+    async def _fake_record_bulk(self, payloads):
+        captured['count'] = len(payloads)
+        captured['action'] = payloads[0].action
+        return {'processed': len(payloads), 'skipped': 0}
+    monkeypatch.setattr(MediaLibraryEnrichmentService, 'record_feedback_bulk', _fake_record_bulk)
+    response = api_client.post('/api/v1/media/library-classification-feedback/bulk', json={'items': [{'media_id': str(uuid.uuid4()), 'entity_type': 'character', 'suggested_name': 'Saber', 'action': 'accepted', 'source': 'prototype'}]})
     assert response.status_code == 200
-    assert response.json() == {"processed": 1, "skipped": 0}
-    assert captured == {"count": 1, "action": "accepted"}
-
+    assert response.json() == {'processed': 1, 'skipped': 0}
+    assert captured == {'count': 1, 'action': 'accepted'}
 
 def test_batch_update_contract(api_client, monkeypatch):
     async def _fake_bulk_delete(self, media_ids, user):
@@ -581,20 +449,6 @@ def test_batch_update_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["processed"] == 1
-
-
-def test_batch_update_visibility_contract(api_client, monkeypatch):
-    async def _fake_bulk_visibility(self, media_ids, user, visibility):
-        assert visibility == "public"
-        return {"processed": 2, "skipped": 1}
-
-    monkeypatch.setattr(MediaMetadataService, "bulk_update_visibility", _fake_bulk_visibility)
-
-    response = api_client.patch("/api/v1/media", json={"media_ids": [str(uuid.uuid4())], "visibility": "public"})
-
-    assert response.status_code == 200
-    assert response.json() == {"processed": 2, "skipped": 1}
-
 
 def test_batch_update_metadata_review_dismissed_contract(api_client, monkeypatch):
     async def _fake_bulk_dismissed(self, media_ids, user, metadata_review_dismissed):
@@ -610,7 +464,6 @@ def test_batch_update_metadata_review_dismissed_contract(api_client, monkeypatch
 
     assert response.status_code == 200
     assert response.json() == {"processed": 2, "skipped": 1}
-
 
 def test_batch_update_entities_contract(api_client, monkeypatch):
     async def _fake_bulk_entities(self, body, user):
@@ -631,7 +484,6 @@ def test_batch_update_entities_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"processed": 2, "skipped": 0}
-
 
 def test_batch_update_annotations_contract(api_client, monkeypatch):
     async def _fake_bulk_annotations(self, body, user):
@@ -661,7 +513,6 @@ def test_batch_update_annotations_contract(api_client, monkeypatch):
     assert response.status_code == 200
     assert response.json() == {"processed": 2, "skipped": 0}
 
-
 def test_batch_update_annotations_rejects_empty_mutation(api_client):
     response = api_client.patch(
         "/api/v1/media/annotations",
@@ -669,7 +520,6 @@ def test_batch_update_annotations_rejects_empty_mutation(api_client):
     )
 
     assert response.status_code == 422
-
 
 def test_batch_delete_command_contract(api_client, monkeypatch):
     async def _fake_delete(self, body, user):
@@ -682,7 +532,6 @@ def test_batch_delete_command_contract(api_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["skipped"] == 1
 
-
 def test_batch_purge_contract(api_client, monkeypatch):
     async def _fake_purge(self, body, user):
         return {"processed": 3, "skipped": 1}
@@ -693,7 +542,6 @@ def test_batch_purge_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["processed"] == 3
-
 
 def test_batch_update_replays_idempotent_response_without_reinvoking_service(api_client, monkeypatch):
     calls = {"count": 0}
@@ -716,7 +564,6 @@ def test_batch_update_replays_idempotent_response_without_reinvoking_service(api
     assert first.json() == second.json() == {"processed": 1, "skipped": 0}
     assert calls["count"] == 1
 
-
 def test_batch_update_rejects_idempotency_key_reuse_with_different_payload(api_client, monkeypatch):
     async def _fake_bulk_delete(self, media_ids, user):
         return {"processed": len(media_ids), "skipped": 0}
@@ -733,7 +580,6 @@ def test_batch_update_rejects_idempotency_key_reuse_with_different_payload(api_c
     payload = second.json()
     assert payload["code"] == "idempotency_key_conflict"
     assert payload["request_id"] == second.headers["x-request-id"]
-
 
 def test_upload_rejects_idempotency_key_reuse_when_external_refs_change(api_client, monkeypatch):
     calls = {"count": 0}
@@ -791,7 +637,6 @@ def test_upload_rejects_idempotency_key_reuse_when_external_refs_change(api_clie
     assert payload["code"] == "idempotency_key_conflict"
     assert payload["request_id"] == second.headers["x-request-id"]
 
-
 def test_empty_trash_contract(api_client, monkeypatch):
     async def _fake_empty(self, user):
         return None
@@ -801,7 +646,6 @@ def test_empty_trash_contract(api_client, monkeypatch):
     response = api_client.post("/api/v1/media/actions/empty-trash")
 
     assert response.status_code == 204
-
 
 def test_download_media_contract(api_client, monkeypatch):
     async def _fake_downloadables(self, user, media_ids):
@@ -814,7 +658,6 @@ def test_download_media_contract(api_client, monkeypatch):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/zip")
-
 
 def test_get_media_contract(api_client, monkeypatch):
     media_id = uuid.uuid4()
@@ -840,134 +683,6 @@ def test_get_media_contract(api_client, monkeypatch):
     assert response.json()["id"] == str(media_id)
     assert response.json()["related_posts"][0]["similarity"] == 0.87
 
-
-def test_get_media_embed_returns_open_graph_html_for_public_media(unauthenticated_client, monkeypatch):
-    media_id = uuid.uuid4()
-
-    async def _fake_get_with_relations(self, requested_media_id, deleted):
-        assert requested_media_id == media_id
-        assert deleted is False
-        return _preview_media(requested_media_id)
-
-    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
-
-    response = unauthenticated_client.get(
-        f"/api/v1/media/{media_id}/embed",
-        headers={
-            "host": "zukan.example",
-            "x-forwarded-proto": "https",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/html")
-    html = response.text
-    assert '<meta property="og:title" content="shared &amp; preview.webp">' in html
-    assert f'<meta property="og:url" content="https://zukan.example/media/{media_id}">' in html
-    assert f'<meta property="og:image" content="https://zukan.example/api/v1/media/{media_id}/preview-image?v=7">' in html
-    assert '<meta name="twitter:card" content="summary_large_image">' in html
-    assert "Image, 1280x720. Tags: landscape, safe" in html
-
-
-def test_get_media_embed_prioritizes_character_and_series_text(unauthenticated_client, monkeypatch):
-    media_id = uuid.uuid4()
-    media = _preview_media(
-        media_id,
-        original_filename="buried-filename.webp",
-        entities=[
-            SimpleNamespace(entity_type=MediaEntityType.character, name="Rin Tohsaka"),
-            SimpleNamespace(entity_type=MediaEntityType.series, name="Fate/stay night"),
-            SimpleNamespace(entity_type=MediaEntityType.character, name="Saber"),
-        ],
-    )
-
-    async def _fake_get_with_relations(self, requested_media_id, deleted):
-        assert requested_media_id == media_id
-        assert deleted is False
-        return media
-
-    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
-
-    response = unauthenticated_client.get(
-        f"/api/v1/media/{media_id}/embed",
-        headers={
-            "host": "zukan.example",
-            "x-forwarded-proto": "https",
-        },
-    )
-
-    assert response.status_code == 200
-    html = response.text
-    assert '<meta property="og:title" content="Rin Tohsaka and Saber from Fate/stay night">' in html
-    assert '<meta name="twitter:title" content="Rin Tohsaka and Saber from Fate/stay night">' in html
-    assert (
-        '<meta property="og:description" content="Image, 1280x720. buried-filename.webp. Tags: landscape, safe">'
-        in html
-    )
-
-
-def test_get_media_embed_hides_private_or_unready_media(unauthenticated_client, monkeypatch):
-    media_id = uuid.uuid4()
-    media = _preview_media(media_id, visibility=MediaVisibility.private)
-
-    async def _fake_get_with_relations(self, requested_media_id, deleted):
-        return media
-
-    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
-
-    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/embed")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "media_not_found"
-
-    media.visibility = MediaVisibility.public
-    media.thumbnail_status = ProcessingStatus.PROCESSING
-
-    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/embed")
-
-    assert response.status_code == 404
-    assert response.json()["code"] == "media_not_found"
-
-
-def test_get_media_preview_image_uses_poster_for_animated_media(unauthenticated_client, monkeypatch, tmp_path):
-    media_id = uuid.uuid4()
-    poster_path = tmp_path / "poster.png"
-    poster_path.write_bytes(b"poster")
-
-    async def _fake_get_with_relations(self, requested_media_id, deleted):
-        return _preview_media(
-            requested_media_id,
-            media_type=MediaType.VIDEO,
-            poster_status=ProcessingStatus.DONE,
-            poster_path=str(poster_path),
-        )
-
-    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
-
-    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/preview-image")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("image/png")
-    assert response.content == b"poster"
-
-
-def test_get_media_preview_image_uses_thumbnail_for_images(unauthenticated_client, monkeypatch, tmp_path):
-    media_id = uuid.uuid4()
-    thumb_path = tmp_path / "thumb.webp"
-    thumb_path.write_bytes(b"thumb")
-
-    async def _fake_get_with_relations(self, requested_media_id, deleted):
-        return _preview_media(requested_media_id, thumbnail_path=str(thumb_path))
-
-    monkeypatch.setattr(MediaQueryService, "get_media_with_relations", _fake_get_with_relations)
-
-    response = unauthenticated_client.get(f"/api/v1/media/{media_id}/preview-image")
-
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("image/webp")
-    assert response.content == b"thumb"
-
-
 def test_update_media_contract(api_client, monkeypatch):
     media_id = uuid.uuid4()
 
@@ -986,7 +701,6 @@ def test_update_media_contract(api_client, monkeypatch):
     assert response.status_code == 200
     assert response.json()["id"] == str(media_id)
 
-
 def test_get_media_file_contract(api_client, monkeypatch, tmp_path):
     media_path = tmp_path / "a.webp"
     media_path.write_bytes(b"abc")
@@ -1000,7 +714,6 @@ def test_get_media_file_contract(api_client, monkeypatch, tmp_path):
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/webp")
-
 
 def test_get_media_thumbnail_contract(api_client, monkeypatch, tmp_path):
     thumb_path = tmp_path / "thumb.webp"
@@ -1016,7 +729,6 @@ def test_get_media_thumbnail_contract(api_client, monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/webp")
 
-
 def test_get_media_poster_contract(api_client, monkeypatch, tmp_path):
     poster_path = tmp_path / "poster.png"
     poster_path.write_bytes(b"poster")
@@ -1031,7 +743,6 @@ def test_get_media_poster_contract(api_client, monkeypatch, tmp_path):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/png")
 
-
 def test_delete_media_contract(api_client, monkeypatch):
     async def _fake_delete(self, media_id, user):
         return None
@@ -1041,7 +752,6 @@ def test_delete_media_contract(api_client, monkeypatch):
     response = api_client.delete(f"/api/v1/media/{uuid.uuid4()}")
 
     assert response.status_code == 204
-
 
 def test_restore_media_contract(api_client, monkeypatch):
     async def _fake_restore(self, media_id, user):
@@ -1053,7 +763,6 @@ def test_restore_media_contract(api_client, monkeypatch):
 
     assert response.status_code == 204
 
-
 def test_purge_media_contract(api_client, monkeypatch):
     async def _fake_purge(self, media_id, user):
         return None
@@ -1063,7 +772,6 @@ def test_purge_media_contract(api_client, monkeypatch):
     response = api_client.delete(f"/api/v1/media/{uuid.uuid4()}/purge")
 
     assert response.status_code == 204
-
 
 def test_queue_media_tagging_job_contract(api_client, monkeypatch):
     async def _fake_retag(self, media_id, user):
@@ -1075,7 +783,6 @@ def test_queue_media_tagging_job_contract(api_client, monkeypatch):
 
     assert response.status_code == 202
     assert response.json() == {"queued": 4}
-
 
 def test_queue_bulk_media_tagging_jobs_contract(api_client, monkeypatch):
     async def _fake_bulk_retag(self, media_ids, user):

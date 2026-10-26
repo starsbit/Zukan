@@ -1,21 +1,21 @@
 from __future__ import annotations
-
 import asyncio
 import logging
 import uuid
 from typing import Any
-
 from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.config import settings
-from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION, EmbeddingBackend, embedding_backend
+from backend.app.ml.embedding import (
+    EMBEDDING_MODEL_VERSION,
+    EmbeddingBackend,
+    embedding_backend,
+)
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.media import Media, TaggingStatus
 from backend.app.repositories.embeddings import MediaEmbeddingRepository
 
 logger = logging.getLogger(__name__)
-
 _EMBEDDING_DB_RETRY_ATTEMPTS = 3
 _EMBEDDING_DB_RETRY_BACKOFF_SECONDS = 0.2
 _RETRYABLE_DB_ERROR_NAMES = {
@@ -23,11 +23,7 @@ _RETRYABLE_DB_ERROR_NAMES = {
     "LockNotAvailableError",
     "SerializationError",
 }
-_RETRYABLE_DB_SQLSTATES = {
-    "40P01",  # deadlock_detected
-    "40001",  # serialization_failure
-    "55P03",  # lock_not_available
-}
+_RETRYABLE_DB_SQLSTATES = {"40P01", "40001", "55P03"}
 
 
 class EmbeddingLockUnavailableError(RuntimeError):
@@ -49,34 +45,33 @@ class MediaEmbeddingService:
         media = await self._db.get(Media, media_id)
         return await self.ensure_for_media(media, force=force)
 
-    async def ensure_for_media(self, media: Media | None, *, force: bool = False) -> MediaEmbedding | None:
-        if media is None or media.deleted_at is not None or media.uploader_id is None:
+    async def ensure_for_media(
+        self, media: Media | None, *, force: bool = False
+    ) -> MediaEmbedding | None:
+        if media is None or media.deleted_at is not None:
             return None
-
         if (getattr(media, "file_status", None) or "available") != "available":
             return None
-
         media_id = media.id
-        uploader_id = media.uploader_id
         filepath = media.filepath
         media_type = media.media_type
-
         for attempt in range(1, _EMBEDDING_DB_RETRY_ATTEMPTS + 1):
             try:
                 return await self._ensure_for_media_values(
                     media_id=media_id,
-                    uploader_id=uploader_id,
                     filepath=filepath,
                     media_type=media_type,
                     force=force,
                 )
             except Exception as exc:
-                if not _is_retryable_db_error(exc) or attempt >= _EMBEDDING_DB_RETRY_ATTEMPTS:
+                if (
+                    not _is_retryable_db_error(exc)
+                    or attempt >= _EMBEDDING_DB_RETRY_ATTEMPTS
+                ):
                     raise
                 await self._db.rollback()
                 logger.warning(
-                    "Embedding write retrying after transient database error "
-                    "media_id=%s attempt=%s max_attempts=%s error_type=%s error=%s",
+                    "Embedding write retrying after transient database error media_id=%s attempt=%s max_attempts=%s error_type=%s error=%s",
                     media_id,
                     attempt,
                     _EMBEDDING_DB_RETRY_ATTEMPTS,
@@ -87,35 +82,34 @@ class MediaEmbeddingService:
         return None
 
     async def _ensure_for_media_values(
-        self,
-        *,
-        media_id: uuid.UUID,
-        uploader_id: uuid.UUID,
-        filepath: str,
-        media_type: Any,
-        force: bool,
+        self, *, media_id: uuid.UUID, filepath: str, media_type: Any, force: bool
     ) -> MediaEmbedding | None:
         existing = await self._repo.get_by_media_id(media_id)
-        if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
+        if (
+            existing is not None
+            and existing.model_version == EMBEDDING_MODEL_VERSION
+            and (not force)
+        ):
             return existing
-
         embedding = await self._compute_embedding(filepath, media_type)
         if not embedding:
             logger.warning("Embedding compute returned empty media_id=%s", media_id)
             return existing
-
-        lock_acquired = await self._acquire_uploader_embedding_lock(uploader_id)
+        lock_acquired = await self._acquire_library_embedding_lock()
         if not lock_acquired:
-            raise EmbeddingLockUnavailableError(f"Embedding lock is busy for uploader {uploader_id}")
-
+            raise EmbeddingLockUnavailableError(
+                f"Embedding lock is busy for uploader {None}"
+            )
         try:
             existing = await self._repo.get_by_media_id(media_id)
-            if existing is not None and existing.model_version == EMBEDDING_MODEL_VERSION and not force:
+            if (
+                existing is not None
+                and existing.model_version == EMBEDDING_MODEL_VERSION
+                and (not force)
+            ):
                 return existing
-
             await self._repo.upsert(
                 media_id=media_id,
-                uploader_id=uploader_id,
                 embedding=embedding,
                 model_version=EMBEDDING_MODEL_VERSION,
             )
@@ -125,7 +119,7 @@ class MediaEmbeddingService:
             await self._db.rollback()
             raise
         finally:
-            await self._release_uploader_embedding_lock(uploader_id)
+            await self._release_library_embedding_lock()
 
     async def _compute_embedding(self, filepath: str, media_type: Any) -> list[float]:
         timeout_seconds = settings.embedding_compute_timeout_seconds
@@ -134,14 +128,13 @@ class MediaEmbeddingService:
             return await asyncio.wait_for(computation, timeout=timeout_seconds)
         return await computation
 
-    async def _acquire_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> bool:
+    async def _acquire_library_embedding_lock(self) -> bool:
         bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
         dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
         if dialect_name != "postgresql":
             return True
         result = await self._db.execute(
-            text("SELECT pg_try_advisory_lock(:lock_key)"),
-            {"lock_key": _signed_lock_key(uploader_id)},
+            text("SELECT pg_try_advisory_lock(:lock_key)"), {"lock_key": 1515544912}
         )
         scalar_one = getattr(result, "scalar_one", None)
         if callable(scalar_one):
@@ -151,31 +144,27 @@ class MediaEmbeddingService:
             return bool(scalar())
         return True
 
-    async def _release_uploader_embedding_lock(self, uploader_id: uuid.UUID) -> None:
+    async def _release_library_embedding_lock(self) -> None:
         bind = self._db.get_bind() if hasattr(self._db, "get_bind") else None
         dialect_name = getattr(getattr(bind, "dialect", None), "name", None)
         if dialect_name != "postgresql":
             return
         try:
             await self._db.execute(
-                text("SELECT pg_advisory_unlock(:lock_key)"),
-                {"lock_key": _signed_lock_key(uploader_id)},
+                text("SELECT pg_advisory_unlock(:lock_key)"), {"lock_key": 1515544912}
             )
         except Exception:
-            logger.exception("Failed to release embedding advisory lock uploader_id=%s", uploader_id)
+            logger.exception(
+                "Failed to release embedding advisory lock uploader_id=%s", None
+            )
 
-    async def backfill_user_embeddings(
-        self,
-        *,
-        uploader_id: uuid.UUID,
-        exclude_media_id: uuid.UUID | None = None,
-        limit: int,
+    async def backfill_library_embeddings(
+        self, *, exclude_media_id: uuid.UUID | None = None, limit: int
     ) -> int:
         stmt = (
             select(Media)
             .outerjoin(MediaEmbedding, MediaEmbedding.media_id == Media.id)
             .where(
-                Media.uploader_id == uploader_id,
                 Media.deleted_at.is_(None),
                 Media.tagging_status == TaggingStatus.DONE,
                 or_(
@@ -188,7 +177,6 @@ class MediaEmbeddingService:
         )
         if exclude_media_id is not None:
             stmt = stmt.where(Media.id != exclude_media_id)
-
         rows = (await self._db.execute(stmt)).scalars().all()
         created = 0
         for media in rows:
@@ -196,11 +184,6 @@ class MediaEmbeddingService:
             if embedding is not None:
                 created += 1
         return created
-
-
-def _signed_lock_key(value: uuid.UUID) -> int:
-    raw = int.from_bytes(value.bytes[:8], byteorder="big", signed=False)
-    return raw - (1 << 64) if raw >= (1 << 63) else raw
 
 
 def _is_retryable_db_error(exc: Exception) -> bool:

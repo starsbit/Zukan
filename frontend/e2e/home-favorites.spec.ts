@@ -9,9 +9,6 @@ const PNG_1X1 = Buffer.from(
 function mediaItem(id: string, isFavorited = false) {
   return {
     id,
-    uploader_id: 'u1',
-    owner_id: 'u1',
-    visibility: 'public',
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: 'image',

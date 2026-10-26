@@ -14,9 +14,6 @@ function sampleMedia(
 ) {
   return {
     id,
-    uploader_id: 'u1',
-    owner_id: 'u1',
-    visibility: 'private',
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: 'image',
@@ -69,9 +66,6 @@ async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<
     await route.fulfill({
       json: {
         id: 'album-1',
-        owner_id: 'u1',
-        owner: { id: 'u1', username: 'owner' },
-        access_role: 'owner',
         name: 'Album 1',
         description: 'Shared album',
         cover_media_id: null,
@@ -150,9 +144,6 @@ async function registerMobileGalleryRoutes(page: Page, searchRequests: URL[]): P
     await route.fulfill({
       json: {
         id: 'album-1',
-        owner_id: 'u1',
-        owner: { id: 'u1', username: 'owner' },
-        access_role: 'owner',
         name: 'Album 1',
         description: 'Shared album',
         cover_media_id: null,
@@ -362,7 +353,6 @@ async function registerAdvancedFilterRoutes(
 ): Promise<void> {
   const media: MockMedia[] = [
     sampleMedia('public-video-fav', '2026-03-28T12:00:00Z', 1440, 960, {
-      visibility: 'public',
       filename: 'b-video.mp4',
       media_type: 'video',
       metadata: {
@@ -381,7 +371,6 @@ async function registerAdvancedFilterRoutes(
       tags: ['hero'],
     }),
     sampleMedia('private-image-fav', '2026-03-28T08:00:00Z', 1200, 900, {
-      visibility: 'private',
       filename: 'a-image.jpg',
       is_favorited: true,
       searchable_status: 'reviewed',
@@ -389,7 +378,6 @@ async function registerAdvancedFilterRoutes(
       tags: ['spoiler'],
     }),
     sampleMedia('public-image-nsfw', '2026-03-29T09:30:00Z', 1200, 900, {
-      visibility: 'public',
       filename: 'c-public.jpg',
       is_nsfw: true,
       is_sensitive: true,
@@ -398,7 +386,6 @@ async function registerAdvancedFilterRoutes(
       tags: ['alert'],
     }),
     sampleMedia('private-gif', '2025-12-01T10:00:00Z', 960, 960, {
-      visibility: 'private',
       filename: 'd-loop.gif',
       media_type: 'gif',
       metadata: {
@@ -420,9 +407,6 @@ async function registerAdvancedFilterRoutes(
     await route.fulfill({
       json: {
         id: 'album-1',
-        owner_id: 'u1',
-        owner: { id: 'u1', username: 'owner' },
-        access_role: 'owner',
         name: 'Album 1',
         description: 'Shared album',
         cover_media_id: null,
@@ -775,26 +759,6 @@ test.describe.serial('Navbar search', () => {
         && candidate.searchParams.getAll('tag').length === 0,
     );
     expect(request.searchParams.getAll('tag')).toEqual([]);
-  });
-
-  test('applies visibility and favorites filters from the dialog', async ({ page }) => {
-    const searchRequests: URL[] = [];
-    await seedAuthenticatedSession(page);
-    await registerAdvancedFilterRoutes(page, searchRequests);
-    await page.goto('/');
-    await expect(page).toHaveURL('/');
-    await waitForMatchingSearchRequest(
-      searchRequests,
-      (request) => request.searchParams.get('state') === 'active',
-    );
-    await expect(page.locator('.media-card')).toHaveCount(4);
-
-    await openFiltersDialog(page);
-    await selectDialogOption(page, 'Favorites', 'Only favorites');
-    await selectDialogOption(page, 'Visibility', 'Public');
-    await page.getByRole('button', { name: 'Apply' }).click();
-
-    await expect(page.locator('.media-card')).toHaveCount(1);
   });
 
   test('clicking inspector metadata adds a current-view filter and closes the inspector', async ({ page }) => {

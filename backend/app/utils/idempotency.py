@@ -1,14 +1,11 @@
 from __future__ import annotations
-
 import asyncio
 import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
-
 from fastapi.encoders import jsonable_encoder
-
 from backend.app.errors.error import AppError
 
 idempotency_key_conflict = "idempotency_key_conflict"
@@ -88,8 +85,8 @@ class IdempotencyStore:
 idempotency_store = IdempotencyStore()
 
 
-def idempotency_scope(*, user_id: Any, method: str, path: str) -> str:
-    return f"{user_id}:{method.upper()}:{path}"
+def idempotency_scope(*, method: str, path: str) -> str:
+    return f"owner:{method.upper()}:{path}"
 
 
 def idempotency_body_hash(payload: Any) -> str:

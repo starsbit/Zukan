@@ -1,11 +1,9 @@
 import enum
 import uuid
 from datetime import datetime
-
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from backend.app.database import Base
 
 
@@ -46,37 +44,54 @@ class ProcessingStep(str, enum.Enum):
 
 class ImportBatch(Base):
     __tablename__ = "import_batches"
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    type: Mapped[BatchType] = mapped_column(Enum(BatchType, name="batch_type_enum"), nullable=False)
+    type: Mapped[BatchType] = mapped_column(
+        Enum(BatchType, name="batch_type_enum"), nullable=False
+    )
     status: Mapped[BatchStatus] = mapped_column(
-        Enum(BatchStatus, name="batch_status_enum"), nullable=False, default=BatchStatus.pending, server_default="pending"
+        Enum(BatchStatus, name="batch_status_enum"),
+        nullable=False,
+        default=BatchStatus.pending,
+        server_default="pending",
     )
-    total_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    queued_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    processing_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    done_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    failed_items: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    queued_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    processing_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    done_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    failed_items: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     app_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     worker_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     error_summary: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     recommendation_groups: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    recommendations_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
+    recommendations_computed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     items: Mapped[list["ImportBatchItem"]] = relationship(
-        "ImportBatchItem",
-        back_populates="batch",
-        cascade="all, delete-orphan",
+        "ImportBatchItem", back_populates="batch", cascade="all, delete-orphan"
     )
 
 

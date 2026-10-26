@@ -16,7 +16,7 @@
         <mat-card-title>No albums yet</mat-card-title>
       </mat-card-header>
       <mat-card-content>
-        <p>Albums you own or collaborators share with you will appear here.</p>
+        <p>Your albums will appear here.</p>
       </mat-card-content>
     </mat-card>
   } @else {
@@ -25,11 +25,10 @@
         <zukan-album-card
           [album]="album"
           [allowEdit]="canEdit(album)"
-          [allowInvite]="canInvite(album)"
           [allowDelete]="canDelete(album)"
           (editRequested)="editAlbum($event)"
-          (inviteRequested)="inviteToAlbum($event)"
-          (deleteRequested)="deleteAlbum($event)">
+          (deleteRequested)="deleteAlbum($event)"
+        >
         </zukan-album-card>
       }
     </section>

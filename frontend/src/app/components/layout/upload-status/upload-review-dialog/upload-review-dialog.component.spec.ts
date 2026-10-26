@@ -4,8 +4,11 @@ import { MAT_DIALOG_DATA, MatDialog, MatDialogRef } from '@angular/material/dial
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { Subject, of, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../../models/media';
-import { ImportBatchReviewItemRead, ImportBatchReviewListResponse } from '../../../../models/processing';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../../../models/media';
+import {
+  ImportBatchReviewItemRead,
+  ImportBatchReviewListResponse,
+} from '../../../../models/processing';
 import { UploadTrackerService } from '../../../../services/upload-tracker.service';
 import { MediaService } from '../../../../services/media.service';
 import { BatchesClientService } from '../../../../services/web/batches-client.service';
@@ -32,11 +35,6 @@ function makeReviewItem(
     entities: [],
     media: {
       id,
-      uploader_id: 'u1',
-      uploader_username: 'uploader',
-      owner_id: 'u1',
-      owner_username: 'owner',
-      visibility: MediaVisibility.PRIVATE,
       filename: `${id}.jpg`,
       original_filename: `${id}.jpg`,
       media_type: MediaType.IMAGE,
@@ -74,74 +72,78 @@ describe('UploadReviewDialogComponent', () => {
       getBatchReview: signal({
         id: 'b1',
         recommendationGroups: [],
-        reviewItems: [{
-          batch_item_id: 'i1',
-          source_filename: 'missing.jpg',
-          missing_character: true,
-          missing_series: true,
-          entities: [],
-          media: {
-            id: 'm1',
-            uploader_id: 'u1',
-            uploader_username: 'uploader',
-            owner_id: 'u1',
-            owner_username: 'owner',
-            visibility: MediaVisibility.PRIVATE,
-            filename: 'missing.jpg',
-            original_filename: 'missing.jpg',
-            media_type: MediaType.IMAGE,
-            metadata: {
-              file_size: 1,
-              width: 10,
-              height: 10,
-              duration_seconds: null,
-              frame_count: null,
-              mime_type: 'image/jpeg',
-              captured_at: '2026-03-29T10:00:00Z',
+        reviewItems: [
+          {
+            batch_item_id: 'i1',
+            source_filename: 'missing.jpg',
+            missing_character: true,
+            missing_series: true,
+            entities: [],
+            media: {
+              id: 'm1',
+              filename: 'missing.jpg',
+              original_filename: 'missing.jpg',
+              media_type: MediaType.IMAGE,
+              metadata: {
+                file_size: 1,
+                width: 10,
+                height: 10,
+                duration_seconds: null,
+                frame_count: null,
+                mime_type: 'image/jpeg',
+                captured_at: '2026-03-29T10:00:00Z',
+              },
+              version: 1,
+              uploaded_at: '2026-03-29T10:00:00Z',
+              deleted_at: null,
+              tags: [],
+              ocr_text_override: null,
+              is_nsfw: false,
+              tagging_status: TaggingStatus.DONE,
+              tagging_error: null,
+              thumbnail_status: ProcessingStatus.DONE,
+              poster_status: ProcessingStatus.NOT_APPLICABLE,
+              ocr_text: null,
+              is_favorited: false,
+              favorite_count: 0,
             },
-            version: 1,
-            uploaded_at: '2026-03-29T10:00:00Z',
-            deleted_at: null,
-            tags: [],
-            ocr_text_override: null,
-            is_nsfw: false,
-            tagging_status: TaggingStatus.DONE,
-            tagging_error: null,
-            thumbnail_status: ProcessingStatus.DONE,
-            poster_status: ProcessingStatus.NOT_APPLICABLE,
-            ocr_text: null,
-            is_favorited: false,
-            favorite_count: 0,
+            suggested_characters: [
+              {
+                name: 'Saber',
+                confidence: 0.91,
+                source: 'prototype',
+                model_version: 'clip_onnx_v1',
+                visual_similarity: 0.86,
+                explanation: 'Matched trusted examples.',
+              },
+            ],
           },
-          suggested_characters: [{
-            name: 'Saber',
-            confidence: 0.91,
-            source: 'prototype',
-            model_version: 'clip_onnx_v1',
-            visual_similarity: 0.86,
-            explanation: 'Matched trusted examples.',
-          }],
-        }],
+        ],
         reviewBaselineTotal: 1,
         reviewRefreshing: false,
         recommendationsRefreshing: false,
       }),
       refreshBatchReview,
       refreshBatchRecommendations,
-      applyReviewEntityUpdate: vi.fn((batchId: string, update: {
-        mediaIds: string[];
-        characterNames: string[];
-        seriesNames: string[];
-      }) => {
-        if (batchId !== 'b1') {
-          return;
-        }
-        const resolvedIds = new Set(update.mediaIds);
-        tracker.getBatchReview.update((state) => ({
-          ...state,
-          reviewItems: state.reviewItems.filter((item) => !resolvedIds.has(item.media.id)),
-        }));
-      }),
+      applyReviewEntityUpdate: vi.fn(
+        (
+          batchId: string,
+          update: {
+            mediaIds: string[];
+            characterNames: string[];
+            seriesNames: string[];
+          },
+        ) => {
+          if (batchId !== 'b1') {
+            return;
+          }
+          const resolvedIds = new Set(update.mediaIds);
+          tracker.getBatchReview.update((state) => ({
+            ...state,
+            reviewItems: state.reviewItems.filter((item) => !resolvedIds.has(item.media.id)),
+          }));
+        },
+      ),
     };
     const batchUpdateEntities = vi.fn(() => of({ processed: 1, skipped: 0 }));
     const recordLibraryClassificationFeedbackBulk = vi.fn(() => of({ processed: 2, skipped: 0 }));
@@ -161,14 +163,20 @@ describe('UploadReviewDialogComponent', () => {
         {
           provide: UploadTrackerService,
           useValue: {
-            getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
+            getBatchReview: (batchId: string) =>
+              batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
             applyReviewEntityUpdate: tracker.applyReviewEntityUpdate,
           },
         },
         { provide: MediaService, useValue: mediaService },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        {
+          provide: BatchesClientService,
+          useValue: {
+            listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })),
+          },
+        },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -227,17 +235,19 @@ describe('UploadReviewDialogComponent', () => {
     const tracker = {
       getBatchReview: signal({
         id: 'b1',
-        recommendationGroups: [{
-          id: 'group-1',
-          media_ids: ['m1', 'm2'],
-          item_count: 2,
-          missing_character_count: 2,
-          missing_series_count: 2,
-          suggested_characters: [{ name: 'artoria_pendragon_(fate)', confidence: 0.95 }],
-          suggested_series: [{ name: 'fate_stay_night', confidence: 0.91 }],
-          shared_signals: [{ kind: 'tag', label: 'ryuuguu_rena', confidence: 0.8 }],
-          confidence: 0.82,
-        }],
+        recommendationGroups: [
+          {
+            id: 'group-1',
+            media_ids: ['m1', 'm2'],
+            item_count: 2,
+            missing_character_count: 2,
+            missing_series_count: 2,
+            suggested_characters: [{ name: 'artoria_pendragon_(fate)', confidence: 0.95 }],
+            suggested_series: [{ name: 'fate_stay_night', confidence: 0.91 }],
+            shared_signals: [{ kind: 'tag', label: 'ryuuguu_rena', confidence: 0.8 }],
+            confidence: 0.82,
+          },
+        ],
         reviewItems: [
           {
             batch_item_id: 'i1',
@@ -247,11 +257,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm1',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'missing.jpg',
               original_filename: 'missing.jpg',
               media_type: MediaType.IMAGE,
@@ -287,11 +292,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm2',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'missing-2.jpg',
               original_filename: 'missing-2.jpg',
               media_type: MediaType.IMAGE,
@@ -334,7 +334,8 @@ describe('UploadReviewDialogComponent', () => {
         {
           provide: UploadTrackerService,
           useValue: {
-            getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
+            getBatchReview: (batchId: string) =>
+              batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
           },
@@ -350,7 +351,12 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        {
+          provide: BatchesClientService,
+          useValue: {
+            listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })),
+          },
+        },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -554,17 +560,19 @@ describe('UploadReviewDialogComponent', () => {
     const tracker = {
       getBatchReview: signal({
         id: 'b1',
-        recommendationGroups: [{
-          id: 'group-1',
-          media_ids: ['m1', 'm2'],
-          item_count: 2,
-          missing_character_count: 2,
-          missing_series_count: 2,
-          suggested_characters: [{ name: 'Saber', confidence: 0.95 }],
-          suggested_series: [],
-          shared_signals: [{ kind: 'tag', label: 'blue dress', confidence: 0.8 }],
-          confidence: 0.82,
-        }],
+        recommendationGroups: [
+          {
+            id: 'group-1',
+            media_ids: ['m1', 'm2'],
+            item_count: 2,
+            missing_character_count: 2,
+            missing_series_count: 2,
+            suggested_characters: [{ name: 'Saber', confidence: 0.95 }],
+            suggested_series: [],
+            shared_signals: [{ kind: 'tag', label: 'blue dress', confidence: 0.8 }],
+            confidence: 0.82,
+          },
+        ],
         reviewItems: [
           {
             batch_item_id: 'i1',
@@ -574,11 +582,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm1',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'one.jpg',
               original_filename: 'one.jpg',
               media_type: MediaType.IMAGE,
@@ -614,11 +617,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm2',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'two.jpg',
               original_filename: 'two.jpg',
               media_type: MediaType.IMAGE,
@@ -661,7 +659,8 @@ describe('UploadReviewDialogComponent', () => {
         {
           provide: UploadTrackerService,
           useValue: {
-            getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
+            getBatchReview: (batchId: string) =>
+              batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
           },
@@ -677,7 +676,12 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        {
+          provide: BatchesClientService,
+          useValue: {
+            listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })),
+          },
+        },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -777,17 +781,19 @@ describe('UploadReviewDialogComponent', () => {
     const tracker = {
       getBatchReview: signal({
         id: 'b1',
-        recommendationGroups: [{
-          id: 'group-1',
-          media_ids: ['m1', 'm2'],
-          item_count: 2,
-          missing_character_count: 2,
-          missing_series_count: 2,
-          suggested_characters: [],
-          suggested_series: [],
-          shared_signals: [],
-          confidence: 0.82,
-        }],
+        recommendationGroups: [
+          {
+            id: 'group-1',
+            media_ids: ['m1', 'm2'],
+            item_count: 2,
+            missing_character_count: 2,
+            missing_series_count: 2,
+            suggested_characters: [],
+            suggested_series: [],
+            shared_signals: [],
+            confidence: 0.82,
+          },
+        ],
         reviewItems: [
           {
             batch_item_id: 'i1',
@@ -797,11 +803,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm1',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'one.jpg',
               original_filename: 'one.jpg',
               media_type: MediaType.IMAGE,
@@ -838,11 +839,6 @@ describe('UploadReviewDialogComponent', () => {
             entities: [],
             media: {
               id: 'm2',
-              uploader_id: 'u1',
-              uploader_username: 'uploader',
-              owner_id: 'u1',
-              owner_username: 'owner',
-              visibility: MediaVisibility.PRIVATE,
               filename: 'two.jpg',
               original_filename: 'two.jpg',
               media_type: MediaType.IMAGE,
@@ -886,7 +882,8 @@ describe('UploadReviewDialogComponent', () => {
         {
           provide: UploadTrackerService,
           useValue: {
-            getBatchReview: (batchId: string) => batchId === 'b1' ? tracker.getBatchReview() : null,
+            getBatchReview: (batchId: string) =>
+              batchId === 'b1' ? tracker.getBatchReview() : null,
             refreshBatchReview,
             refreshBatchRecommendations,
             dismissReviewItems,
@@ -903,7 +900,12 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        {
+          provide: BatchesClientService,
+          useValue: {
+            listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })),
+          },
+        },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -927,49 +929,47 @@ describe('UploadReviewDialogComponent', () => {
     const reviewItemsResponse: ImportBatchReviewListResponse = {
       total: 1,
       recommendation_groups: [],
-      items: [{
-        batch_item_id: 'i1',
-        source_filename: 'missing.jpg',
-        missing_character: true,
-        missing_series: false,
-        entities: [],
-        media: {
-          id: 'm1',
-          uploader_id: 'u1',
-          uploader_username: 'uploader',
-          owner_id: 'u1',
-          owner_username: 'owner',
-          visibility: MediaVisibility.PRIVATE,
-          filename: 'missing.jpg',
-          original_filename: 'missing.jpg',
-          media_type: MediaType.IMAGE,
-          metadata: {
-            file_size: 1,
-            width: 10,
-            height: 10,
-            duration_seconds: null,
-            frame_count: null,
-            mime_type: 'image/jpeg',
-            captured_at: '2026-03-29T10:00:00Z',
+      items: [
+        {
+          batch_item_id: 'i1',
+          source_filename: 'missing.jpg',
+          missing_character: true,
+          missing_series: false,
+          entities: [],
+          media: {
+            id: 'm1',
+            filename: 'missing.jpg',
+            original_filename: 'missing.jpg',
+            media_type: MediaType.IMAGE,
+            metadata: {
+              file_size: 1,
+              width: 10,
+              height: 10,
+              duration_seconds: null,
+              frame_count: null,
+              mime_type: 'image/jpeg',
+              captured_at: '2026-03-29T10:00:00Z',
+            },
+            version: 1,
+            uploaded_at: '2026-03-29T10:00:00Z',
+            deleted_at: null,
+            tags: [],
+            ocr_text_override: null,
+            is_nsfw: false,
+            tagging_status: TaggingStatus.DONE,
+            tagging_error: null,
+            thumbnail_status: ProcessingStatus.DONE,
+            poster_status: ProcessingStatus.NOT_APPLICABLE,
+            ocr_text: null,
+            is_favorited: false,
+            favorite_count: 0,
           },
-          version: 1,
-          uploaded_at: '2026-03-29T10:00:00Z',
-          deleted_at: null,
-          tags: [],
-          ocr_text_override: null,
-          is_nsfw: false,
-          tagging_status: TaggingStatus.DONE,
-          tagging_error: null,
-          thumbnail_status: ProcessingStatus.DONE,
-          poster_status: ProcessingStatus.NOT_APPLICABLE,
-          ocr_text: null,
-          is_favorited: false,
-          favorite_count: 0,
         },
-      }],
+      ],
     };
     const recommendations$ = new Subject<ImportBatchReviewListResponse>();
-    const listReviewItems = vi.fn()
+    const listReviewItems = vi
+      .fn()
       .mockReturnValueOnce(of(reviewItemsResponse))
       .mockReturnValueOnce(recommendations$);
 
@@ -1017,23 +1017,30 @@ describe('UploadReviewDialogComponent', () => {
 
     recommendations$.next({
       ...reviewItemsResponse,
-      recommendation_groups: [{
-        id: 'group-1',
-        media_ids: ['m1', 'm2'],
-        item_count: 2,
-        missing_character_count: 2,
-        missing_series_count: 1,
-        suggested_characters: [{ name: 'Saber', confidence: 0.95 }],
-        suggested_series: [{ name: 'Fate/stay night', confidence: 1 }],
-        shared_signals: [],
-        confidence: 0.91,
-      }],
+      recommendation_groups: [
+        {
+          id: 'group-1',
+          media_ids: ['m1', 'm2'],
+          item_count: 2,
+          missing_character_count: 2,
+          missing_series_count: 1,
+          suggested_characters: [{ name: 'Saber', confidence: 0.95 }],
+          suggested_series: [{ name: 'Fate/stay night', confidence: 1 }],
+          shared_signals: [],
+          confidence: 0.91,
+        },
+      ],
       items: [
         ...reviewItemsResponse.items,
         {
           ...reviewItemsResponse.items[0],
           batch_item_id: 'i2',
-          media: { ...reviewItemsResponse.items[0].media, id: 'm2', filename: 'missing-2.jpg', original_filename: 'missing-2.jpg' },
+          media: {
+            ...reviewItemsResponse.items[0].media,
+            id: 'm2',
+            filename: 'missing-2.jpg',
+            original_filename: 'missing-2.jpg',
+          },
           source_filename: 'missing-2.jpg',
           missing_character: true,
           missing_series: true,
@@ -1136,11 +1143,6 @@ describe('UploadReviewDialogComponent', () => {
 
   it('switches to merged-batch scope and refreshes through the persisted merged batch', async () => {
     const baseMedia = {
-      uploader_id: 'u1',
-      uploader_username: 'uploader',
-      owner_id: 'u1',
-      owner_username: 'owner',
-      visibility: MediaVisibility.PRIVATE,
       media_type: MediaType.IMAGE,
       metadata: {
         file_size: 1,
@@ -1219,30 +1221,38 @@ describe('UploadReviewDialogComponent', () => {
         },
       ],
     };
-    const listReviewItems = vi.fn()
+    const listReviewItems = vi
+      .fn()
       .mockReturnValueOnce(of({ total: 2, items: batchItems, recommendation_groups: [] }))
-      .mockReturnValueOnce(of({
-        total: 2,
-        items: batchItems,
-        recommendation_groups: [{
-          id: 'group-1',
-          media_ids: ['m1', 'm2'],
-          item_count: 2,
-          missing_character_count: 2,
-          missing_series_count: 2,
-          suggested_characters: [{ name: 'Saber', confidence: 0.9 }],
-          suggested_series: [],
-          shared_signals: [],
-            confidence: 0.91,
-          }],
-      }))
-      .mockReturnValueOnce(of({
-        total: 4,
-        items: mergedBatchResponse.items,
-        recommendation_groups: mergedBatchResponse.recommendation_groups,
-      }));
+      .mockReturnValueOnce(
+        of({
+          total: 2,
+          items: batchItems,
+          recommendation_groups: [
+            {
+              id: 'group-1',
+              media_ids: ['m1', 'm2'],
+              item_count: 2,
+              missing_character_count: 2,
+              missing_series_count: 2,
+              suggested_characters: [{ name: 'Saber', confidence: 0.9 }],
+              suggested_series: [],
+              shared_signals: [],
+              confidence: 0.91,
+            },
+          ],
+        }),
+      )
+      .mockReturnValueOnce(
+        of({
+          total: 4,
+          items: mergedBatchResponse.items,
+          recommendation_groups: mergedBatchResponse.recommendation_groups,
+        }),
+      );
     const mergedBatch$ = new Subject<typeof mergedBatchResponse>();
-    const mergeReviewItems = vi.fn()
+    const mergeReviewItems = vi
+      .fn()
       .mockReturnValueOnce(mergedBatch$)
       .mockReturnValueOnce(of(mergedBatchResponse));
     const refreshBatchRecommendations = vi.fn();
@@ -1285,8 +1295,10 @@ describe('UploadReviewDialogComponent', () => {
     component.discardedMediaIds.set(['m2']);
     component.expandedGroupIds.set(['group-1']);
 
-    const mergeButton = (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[])
-      .find((button) => button.textContent?.includes('Merge all batches & regroup')) ?? null;
+    const mergeButton =
+      (Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]).find(
+        (button) => button.textContent?.includes('Merge all batches & regroup'),
+      ) ?? null;
 
     expect(mergeButton).toBeTruthy();
 
@@ -1300,7 +1312,10 @@ describe('UploadReviewDialogComponent', () => {
     expect(component.removedGroupMediaIds()).toEqual({ 'group-1': ['m1'] });
     expect(component.discardedMediaIds()).toEqual(['m2']);
     expect(component.expandedGroupIds()).toEqual([]);
-    expect(mergeReviewItems).toHaveBeenNthCalledWith(1, { include_recommendations: false, force_refresh: true });
+    expect(mergeReviewItems).toHaveBeenNthCalledWith(1, {
+      include_recommendations: false,
+      force_refresh: true,
+    });
 
     mergedBatch$.next(mergedBatchResponse);
     mergedBatch$.complete();
@@ -1312,10 +1327,15 @@ describe('UploadReviewDialogComponent', () => {
     expect(component.removedGroupMediaIds()).toEqual({});
     expect(component.discardedMediaIds()).toEqual([]);
     expect(component.expandedGroupIds()).toEqual([]);
-    expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-1', 'group-2']);
+    expect(component.recommendationGroups().map((group) => group.id)).toEqual([
+      'group-1',
+      'group-2',
+    ]);
     expect(fixture.nativeElement.textContent).toContain('4 still need character or series names.');
 
-    const refreshButton: HTMLButtonElement = fixture.nativeElement.querySelector('button[aria-label="Refresh grouping recommendations"]');
+    const refreshButton: HTMLButtonElement = fixture.nativeElement.querySelector(
+      'button[aria-label="Refresh grouping recommendations"]',
+    );
     refreshButton.click();
     fixture.detectChanges();
 
@@ -1391,11 +1411,6 @@ describe('UploadReviewDialogComponent', () => {
 
   it('removes merged-batch groups locally after applying names', async () => {
     const baseMedia = {
-      uploader_id: 'u1',
-      uploader_username: 'uploader',
-      owner_id: 'u1',
-      owner_username: 'owner',
-      visibility: MediaVisibility.PRIVATE,
       media_type: MediaType.IMAGE,
       metadata: {
         file_size: 1,
@@ -1433,8 +1448,8 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const mergeReviewItems = vi.fn()
-      .mockReturnValueOnce(of({
+    const mergeReviewItems = vi.fn().mockReturnValueOnce(
+      of({
         merged_batch_id: 'merged-1',
         total: 4,
         items: allItems,
@@ -1462,8 +1477,10 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }));
-    const listReviewItems = vi.fn().mockReturnValueOnce(of({
+      }),
+    );
+    const listReviewItems = vi.fn().mockReturnValueOnce(
+      of({
         total: 2,
         items: allItems.slice(2),
         recommendation_groups: [
@@ -1479,7 +1496,8 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }));
+      }),
+    );
     const batchUpdateEntities = vi.fn(() => of({ processed: 2, skipped: 0 }));
 
     await TestBed.configureTestingModule({
@@ -1516,7 +1534,10 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     const component = fixture.componentInstance;
-    expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-1', 'group-2']);
+    expect(component.recommendationGroups().map((group) => group.id)).toEqual([
+      'group-1',
+      'group-2',
+    ]);
 
     component.toggleGroupSelection(component.recommendationGroups()[0]);
     component.addCharacter('Ryuuguu Rena');
@@ -1529,17 +1550,15 @@ describe('UploadReviewDialogComponent', () => {
       character_names: ['Ryuuguu Rena'],
       series_names: ['Higurashi no Naku Koro Ni'],
     });
-    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
+    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', {
+      include_recommendations: true,
+      force_refresh: false,
+    });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 
   it('removes merged-batch groups locally after discarding in merged-batch mode', async () => {
     const baseMedia = {
-      uploader_id: 'u1',
-      uploader_username: 'uploader',
-      owner_id: 'u1',
-      owner_username: 'owner',
-      visibility: MediaVisibility.PRIVATE,
       media_type: MediaType.IMAGE,
       metadata: {
         file_size: 1,
@@ -1577,8 +1596,8 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const mergeReviewItems = vi.fn()
-      .mockReturnValueOnce(of({
+    const mergeReviewItems = vi.fn().mockReturnValueOnce(
+      of({
         merged_batch_id: 'merged-1',
         total: 4,
         items: allItems,
@@ -1606,8 +1625,10 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }));
-    const listReviewItems = vi.fn().mockReturnValueOnce(of({
+      }),
+    );
+    const listReviewItems = vi.fn().mockReturnValueOnce(
+      of({
         total: 2,
         items: allItems.slice(2),
         recommendation_groups: [
@@ -1623,7 +1644,8 @@ describe('UploadReviewDialogComponent', () => {
             confidence: 0.86,
           },
         ],
-      }));
+      }),
+    );
     const batchDismissMetadataReview = vi.fn(() => of({ processed: 2, skipped: 0 }));
 
     await TestBed.configureTestingModule({
@@ -1663,17 +1685,15 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     expect(batchDismissMetadataReview).toHaveBeenCalledWith(['m1', 'm2'], true);
-    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', { include_recommendations: true, force_refresh: false });
+    expect(listReviewItems).not.toHaveBeenCalledWith('merged-1', {
+      include_recommendations: true,
+      force_refresh: false,
+    });
     expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-2']);
   });
 
   it('keeps untouched recommendation groups after applying names in remote mode', async () => {
     const baseMedia = {
-      uploader_id: 'u1',
-      uploader_username: 'uploader',
-      owner_id: 'u1',
-      owner_username: 'owner',
-      visibility: MediaVisibility.PRIVATE,
       media_type: MediaType.IMAGE,
       metadata: {
         file_size: 1,
@@ -1711,41 +1731,48 @@ describe('UploadReviewDialogComponent', () => {
         original_filename: `${id}.jpg`,
       },
     }));
-    const listReviewItems = vi.fn()
+    const listReviewItems = vi
+      .fn()
       .mockReturnValueOnce(of({ total: 4, items: allItems, recommendation_groups: [] }))
-      .mockReturnValueOnce(of({
-        total: 4,
-        items: allItems,
-        recommendation_groups: [
-          {
-            id: 'group-1',
-            media_ids: ['m1', 'm2'],
-            item_count: 2,
-            missing_character_count: 2,
-            missing_series_count: 2,
-            suggested_characters: [{ name: 'ryuuguu_rena', confidence: 0.9 }],
-            suggested_series: [],
-            shared_signals: [{ kind: 'tag', label: 'higurashi_no_naku_koro_ni', confidence: 0.8 }],
-            confidence: 0.91,
-          },
-          {
-            id: 'group-2',
-            media_ids: ['m3', 'm4'],
-            item_count: 2,
-            missing_character_count: 2,
-            missing_series_count: 2,
-            suggested_characters: [{ name: 'artoria_pendragon_(fate)', confidence: 0.88 }],
-            suggested_series: [],
-            shared_signals: [{ kind: 'tag', label: 'fate_stay_night', confidence: 0.8 }],
-            confidence: 0.86,
-          },
-        ],
-      }))
-      .mockReturnValueOnce(of({
-        total: 2,
-        items: allItems.slice(2),
-        recommendation_groups: [],
-      }));
+      .mockReturnValueOnce(
+        of({
+          total: 4,
+          items: allItems,
+          recommendation_groups: [
+            {
+              id: 'group-1',
+              media_ids: ['m1', 'm2'],
+              item_count: 2,
+              missing_character_count: 2,
+              missing_series_count: 2,
+              suggested_characters: [{ name: 'ryuuguu_rena', confidence: 0.9 }],
+              suggested_series: [],
+              shared_signals: [
+                { kind: 'tag', label: 'higurashi_no_naku_koro_ni', confidence: 0.8 },
+              ],
+              confidence: 0.91,
+            },
+            {
+              id: 'group-2',
+              media_ids: ['m3', 'm4'],
+              item_count: 2,
+              missing_character_count: 2,
+              missing_series_count: 2,
+              suggested_characters: [{ name: 'artoria_pendragon_(fate)', confidence: 0.88 }],
+              suggested_series: [],
+              shared_signals: [{ kind: 'tag', label: 'fate_stay_night', confidence: 0.8 }],
+              confidence: 0.86,
+            },
+          ],
+        }),
+      )
+      .mockReturnValueOnce(
+        of({
+          total: 2,
+          items: allItems.slice(2),
+          recommendation_groups: [],
+        }),
+      );
     const batchUpdateEntities = vi.fn(() => of({ processed: 2, skipped: 0 }));
 
     await TestBed.configureTestingModule({
@@ -1782,7 +1809,10 @@ describe('UploadReviewDialogComponent', () => {
     fixture.detectChanges();
 
     const component = fixture.componentInstance;
-    expect(component.recommendationGroups().map((group) => group.id)).toEqual(['group-1', 'group-2']);
+    expect(component.recommendationGroups().map((group) => group.id)).toEqual([
+      'group-1',
+      'group-2',
+    ]);
 
     component.toggleGroupSelection(component.recommendationGroups()[0]);
     component.addCharacter('Ryuuguu Rena');
@@ -1808,11 +1838,6 @@ describe('UploadReviewDialogComponent', () => {
       entities: [],
       media: {
         id: `m${index + 1}`,
-        uploader_id: 'u1',
-        uploader_username: 'uploader',
-        owner_id: 'u1',
-        owner_username: 'owner',
-        visibility: MediaVisibility.PRIVATE,
         filename: `missing-${index + 1}.jpg`,
         original_filename: `missing-${index + 1}.jpg`,
         media_type: MediaType.IMAGE,
@@ -1849,17 +1874,19 @@ describe('UploadReviewDialogComponent', () => {
           useValue: {
             getBatchReview: () => ({
               id: 'b1',
-              recommendationGroups: [{
-                id: 'group-1',
-                media_ids: reviewItems.map((item) => item.media.id),
-                item_count: 6,
-                missing_character_count: 6,
-                missing_series_count: 6,
-                suggested_characters: [{ name: 'Saber', confidence: 1 }],
-                suggested_series: [{ name: 'Fate/stay night', confidence: 1 }],
-                shared_signals: [],
-                confidence: 0.9,
-              }],
+              recommendationGroups: [
+                {
+                  id: 'group-1',
+                  media_ids: reviewItems.map((item) => item.media.id),
+                  item_count: 6,
+                  missing_character_count: 6,
+                  missing_series_count: 6,
+                  suggested_characters: [{ name: 'Saber', confidence: 1 }],
+                  suggested_series: [{ name: 'Fate/stay night', confidence: 1 }],
+                  shared_signals: [],
+                  confidence: 0.9,
+                },
+              ],
               reviewItems,
               reviewBaselineTotal: 6,
               reviewRefreshing: false,
@@ -1880,7 +1907,12 @@ describe('UploadReviewDialogComponent', () => {
             getPosterUrl: vi.fn(() => of('blob:poster')),
           },
         },
-        { provide: BatchesClientService, useValue: { listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })) } },
+        {
+          provide: BatchesClientService,
+          useValue: {
+            listReviewItems: vi.fn(() => of({ total: 0, items: [], recommendation_groups: [] })),
+          },
+        },
         { provide: MAT_DIALOG_DATA, useValue: { batchId: 'b1' } },
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -1892,7 +1924,9 @@ describe('UploadReviewDialogComponent', () => {
 
     const component = fixture.componentInstance;
     expect(component.previewItemsForGroup(component.recommendationGroups()[0])).toHaveLength(4);
-    expect(component.displayedPreviewItemsForGroup(component.recommendationGroups()[0])).toHaveLength(4);
+    expect(
+      component.displayedPreviewItemsForGroup(component.recommendationGroups()[0]),
+    ).toHaveLength(4);
     expect(component.hiddenPreviewCount(component.recommendationGroups()[0])).toBe(2);
     expect(fixture.nativeElement.textContent).toContain('+2');
     expect(fixture.nativeElement.textContent).toContain('6 related items');
@@ -1900,7 +1934,9 @@ describe('UploadReviewDialogComponent', () => {
     component.toggleGroupExpanded(component.recommendationGroups()[0]);
     fixture.detectChanges();
 
-    expect(component.displayedPreviewItemsForGroup(component.recommendationGroups()[0])).toHaveLength(6);
+    expect(
+      component.displayedPreviewItemsForGroup(component.recommendationGroups()[0]),
+    ).toHaveLength(6);
     expect(component.hiddenPreviewCount(component.recommendationGroups()[0])).toBe(0);
     expect(fixture.nativeElement.textContent).toContain('Collapse items');
   });

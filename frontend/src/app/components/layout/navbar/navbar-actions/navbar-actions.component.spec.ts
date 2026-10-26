@@ -1,3 +1,4 @@
+import { provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
@@ -13,6 +14,7 @@ describe('NavbarActionsComponent', () => {
     await TestBed.configureTestingModule({
       imports: [NavbarActionsComponent],
       providers: [
+        provideRouter([]),
         {
           provide: AuthService,
           useValue: { logout: () => of(void 0) },
@@ -24,8 +26,7 @@ describe('NavbarActionsComponent', () => {
         {
           provide: UserStore,
           useValue: {
-            currentUser: () => ({ username: 'stars', email: 'stars@example.com', is_admin: false }),
-            isAdmin: () => false,
+            currentUser: () => ({ username: 'stars', email: 'stars@example.com' }),
           },
         },
       ],

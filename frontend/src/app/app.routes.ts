@@ -1,12 +1,10 @@
 import { Routes } from '@angular/router';
 import { AdminDashboardPageComponent } from './pages/admin-dashboard/admin-dashboard-page.component';
-import { adminGuard } from './guards/admin.guard';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
 import { AlbumComponent } from './pages/album/album.component';
 import { AlbumDetailComponent } from './pages/album-detail/album-detail.component';
 import { FavoritesComponent } from './pages/favorites/favorites.component';
-import { GachaPageComponent } from './pages/gacha/gacha-page.component';
 import { GalleryComponent } from './pages/gallery/gallery.component';
 import { BrowseComponent } from './pages/browse/browse.component';
 import { LoginPageComponent } from './pages/login-page/login-page.component';
@@ -36,20 +34,24 @@ export const routes: Routes = [
   },
   {
     path: 'media/:mediaId',
-    loadComponent: () => import('./pages/media-inspector/media-inspector-page.component')
-      .then((m) => m.MediaInspectorPageComponent),
+    loadComponent: () =>
+      import('./pages/media-inspector/media-inspector-page.component').then(
+        (m) => m.MediaInspectorPageComponent,
+      ),
     canActivate: [authGuard],
   },
   {
     path: 'graph/characters',
-    loadComponent: () => import('./pages/character-graph/character-graph.component')
-      .then((m) => m.CharacterGraphPageComponent),
+    loadComponent: () =>
+      import('./pages/character-graph/character-graph.component').then(
+        (m) => m.CharacterGraphPageComponent,
+      ),
     canActivate: [authGuard],
   },
   {
     path: 'admin',
     component: AdminDashboardPageComponent,
-    canActivate: [adminGuard],
+    canActivate: [authGuard],
   },
   {
     path: 'album/:albumId',
@@ -66,16 +68,7 @@ export const routes: Routes = [
     component: FavoritesComponent,
     canActivate: [authGuard],
   },
-  {
-    path: 'gacha',
-    component: GachaPageComponent,
-    canActivate: [authGuard],
-  },
-  {
-    path: 'gacha/:tab',
-    component: GachaPageComponent,
-    canActivate: [authGuard],
-  },
+
   {
     path: 'tags',
     component: MetadataManagerPageComponent,

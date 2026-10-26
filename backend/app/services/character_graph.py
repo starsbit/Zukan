@@ -1,12 +1,9 @@
 from __future__ import annotations
-
 from dataclasses import dataclass, field
 import uuid
-
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
 from backend.app.errors.error import AppError
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
 from backend.app.models.auth import User
@@ -31,7 +28,10 @@ from backend.app.services.hybrid_similarity import (
 )
 from backend.app.utils.media_common import normalize_manual_entity_names
 from backend.app.utils.media_classification import effective_nsfw_value
-from backend.app.utils.search import normalize_metadata_search, normalized_token_sequence_like_patterns
+from backend.app.utils.search import (
+    normalize_metadata_search,
+    normalized_token_sequence_like_patterns,
+)
 
 DEFAULT_CHARACTER_POOL_SIZE = 160
 MAX_CHARACTER_POOL_SIZE = 360
@@ -69,17 +69,12 @@ class CharacterGraphService:
         self._db = db
 
     async def search_characters(
-        self,
-        user: User,
-        *,
-        q: str,
-        limit: int,
+        self, user: User, *, q: str, limit: int
     ) -> list[CharacterGraphSearchResult]:
         conditions = _metadata_name_conditions(q)
         stmt = (
             select(OwnedEntity)
             .where(
-                OwnedEntity.owner_user_id == user.id,
                 OwnedEntity.entity_type == MediaEntityType.character,
                 OwnedEntity.media_count > 0,
             )
@@ -90,7 +85,9 @@ class CharacterGraphService:
             stmt = stmt.where(or_(*conditions))
         rows = (await self._db.execute(stmt)).scalars().all()
         return [
-            CharacterGraphSearchResult(id=row.id, name=row.name, media_count=row.media_count)
+            CharacterGraphSearchResult(
+                id=row.id, name=row.name, media_count=row.media_count
+            )
             for row in rows
         ]
 
@@ -151,17 +148,16 @@ class CharacterGraphService:
         center_name: str | None,
         limit: int,
     ) -> list[OwnedEntity]:
-        pool_size = min(MAX_CHARACTER_POOL_SIZE, max(DEFAULT_CHARACTER_POOL_SIZE, limit * 4))
+        pool_size = min(
+            MAX_CHARACTER_POOL_SIZE, max(DEFAULT_CHARACTER_POOL_SIZE, limit * 4)
+        )
         center = await self._load_center_entity(
-            user,
-            center_entity_id=center_entity_id,
-            center_name=center_name,
+            user, center_entity_id=center_entity_id, center_name=center_name
         )
         top_limit = max(0, pool_size - (1 if center is not None else 0))
         stmt = (
             select(OwnedEntity)
             .where(
-                OwnedEntity.owner_user_id == user.id,
                 OwnedEntity.entity_type == MediaEntityType.character,
                 OwnedEntity.media_count > 0,
             )
@@ -174,17 +170,11 @@ class CharacterGraphService:
         return [center, *rows] if center is not None else rows
 
     async def _load_center_entity(
-        self,
-        user: User,
-        *,
-        center_entity_id: uuid.UUID | None,
-        center_name: str | None,
+        self, user: User, *, center_entity_id: uuid.UUID | None, center_name: str | None
     ) -> OwnedEntity | None:
-        if center_entity_id is None and not center_name:
+        if center_entity_id is None and (not center_name):
             return None
-
         stmt = select(OwnedEntity).where(
-            OwnedEntity.owner_user_id == user.id,
             OwnedEntity.entity_type == MediaEntityType.character,
             OwnedEntity.media_count > 0,
         )
@@ -195,17 +185,17 @@ class CharacterGraphService:
             if conditions:
                 stmt = stmt.where(or_(*conditions))
             stmt = stmt.order_by(OwnedEntity.media_count.desc(), OwnedEntity.name.asc())
-
         center = (await self._db.execute(stmt.limit(1))).scalar_one_or_none()
         if center is None:
-            raise AppError(status_code=404, code="character_graph_center_not_found", detail="Character not found in graph")
+            raise AppError(
+                status_code=404,
+                code="character_graph_center_not_found",
+                detail="Character not found in graph",
+            )
         return center
 
     async def _load_character_rows(
-        self,
-        user: User,
-        *,
-        entity_ids: set[uuid.UUID],
+        self, user: User, *, entity_ids: set[uuid.UUID]
     ) -> list[tuple[OwnedEntity, Media, list[float]]]:
         if not entity_ids:
             return []
@@ -219,15 +209,17 @@ class CharacterGraphService:
                 selectinload(Media.entities),
             )
             .where(
-                OwnedEntity.owner_user_id == user.id,
                 OwnedEntity.id.in_(entity_ids),
                 OwnedEntity.entity_type == MediaEntityType.character,
                 MediaEntity.entity_type == MediaEntityType.character,
-                Media.uploader_id == user.id,
                 Media.deleted_at.is_(None),
                 MediaEmbedding.model_version == EMBEDDING_MODEL_VERSION,
             )
-            .order_by(OwnedEntity.media_count.desc(), OwnedEntity.name.asc(), Media.uploaded_at.desc())
+            .order_by(
+                OwnedEntity.media_count.desc(),
+                OwnedEntity.name.asc(),
+                Media.uploaded_at.desc(),
+            )
         )
         return list((await self._db.execute(stmt)).all())
 

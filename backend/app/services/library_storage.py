@@ -1,6 +1,6 @@
 """Persistent NAS library discovery and verified, resumable relocation."""
-from __future__ import annotations
 
+from __future__ import annotations
 import asyncio
 import hashlib
 import logging
@@ -10,23 +10,25 @@ import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-
 from sqlalchemy import select, text
 from backend.app.config import settings
 from backend.app.database import AsyncSessionLocal, engine
-from backend.app.models.auth import User
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.library_storage import LibraryStorage, StorageMigration
-from backend.app.models.media import Media, MediaVisibility, ProcessingStatus, TaggingStatus
+from backend.app.models.media import Media, ProcessingStatus, TaggingStatus
 from backend.app.services.storage_gate import storage_gate
-from backend.app.utils.library_paths import contained_path, root_path, validate_generated_dir
+from backend.app.utils.library_paths import (
+    contained_path,
+    root_path,
+    validate_generated_dir,
+)
 from backend.app.utils.media_detection import resolve_supported_media_type
 from backend.app.utils.media_metadata import extract_media_metadata
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 
 logger = logging.getLogger(__name__)
-MARKER = '.zukan-library-id'
-PATH_FIELDS = ('filepath', 'thumbnail_path', 'poster_path')
+MARKER = ".zukan-library-id"
+PATH_FIELDS = ("filepath", "thumbnail_path", "poster_path")
 job_tasks: set[asyncio.Task] = set()
 scan_lock = asyncio.Lock()
 control_lock = asyncio.Lock()
@@ -149,16 +151,25 @@ async def get_storage_status(db):
     config = await db.get(LibraryStorage, 1)
     available = await asyncio.to_thread(storage_available)
     storage_gate.available = available
-    latest = await db.scalar(select(StorageMigration).order_by(StorageMigration.created_at.desc()).limit(1))
-    conflicts = (await db.scalars(select(Media).where(Media.file_status != 'available'))).all()
+    latest = await db.scalar(
+        select(StorageMigration).order_by(StorageMigration.created_at.desc()).limit(1)
+    )
+    conflicts = (
+        await db.scalars(select(Media).where(Media.file_status != "available"))
+    ).all()
     return {
-        'root': config.root, 'generated_dir': config.generated_dir,
-        'folder_configured': config.folder_configured,
-        'discovery_owner_id': config.discovery_owner_id,
-        'scan_interval_seconds': config.scan_interval_seconds,
-        'available': available, 'scanning': scan_lock.locked(), 'last_scan': config.last_scan,
-        'migration': job_status(latest) if latest else None,
-        'conflicts': [{'id': str(m.id), 'path': m.filepath, 'status': m.file_status} for m in conflicts],
+        "root": config.root,
+        "generated_dir": config.generated_dir,
+        "folder_configured": config.folder_configured,
+        "scan_interval_seconds": config.scan_interval_seconds,
+        "available": available,
+        "scanning": scan_lock.locked(),
+        "last_scan": config.last_scan,
+        "migration": job_status(latest) if latest else None,
+        "conflicts": [
+            {"id": str(m.id), "path": m.filepath, "status": m.file_status}
+            for m in conflicts
+        ],
     }
 
 
@@ -186,15 +197,12 @@ async def confirm_storage_folder(db, root: str):
 
 async def update_storage_settings(db, changes):
     if storage_gate.paused:
-        raise ValueError('Wait for migration to finish')
+        raise ValueError("Wait for migration to finish")
     async with control_lock, storage_gate.operation(require_available=False):
         if storage_gate.migration_lock.locked() or scan_lock.locked():
-            raise ValueError('Wait for the current storage operation to finish')
+            raise ValueError("Wait for the current storage operation to finish")
         config = await db.get(LibraryStorage, 1)
-        owner = changes.get('discovery_owner_id')
-        if owner and await db.get(User, uuid.UUID(owner)) is None:
-            raise ValueError('Discovery owner does not exist')
-        generated = changes.get('generated_dir')
+        generated = changes.get("generated_dir")
         if generated is not None:
             validate_generated_dir(generated)
         for key, value in changes.items():
@@ -535,41 +543,40 @@ def discover_paths(root: Path):
 
 async def scan_library(queue):
     if scan_lock.locked() or storage_gate.paused:
-        raise ValueError('A scan or migration is already running')
+        raise ValueError("A scan or migration is already running")
     async with scan_lock, storage_gate.operation():
         async with AsyncSessionLocal() as db:
             config = await db.get(LibraryStorage, 1)
-            if not config.discovery_owner_id:
-                raise ValueError('Select a discovery owner before scanning')
-            owner = await db.get(User, uuid.UUID(config.discovery_owner_id))
-            if owner is None:
-                raise ValueError('Discovery owner no longer exists')
             if not storage_available():
                 storage_gate.available = False
-                raise ValueError('NAS library is unavailable')
+                raise ValueError("NAS library is unavailable")
             records = list((await db.scalars(select(Media))).all())
             by_path = {m.filepath: m for m in records}
-            derivative_paths = {getattr(m, f) for m in records for f in ('thumbnail_path', 'poster_path')}
+            derivative_paths = {
+                getattr(m, f)
+                for m in records
+                for f in ("thumbnail_path", "poster_path")
+            }
             root = root_path()
             discovered = []
-            # Complete enumeration and hashes before marking anything missing.
             paths = await asyncio.to_thread(lambda: list(discover_paths(root)))
             for path in paths:
                 relative = str(path.relative_to(root))
                 if relative in derivative_paths:
                     continue
                 contained_path(root, relative)
-                with path.open('rb') as stream:
+                with path.open("rb") as stream:
                     header = stream.read(65536)
-                supported = await asyncio.to_thread(resolve_supported_media_type, header, source_name=path.name)
+                supported = await asyncio.to_thread(
+                    resolve_supported_media_type, header, source_name=path.name
+                )
                 if supported is None and relative not in by_path:
                     continue
                 size, digest = await asyncio.to_thread(file_digest, path)
                 discovered.append((relative, path, size, digest, supported))
             if not storage_available():
-                raise ValueError('NAS disconnected during scan; changes discarded')
+                raise ValueError("NAS disconnected during scan; changes discarded")
             seen = {x[0] for x in discovered}
-            owner_hashes = {(m.uploader_id, m.sha256): m.id for m in records if m.sha256}
             missing_by_hash = {}
             for media in records:
                 if media.filepath not in seen and media.sha256:
@@ -578,61 +585,90 @@ async def scan_library(queue):
             for item in discovered:
                 if item[0] not in by_path:
                     new_by_hash.setdefault(item[3], []).append(item)
-            result = {'scanned_at': datetime.now(timezone.utc).isoformat(), 'added': 0, 'moved': 0,
-                      'missing': 0, 'changed': 0, 'duplicates': [], 'errors': []}
+            result = {
+                "scanned_at": datetime.now(timezone.utc).isoformat(),
+                "added": 0,
+                "moved": 0,
+                "missing": 0,
+                "changed": 0,
+                "duplicates": [],
+                "errors": [],
+            }
             queued = []
             for relative, path, size, digest, supported in discovered:
                 media = by_path.get(relative)
                 if media:
                     if media.sha256 and media.sha256 != digest:
-                        media.file_status = 'changed'
-                        result['changed'] += 1
+                        media.file_status = "changed"
+                        result["changed"] += 1
                     else:
                         previous_status = media.file_status
-                        if owner_hashes.get((media.uploader_id, digest), media.id) != media.id:
-                            result['duplicates'].append(relative)
-                        else:
-                            media.sha256 = digest
-                            owner_hashes[(media.uploader_id, digest)] = media.id
-                        media.file_status = 'available'
-                        if previous_status != 'available' and media.deleted_at is None and media.tagging_status in (TaggingStatus.PENDING, TaggingStatus.PROCESSING):
+                        media.sha256 = digest
+                        media.file_status = "available"
+                        if (
+                            previous_status != "available"
+                            and media.deleted_at is None
+                            and (
+                                media.tagging_status
+                                in (TaggingStatus.PENDING, TaggingStatus.PROCESSING)
+                            )
+                        ):
                             queued.append(media.id)
                     continue
                 matches = missing_by_hash.get(digest, [])
                 if len(matches) == 1 and len(new_by_hash[digest]) == 1:
                     media = matches[0]
                     media.filepath = relative
-                    media.file_status = 'available'
-                    result['moved'] += 1
-                    continue
-                if matches or (owner.id, digest) in owner_hashes:
-                    result['duplicates'].append(relative)
+                    media.file_status = "available"
+                    result["moved"] += 1
                     continue
                 media_id = uuid.uuid4()
-                metadata = await asyncio.to_thread(extract_media_metadata, str(path), supported.media_type)
-                poster, thumb = await asyncio.to_thread(generate_poster_and_thumbnail, str(path), supported.media_type, media_id)
-                media = Media(id=media_id, uploader_id=owner.id, owner_id=owner.id, filename=path.name,
-                              original_filename=path.name, filepath=relative, file_size=size, sha256=digest,
-                              mime_type=supported.canonical_mime_type, media_type=supported.media_type,
-                              width=metadata.width, height=metadata.height, duration_seconds=metadata.duration_seconds,
-                              frame_count=metadata.frame_count, captured_at=datetime.fromtimestamp(path.stat().st_mtime, timezone.utc),
-                              visibility=MediaVisibility.private, tagging_status=TaggingStatus.PENDING,
-                              thumbnail_path=str(thumb.relative_to(root)) if thumb else None,
-                              poster_path=str(poster.relative_to(root)) if poster else None,
-                              thumbnail_status=ProcessingStatus.DONE if thumb else ProcessingStatus.FAILED,
-                              poster_status=ProcessingStatus.DONE if poster else ProcessingStatus.NOT_APPLICABLE,
-                              file_status='available')
+                metadata = await asyncio.to_thread(
+                    extract_media_metadata, str(path), supported.media_type
+                )
+                poster, thumb = await asyncio.to_thread(
+                    generate_poster_and_thumbnail,
+                    str(path),
+                    supported.media_type,
+                    media_id,
+                )
+                media = Media(
+                    id=media_id,
+                    filename=path.name,
+                    original_filename=path.name,
+                    filepath=relative,
+                    file_size=size,
+                    sha256=digest,
+                    mime_type=supported.canonical_mime_type,
+                    media_type=supported.media_type,
+                    width=metadata.width,
+                    height=metadata.height,
+                    duration_seconds=metadata.duration_seconds,
+                    frame_count=metadata.frame_count,
+                    captured_at=datetime.fromtimestamp(
+                        path.stat().st_mtime, timezone.utc
+                    ),
+                    tagging_status=TaggingStatus.PENDING,
+                    thumbnail_path=str(thumb.relative_to(root)) if thumb else None,
+                    poster_path=str(poster.relative_to(root)) if poster else None,
+                    thumbnail_status=ProcessingStatus.DONE
+                    if thumb
+                    else ProcessingStatus.FAILED,
+                    poster_status=ProcessingStatus.DONE
+                    if poster
+                    else ProcessingStatus.NOT_APPLICABLE,
+                    file_status="available",
+                )
                 db.add(media)
                 records.append(media)
-                owner_hashes[(owner.id, digest)] = media.id
                 queued.append(media_id)
-                result['added'] += 1
+                result["added"] += 1
             for media in records:
                 if media.filepath not in seen:
-                    media.file_status = 'missing'
-                    result['missing'] += 1
+                    media.file_status = "missing"
+                    result["missing"] += 1
             if not storage_available():
-                raise ValueError('NAS disconnected during scan; changes discarded')
+                raise ValueError("NAS disconnected during scan; changes discarded")
             config.last_scan = result
             await db.commit()
             for media_id in queued:
@@ -642,35 +678,54 @@ async def scan_library(queue):
 
 async def accept_changed_file(db, media_id, queue):
     if storage_gate.paused or scan_lock.locked():
-        raise ValueError('Wait for the current storage operation to finish')
+        raise ValueError("Wait for the current storage operation to finish")
     async with scan_lock, storage_gate.operation():
         media = await db.get(Media, media_id)
-        if media is None or media.file_status != 'changed' or media.deleted_at:
-            raise ValueError('Select an active record with changed content')
+        if media is None or media.file_status != "changed" or media.deleted_at:
+            raise ValueError("Select an active record with changed content")
         path = contained_path(root_path(), media.filepath)
-        with path.open('rb') as stream:
+        with path.open("rb") as stream:
             header = stream.read(65536)
         supported = resolve_supported_media_type(header, source_name=path.name)
         if supported is None:
-            raise ValueError('Changed file has an unsupported media type')
+            raise ValueError("Changed file has an unsupported media type")
         size, digest = await asyncio.to_thread(file_digest, path)
-        duplicate = await db.scalar(select(Media).where(Media.uploader_id == media.uploader_id,
-                                                        Media.sha256 == digest, Media.id != media.id))
+        duplicate = await db.scalar(
+            select(Media).where(Media.sha256 == digest, Media.id != media.id)
+        )
         if duplicate:
-            raise ValueError('Changed content duplicates another record belonging to this user')
-        metadata = await asyncio.to_thread(extract_media_metadata, str(path), supported.media_type)
-        poster, thumb = await asyncio.to_thread(generate_poster_and_thumbnail, str(path), supported.media_type, media.id)
-        media.sha256, media.file_size = digest, size
-        media.mime_type, media.media_type = supported.canonical_mime_type, supported.media_type
-        media.width, media.height = metadata.width, metadata.height
-        media.duration_seconds, media.frame_count = metadata.duration_seconds, metadata.frame_count
+            raise ValueError(
+                "Changed content duplicates another record belonging to this user"
+            )
+        metadata = await asyncio.to_thread(
+            extract_media_metadata, str(path), supported.media_type
+        )
+        poster, thumb = await asyncio.to_thread(
+            generate_poster_and_thumbnail, str(path), supported.media_type, media.id
+        )
+        media.sha256, media.file_size = (digest, size)
+        media.mime_type, media.media_type = (
+            supported.canonical_mime_type,
+            supported.media_type,
+        )
+        media.width, media.height = (metadata.width, metadata.height)
+        media.duration_seconds, media.frame_count = (
+            metadata.duration_seconds,
+            metadata.frame_count,
+        )
         media.thumbnail_path = str(thumb.relative_to(root_path())) if thumb else None
         media.poster_path = str(poster.relative_to(root_path())) if poster else None
-        media.thumbnail_status = ProcessingStatus.DONE if thumb else ProcessingStatus.FAILED
-        media.poster_status = ProcessingStatus.DONE if poster else ProcessingStatus.NOT_APPLICABLE
-        media.file_status, media.tagging_status = 'available', TaggingStatus.PENDING
+        media.thumbnail_status = (
+            ProcessingStatus.DONE if thumb else ProcessingStatus.FAILED
+        )
+        media.poster_status = (
+            ProcessingStatus.DONE if poster else ProcessingStatus.NOT_APPLICABLE
+        )
+        media.file_status, media.tagging_status = ("available", TaggingStatus.PENDING)
         media.ocr_text = None
-        embedding = await db.scalar(select(MediaEmbedding).where(MediaEmbedding.media_id == media.id))
+        embedding = await db.scalar(
+            select(MediaEmbedding).where(MediaEmbedding.media_id == media.id)
+        )
         if embedding:
             await db.delete(embedding)
         media.version += 1
@@ -686,12 +741,16 @@ async def library_worker(queue):
             async with AsyncSessionLocal() as db:
                 config = await db.get(LibraryStorage, 1)
                 interval = config.scan_interval_seconds
-                owner = config.discovery_owner_id
             now = asyncio.get_running_loop().time()
-            if storage_gate.available and owner and interval and now - last_scan >= interval and not storage_gate.paused:
+            if (
+                storage_gate.available
+                and interval
+                and (now - last_scan >= interval)
+                and (not storage_gate.paused)
+            ):
                 await scan_library(queue)
                 last_scan = now
         except Exception:
-            logger.exception('Library scan failed; metadata retained')
+            logger.exception("Library scan failed; metadata retained")
             last_scan = asyncio.get_running_loop().time()
         await asyncio.sleep(30)

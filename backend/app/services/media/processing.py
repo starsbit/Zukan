@@ -1,11 +1,8 @@
 from __future__ import annotations
-
 import logging
 import uuid
 from datetime import datetime, timezone
-
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.errors.error import AppError
 from backend.app.errors.tags import tagging_job_already_queued
 from backend.app.models.auth import User
@@ -23,9 +20,15 @@ class MediaProcessingService:
         self._query = query
 
     async def retag_media(self, media_id: uuid.UUID, user: User) -> int:
-        media = await self._query.get_owned_or_admin_media(media_id, user, trashed=False)
+        media = await self._query.get_media_for_management(
+            media_id, user, trashed=False
+        )
         if media.tagging_status in ("pending", "processing"):
-            raise AppError(status_code=409, code=tagging_job_already_queued, detail="Tagging job is already queued or running")
+            raise AppError(
+                status_code=409,
+                code=tagging_job_already_queued,
+                detail="Tagging job is already queued or running",
+            )
         media.tagging_status = "pending"
         media.tagging_error = None
         await self._db.commit()
@@ -37,26 +40,19 @@ class MediaProcessingService:
     async def bulk_retag_media(self, media_ids: list[uuid.UUID], user: User) -> int:
         rows = await self._query.get_media_by_ids(media_ids)
         queueable_ids: list[uuid.UUID] = []
-
         for media in rows:
             if media.deleted_at is not None:
                 continue
-            if media.uploader_id != user.id and not user.is_admin:
-                continue
             if media.tagging_status in ("pending", "processing"):
                 continue
-
             media.tagging_status = "pending"
             media.tagging_error = None
             queueable_ids.append(media.id)
-
         await self._db.commit()
-
         queue = get_tag_queue()
         if queue:
             for media_id in queueable_ids:
                 await queue.put(media_id)
-
         return len(queueable_ids)
 
     async def mark_tagging_failure(self, media_id: uuid.UUID, exc: Exception) -> None:

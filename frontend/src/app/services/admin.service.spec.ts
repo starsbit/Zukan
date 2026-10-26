@@ -9,10 +9,15 @@ import { AnnouncementSeverity } from '../models/notifications';
 
 function makeUser(is_admin: boolean) {
   return {
-    id: 'u1', username: 'alice', email: 'alice@example.com',
-    is_admin, show_nsfw: false, tag_confidence_threshold: 0.5,
-    version: 1, created_at: '2026-01-01T00:00:00Z',
-    storage_quota_mb: 10240, storage_used_mb: 0,
+    id: 'u1',
+    username: 'alice',
+    email: 'alice@example.com',
+    is_admin,
+    show_nsfw: false,
+    tag_confidence_threshold: 0.5,
+    version: 1,
+    created_at: '2026-01-01T00:00:00Z',
+    storage_used_mb: 0,
   };
 }
 
@@ -36,98 +41,18 @@ describe('AdminService', () => {
 
   afterEach(() => http.verify());
 
-  describe('when user is not admin', () => {
-    beforeEach(() => userStore.set(makeUser(false)));
-
-    it('getStats throws Forbidden', () => {
-      let err: unknown;
-      service.getStats().subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-      http.expectNone('/api/v1/admin/stats');
-    });
-
-    it('getHealth throws Forbidden', () => {
-      let err: unknown;
-      service.getHealth().subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-      http.expectNone('/api/v1/admin/health');
-    });
-
-    it('listUsers throws Forbidden', () => {
-      let err: unknown;
-      service.listUsers().subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('getUser throws Forbidden', () => {
-      let err: unknown;
-      service.getUser('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('updateUser throws Forbidden', () => {
-      let err: unknown;
-      service.updateUser('u2', { is_admin: true }).subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('deleteUser throws Forbidden', () => {
-      let err: unknown;
-      service.deleteUser('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('deleteUserMedia throws Forbidden', () => {
-      let err: unknown;
-      service.deleteUserMedia('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('retagAll throws Forbidden', () => {
-      let err: unknown;
-      service.retagAll('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('startEmbeddingBackfill throws Forbidden', () => {
-      let err: unknown;
-      service.startEmbeddingBackfill('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('getLibraryClassificationMetrics throws Forbidden', () => {
-      let err: unknown;
-      service.getLibraryClassificationMetrics('u2').subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('listAnnouncements throws Forbidden', () => {
-      let err: unknown;
-      service.listAnnouncements().subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-
-    it('createAnnouncement throws Forbidden', () => {
-      let err: unknown;
-      service.createAnnouncement({ title: 'Hi', message: 'test' }).subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-  });
-
-  describe('when user is not loaded (null)', () => {
-    it('getStats throws Forbidden', () => {
-      let err: unknown;
-      service.getStats().subscribe({ error: e => (err = e) });
-      expect((err as Error).message).toMatch(/Forbidden/);
-    });
-  });
-
   describe('when user is admin', () => {
     beforeEach(() => userStore.set(makeUser(true)));
 
     it('getStats sends GET /api/v1/admin/stats', () => {
-      const mock = { total_users: 5, total_media: 100, total_storage_bytes: 1024, pending_tagging: 0, failed_tagging: 0, trashed_media: 0, storage_by_user: [] };
-      service.getStats().subscribe(res => expect(res).toEqual(mock));
+      const mock = {
+        total_media: 100,
+        total_storage_bytes: 1024,
+        pending_tagging: 0,
+        failed_tagging: 0,
+        trashed_media: 0,
+      };
+      service.getStats().subscribe((res) => expect(res).toEqual(mock));
       const req = http.expectOne('/api/v1/admin/stats');
       expect(req.request.method).toBe('GET');
       req.flush(mock);
@@ -150,74 +75,18 @@ describe('AdminService', () => {
       req.flush(mock);
     });
 
-    it('listUsers sends GET /api/v1/admin/users', () => {
-      const mock = { items: [], total: 0, page: 1, page_size: 20 };
-      service.listUsers().subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users');
-      expect(req.request.method).toBe('GET');
-      req.flush(mock);
-    });
-
-    it('listUsers passes pagination params', () => {
-      service.listUsers({ page: 2, page_size: 10 }).subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/admin/users');
-      expect(req.request.params.get('page')).toBe('2');
-      expect(req.request.params.get('page_size')).toBe('10');
-      req.flush({ items: [], total: 0, page: 2, page_size: 10 });
-    });
-
-    it('getUser sends GET /api/v1/admin/users/{id}', () => {
-      const mock = { ...makeUser(false), media_count: 0, storage_used_bytes: 0 };
-      service.getUser('u2').subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2');
-      expect(req.request.method).toBe('GET');
-      req.flush(mock);
-    });
-
-    it('updateUser sends PATCH /api/v1/admin/users/{id}', () => {
-      const body = { is_admin: true };
-      const mock = makeUser(true);
-      service.updateUser('u2', body).subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2');
-      expect(req.request.method).toBe('PATCH');
-      expect(req.request.body).toEqual(body);
-      req.flush(mock);
-    });
-
-    it('deleteUser sends DELETE /api/v1/admin/users/{id}', () => {
-      service.deleteUser('u2').subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2');
-      expect(req.request.method).toBe('DELETE');
-      req.flush(null, { status: 204, statusText: 'No Content' });
-    });
-
-    it('deleteUser passes delete_media param', () => {
-      service.deleteUser('u2', true).subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/admin/users/u2');
-      expect(req.request.params.get('delete_media')).toBe('true');
-      req.flush(null, { status: 204, statusText: 'No Content' });
-    });
-
-    it('deleteUserMedia sends DELETE /api/v1/admin/users/{id}/media', () => {
-      const mock = { deleted: 4 };
-      service.deleteUserMedia('u2').subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2/media');
-      expect(req.request.method).toBe('DELETE');
-      req.flush(mock);
-    });
-
     it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {
       const mock = { queued_count: 42 };
-      service.retagAll('u2').subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2/tagging-jobs');
+      service.retagAll().subscribe((res) => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/tagging-jobs');
       expect(req.request.method).toBe('POST');
       req.flush(mock);
     });
 
     it('startEmbeddingBackfill sends POST /api/v1/admin/users/{id}/embedding-backfill', () => {
       const mock = { batch_id: 'b1', queued: 3, already_current: 7 };
-      service.startEmbeddingBackfill('u2').subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2/embedding-backfill');
+      service.startEmbeddingBackfill().subscribe((res) => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/embedding-backfill');
       expect(req.request.method).toBe('POST');
       req.flush(mock);
     });
@@ -255,8 +124,8 @@ describe('AdminService', () => {
         rejection_rate: 0.25,
         by_source: [],
       };
-      service.getLibraryClassificationMetrics('u2').subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/users/u2/library-classification-metrics');
+      service.getLibraryClassificationMetrics().subscribe((res) => expect(res).toEqual(mock));
+      const req = http.expectOne('/api/v1/admin/library-classification-metrics');
       expect(req.request.method).toBe('GET');
       req.flush(mock);
     });

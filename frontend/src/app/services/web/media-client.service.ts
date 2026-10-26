@@ -10,13 +10,16 @@ import {
   MediaBatchUpdate,
   MediaEntityBatchUpdate,
   MediaListState,
-  MediaVisibility,
   TagFilterMode,
   NsfwFilter,
   SensitiveFilter,
 } from '../../models/media';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
-import { BatchUploadResponse, TaggingJobQueuedResponse, UrlIngestRequest } from '../../models/uploads';
+import {
+  BatchUploadResponse,
+  TaggingJobQueuedResponse,
+  UrlIngestRequest,
+} from '../../models/uploads';
 import {
   LibraryClassificationFeedbackBulkCreate,
   LibraryClassificationFeedbackCreate,
@@ -30,7 +33,6 @@ import { normalizeMetadataNameForSubmission } from '../../utils/media-display.ut
 export interface MediaListParams {
   state?: MediaListState;
   album_id?: string;
-  visibility?: MediaVisibility;
   sort_by?: 'captured_at' | 'uploaded_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
   after?: string;
@@ -52,9 +54,6 @@ export interface MediaSearchParams {
   sensitive?: SensitiveFilter;
   status?: string;
   favorited?: boolean;
-  visibility?: MediaVisibility;
-  owner_username?: string;
-  uploader_username?: string;
   media_type?: string[];
   sort_by?: 'captured_at' | 'uploaded_at' | 'filename' | 'file_size';
   sort_order?: 'asc' | 'desc';
@@ -81,7 +80,6 @@ export interface UploadParams {
   tags?: string[];
   captured_at?: string;
   captured_at_values?: string[];
-  visibility?: MediaVisibility;
   idempotencyKey?: string;
 }
 
@@ -94,7 +92,6 @@ export class MediaClientService {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
-    if (p.visibility != null) params = params.set('visibility', p.visibility);
     if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
     if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
     if (p.after != null) params = params.set('after', p.after);
@@ -107,10 +104,19 @@ export class MediaClientService {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
-    if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
-    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeEntityValue(t))));
-    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeEntityValue(t))));
-    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
+    if (p.tag) p.tag.forEach((t) => (params = params.append('tag', normalizeMetadataValue(t))));
+    if (p.character_name)
+      p.character_name.forEach(
+        (t) => (params = params.append('character_name', normalizeEntityValue(t))),
+      );
+    if (p.series_name)
+      p.series_name.forEach(
+        (t) => (params = params.append('series_name', normalizeEntityValue(t))),
+      );
+    if (p.exclude_tag)
+      p.exclude_tag.forEach(
+        (t) => (params = params.append('exclude_tag', normalizeMetadataValue(t))),
+      );
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.character_mode != null) params = params.set('character_mode', p.character_mode);
     if (p.series_mode != null) params = params.set('series_mode', p.series_mode);
@@ -118,10 +124,7 @@ export class MediaClientService {
     if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
-    if (p.visibility != null) params = params.set('visibility', p.visibility);
-    if (p.owner_username != null) params = params.set('owner_username', p.owner_username);
-    if (p.uploader_username != null) params = params.set('uploader_username', p.uploader_username);
-    if (p.media_type) p.media_type.forEach(t => (params = params.append('media_type', t)));
+    if (p.media_type) p.media_type.forEach((t) => (params = params.append('media_type', t)));
     if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
     if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
     if (p.after != null) params = params.set('after', p.after);
@@ -147,13 +150,12 @@ export class MediaClientService {
 
   upload(files: File[], p: UploadParams = {}): Observable<HttpEvent<BatchUploadResponse>> {
     const form = new FormData();
-    files.forEach(f => form.append('files', f));
+    files.forEach((f) => form.append('files', f));
     if (p.album_id != null) form.append('album_id', p.album_id);
-    if (p.tags) p.tags.forEach(t => form.append('tags', normalizeMetadataValue(t)));
+    if (p.tags) p.tags.forEach((t) => form.append('tags', normalizeMetadataValue(t)));
     if (p.captured_at != null) form.append('captured_at', p.captured_at);
     if (p.captured_at_values)
-      p.captured_at_values.forEach(v => form.append('captured_at_values', v));
-    if (p.visibility != null) form.append('visibility', p.visibility);
+      p.captured_at_values.forEach((v) => form.append('captured_at_values', v));
     const headers: Record<string, string> = {};
     if (p.idempotencyKey) headers['Idempotency-Key'] = p.idempotencyKey;
     return this.http.post<BatchUploadResponse>(`${this.base}/api/v1/media`, form, {
@@ -209,14 +211,42 @@ export class MediaClientService {
     });
   }
 
-  getTimeline(p: Omit<MediaSearchParams, 'after' | 'page_size' | 'include_total' | 'captured_year' | 'captured_month' | 'captured_day' | 'captured_after' | 'captured_before' | 'captured_before_year' | 'uploaded_year' | 'uploaded_month' | 'uploaded_day' | 'uploaded_after' | 'uploaded_before' | 'uploaded_before_year'> = {}): Observable<MediaTimeline> {
+  getTimeline(
+    p: Omit<
+      MediaSearchParams,
+      | 'after'
+      | 'page_size'
+      | 'include_total'
+      | 'captured_year'
+      | 'captured_month'
+      | 'captured_day'
+      | 'captured_after'
+      | 'captured_before'
+      | 'captured_before_year'
+      | 'uploaded_year'
+      | 'uploaded_month'
+      | 'uploaded_day'
+      | 'uploaded_after'
+      | 'uploaded_before'
+      | 'uploaded_before_year'
+    > = {},
+  ): Observable<MediaTimeline> {
     let params = new HttpParams();
     if (p.state != null) params = params.set('state', p.state);
     if (p.album_id != null) params = params.set('album_id', p.album_id);
-    if (p.tag) p.tag.forEach(t => (params = params.append('tag', normalizeMetadataValue(t))));
-    if (p.character_name) p.character_name.forEach(t => (params = params.append('character_name', normalizeEntityValue(t))));
-    if (p.series_name) p.series_name.forEach(t => (params = params.append('series_name', normalizeEntityValue(t))));
-    if (p.exclude_tag) p.exclude_tag.forEach(t => (params = params.append('exclude_tag', normalizeMetadataValue(t))));
+    if (p.tag) p.tag.forEach((t) => (params = params.append('tag', normalizeMetadataValue(t))));
+    if (p.character_name)
+      p.character_name.forEach(
+        (t) => (params = params.append('character_name', normalizeEntityValue(t))),
+      );
+    if (p.series_name)
+      p.series_name.forEach(
+        (t) => (params = params.append('series_name', normalizeEntityValue(t))),
+      );
+    if (p.exclude_tag)
+      p.exclude_tag.forEach(
+        (t) => (params = params.append('exclude_tag', normalizeMetadataValue(t))),
+      );
     if (p.mode != null) params = params.set('mode', p.mode);
     if (p.character_mode != null) params = params.set('character_mode', p.character_mode);
     if (p.series_mode != null) params = params.set('series_mode', p.series_mode);
@@ -224,10 +254,7 @@ export class MediaClientService {
     if (p.sensitive != null) params = params.set('sensitive', p.sensitive);
     if (p.status != null) params = params.set('status', p.status);
     if (p.favorited != null) params = params.set('favorited', p.favorited);
-    if (p.visibility != null) params = params.set('visibility', p.visibility);
-    if (p.owner_username != null) params = params.set('owner_username', p.owner_username);
-    if (p.uploader_username != null) params = params.set('uploader_username', p.uploader_username);
-    if (p.media_type) p.media_type.forEach(t => (params = params.append('media_type', t)));
+    if (p.media_type) p.media_type.forEach((t) => (params = params.append('media_type', t)));
     if (p.ocr_text != null) params = params.set('ocr_text', p.ocr_text);
     return this.http.get<MediaTimeline>(`${this.base}/api/v1/media/timeline`, { params });
   }

@@ -26,7 +26,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { Router } from '@angular/router';
 import { EMPTY, catchError } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
-import { MediaRead, MediaVisibility } from '../../models/media';
+import { MediaRead } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { AlbumStore } from '../../services/album.store';
 import { GalleryStore } from '../../services/gallery.store';
@@ -120,7 +120,6 @@ const MONTH_SECTION_MARGIN = 40;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class MediaBrowserComponent {
-  readonly mediaVisibility = MediaVisibility;
   readonly dayGroups = input<DayGroup[]>([]);
   readonly timeline = input<TimelineBucket[]>([]);
   readonly loading = input(false);
@@ -129,7 +128,6 @@ export class MediaBrowserComponent {
   readonly selectionActionMode = input<'default' | 'trash'>('default');
   readonly emptyStateTitle = input('No media yet');
   readonly emptyStateMessage = input('Media you have access to will appear here.');
-  readonly showPublicBadge = input(true);
   readonly showStories = input(false);
   readonly storyParams = input<MediaSearchParams | null>(null);
 
@@ -477,39 +475,6 @@ export class MediaBrowserComponent {
             this.clearSelection();
             this.snackBar.open(
               `Updated metadata for ${result.processed} item${result.processed === 1 ? '' : 's'}.`,
-              'Close',
-              { duration: 4000 },
-            );
-          });
-      });
-  }
-
-  updateSelectionVisibility(visibility: MediaVisibility): void {
-    const ids = this.selectedIds();
-    if (ids.length === 0) {
-      return;
-    }
-
-    const visibilityLabel = visibility === MediaVisibility.PUBLIC ? 'public' : 'private';
-    this.confirmDialog
-      .open({
-        title: `Make selected media ${visibilityLabel}?`,
-        message: `Change ${ids.length} selected item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}?`,
-        confirmLabel: `Make ${visibilityLabel}`,
-      })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((confirmed) => {
-        if (!confirmed) {
-          return;
-        }
-
-        this.galleryStore
-          .batchUpdateVisibility(ids, visibility)
-          .pipe(takeUntilDestroyed(this.destroyRef))
-          .subscribe(() => {
-            this.clearSelection();
-            this.snackBar.open(
-              `Updated ${ids.length} item${ids.length === 1 ? '' : 's'} to ${visibilityLabel}.`,
               'Close',
               { duration: 4000 },
             );
@@ -1516,11 +1481,13 @@ export class MediaBrowserComponent {
       return 0;
     }
 
-    return window.scrollY
-      || document.scrollingElement?.scrollTop
-      || document.documentElement.scrollTop
-      || document.body.scrollTop
-      || 0;
+    return (
+      window.scrollY ||
+      document.scrollingElement?.scrollTop ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0
+    );
   }
 
   private browserDocumentTop(): number {
@@ -1552,12 +1519,14 @@ export class MediaBrowserComponent {
 
     return current.every((metric, index) => {
       const candidate = next[index];
-      return candidate != null
-        && metric.key === candidate.key
-        && metric.year === candidate.year
-        && metric.month === candidate.month
-        && metric.offset === candidate.offset
-        && metric.height === candidate.height;
+      return (
+        candidate != null &&
+        metric.key === candidate.key &&
+        metric.year === candidate.year &&
+        metric.month === candidate.month &&
+        metric.offset === candidate.offset &&
+        metric.height === candidate.height
+      );
     });
   }
 

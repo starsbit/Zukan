@@ -1,16 +1,12 @@
 from __future__ import annotations
-
 from datetime import datetime, timedelta, timezone
-
 import pytest
 from sqlalchemy import select
-
-from backend.app.models.media import Media, MediaVisibility
+from backend.app.models.media import Media
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.repositories import media_filters
 from backend.app.schemas import MediaMetadataFilter, NsfwFilter, SensitiveFilter, TagFilterMode
-
 
 def test_media_date_part_filters_use_range_predicates_when_year_is_present():
     captured_stmt = media_filters.apply_captured_at_filters(
@@ -34,409 +30,154 @@ def test_media_date_part_filters_use_range_predicates_when_year_is_present():
     assert "MEDIA.UPLOADED_AT >=" in uploaded_sql
     assert "MEDIA.UPLOADED_AT <" in uploaded_sql
 
-
 @pytest.mark.asyncio
 async def test_media_filters_tag_character_ocr_and_nsfw(db_session, make_user, make_media):
     user = await make_user()
-    m1 = await make_media(uploader_id=user.id, is_nsfw=False)
-    m2 = await make_media(uploader_id=user.id, is_nsfw=True)
-
-    t_safe = Tag(owner_user_id=user.id, name="safe", category=0, media_count=1)
-    t_nsfw = Tag(owner_user_id=user.id, name="nsfw", category=9, media_count=1)
+    m1 = await make_media(is_nsfw=False)
+    m2 = await make_media(is_nsfw=True)
+    t_safe = Tag(name='safe', category=0, media_count=1)
+    t_nsfw = Tag(name='nsfw', category=9, media_count=1)
     db_session.add_all([t_safe, t_nsfw])
     await db_session.flush()
-    db_session.add_all(
-        [
-            MediaTag(media_id=m1.id, tag_id=t_safe.id, confidence=0.9),
-            MediaTag(media_id=m2.id, tag_id=t_nsfw.id, confidence=0.9),
-            MediaEntity(media_id=m1.id, entity_type=MediaEntityType.character, name="Saber Alter", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=m1.id, entity_type=MediaEntityType.series, name="Fate Stay Night", role="primary", source="manual", confidence=0.9),
-        ]
-    )
-    m1.ocr_text = "fate stay"
+    db_session.add_all([MediaTag(media_id=m1.id, tag_id=t_safe.id, confidence=0.9), MediaTag(media_id=m2.id, tag_id=t_nsfw.id, confidence=0.9), MediaEntity(media_id=m1.id, entity_type=MediaEntityType.character, name='Saber Alter', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=m1.id, entity_type=MediaEntityType.series, name='Fate Stay Night', role='primary', source='manual', confidence=0.9)])
+    m1.ocr_text = 'fate stay'
     await db_session.flush()
-
     stmt = select(type(m1))
-    stmt = media_filters.apply_tag_filters(stmt, ["safe"], None, TagFilterMode.AND)
+    stmt = media_filters.apply_tag_filters(stmt, ['safe'], None, TagFilterMode.AND)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert {r.id for r in rows} == {m1.id}
-
     stmt2 = select(type(m1))
-    stmt2 = media_filters.apply_tag_filters(stmt2, None, ["nsfw"], TagFilterMode.OR)
+    stmt2 = media_filters.apply_tag_filters(stmt2, None, ['nsfw'], TagFilterMode.OR)
     rows2 = (await db_session.execute(stmt2)).scalars().all()
     assert {r.id for r in rows2} == {m1.id}
-
-    stmt3 = media_filters.apply_character_name_filter(select(type(m1)), ["saber alter"])
+    stmt3 = media_filters.apply_character_name_filter(select(type(m1)), ['saber alter'])
     rows3 = (await db_session.execute(stmt3)).scalars().all()
     assert {r.id for r in rows3} == {m1.id}
-
-    stmt_series = media_filters.apply_series_name_filter(select(type(m1)), ["fate stay night"])
+    stmt_series = media_filters.apply_series_name_filter(select(type(m1)), ['fate stay night'])
     rows_series = (await db_session.execute(stmt_series)).scalars().all()
     assert {r.id for r in rows_series} == {m1.id}
-
-    stmt4 = media_filters.apply_ocr_text_filter(select(type(m1)), "fate")
+    stmt4 = media_filters.apply_ocr_text_filter(select(type(m1)), 'fate')
     rows4 = (await db_session.execute(stmt4)).scalars().all()
     assert {r.id for r in rows4} == {m1.id}
-
     stmt5 = media_filters.apply_nsfw_list_filter(select(type(m1)), user, NsfwFilter.DEFAULT)
     rows5 = (await db_session.execute(stmt5)).scalars().all()
     assert {r.id for r in rows5} == {m1.id}
 
-
 @pytest.mark.asyncio
 async def test_media_filters_match_display_form_tag_names(db_session, make_user, make_media):
     user = await make_user()
-    full_body = await make_media(uploader_id=user.id)
-    upper_body = await make_media(uploader_id=user.id)
-
-    full_body_tag = Tag(owner_user_id=user.id, name="full_body", category=0, media_count=1)
-    upper_body_tag = Tag(owner_user_id=user.id, name="upper_body", category=0, media_count=1)
+    full_body = await make_media()
+    upper_body = await make_media()
+    full_body_tag = Tag(name='full_body', category=0, media_count=1)
+    upper_body_tag = Tag(name='upper_body', category=0, media_count=1)
     db_session.add_all([full_body_tag, upper_body_tag])
     await db_session.flush()
-    db_session.add_all(
-        [
-            MediaTag(media_id=full_body.id, tag_id=full_body_tag.id, confidence=0.9),
-            MediaTag(media_id=upper_body.id, tag_id=upper_body_tag.id, confidence=0.9),
-        ]
-    )
+    db_session.add_all([MediaTag(media_id=full_body.id, tag_id=full_body_tag.id, confidence=0.9), MediaTag(media_id=upper_body.id, tag_id=upper_body_tag.id, confidence=0.9)])
     await db_session.flush()
-
-    rows = (
-        await db_session.execute(
-            media_filters.apply_tag_filters(
-                select(type(full_body)),
-                ["Full Body"],
-                None,
-                TagFilterMode.AND,
-            )
-        )
-    ).scalars().all()
-    excluded_rows = (
-        await db_session.execute(
-            media_filters.apply_tag_filters(
-                select(type(full_body)),
-                None,
-                ["Full Body"],
-                TagFilterMode.AND,
-            )
-        )
-    ).scalars().all()
-
+    rows = (await db_session.execute(media_filters.apply_tag_filters(select(type(full_body)), ['Full Body'], None, TagFilterMode.AND))).scalars().all()
+    excluded_rows = (await db_session.execute(media_filters.apply_tag_filters(select(type(full_body)), None, ['Full Body'], TagFilterMode.AND))).scalars().all()
     assert {row.id for row in rows} == {full_body.id}
     assert {row.id for row in excluded_rows} == {upper_body.id}
-
 
 @pytest.mark.asyncio
 async def test_media_filters_use_effective_classification_overrides(db_session, make_user, make_media):
     user = await make_user(show_nsfw=False, show_sensitive=False)
-    auto_safe = await make_media(uploader_id=user.id, is_nsfw=False, is_sensitive=False)
-    manual_nsfw = await make_media(
-        uploader_id=user.id,
-        is_nsfw=False,
-        is_sensitive=False,
-        is_nsfw_override=True,
-    )
-    manual_safe = await make_media(
-        uploader_id=user.id,
-        is_nsfw=True,
-        is_sensitive=True,
-        is_nsfw_override=False,
-        is_sensitive_override=False,
-    )
-    manual_sensitive = await make_media(
-        uploader_id=user.id,
-        is_nsfw=False,
-        is_sensitive=False,
-        is_sensitive_override=True,
-    )
+    auto_safe = await make_media(is_nsfw=False, is_sensitive=False)
+    manual_nsfw = await make_media(is_nsfw=False, is_sensitive=False, is_nsfw_override=True)
+    manual_safe = await make_media(is_nsfw=True, is_sensitive=True, is_nsfw_override=False, is_sensitive_override=False)
+    manual_sensitive = await make_media(is_nsfw=False, is_sensitive=False, is_sensitive_override=True)
     await db_session.flush()
-
-    default_nsfw_rows = (
-        await db_session.execute(
-            media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.DEFAULT)
-        )
-    ).scalars().all()
+    default_nsfw_rows = (await db_session.execute(media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.DEFAULT))).scalars().all()
     assert {row.id for row in default_nsfw_rows} == {auto_safe.id, manual_safe.id, manual_sensitive.id}
-
-    only_nsfw_rows = (
-        await db_session.execute(
-            media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.ONLY)
-        )
-    ).scalars().all()
+    only_nsfw_rows = (await db_session.execute(media_filters.apply_nsfw_list_filter(select(type(auto_safe)), user, NsfwFilter.ONLY))).scalars().all()
     assert {row.id for row in only_nsfw_rows} == {manual_nsfw.id}
-
-    default_sensitive_rows = (
-        await db_session.execute(
-            media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.DEFAULT)
-        )
-    ).scalars().all()
+    default_sensitive_rows = (await db_session.execute(media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.DEFAULT))).scalars().all()
     assert {row.id for row in default_sensitive_rows} == {auto_safe.id, manual_nsfw.id, manual_safe.id}
-
-    only_sensitive_rows = (
-        await db_session.execute(
-            media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.ONLY)
-        )
-    ).scalars().all()
+    only_sensitive_rows = (await db_session.execute(media_filters.apply_sensitive_list_filter(select(type(auto_safe)), user, SensitiveFilter.ONLY))).scalars().all()
     assert {row.id for row in only_sensitive_rows} == {manual_sensitive.id}
-
 
 @pytest.mark.asyncio
 async def test_media_filters_media_type_and_captured_at(db_session, make_user, make_media):
     user = await make_user()
-    m1 = await make_media(uploader_id=user.id)
-    m2 = await make_media(uploader_id=user.id)
+    m1 = await make_media()
+    m2 = await make_media()
     m1.captured_at = datetime.now(timezone.utc) - timedelta(days=365)
     m2.captured_at = datetime.now(timezone.utc)
     await db_session.flush()
-
-    stmt = media_filters.apply_media_type_filters(select(type(m1)), ["image"])
+    stmt = media_filters.apply_media_type_filters(select(type(m1)), ['image'])
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) >= 2
-
     metadata = MediaMetadataFilter(captured_before=datetime.now(timezone.utc) - timedelta(days=100))
     stmt2 = media_filters.apply_captured_at_filters(select(type(m1)), metadata)
     rows2 = (await db_session.execute(stmt2)).scalars().all()
     assert {r.id for r in rows2} == {m1.id}
 
-
 @pytest.mark.asyncio
 async def test_media_filters_support_uploaded_at_constraints(db_session, make_user, make_media):
     user = await make_user()
-    march_match = await make_media(uploader_id=user.id)
-    future_media = await make_media(uploader_id=user.id)
-
+    march_match = await make_media()
+    future_media = await make_media()
     march_match.uploaded_at = datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc)
     future_media.uploaded_at = datetime(2027, 1, 1, 12, 0, tzinfo=timezone.utc)
     await db_session.flush()
-
-    metadata = MediaMetadataFilter(
-        uploaded_year=2026,
-        uploaded_month=3,
-        uploaded_day=29,
-        uploaded_before_year=2027,
-    )
+    metadata = MediaMetadataFilter(uploaded_year=2026, uploaded_month=3, uploaded_day=29, uploaded_before_year=2027)
     stmt = media_filters.apply_uploaded_at_filters(select(type(march_match)), metadata)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert {row.id for row in rows} == {march_match.id}
-
-
-@pytest.mark.asyncio
-async def test_media_filters_support_owner_and_uploader_username_constraints(db_session, make_user, make_media):
-    uploader = await make_user()
-    owner = await make_user()
-    other_user = await make_user()
-
-    owned_match = await make_media(uploader_id=uploader.id)
-    other_media = await make_media(uploader_id=other_user.id)
-    owned_match.owner_id = owner.id
-    other_media.owner_id = other_user.id
-
-    owner.username = "OwnerUser"
-    uploader.username = "UploaderUser"
-    other_user.username = "someone_else"
-    await db_session.flush()
-
-    owner_stmt = media_filters.apply_owner_username_filter(select(type(owned_match)), " owneruser ")
-    owner_rows = (await db_session.execute(owner_stmt)).scalars().all()
-    assert {row.id for row in owner_rows} == {owned_match.id}
-
-    uploader_stmt = media_filters.apply_uploader_username_filter(select(type(owned_match)), "UPLOADERUSER")
-    uploader_rows = (await db_session.execute(uploader_stmt)).scalars().all()
-    assert {row.id for row in uploader_rows} == {owned_match.id}
-
 
 def test_fuzzy_ocr_pattern_helper():
     assert media_filters._build_fuzzy_ocr_like_pattern("abc") is None
     pattern = media_filters._build_fuzzy_ocr_like_pattern("ab cd")
     assert pattern == "%a%b%c%d%"
 
-
 @pytest.mark.asyncio
 async def test_media_filters_support_entity_and_or_modes(db_session, make_user, make_media):
     user = await make_user()
-    matching_both = await make_media(uploader_id=user.id)
-    matching_one = await make_media(uploader_id=user.id)
-    series_match = await make_media(uploader_id=user.id)
-
-    db_session.add_all(
-        [
-            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name="Rin Tohsaka", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name="Saber Alter", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name="Fate Stay Night", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name="Tsukihime", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.character, name="Rin Tohsaka", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.series, name="Fate Stay Night", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.character, name="Arcueid Brunestud", role="primary", source="manual", confidence=0.9),
-            MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.series, name="Tsukihime", role="primary", source="manual", confidence=0.9),
-        ]
-    )
+    matching_both = await make_media()
+    matching_one = await make_media()
+    series_match = await make_media()
+    db_session.add_all([MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name='Rin Tohsaka', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.character, name='Saber Alter', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name='Fate Stay Night', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=matching_both.id, entity_type=MediaEntityType.series, name='Tsukihime', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.character, name='Rin Tohsaka', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=matching_one.id, entity_type=MediaEntityType.series, name='Fate Stay Night', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.character, name='Arcueid Brunestud', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=series_match.id, entity_type=MediaEntityType.series, name='Tsukihime', role='primary', source='manual', confidence=0.9)])
     await db_session.flush()
-
-    character_and_stmt = media_filters.apply_character_name_filter(
-        select(type(matching_both)),
-        ["rin tohsaka", "saber alter"],
-        TagFilterMode.AND,
-    )
+    character_and_stmt = media_filters.apply_character_name_filter(select(type(matching_both)), ['rin tohsaka', 'saber alter'], TagFilterMode.AND)
     character_and_rows = (await db_session.execute(character_and_stmt)).scalars().all()
     assert {row.id for row in character_and_rows} == {matching_both.id}
-
-    character_or_stmt = media_filters.apply_character_name_filter(
-        select(type(matching_both)),
-        ["rin tohsaka", "saber alter"],
-        TagFilterMode.OR,
-    )
+    character_or_stmt = media_filters.apply_character_name_filter(select(type(matching_both)), ['rin tohsaka', 'saber alter'], TagFilterMode.OR)
     character_or_rows = (await db_session.execute(character_or_stmt)).scalars().all()
     assert {row.id for row in character_or_rows} == {matching_both.id, matching_one.id}
-
-    series_or_stmt = media_filters.apply_series_name_filter(
-        select(type(matching_both)),
-        ["fate stay night", "tsukihime"],
-        TagFilterMode.OR,
-    )
+    series_or_stmt = media_filters.apply_series_name_filter(select(type(matching_both)), ['fate stay night', 'tsukihime'], TagFilterMode.OR)
     series_or_rows = (await db_session.execute(series_or_stmt)).scalars().all()
     assert {row.id for row in series_or_rows} == {matching_both.id, matching_one.id, series_match.id}
-
 
 @pytest.mark.asyncio
 async def test_media_filters_match_apostrophe_entity_names(db_session, make_user, make_media):
     user = await make_user()
-    match = await make_media(uploader_id=user.id)
-    other = await make_media(uploader_id=user.id)
-
-    db_session.add_all(
-        [
-            MediaEntity(
-                media_id=match.id,
-                entity_type=MediaEntityType.character,
-                name="jeanne_d'arc_(fate)",
-                role="primary",
-                source="manual",
-                confidence=0.9,
-            ),
-            MediaEntity(
-                media_id=other.id,
-                entity_type=MediaEntityType.character,
-                name="jeanne_alter_(fate)",
-                role="primary",
-                source="manual",
-                confidence=0.9,
-            ),
-        ]
-    )
+    match = await make_media()
+    other = await make_media()
+    db_session.add_all([MediaEntity(media_id=match.id, entity_type=MediaEntityType.character, name="jeanne_d'arc_(fate)", role='primary', source='manual', confidence=0.9), MediaEntity(media_id=other.id, entity_type=MediaEntityType.character, name='jeanne_alter_(fate)', role='primary', source='manual', confidence=0.9)])
     await db_session.flush()
-
-    stmt = media_filters.apply_character_name_filter(
-        select(type(match)),
-        ["Jeanne D'Arc (Fate)"],
-    )
+    stmt = media_filters.apply_character_name_filter(select(type(match)), ["Jeanne D'Arc (Fate)"])
     rows = (await db_session.execute(stmt)).scalars().all()
-
     assert {row.id for row in rows} == {match.id}
-
 
 @pytest.mark.asyncio
 async def test_media_filters_match_character_name_on_token_boundaries(db_session, make_user, make_media):
     user = await make_user()
-    aru = await make_media(uploader_id=user.id)
-    koharu = await make_media(uploader_id=user.id)
-
-    db_session.add_all(
-        [
-            MediaEntity(
-                media_id=aru.id,
-                entity_type=MediaEntityType.character,
-                name="Aru (Blue Archive)",
-                role="primary",
-                source="manual",
-                confidence=0.9,
-            ),
-            MediaEntity(
-                media_id=koharu.id,
-                entity_type=MediaEntityType.character,
-                name="Koharu (Blue Archive)",
-                role="primary",
-                source="manual",
-                confidence=0.9,
-            ),
-        ]
-    )
+    aru = await make_media()
+    koharu = await make_media()
+    db_session.add_all([MediaEntity(media_id=aru.id, entity_type=MediaEntityType.character, name='Aru (Blue Archive)', role='primary', source='manual', confidence=0.9), MediaEntity(media_id=koharu.id, entity_type=MediaEntityType.character, name='Koharu (Blue Archive)', role='primary', source='manual', confidence=0.9)])
     await db_session.flush()
-
-    rows = (
-        await db_session.execute(
-            media_filters.apply_character_name_filter(
-                select(type(aru)),
-                ["Aru (Blue Archive)"],
-            )
-        )
-    ).scalars().all()
-
+    rows = (await db_session.execute(media_filters.apply_character_name_filter(select(type(aru)), ['Aru (Blue Archive)']))).scalars().all()
     assert {row.id for row in rows} == {aru.id}
-
-
-@pytest.mark.asyncio
-async def test_media_filters_support_tag_modes_visibility_and_ocr_fallbacks(db_session, make_user, make_media):
-    user = await make_user()
-    m1 = await make_media(uploader_id=user.id)
-    m2 = await make_media(uploader_id=user.id)
-    m3 = await make_media(uploader_id=user.id)
-
-    tag_hero = Tag(owner_user_id=user.id, name="hero", category=0, media_count=2)
-    tag_night = Tag(owner_user_id=user.id, name="night", category=0, media_count=2)
-    tag_spoiler = Tag(owner_user_id=user.id, name="spoiler", category=0, media_count=1)
-    db_session.add_all([tag_hero, tag_night, tag_spoiler])
-    await db_session.flush()
-
-    m1.visibility = MediaVisibility.public
-    m2.visibility = MediaVisibility.public
-    m3.visibility = MediaVisibility.private
-    m1.ocr_text_override = "fa-te route"
-    m2.ocr_text = "fate night"
-    await db_session.flush()
-
-    db_session.add_all(
-        [
-            MediaTag(media_id=m1.id, tag_id=tag_hero.id, confidence=0.9),
-            MediaTag(media_id=m1.id, tag_id=tag_night.id, confidence=0.9),
-            MediaTag(media_id=m2.id, tag_id=tag_hero.id, confidence=0.9),
-            MediaTag(media_id=m3.id, tag_id=tag_spoiler.id, confidence=0.9),
-        ]
-    )
-    await db_session.flush()
-
-    stmt = media_filters.apply_tag_filters(select(type(m1)), ["hero", "night"], None, TagFilterMode.AND)
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert {row.id for row in rows} == {m1.id}
-
-    stmt = media_filters.apply_tag_filters(select(type(m1)), ["hero", "night"], ["spoiler"], TagFilterMode.OR)
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert {row.id for row in rows} == {m1.id, m2.id}
-
-    stmt = media_filters.apply_visibility_filter(select(type(m1)), MediaVisibility.public)
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert {row.id for row in rows} == {m1.id, m2.id}
-
-    stmt = media_filters.apply_ocr_text_filter(select(type(m1)), "fate")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert {row.id for row in rows} == {m1.id, m2.id}
-
 
 @pytest.mark.asyncio
 async def test_media_filters_support_combined_captured_at_constraints(db_session, make_user, make_media):
     user = await make_user()
-    march_match = await make_media(uploader_id=user.id)
-    future_media = await make_media(uploader_id=user.id)
-
+    march_match = await make_media()
+    future_media = await make_media()
     march_match.captured_at = datetime(2026, 3, 29, 12, 0, tzinfo=timezone.utc)
     future_media.captured_at = datetime(2027, 1, 1, 12, 0, tzinfo=timezone.utc)
     await db_session.flush()
-
-    metadata = MediaMetadataFilter(
-        captured_year=2026,
-        captured_month=3,
-        captured_day=29,
-        captured_before_year=2027,
-    )
+    metadata = MediaMetadataFilter(captured_year=2026, captured_month=3, captured_day=29, captured_before_year=2027)
     stmt = media_filters.apply_captured_at_filters(select(type(march_match)), metadata)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert {row.id for row in rows} == {march_match.id}

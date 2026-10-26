@@ -1,19 +1,14 @@
 from __future__ import annotations
-
 import uuid
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
-
 import pytest
-
 from backend.app.errors.error import AppError
-from backend.app.models.media import MediaVisibility
 from backend.app.models.relations import MediaEntityType
 from backend.app.models.relations import MediaEntity
 from backend.app.schemas import EntityCreate, ExternalRefCreate, MediaAnnotationBatchUpdate, MediaEntityBatchUpdate, MediaMetadataUpdate, MediaUpdate
 from backend.app.services.media.metadata import MediaMetadataService
-
 
 @pytest.mark.asyncio
 async def test_update_media_metadata_raises_on_version_conflict(fake_db, stub_query, media, user):
@@ -28,328 +23,90 @@ async def test_update_media_metadata_raises_on_version_conflict(fake_db, stub_qu
     assert exc.value.status_code == 409
     fake_db.commit.assert_not_awaited()
 
-
-@pytest.mark.asyncio
-async def test_update_media_metadata_updates_fields_and_relations(fake_db, stub_query, media, user):
-    old_ref = SimpleNamespace(id=2)
-    expected_detail = SimpleNamespace(id=media.id)
-    captured = datetime.now(timezone.utc)
-
-    stub_query.get_owned_or_admin_media.return_value = media
-    stub_query.get_media_external_refs.return_value = [old_ref]
-    stub_query.get_media_with_relations.return_value = media
-    stub_query.build_media_detail.return_value = expected_detail
-
-    interactions = SimpleNamespace(_set_favorite_state=AsyncMock())
-    payload = MediaUpdate(
-        tags=["safe", "nsfw"],
-        entities=[EntityCreate(entity_type=MediaEntityType.character, name="Saber", role="primary")],
-        metadata=MediaMetadataUpdate(captured_at=captured),
-        deleted=True,
-        ocr_text_override="  corrected text  ",
-        is_nsfw_override=True,
-        is_sensitive_override=False,
-        external_refs=[ExternalRefCreate(provider="pixiv", external_id="123", url="https://x")],
-        visibility=MediaVisibility.public,
-        favorited=True,
-        version=media.version,
-    )
-
-    service = MediaMetadataService(fake_db, stub_query, interactions)
-
-    with patch("backend.app.services.media.metadata.TagRepository") as repo_cls, patch(
-        "backend.app.services.media.metadata.MediaEntityRepository"
-    ) as entity_repo_cls:
-        repo = repo_cls.return_value
-        repo.set_media_tag_links = AsyncMock()
-        entity_repo_cls.return_value.replace_media_entities = AsyncMock()
-
-        detail = await service.update_media_metadata(media.id, user, payload)
-
-    assert detail is expected_detail
-    assert media.captured_at == captured
-    assert media.deleted_at is not None
-    assert media.ocr_text_override == "  corrected text  "
-    assert media.is_nsfw is True
-    assert media.is_sensitive is False
-    assert media.is_nsfw_override is True
-    assert media.is_sensitive_override is False
-    assert media.visibility == MediaVisibility.public
-    assert old_ref in fake_db.deleted
-    assert interactions._set_favorite_state.await_count == 1
-    entity_repo_cls.return_value.replace_media_entities.assert_awaited_once()
-    fake_db.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_update_metadata_with_public_fields_uses_active_media_access(fake_db, stub_query, media, user):
-    payload = MediaUpdate(version=media.version)
-    stub_query.get_active_media.return_value = media
-    stub_query.get_media_with_relations.return_value = media
-    stub_query.build_media_detail.return_value = SimpleNamespace(id=media.id)
-
-    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-    await service.update_media_metadata(media.id, user, payload)
-
-    stub_query.get_active_media.assert_awaited_once_with(media.id)
-    stub_query.get_owned_or_admin_media.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_update_metadata_visibility_requires_owner_access(fake_db, stub_query, media, user):
-    payload = MediaUpdate(version=media.version, visibility=MediaVisibility.public)
-    stub_query.get_owned_or_admin_media.return_value = media
-    stub_query.get_media_with_relations.return_value = media
-    stub_query.build_media_detail.return_value = SimpleNamespace(id=media.id)
-
-    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-    await service.update_media_metadata(media.id, user, payload)
-
-    stub_query.get_owned_or_admin_media.assert_awaited_once_with(media.id, user, trashed=None)
-    stub_query.get_active_media.assert_not_called()
-
-
 @pytest.mark.asyncio
 async def test_update_media_metadata_resets_captured_at_to_uploaded_at(fake_db, stub_query, media, user):
     expected_detail = SimpleNamespace(id=media.id)
     media.uploaded_at = datetime(2026, 4, 1, 10, 0, tzinfo=timezone.utc)
     media.captured_at = datetime(2026, 3, 1, 10, 0, tzinfo=timezone.utc)
-
-    stub_query.get_owned_or_admin_media.return_value = media
+    stub_query.get_media_for_management.return_value = media
     stub_query.get_media_with_relations.return_value = media
     stub_query.build_media_detail.return_value = expected_detail
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-    detail = await service.update_media_metadata(
-        media.id,
-        user,
-        MediaUpdate(metadata=MediaMetadataUpdate(captured_at=None), version=media.version),
-    )
-
+    detail = await service.update_media_metadata(media.id, user, MediaUpdate(metadata=MediaMetadataUpdate(captured_at=None), version=media.version))
     assert detail is expected_detail
     assert media.captured_at == media.uploaded_at
-
 
 @pytest.mark.asyncio
 async def test_update_media_metadata_allows_clearing_manual_classification_overrides(fake_db, stub_query, media, user):
     expected_detail = SimpleNamespace(id=media.id)
     media.is_nsfw_override = True
     media.is_sensitive_override = False
-
-    stub_query.get_owned_or_admin_media.return_value = media
+    stub_query.get_media_for_management.return_value = media
     stub_query.get_media_with_relations.return_value = media
     stub_query.build_media_detail.return_value = expected_detail
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-    detail = await service.update_media_metadata(
-        media.id,
-        user,
-        MediaUpdate(
-            is_nsfw_override=None,
-            is_sensitive_override=None,
-            version=media.version,
-        ),
-    )
-
+    detail = await service.update_media_metadata(media.id, user, MediaUpdate(is_nsfw_override=None, is_sensitive_override=None, version=media.version))
     assert detail is expected_detail
     assert media.is_nsfw_override is None
     assert media.is_sensitive_override is None
 
-
-@pytest.mark.asyncio
-async def test_bulk_update_visibility_updates_only_manageable_media(fake_db, stub_query, user):
-    own_private = SimpleNamespace(id=1, uploader_id=user.id, visibility=MediaVisibility.private)
-    own_public = SimpleNamespace(id=2, uploader_id=user.id, visibility=MediaVisibility.public)
-    foreign_private = SimpleNamespace(id=3, uploader_id='someone-else', visibility=MediaVisibility.private)
-    stub_query.get_media_by_ids.return_value = [own_private, own_public, foreign_private]
-
-    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    result = await service.bulk_update_visibility([1, 2, 3, 4], user, MediaVisibility.public)
-
-    assert result.processed == 1
-    assert result.skipped == 3
-    assert own_private.visibility == MediaVisibility.public
-    assert own_public.visibility == MediaVisibility.public
-    assert foreign_private.visibility == MediaVisibility.private
-    fake_db.commit.assert_awaited_once()
-
-
-@pytest.mark.asyncio
-async def test_bulk_update_metadata_review_dismissed_updates_only_manageable_media(fake_db, stub_query, user):
-    own_active = SimpleNamespace(id=1, uploader_id=user.id, metadata_review_dismissed=False)
-    own_dismissed = SimpleNamespace(id=2, uploader_id=user.id, metadata_review_dismissed=True)
-    foreign_active = SimpleNamespace(id=3, uploader_id='someone-else', metadata_review_dismissed=False)
-    stub_query.get_media_by_ids.return_value = [own_active, own_dismissed, foreign_active]
-
-    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    result = await service.bulk_update_metadata_review_dismissed([1, 2, 3, 4], user, True)
-
-    assert result.processed == 1
-    assert result.skipped == 3
-    assert own_active.metadata_review_dismissed is True
-    assert own_dismissed.metadata_review_dismissed is True
-    assert foreign_active.metadata_review_dismissed is False
-    fake_db.commit.assert_awaited_once()
-
-
 @pytest.mark.asyncio
 async def test_bulk_update_entities_replaces_only_requested_types(fake_db, stub_query, user):
-    media_one = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
-    media_two = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4(), owner_id=uuid.uuid4())
+    media_one = SimpleNamespace(id=uuid.uuid4())
+    media_two = SimpleNamespace(id=uuid.uuid4())
     stub_query.get_media_by_ids.return_value = [media_one, media_two]
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    with patch("backend.app.services.media.metadata.MediaEntityRepository") as repo_cls:
+    with patch('backend.app.services.media.metadata.MediaEntityRepository') as repo_cls:
         repo_cls.return_value.add_media_entities = AsyncMock()
-
-        result = await service.bulk_update_entities(
-            MediaEntityBatchUpdate(
-                media_ids=[media_one.id, media_two.id, uuid.uuid4()],
-                character_names=["  Saber  ", "Saber", "Rin"],
-                series_names=None,
-            ),
-            user,
-        )
-
-    assert result.processed == 1
-    assert result.skipped == 2
-    repo_cls.return_value.add_media_entities.assert_awaited_once_with(
-        media_one,
-        entity_type=MediaEntityType.character,
-        names=["Saber", "Rin"],
-        source="manual",
-        replace_existing_type=True,
-    )
+        result = await service.bulk_update_entities(MediaEntityBatchUpdate(media_ids=[media_one.id, media_two.id, uuid.uuid4()], character_names=['  Saber  ', 'Saber', 'Rin'], series_names=None), user)
+    assert result.processed == 2
+    assert result.skipped == 1
+    assert repo_cls.return_value.add_media_entities.await_count == 2
     fake_db.commit.assert_awaited_once()
-
 
 @pytest.mark.asyncio
 async def test_bulk_update_entities_dedupes_names_by_search_normalized_value(fake_db, stub_query, user):
-    media = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
+    media = SimpleNamespace(id=uuid.uuid4())
     stub_query.get_media_by_ids.return_value = [media]
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    with patch("backend.app.services.media.metadata.MediaEntityRepository") as repo_cls:
+    with patch('backend.app.services.media.metadata.MediaEntityRepository') as repo_cls:
         repo_cls.return_value.add_media_entities = AsyncMock()
-
-        await service.bulk_update_entities(
-            MediaEntityBatchUpdate(
-                media_ids=[media.id],
-                character_names=["Kazuki Kazami", "Kazuki_Kazami", "  kazuki   kazami  "],
-                series_names=["Grisaia no Kajitsu", "grisaia_no_kajitsu"],
-            ),
-            user,
-        )
-
-    assert repo_cls.return_value.add_media_entities.await_args_list[0].kwargs["names"] == ["Kazuki Kazami"]
-    assert repo_cls.return_value.add_media_entities.await_args_list[1].kwargs["names"] == ["Grisaia no Kajitsu"]
-
+        await service.bulk_update_entities(MediaEntityBatchUpdate(media_ids=[media.id], character_names=['Kazuki Kazami', 'Kazuki_Kazami', '  kazuki   kazami  '], series_names=['Grisaia no Kajitsu', 'grisaia_no_kajitsu']), user)
+    assert repo_cls.return_value.add_media_entities.await_args_list[0].kwargs['names'] == ['Kazuki Kazami']
+    assert repo_cls.return_value.add_media_entities.await_args_list[1].kwargs['names'] == ['Grisaia no Kajitsu']
 
 @pytest.mark.asyncio
 async def test_bulk_update_annotations_adds_and_removes_tags_with_remove_winning(fake_db, stub_query, user):
-    media = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id, is_nsfw=True, is_sensitive=False)
-    existing_safe = SimpleNamespace(tag=SimpleNamespace(name="safe", category=0), confidence=0.8)
-    existing_old = SimpleNamespace(tag=SimpleNamespace(name="old_tag", category=3), confidence=0.6)
+    media = SimpleNamespace(id=uuid.uuid4(), is_nsfw=True, is_sensitive=False)
+    existing_safe = SimpleNamespace(tag=SimpleNamespace(name='safe', category=0), confidence=0.8)
+    existing_old = SimpleNamespace(tag=SimpleNamespace(name='old_tag', category=3), confidence=0.6)
     stub_query.get_media_by_ids.return_value = [media]
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    with patch("backend.app.services.media.metadata.TagRepository") as repo_cls, patch(
-        "backend.app.services.media.metadata.MediaEntityRepository"
-    ) as entity_repo_cls:
+    with patch('backend.app.services.media.metadata.TagRepository') as repo_cls, patch('backend.app.services.media.metadata.MediaEntityRepository') as entity_repo_cls:
         repo_cls.return_value.get_media_tags_with_tag = AsyncMock(return_value=[existing_safe, existing_old])
         repo_cls.return_value.set_media_tag_links = AsyncMock()
         entity_repo_cls.return_value.mutate_media_entities = AsyncMock()
-
-        result = await service.bulk_update_annotations(
-            MediaAnnotationBatchUpdate(
-                media_ids=[media.id],
-                add_tags=["new tag", "old tag"],
-                remove_tags=["Old Tag"],
-            ),
-            user,
-        )
-
+        result = await service.bulk_update_annotations(MediaAnnotationBatchUpdate(media_ids=[media.id], add_tags=['new tag', 'old tag'], remove_tags=['Old Tag']), user)
     assert result.processed == 1
     assert result.skipped == 0
-    repo_cls.return_value.set_media_tag_links.assert_awaited_once_with(
-        media,
-        [("safe", 0, 0.8), ("new tag", 0, 1.0)],
-        source="manual",
-    )
+    repo_cls.return_value.set_media_tag_links.assert_awaited_once_with(media, [('safe', 0, 0.8), ('new tag', 0, 1.0)], source='manual')
     assert media.is_nsfw is False
     assert media.is_sensitive is False
     entity_repo_cls.return_value.mutate_media_entities.assert_not_called()
     fake_db.commit.assert_awaited_once()
 
-
 @pytest.mark.asyncio
 async def test_bulk_update_annotations_mutates_characters_and_series_without_replacement(fake_db, stub_query, user):
-    media = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
+    media = SimpleNamespace(id=uuid.uuid4())
     stub_query.get_media_by_ids.return_value = [media]
-
     service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    with patch("backend.app.services.media.metadata.TagRepository") as tag_repo_cls, patch(
-        "backend.app.services.media.metadata.MediaEntityRepository"
-    ) as entity_repo_cls:
+    with patch('backend.app.services.media.metadata.TagRepository') as tag_repo_cls, patch('backend.app.services.media.metadata.MediaEntityRepository') as entity_repo_cls:
         tag_repo_cls.return_value.get_media_tags_with_tag = AsyncMock()
         tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
         entity_repo_cls.return_value.mutate_media_entities = AsyncMock()
-
-        result = await service.bulk_update_annotations(
-            MediaAnnotationBatchUpdate(
-                media_ids=[media.id],
-                add_character_names=["  Saber  ", "Saber"],
-                remove_character_names=["Rin"],
-                add_series_names=["Fate/stay night"],
-                remove_series_names=["Tsukihime"],
-            ),
-            user,
-        )
-
+        result = await service.bulk_update_annotations(MediaAnnotationBatchUpdate(media_ids=[media.id], add_character_names=['  Saber  ', 'Saber'], remove_character_names=['Rin'], add_series_names=['Fate/stay night'], remove_series_names=['Tsukihime']), user)
     assert result.processed == 1
     assert entity_repo_cls.return_value.mutate_media_entities.await_count == 2
-    assert entity_repo_cls.return_value.mutate_media_entities.await_args_list[0].kwargs == {
-        "entity_type": MediaEntityType.character,
-        "add_names": ["Saber"],
-        "remove_names": ["Rin"],
-        "source": "manual",
-    }
-    assert entity_repo_cls.return_value.mutate_media_entities.await_args_list[1].kwargs == {
-        "entity_type": MediaEntityType.series,
-        "add_names": ["Fate/stay night"],
-        "remove_names": ["Tsukihime"],
-        "source": "manual",
-    }
+    assert entity_repo_cls.return_value.mutate_media_entities.await_args_list[0].kwargs == {'entity_type': MediaEntityType.character, 'add_names': ['Saber'], 'remove_names': ['Rin'], 'source': 'manual'}
+    assert entity_repo_cls.return_value.mutate_media_entities.await_args_list[1].kwargs == {'entity_type': MediaEntityType.series, 'add_names': ['Fate/stay night'], 'remove_names': ['Tsukihime'], 'source': 'manual'}
     tag_repo_cls.return_value.set_media_tag_links.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_bulk_update_annotations_skips_unmanageable_media(fake_db, stub_query, user):
-    own_media = SimpleNamespace(id=uuid.uuid4(), uploader_id=user.id, owner_id=user.id)
-    foreign_media = SimpleNamespace(id=uuid.uuid4(), uploader_id=uuid.uuid4(), owner_id=uuid.uuid4())
-    missing_id = uuid.uuid4()
-    stub_query.get_media_by_ids.return_value = [own_media, foreign_media]
-
-    service = MediaMetadataService(fake_db, stub_query, SimpleNamespace(_set_favorite_state=AsyncMock()))
-
-    with patch("backend.app.services.media.metadata.TagRepository") as repo_cls:
-        repo_cls.return_value.get_media_tags_with_tag = AsyncMock(return_value=[])
-        repo_cls.return_value.set_media_tag_links = AsyncMock()
-
-        result = await service.bulk_update_annotations(
-            MediaAnnotationBatchUpdate(
-                media_ids=[own_media.id, foreign_media.id, missing_id],
-                add_tags=["safe"],
-            ),
-            user,
-        )
-
-    assert result.processed == 1
-    assert result.skipped == 2
-    repo_cls.return_value.set_media_tag_links.assert_awaited_once()

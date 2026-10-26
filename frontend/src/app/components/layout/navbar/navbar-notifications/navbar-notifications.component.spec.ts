@@ -21,9 +21,9 @@ describe('NavbarNotificationsComponent', () => {
       {
         id: 'n1',
         user_id: 'u1',
-        type: NotificationType.SHARE_INVITE,
-        title: 'Album invite',
-        body: 'Accept to join as viewer.',
+        type: NotificationType.BATCH_DONE,
+        title: 'Upload complete',
+        body: 'Your files are ready.',
         is_read: false,
         link_url: null,
         data: {
@@ -93,7 +93,10 @@ describe('NavbarNotificationsComponent', () => {
       imports: [NavbarNotificationsComponent, NoopAnimationsModule],
       providers: [
         { provide: AuthStore, useValue: { isAuthenticated: () => true } },
-        { provide: NotificationsClientService, useValue: { list, markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() } },
+        {
+          provide: NotificationsClientService,
+          useValue: { list, markRead: vi.fn(), acceptInvite: vi.fn(), rejectInvite: vi.fn() },
+        },
         { provide: ReviewReminderService, useValue: { loadReminder, dismissReminder: vi.fn() } },
         { provide: AlbumStore, useValue: { load: vi.fn().mockReturnValue(of([])) } },
         { provide: MatDialog, useValue: { open: vi.fn() } },
@@ -115,10 +118,8 @@ describe('NavbarNotificationsComponent', () => {
     const overlayText = overlayContainer.getContainerElement().textContent ?? '';
     expect(overlayText).toContain('Some uploaded media still need names');
     expect(overlayText).toContain('Review now');
-    expect(overlayText).toContain('Album invite');
+    expect(overlayText).toContain('Upload complete');
     expect(overlayText).toContain('Update available');
-    expect(overlayText).toContain('Accept');
-    expect(overlayText).toContain('Reject');
     expect(overlayText).toContain('warning');
     expect(overlayText).toContain('Mark as read');
   });
@@ -161,54 +162,6 @@ describe('NavbarNotificationsComponent', () => {
     fixture.detectChanges();
 
     expect(overlayContainer.getContainerElement().textContent).toContain('Unable to load notifications.');
-  });
-
-  it('accepts and rejects pending share invites', async () => {
-    const list = vi.fn().mockReturnValue(of(notificationsResponse));
-    const acceptInvite = vi.fn().mockReturnValue(of({
-      ...notificationsResponse.items[0],
-      is_read: true,
-      data: {
-        ...notificationsResponse.items[0].data,
-        invite_status: 'accepted',
-      },
-    }));
-    const rejectInvite = vi.fn().mockReturnValue(of({
-      ...notificationsResponse.items[0],
-      is_read: true,
-      data: {
-        ...notificationsResponse.items[0].data,
-        invite_status: 'rejected',
-      },
-    }));
-    const loadAlbums = vi.fn().mockReturnValue(of([]));
-
-    await TestBed.configureTestingModule({
-      imports: [NavbarNotificationsComponent, NoopAnimationsModule],
-      providers: [
-        { provide: AuthStore, useValue: { isAuthenticated: () => true } },
-        { provide: NotificationsClientService, useValue: { list, acceptInvite, rejectInvite } },
-        { provide: ReviewReminderService, useValue: { loadReminder: vi.fn(() => of(null)), dismissReminder: vi.fn() } },
-        { provide: AlbumStore, useValue: { load: loadAlbums } },
-      ],
-    }).compileComponents();
-
-    const overlayContainer = TestBed.inject(OverlayContainer);
-    const fixture = TestBed.createComponent(NavbarNotificationsComponent);
-    fixture.detectChanges();
-
-    const element = fixture.nativeElement as HTMLElement;
-    (element.querySelector('button[aria-label="Notifications"]') as HTMLButtonElement).click();
-    fixture.detectChanges();
-
-    fixture.componentInstance.acceptInvite(notificationsResponse.items[0], new MouseEvent('click'));
-
-    expect(acceptInvite).toHaveBeenCalledWith('n1');
-    expect(loadAlbums).toHaveBeenCalled();
-
-    fixture.componentInstance.rejectInvite(notificationsResponse.items[0], new MouseEvent('click'));
-
-    expect(rejectInvite).toHaveBeenCalledWith('n1');
   });
 
   it('marks app update notifications as read', async () => {
@@ -274,5 +227,4 @@ describe('NavbarNotificationsComponent', () => {
     expect(loadReminder).toHaveBeenNthCalledWith(1, true);
     expect(loadReminder).toHaveBeenNthCalledWith(2, true);
   });
-
 });

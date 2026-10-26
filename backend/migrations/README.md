@@ -18,3 +18,14 @@ Notes
 - The release baseline already includes the current live schema, enums, triggers, and tag-count maintenance functions.
 - Removed pre-release AniList and integration experiments are intentionally not part of the release baseline.
 - For production, running Alembic in deployment remains recommended; startup migration is still enabled for convenience.
+
+## Single-owner breaking migration (0022)
+
+Stop the API/workers and back up PostgreSQL plus the library. Run
+`python -m backend.app.owner_migration preflight` against the old database, then
+set `SINGLE_USER_OWNER_ID` to an existing account UUID before upgrading to head.
+All media records and paths survive, including duplicate hashes and trash.
+The chosen owner's credentials/preferences survive; other credentials, social
+features and gacha data are removed. Sessions and API keys must be recreated.
+There is no downgrade: restore the backup with the previous release to roll back.
+The frozen `legacy_models` package is historical DDL only and must not track live models.

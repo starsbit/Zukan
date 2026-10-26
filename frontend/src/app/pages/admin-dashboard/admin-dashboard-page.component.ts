@@ -1,553 +1,145 @@
-import { StoragePanelComponent } from '../../components/admin/storage-panel.component';
-import { DatePipe, DecimalPipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { DecimalPipe } from '@angular/common';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
-import { MatDialog } from '@angular/material/dialog';
-import { MatDividerModule } from '@angular/material/divider';
-import { MatFormFieldModule } from '@angular/material/form-field';
-import { MatIconModule } from '@angular/material/icon';
-import { MatInputModule } from '@angular/material/input';
-import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { MatSelectModule } from '@angular/material/select';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
-import { MatTableModule } from '@angular/material/table';
-import { interval, startWith, switchMap, finalize, takeWhile } from 'rxjs';
-import type { EChartsCoreOption } from 'echarts/core';
-import { AdminUserEditDialogComponent } from '../../components/admin/admin-user-edit-dialog/admin-user-edit-dialog.component';
+import { interval, startWith, switchMap } from 'rxjs';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
-import { EchartPanelComponent } from '../../components/shared/echart-panel/echart-panel.component';
+import { StoragePanelComponent } from '../../components/admin/storage-panel.component';
+import { AdminClientService } from '../../services/web/admin-client.service';
 import {
-  AdminEmbeddingBackfillStatus,
-  AdminHealthResponse,
   AdminStatsResponse,
-  AdminUserSummary,
-  AdminUserUpdate,
-  UpdateCheckResponse,
+  AdminHealthResponse,
+  AdminEmbeddingBackfillStatus,
 } from '../../models/admin';
-import { AnnouncementSeverity } from '../../models/notifications';
-import { AdminService } from '../../services/admin.service';
-import { ConfirmDialogService } from '../../services/confirm-dialog.service';
-import { UserStore } from '../../services/user.store';
-import { GachaClientService } from '../../services/web/gacha-client.service';
-import { FormattedMessageComponent } from '../../components/shared/formatted-message/formatted-message.component';
-
-type UserSortKey = 'username' | 'email' | 'created_at' | 'media_count' | 'storage_used_mb';
+import { extractApiError } from '../../utils/api-error.utils';
 
 @Component({
   selector: 'zukan-admin-dashboard-page',
-  imports: [
-    StoragePanelComponent,
-    ReactiveFormsModule,
-    DatePipe,
-    DecimalPipe,
-    LayoutComponent,
-    EchartPanelComponent,
-    FormattedMessageComponent,
-    MatButtonModule,
-    MatCardModule,
-    MatDividerModule,
-    MatFormFieldModule,
-    MatIconModule,
-    MatInputModule,
-    MatProgressSpinnerModule,
-    MatSelectModule,
-    MatSnackBarModule,
-    MatTableModule,
-  ],
-  templateUrl: './admin-dashboard-page.component.html',
+  imports: [LayoutComponent, StoragePanelComponent, DecimalPipe, MatButtonModule, MatCardModule],
+  template: `<zukan-layout
+    ><section class="admin-shell">
+      <h1>Library maintenance</h1>
+      @if (error()) {
+        <p role="alert">{{ error() }}</p>
+      }
+      @if (stats(); as s) {
+        <mat-card
+          ><mat-card-content
+            ><p>
+              {{ s.total_media }} media · {{ s.total_storage_bytes | number }} bytes ·
+              {{ s.trashed_media }} in trash
+            </p>
+            <p>
+              {{ s.pending_tagging }} pending tagging · {{ s.failed_tagging }} failed
+            </p></mat-card-content
+          ></mat-card
+        >
+      }
+      @if (health(); as h) {
+        <p>
+          CPU {{ h.cpu_percent }}% · Process memory {{ h.memory_rss_bytes | number }} bytes · Queue
+          {{ h.tagging_queue_depth }}
+        </p>
+      }
+      <button mat-stroked-button (click)="retag()" [disabled]="busy()">Retag library</button>
+      <button mat-stroked-button (click)="backfill()" [disabled]="busy()">
+        Backfill embeddings
+      </button>
+      <button mat-stroked-button (click)="checkUpdates()" [disabled]="busy()">
+        Check for updates
+      </button>
+      @if (message()) {
+        <p role="status">{{ message() }}</p>
+      }
+      @if (batch(); as b) {
+        <p>
+          Embedding backfill: {{ b.status }} · {{ b.done_items }}/{{ b.total_items }} completed ·
+          {{ b.failed_items }} failed
+        </p>
+      }
+      <zukan-storage-panel /></section
+  ></zukan-layout>`,
   styleUrl: './admin-dashboard-page.component.scss',
-  changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AdminDashboardPageComponent {
-  private readonly adminService = inject(AdminService);
-  private readonly confirmDialog = inject(ConfirmDialogService);
-  private readonly destroyRef = inject(DestroyRef);
-  private readonly dialog = inject(MatDialog);
-  private readonly fb = inject(FormBuilder);
-  private readonly gachaClient = inject(GachaClientService);
-  private readonly snackBar = inject(MatSnackBar);
-  private readonly userStore = inject(UserStore);
-
-  readonly announcementSeverity = AnnouncementSeverity;
-  readonly displayedColumns = ['username', 'email', 'role', 'media', 'storage', 'created', 'actions'];
-  readonly loadingOverview = signal(true);
-  readonly loadingUsers = signal(true);
-  readonly loadingAnnouncements = signal(true);
-  readonly submittingAnnouncement = signal(false);
-  readonly checkingForUpdates = signal(false);
-  readonly refreshingGachaPool = signal(false);
-  readonly updateCheckResult = signal<UpdateCheckResponse | null>(null);
-  readonly overviewError = signal<string | null>(null);
-  readonly usersError = signal<string | null>(null);
-  readonly announcementsError = signal<string | null>(null);
+  private readonly client = inject(AdminClientService);
+  private readonly destroy = inject(DestroyRef);
   readonly stats = signal<AdminStatsResponse | null>(null);
   readonly health = signal<AdminHealthResponse | null>(null);
-  readonly users = signal<AdminUserSummary[]>([]);
-  readonly announcements = signal<any[]>([]);
-  readonly embeddingBackfills = signal<Record<string, AdminEmbeddingBackfillStatus>>({});
-  readonly embeddingBackfillStartingIds = signal<ReadonlySet<string>>(new Set());
-  readonly userFilter = signal('');
-  readonly userSort = signal<UserSortKey>('storage_used_mb');
-  readonly currentUser = this.userStore.currentUser;
-
-  readonly announcementForm = this.fb.nonNullable.group({
-    version: [''],
-    title: ['', [Validators.required, Validators.maxLength(120)]],
-    message: ['', [Validators.required, Validators.maxLength(2000)]],
-    severity: [AnnouncementSeverity.INFO],
-  });
-
-  readonly filteredUsers = computed(() => {
-    const term = this.userFilter().trim().toLowerCase();
-    const sorted = [...this.users()].filter((user) => {
-      if (!term) {
-        return true;
-      }
-      return [user.username, user.email].some((value) => value.toLowerCase().includes(term));
-    });
-    const sortKey = this.userSort();
-    sorted.sort((a, b) => {
-      if (sortKey === 'created_at') {
-        return Date.parse(b.created_at) - Date.parse(a.created_at);
-      }
-      if (sortKey === 'media_count' || sortKey === 'storage_used_mb') {
-        return b[sortKey] - a[sortKey];
-      }
-      return (a[sortKey] as string).localeCompare(b[sortKey] as string);
-    });
-    return sorted;
-  });
-
-  readonly storageChartOption = computed<EChartsCoreOption>(() => {
-    const stats = this.stats();
-    const topUsers = [...(stats?.storage_by_user ?? [])]
-      .sort((a, b) => b.storage_used_bytes - a.storage_used_bytes)
-      .slice(0, 8);
-
-    return {
-      tooltip: {
-        trigger: 'axis',
-        valueFormatter: (value: number) => this.formatBytes(value),
-      },
-      grid: { left: 24, right: 24, top: 24, bottom: 56 },
-      xAxis: {
-        type: 'category',
-        data: topUsers.map((user) => user.username),
-        axisLabel: { interval: 0, rotate: 18 },
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          formatter: (value: number) => this.formatBytes(value),
-        },
-      },
-      series: [
-        {
-          type: 'bar',
-          name: 'Storage',
-          data: topUsers.map((user) => user.storage_used_bytes),
-          itemStyle: { color: '#1d4ed8', borderRadius: [8, 8, 0, 0] },
-        },
-      ],
-    };
-  });
-
-  readonly cpuChartOption = computed(() => this.buildHealthChart('cpu'));
-  readonly memoryChartOption = computed(() => this.buildHealthChart('memory'));
-
+  readonly batch = signal<AdminEmbeddingBackfillStatus | null>(null);
+  readonly error = signal<string | null>(null);
+  readonly message = signal('');
+  readonly busy = signal(false);
   constructor() {
-    interval(10000)
-      .pipe(
-        startWith(0),
-        switchMap(() => this.adminService.getStats()),
-        takeUntilDestroyed(this.destroyRef),
-      )
-      .subscribe({
-        next: (stats) => {
-          this.stats.set(stats);
-          this.loadingOverview.set(false);
-          this.overviewError.set(null);
-        },
-        error: (err) => {
-          this.loadingOverview.set(false);
-          this.overviewError.set(err.error?.detail ?? 'Unable to load admin statistics.');
-        },
-      });
-
     interval(5000)
       .pipe(
         startWith(0),
-        switchMap(() => this.adminService.getHealth()),
-        takeUntilDestroyed(this.destroyRef),
+        takeUntilDestroyed(this.destroy),
+        switchMap(() => this.client.getStats()),
       )
       .subscribe({
-        next: (health) => {
-          this.health.set(health);
-          this.loadingOverview.set(false);
-          this.overviewError.set(null);
-        },
-        error: (err) => {
-          this.loadingOverview.set(false);
-          this.overviewError.set(err.error?.detail ?? 'Unable to load backend health.');
-        },
+        next: (s) => this.stats.set(s),
+        error: (e) => this.error.set(extractApiError(e)),
       });
-
-    this.loadUsers();
-    this.loadAnnouncements();
-  }
-
-  onFilterChange(value: string): void {
-    this.userFilter.set(value);
-  }
-
-  onSortChange(value: UserSortKey): void {
-    this.userSort.set(value);
-  }
-
-  openEditUser(user: AdminUserSummary): void {
-    this.dialog.open(AdminUserEditDialogComponent, {
-      data: { user, currentUserId: this.currentUser()?.id ?? null },
-      width: 'min(34rem, 92vw)',
-    }).afterClosed().subscribe((body: AdminUserUpdate | null) => {
-      if (!body) {
-        return;
-      }
-      this.adminService.updateUser(user.id, body).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-        next: (updated) => {
-          if (updated.id === this.currentUser()?.id) {
-            this.userStore.update({ username: updated.username });
-          }
-          this.snackBar.open(`Updated ${updated.username}.`, 'Close');
-          this.loadUsers();
-        },
-        error: (err) => {
-          this.snackBar.open(err.error?.detail ?? 'Unable to update user.', 'Close');
-        },
-      });
-    });
-  }
-
-  reprocessLibrary(user: AdminUserSummary): void {
-    this.adminService.retagAll(user.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (response) => {
-        this.snackBar.open(`Queued ${response.queued} media items for ${user.username}.`, 'Close');
-      },
-      error: (err) => {
-        this.snackBar.open(err.error?.detail ?? 'Unable to queue reprocessing.', 'Close');
-      },
-    });
-  }
-
-  backfillEmbeddings(user: AdminUserSummary): void {
-    if (this.isEmbeddingBackfillStarting(user)) {
-      return;
-    }
-    this.confirmDialog.open({
-      title: 'Backfill embeddings?',
-      message: `This will only warm up missing or stale image embeddings for ${user.username}. It will not retag media, run OCR, overwrite manual metadata, or change review state.`,
-      confirmLabel: 'Backfill embeddings',
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
-      this.setEmbeddingBackfillStarting(user.id, true);
-      this.adminService.startEmbeddingBackfill(user.id).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.setEmbeddingBackfillStarting(user.id, false)),
-      ).subscribe({
-        next: (response) => {
-          if (response.queued === 0) {
-            this.snackBar.open(`${user.username} already has current embeddings.`, 'Close');
-          } else {
-            this.snackBar.open(`Queued ${response.queued} embedding jobs for ${user.username}.`, 'Close');
-          }
-          if (response.batch_id) {
-            this.pollEmbeddingBackfill(user, response.batch_id);
-          }
-        },
-        error: (err) => {
-          this.snackBar.open(err.error?.detail ?? 'Unable to queue embedding backfill.', 'Close');
-        },
-      });
-    });
-  }
-
-  deleteAllMedia(user: AdminUserSummary): void {
-    this.confirmDialog.open({
-      title: 'Delete all media?',
-      message: `This will permanently purge every media file uploaded by ${user.username}. This cannot be undone.`,
-      confirmLabel: 'Delete all media',
-      tone: 'warn',
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
-      this.adminService.deleteUserMedia(user.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-        next: (response) => {
-          this.snackBar.open(`Deleted ${response.deleted} media items for ${user.username}.`, 'Close');
-          this.loadUsers();
-          this.reloadStats();
-        },
-        error: (err) => {
-          this.snackBar.open(err.error?.detail ?? 'Unable to delete media.', 'Close');
-        },
-      });
-    });
-  }
-
-  deleteUser(user: AdminUserSummary): void {
-    this.confirmDialog.open({
-      title: 'Delete user?',
-      message: `Delete the account for ${user.username}. Existing media ownership references may remain detached.`,
-      confirmLabel: 'Delete user',
-      tone: 'warn',
-    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe((confirmed) => {
-      if (!confirmed) {
-        return;
-      }
-      this.adminService.deleteUser(user.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-        next: () => {
-          this.snackBar.open(`Deleted ${user.username}.`, 'Close');
-          this.loadUsers();
-          this.reloadStats();
-        },
-        error: (err) => {
-          this.snackBar.open(err.error?.detail ?? 'Unable to delete user.', 'Close');
-        },
-      });
-    });
-  }
-
-  publishAnnouncement(): void {
-    if (this.announcementForm.invalid || this.submittingAnnouncement()) {
-      this.announcementForm.markAllAsTouched();
-      return;
-    }
-
-    this.submittingAnnouncement.set(true);
-    const value = this.announcementForm.getRawValue();
-    this.adminService.createAnnouncement({
-      version: value.version.trim() || null,
-      title: value.title.trim(),
-      message: value.message.trim(),
-      severity: value.severity,
-    }).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.submittingAnnouncement.set(false)),
-    ).subscribe({
-      next: () => {
-        this.announcementForm.reset({
-          version: '',
-          title: '',
-          message: '',
-          severity: AnnouncementSeverity.INFO,
-        });
-        this.snackBar.open('Announcement published.', 'Close');
-        this.loadAnnouncements();
-      },
-      error: (err) => {
-        this.snackBar.open(err.error?.detail ?? 'Unable to publish announcement.', 'Close');
-      },
-    });
-  }
-
-  checkForUpdates(): void {
-    if (this.checkingForUpdates()) {
-      return;
-    }
-    this.checkingForUpdates.set(true);
-    this.updateCheckResult.set(null);
-    this.adminService.checkForUpdates().pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.checkingForUpdates.set(false)),
-    ).subscribe({
-      next: (result) => {
-        this.updateCheckResult.set(result);
-        this.snackBar.open(result.message, 'Close', { duration: 6000 });
-        if (!result.up_to_date) {
-          this.loadAnnouncements();
-        }
-      },
-      error: (err) => {
-        this.snackBar.open(err.error?.detail ?? 'Unable to check for updates.', 'Close');
-      },
-    });
-  }
-
-  refreshGachaPool(): void {
-    if (this.refreshingGachaPool()) {
-      return;
-    }
-
-    this.refreshingGachaPool.set(true);
-    this.gachaClient.recalculateRarity().pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.refreshingGachaPool.set(false)),
-    ).subscribe({
-      next: (result) => {
-        const counts = Object.entries(result.tier_counts ?? {})
-          .filter(([, count]) => count > 0)
-          .map(([tier, count]) => `${tier}: ${count}`)
-          .join(', ');
-        this.snackBar.open(
-          counts
-            ? `Gacha pool refreshed: ${result.recalculated} media (${counts}).`
-            : `Gacha pool refreshed: ${result.recalculated} media.`,
-          'Close',
-          { duration: 6000 },
-        );
-      },
-      error: (err) => {
-        this.snackBar.open(err.error?.detail ?? 'Unable to refresh gacha pool.', 'Close', { duration: 6000 });
-      },
-    });
-  }
-
-  isSelf(user: AdminUserSummary): boolean {
-    return user.id === this.currentUser()?.id;
-  }
-
-  isEmbeddingBackfillStarting(user: AdminUserSummary): boolean {
-    return this.embeddingBackfillStartingIds().has(user.id);
-  }
-
-  embeddingBackfillStatus(user: AdminUserSummary): AdminEmbeddingBackfillStatus | null {
-    return this.embeddingBackfills()[user.id] ?? null;
-  }
-
-  formatBackfillStatus(status: AdminEmbeddingBackfillStatus): string {
-    const active = status.queued_items + status.processing_items;
-    if (status.status === 'running' || active > 0) {
-      return `Embeddings ${status.done_items}/${status.total_items} done`;
-    }
-    if (status.failed_items > 0) {
-      return `Embeddings finished with ${status.failed_items} failed`;
-    }
-    return `Embeddings ${status.done_items}/${status.total_items} done`;
-  }
-
-  formatMb(mb: number): string {
-    if (mb >= 1024) {
-      const gb = mb / 1024;
-      return `${gb >= 100 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
-    }
-    return `${mb} MB`;
-  }
-
-  formatBytes(value: number): string {
-    if (!Number.isFinite(value) || value <= 0) {
-      return '0 B';
-    }
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const exponent = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1);
-    const size = value / 1024 ** exponent;
-    return `${size.toFixed(size >= 100 || exponent === 0 ? 0 : 1)} ${units[exponent]}`;
-  }
-
-  private loadUsers(): void {
-    this.loadingUsers.set(true);
-    this.adminService.listUsers({ page: 1, page_size: 200, sort_by: 'created_at', sort_order: 'desc' })
+    interval(5000)
       .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => this.loadingUsers.set(false)),
+        startWith(0),
+        takeUntilDestroyed(this.destroy),
+        switchMap(() => this.client.getHealth()),
       )
       .subscribe({
-        next: (response) => {
-          this.users.set(response.items);
-          this.usersError.set(null);
-        },
-        error: (err) => {
-          this.usersError.set(err.error?.detail ?? 'Unable to load users.');
-        },
+        next: (h) => this.health.set(h),
+        error: (e) => this.error.set(extractApiError(e)),
+      });
+    interval(3000)
+      .pipe(takeUntilDestroyed(this.destroy))
+      .subscribe(() => {
+        const b = this.batch();
+        if (b && ['pending', 'running'].includes(b.status)) this.pollBatch(b.batch_id);
       });
   }
-
-  private loadAnnouncements(): void {
-    this.loadingAnnouncements.set(true);
-    this.adminService.listAnnouncements().pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loadingAnnouncements.set(false)),
-    ).subscribe({
-      next: (announcements) => {
-        this.announcements.set(announcements);
-        this.announcementsError.set(null);
+  retag() {
+    this.busy.set(true);
+    this.client.retagAll().subscribe({
+      next: (r) => {
+        this.busy.set(false);
+        this.message.set(`${r.queued} media queued`);
       },
-      error: (err) => {
-        this.announcementsError.set(err.error?.detail ?? 'Unable to load announcements.');
-      },
+      error: (e) => this.failed(e),
     });
   }
-
-  private reloadStats(): void {
-    this.adminService.getStats().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (stats) => this.stats.set(stats),
+  backfill() {
+    this.busy.set(true);
+    this.client.startEmbeddingBackfill().subscribe({
+      next: (r) => {
+        this.busy.set(false);
+        this.message.set(`${r.queued} embeddings queued`);
+        if (r.batch_id) this.pollBatch(r.batch_id);
+      },
+      error: (e) => this.failed(e),
     });
   }
-
-  private setEmbeddingBackfillStarting(userId: string, starting: boolean): void {
-    this.embeddingBackfillStartingIds.update((ids) => {
-      const next = new Set(ids);
-      if (starting) {
-        next.add(userId);
-      } else {
-        next.delete(userId);
-      }
-      return next;
+  private pollBatch(id: string) {
+    this.client
+      .getEmbeddingBackfillStatus(id)
+      .subscribe({
+        next: (b) => this.batch.set(b),
+        error: (e) => this.error.set(extractApiError(e)),
+      });
+  }
+  checkUpdates() {
+    this.busy.set(true);
+    this.client.checkForUpdates().subscribe({
+      next: (r) => {
+        this.busy.set(false);
+        this.message.set(r.message);
+      },
+      error: (e) => this.failed(e),
     });
   }
-
-  private pollEmbeddingBackfill(user: AdminUserSummary, batchId: string): void {
-    interval(2500).pipe(
-      startWith(0),
-      switchMap(() => this.adminService.getEmbeddingBackfillStatus(batchId)),
-      takeWhile((status) => status.status === 'running' || status.queued_items + status.processing_items > 0, true),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe({
-      next: (status) => {
-        this.embeddingBackfills.update((statuses) => ({ ...statuses, [user.id]: status }));
-        if (status.status !== 'running' && status.queued_items + status.processing_items === 0) {
-          this.snackBar.open(this.formatBackfillStatus(status), 'Close');
-        }
-      },
-      error: (err) => {
-        this.snackBar.open(err.error?.detail ?? 'Unable to read embedding backfill status.', 'Close');
-      },
-    });
-  }
-
-  private buildHealthChart(metric: 'cpu' | 'memory'): EChartsCoreOption {
-    const health = this.health();
-    const samples = health?.samples ?? [];
-    return {
-      tooltip: {
-        trigger: 'axis',
-        valueFormatter: (value: number) => metric === 'cpu' ? `${value}%` : this.formatBytes(value),
-      },
-      grid: { left: 24, right: 24, top: 24, bottom: 32 },
-      xAxis: {
-        type: 'category',
-        data: samples.map((sample) => new Date(sample.captured_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
-      },
-      yAxis: {
-        type: 'value',
-        axisLabel: {
-          formatter: (value: number) => metric === 'cpu' ? `${value}%` : this.formatBytes(value),
-        },
-      },
-      series: [
-        {
-          type: 'line',
-          smooth: true,
-          showSymbol: false,
-          areaStyle: { opacity: 0.14 },
-          lineStyle: { width: 3, color: metric === 'cpu' ? '#0f766e' : '#9333ea' },
-          itemStyle: { color: metric === 'cpu' ? '#0f766e' : '#9333ea' },
-          data: samples.map((sample) => metric === 'cpu' ? sample.cpu_percent : sample.memory_rss_bytes),
-        },
-      ],
-    };
+  private failed(e: unknown) {
+    this.busy.set(false);
+    this.error.set(extractApiError(e));
   }
 }

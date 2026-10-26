@@ -1,18 +1,18 @@
 from __future__ import annotations
-
 import uuid
 from dataclasses import dataclass
-
 from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaVisibility
+from backend.app.models.media import Media
 from backend.app.models.tags import MediaTag, Tag
 from backend.app.schemas import MetadataListScope
-from backend.app.utils.search import normalize_metadata_search, normalized_token_sequence_like_patterns
+from backend.app.utils.search import (
+    normalize_metadata_search,
+    normalized_token_sequence_like_patterns,
+)
 
 
 @dataclass
@@ -30,40 +30,44 @@ class TagRepository:
     async def get_by_id(self, tag_id: int) -> Tag | None:
         return (await self.db.execute(select(Tag).where(Tag.id == tag_id))).scalar_one_or_none()
 
-    async def get_by_name(self, owner_user_id: uuid.UUID, name: str) -> Tag | None:
+    async def get_by_name(self, name: str) -> Tag | None:
         return (
-            await self.db.execute(
-                select(Tag).where(
-                    Tag.owner_user_id == owner_user_id,
-                    Tag.name == name,
-                )
-            )
+            await self.db.execute(select(Tag).where(Tag.name == name))
         ).scalar_one_or_none()
 
-    async def get_by_names(self, owner_user_id: uuid.UUID, names: list[str]) -> dict[str, Tag]:
+    async def get_by_names(self, names: list[str]) -> dict[str, Tag]:
         tags = (
-            await self.db.execute(
-                select(Tag).where(
-                    Tag.owner_user_id == owner_user_id,
-                    Tag.name.in_(names),
-                ).execution_options(populate_existing=True)
+            (
+                await self.db.execute(
+                    select(Tag)
+                    .where(Tag.name.in_(names))
+                    .execution_options(populate_existing=True)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return {tag.name: tag for tag in tags}
 
-    def _base_accessible_tag_stmt(self, user: User, *, category: int | None, query: str | None, scope: MetadataListScope):
+    def _base_accessible_tag_stmt(
+        self,
+        user: User,
+        *,
+        category: int | None,
+        query: str | None,
+        scope: MetadataListScope,
+    ):
         stmt = (
             select(
                 Tag.id.label("id"),
                 Tag.name.label("name"),
                 Tag.category.label("category"),
-                Tag.owner_user_id.label("owner_user_id"),
                 func.count(func.distinct(Media.id)).label("media_count"),
             )
             .join(MediaTag, MediaTag.tag_id == Tag.id)
             .join(Media, Media.id == MediaTag.media_id)
             .where(Media.deleted_at.is_(None))
-            .group_by(Tag.id, Tag.name, Tag.category, Tag.owner_user_id)
+            .group_by(Tag.id, Tag.name, Tag.category)
         )
         if category is not None:
             stmt = stmt.where(Tag.category == category)
@@ -74,25 +78,18 @@ class TagRepository:
                 normalized_tag_name = _normalized_tag_name_expr()
                 conditions.append(normalized_tag_name == normalized_query)
                 conditions.extend(
-                    normalized_tag_name.like(pattern, escape="\\")
-                    for pattern in normalized_token_sequence_like_patterns(normalized_query)
+                    (
+                        normalized_tag_name.like(pattern, escape="\\")
+                        for pattern in normalized_token_sequence_like_patterns(
+                            normalized_query
+                        )
+                    )
                 )
             else:
                 conditions.append(Tag.name.ilike(f"%{query}%"))
-            stmt = stmt.where(
-                or_(
-                    *conditions,
-                )
-            )
+            stmt = stmt.where(or_(*conditions))
         if scope == MetadataListScope.OWNER:
-            stmt = stmt.where(Tag.owner_user_id == user.id)
-        elif not user.is_admin:
-            stmt = stmt.where(
-                or_(
-                    Tag.owner_user_id == user.id,
-                    and_(Media.visibility == MediaVisibility.public),
-                )
-            )
+            stmt = stmt.where()
         return stmt
 
     async def count_accessible(
@@ -103,7 +100,11 @@ class TagRepository:
         query: str | None,
         scope: MetadataListScope = MetadataListScope.ACCESSIBLE,
     ) -> int:
-        return len(await self.list_accessible(user, category=category, query=query, scope=scope))
+        return len(
+            await self.list_accessible(
+                user=user, category=category, query=query, scope=scope
+            )
+        )
 
     async def list_accessible(
         self,
@@ -142,9 +143,7 @@ class TagRepository:
         *,
         source: str = "auto",
         model_version: str | None = None,
-        created_by_user_id=None,
     ) -> None:
-        owner_user_id = effective_media_owner_id(media)
         touched_tag_ids: set[int] = set()
         desired_payloads: list[tuple[str, int, float]] = []
         desired_by_name: dict[str, tuple[int, float]] = {}
@@ -153,12 +152,13 @@ class TagRepository:
                 continue
             desired_payloads.append((name, category, confidence))
             desired_by_name[name] = (category, confidence)
-
         existing_media_tags = await self.get_media_tags_with_tag(media.id)
         existing_by_name = {item.tag.name: item for item in existing_media_tags}
-
         for name, media_tag in existing_by_name.items():
-            if source == "auto" and getattr(media_tag.source, "value", media_tag.source) == "manual":
+            if (
+                source == "auto"
+                and getattr(media_tag.source, "value", media_tag.source) == "manual"
+            ):
                 continue
             if name in desired_by_name:
                 desired_category, desired_confidence = desired_by_name[name]
@@ -169,9 +169,7 @@ class TagRepository:
                 continue
             touched_tag_ids.add(media_tag.tag_id)
             await self.db.delete(media_tag)
-
         await self.db.flush()
-
         missing_payloads = sorted(
             [
                 (name, category)
@@ -184,20 +182,16 @@ class TagRepository:
         existing_tag_rows: dict[str, tuple[int, int]] = {}
         existing_tags: dict[str, Tag] = {}
         if missing_names:
-            tag_insert = insert(Tag).values([
-                {
-                    "owner_user_id": owner_user_id,
-                    "name": name,
-                    "category": category,
-                    "media_count": 0,
-                }
-                for name, category in missing_payloads
-            ])
+            tag_insert = insert(Tag).values(
+                [
+                    {"name": name, "category": category, "media_count": 0}
+                    for name, category in missing_payloads
+                ]
+            )
             tag_rows = (
                 await self.db.execute(
-                    tag_insert
-                    .on_conflict_do_update(
-                        constraint="uq_tags_owner_user_id_name",
+                    tag_insert.on_conflict_do_update(
+                        constraint="uq_tags_name",
                         set_={
                             "category": case(
                                 (
@@ -210,16 +204,13 @@ class TagRepository:
                                 else_=Tag.category,
                             )
                         },
-                    )
-                    .returning(Tag.id, Tag.name, Tag.category)
+                    ).returning(Tag.id, Tag.name, Tag.category)
                 )
             ).all()
             existing_tag_rows = {
-                row.name: (int(row.id), int(row.category))
-                for row in tag_rows
+                row.name: (int(row.id), int(row.category)) for row in tag_rows
             }
-            existing_tags = await self.get_by_names(owner_user_id, missing_names)
-
+            existing_tags = await self.get_by_names(missing_names)
         for name, category, confidence in desired_payloads:
             if name in existing_by_name:
                 continue
@@ -227,7 +218,7 @@ class TagRepository:
             tag_row = existing_tag_rows.get(name)
             if tag is None and tag_row is None:
                 raise RuntimeError(
-                    f"Failed to create or load tag {name!r} for owner {owner_user_id}"
+                    f"Failed to create or load tag {name!r} for owner {None}"
                 )
             if tag is not None:
                 if tag.category == 0 and category != 0:
@@ -236,15 +227,15 @@ class TagRepository:
             else:
                 tag_id, _tag_category = tag_row
             touched_tag_ids.add(tag_id)
-            self.db.add(MediaTag(
-                media_id=media.id,
-                tag_id=tag_id,
-                confidence=confidence,
-                source=source,
-                model_version=model_version,
-                created_by_user_id=created_by_user_id,
-            ))
-
+            self.db.add(
+                MediaTag(
+                    media_id=media.id,
+                    tag_id=tag_id,
+                    confidence=confidence,
+                    source=source,
+                    model_version=model_version,
+                )
+            )
         await self.db.flush()
         await self.recount_tag_ids(touched_tag_ids)
 
@@ -284,13 +275,6 @@ def _normalized_tag_name_expr():
         func.regexp_replace(func.lower(func.coalesce(Tag.name, "")), r"[^a-z0-9]+", "_", "g"),
         "_",
     )
-
-
-def effective_media_owner_id(media) -> uuid.UUID:
-    owner_user_id = media.owner_id or media.uploader_id
-    if owner_user_id is None:
-        raise ValueError(f"Media {getattr(media, 'id', '<unknown>')} has no effective owner for tag operations")
-    return owner_user_id
 
 
 def _aggregate_accessible_tag_rows(rows) -> list[TagListRow]:

@@ -4,36 +4,55 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
+from fastapi.openapi.docs import (
+    get_redoc_html,
+    get_swagger_ui_html,
+    get_swagger_ui_oauth2_redirect_html,
+)
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import exists, select
-
+from sqlalchemy import select
 from backend.app.errors.error import AppError, build_error_response
-
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
 from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
-from backend.app.models import collection as _collection_models  # noqa: F401
-from backend.app.models import embeddings as _embedding_models  # noqa: F401
-from backend.app.models import gacha as _gacha_models  # noqa: F401
-from backend.app.models import library_classification as _library_classification_models  # noqa: F401
 from backend.app.models.media import Media, TaggingStatus
-from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
-from backend.app.models import notifications as _notifications_models  # noqa: F401
-from backend.app.models import processing as _processing_models  # noqa: F401
-from backend.app.models import trade as _trade_models  # noqa: F401
+from backend.app.models.processing import (
+    BatchStatus,
+    BatchType,
+    ImportBatch,
+    ImportBatchItem,
+    ItemStatus,
+    ProcessingStep,
+)
 from backend.app.services.storage_gate import storage_gate, StorageMiddleware
-from backend.app.services.library_storage import initialize_library, library_worker, resume_migrations, job_tasks, acquire_storage_lease, release_storage_lease
+from backend.app.services.library_storage import (
+    initialize_library,
+    library_worker,
+    resume_migrations,
+    job_tasks,
+    acquire_storage_lease,
+    release_storage_lease,
+)
 from backend.app.routers import storage
 from backend.app.runtime import health_monitor
-from backend.app.routers import admin, albums, auth, batches, collection, config, gacha, graphs, media, notifications, tags, trades, users
+from backend.app.routers import (
+    admin,
+    albums,
+    auth,
+    batches,
+    config,
+    graphs,
+    media,
+    notifications,
+    tags,
+    users,
+)
 from backend.app.routers.deps import docs_user
 from backend.app.services.media import set_tag_queue
 from backend.app.services.embedding_backfill import set_embedding_backfill_queue
@@ -43,7 +62,6 @@ from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.processing import ProcessingService
 from backend.app.services.admin import AdminService
-from backend.app.services.auth import AuthService
 from backend.app.services.database_repair import repair_database_after_migrations
 from backend.app.services.tags import TagService
 from backend.app.services.update_check import update_check_worker
@@ -52,10 +70,8 @@ from backend.app.ml.embedding import embedding_backend
 from backend.app.ml.ocr import ocr_backend
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
 
-
 configure_logging(settings.log_level)
 logger = logging.getLogger("backend.app")
-
 tag_queue: asyncio.Queue = asyncio.Queue()
 embedding_backfill_queue: asyncio.Queue = asyncio.Queue()
 post_tag_queue: asyncio.Queue = asyncio.Queue()
@@ -84,37 +100,29 @@ class _MlStartupState:
 
 
 ml_startup_state = _MlStartupState()
-
 API_VERSION = settings.app_version
 OPENAPI_TAGS = [
-    {"name": "auth", "description": "Authentication and token lifecycle endpoints."},
-    {"name": "users", "description": "Current-user profile read/update operations."},
-    {"name": "media", "description": "Media upload, filtering, metadata mutation, and download operations."},
-    {"name": "collection", "description": "User-owned gacha collection, upgrades, and collection privacy."},
-    {"name": "gacha", "description": "Cached rarity snapshots and authenticated media card pulls."},
-    {"name": "graphs", "description": "Personal-library graph exploration endpoints."},
-    {"name": "albums", "description": "Album management, sharing, and album-scoped media operations."},
-    {"name": "tags", "description": "Tag browsing, filtering utilities, and tag management actions."},
-    {"name": "admin", "description": "Administrative controls, diagnostics, and global announcement publishing. Admin authentication required."},
-    {"name": "batches", "description": "Import and processing batch visibility endpoints."},
-    {"name": "notifications", "description": "User-targeted inbox notification endpoints under /me/notifications."},
-    {"name": "trades", "description": "User-to-user collection item trade offers and responses."},
-    {"name": "config", "description": "Client-facing runtime limits and feature configuration endpoints."},
+    {"name": name}
+    for name in (
+        "auth",
+        "users",
+        "media",
+        "graphs",
+        "albums",
+        "tags",
+        "admin",
+        "batches",
+        "notifications",
+        "config",
+    )
 ]
 OPENAPI_SERVERS = [
     {"url": "/", "description": "Current origin"},
     {"url": "http://localhost:8000", "description": "Local development server"},
     {"url": "http://127.0.0.1:8000", "description": "Local loopback server"},
 ]
-OPENAPI_EXTERNAL_DOCS = {
-    "description": "Public API behavior contract",
-    "url": "/redoc",
-}
-API_KEY_AUTH_DESCRIPTION = (
-    "Authenticate with `Authorization: Bearer <token>`. "
-    "The bearer token may be either a JWT access token from `/api/v1/auth/login` "
-    "or a user-generated API key from Account Settings."
-)
+OPENAPI_EXTERNAL_DOCS = {"description": "Public API behavior contract", "url": "/redoc"}
+API_KEY_AUTH_DESCRIPTION = "Authenticate with `Authorization: Bearer <token>`. The bearer token may be either a JWT access token from `/api/v1/auth/login` or a user-generated API key from Account Settings."
 
 
 async def tagging_worker():
@@ -206,17 +214,16 @@ async def post_tag_worker():
 
 async def _run_library_enrichment_after_post_tag(db, media_id: uuid.UUID) -> None:
     media = await db.get(Media, media_id)
-    if media is None or media.deleted_at is not None or media.uploader_id is None:
+    if media is None or media.deleted_at is not None:
         return
-    user = await db.get(User, media.uploader_id)
+    user = await db.scalar(select(User))
     if not isinstance(user, User) or not user.library_classification_enabled:
         return
-    logger.info("Post-tag worker running library classification enrichment media_id=%s", media_id)
-    result = await MediaLibraryEnrichmentService(db).enrich_media(
+    logger.info(
+        "Post-tag worker running library classification enrichment media_id=%s",
         media_id,
-        user_id=media.uploader_id,
-        apply=True,
     )
+    result = await MediaLibraryEnrichmentService(db).enrich_media(media_id, apply=True)
     if result.applied:
         logger.info(
             "Post-tag worker applied library classification media_id=%s applied=%s",
@@ -269,20 +276,10 @@ async def failed_tagging_retry_worker() -> None:
         await asyncio.sleep(interval_seconds)
 
 
-async def _ensure_admin_user():
-    async with AsyncSessionLocal() as db:
-        has_admin_result = await db.execute(select(exists().where(User.is_admin.is_(True))))
-        has_admin = bool(has_admin_result.scalar())
-        if not has_admin:
-            from backend.app.utils.passwords import hash_password
-            db.add(User(
-                username="admin",
-                email="admin@localhost",
-                hashed_password=hash_password("admin"),
-                is_admin=True,
-            ))
-            await db.commit()
-            logger.info("Bootstrapped default admin user")
+async def initialize_authentication():
+    from backend.app.services.owner_auth import initialize_authentication as initialize
+
+    await initialize()
 
 
 async def _recover_pending_media_jobs(queue: asyncio.Queue) -> int:
@@ -517,6 +514,9 @@ def _augment_openapi_security(schema: dict) -> dict:
 
 @asynccontextmanager
 async def lifespan(_api: FastAPI):
+    from backend.app.services.owner_auth import validate_auth_configuration
+
+    validate_auth_configuration()
     logger.info("Application startup initiated")
     startup_started_at = time.perf_counter()
     workers: list[asyncio.Task] = []
@@ -533,49 +533,66 @@ async def lifespan(_api: FastAPI):
         logger.info("Startup phase: running database migrations")
         await init_db()
         logger.info("Startup phase complete: database migrations")
-
         logger.info("Startup phase: running database auto repair")
         await repair_database_after_migrations()
         logger.info("Startup phase complete: database auto repair")
-
-        logger.info("Startup phase: ensuring admin user")
-        await _ensure_admin_user()
-        logger.info("Startup phase complete: ensuring admin user")
-
+        logger.info("Startup phase: initializing owner authentication")
+        await initialize_authentication()
+        logger.info("Startup phase complete: initializing owner authentication")
         storage_lease = await acquire_storage_lease()
         await initialize_library()
         await resume_migrations()
         storage.media_queue = tag_queue
         storage_worker = asyncio.create_task(library_worker(tag_queue))
-
         logger.info("Startup phase: scheduling background ML initialization")
         ml_worker = asyncio.create_task(_initialize_ml_services())
         logger.info("Startup phase complete: scheduling background ML initialization")
-
         logger.info("Startup phase: wiring background services")
         set_tag_queue(tag_queue)
         set_embedding_backfill_queue(embedding_backfill_queue)
         health_monitor.start()
         recovered_count = await _recover_pending_media_jobs(tag_queue)
-        recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(embedding_backfill_queue)
-        workers = [asyncio.create_task(tagging_worker()) for _ in range(settings.tagging_worker_count)]
-        post_tag_workers = [asyncio.create_task(post_tag_worker()) for _ in range(settings.post_tag_worker_count)]
+        recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(
+            embedding_backfill_queue
+        )
+        workers = [
+            asyncio.create_task(tagging_worker())
+            for _ in range(settings.tagging_worker_count)
+        ]
+        post_tag_workers = [
+            asyncio.create_task(post_tag_worker())
+            for _ in range(settings.post_tag_worker_count)
+        ]
         embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
         purge_worker = asyncio.create_task(trash_purge_worker())
         failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
         update_worker = asyncio.create_task(update_check_worker())
-        logger.info("Background tagging workers started count=%s", settings.tagging_worker_count)
-        logger.info("Background post-tag workers started count=%s", settings.post_tag_worker_count)
+        logger.info(
+            "Background tagging workers started count=%s", settings.tagging_worker_count
+        )
+        logger.info(
+            "Background post-tag workers started count=%s",
+            settings.post_tag_worker_count,
+        )
         logger.info("Background embedding backfill worker started count=1")
         if recovered_count:
-            logger.info("Recovered %s pending media jobs after startup", recovered_count)
+            logger.info(
+                "Recovered %s pending media jobs after startup", recovered_count
+            )
         if recovered_embedding_count:
-            logger.info("Recovered %s pending embedding backfill jobs after startup", recovered_embedding_count)
+            logger.info(
+                "Recovered %s pending embedding backfill jobs after startup",
+                recovered_embedding_count,
+            )
         logger.info("Background trash purge worker started")
         logger.info("Background failed tagging retry worker started")
-        logger.info("Application startup completed successfully; ML initialization continues in background")
-        logger.info("Application startup duration_seconds=%.2f", time.perf_counter() - startup_started_at)
-
+        logger.info(
+            "Application startup completed successfully; ML initialization continues in background"
+        )
+        logger.info(
+            "Application startup duration_seconds=%.2f",
+            time.perf_counter() - startup_started_at,
+        )
         yield
     except Exception:
         logger.exception("Application startup failed")
@@ -623,7 +640,9 @@ async def lifespan(_api: FastAPI):
         if workers:
             logger.info("Background tagging workers stopped count=%s", len(workers))
         if post_tag_workers:
-            logger.info("Background post-tag workers stopped count=%s", len(post_tag_workers))
+            logger.info(
+                "Background post-tag workers stopped count=%s", len(post_tag_workers)
+            )
         if purge_worker is not None:
             try:
                 await purge_worker
@@ -650,13 +669,8 @@ async def lifespan(_api: FastAPI):
 api = FastAPI(
     title="Zukan",
     version=API_VERSION,
-    description=(
-        "Zukan API for authentication, media management, albums, tags, and administration. "
-    ),
-    contact={
-        "name": "starsbit",
-        "url": "https://github.com/starsbit/",
-    },
+    description="Zukan API for authentication, media management, albums, tags, and administration. ",
+    contact={"name": "starsbit", "url": "https://github.com/starsbit/"},
     openapi_tags=OPENAPI_TAGS,
     servers=OPENAPI_SERVERS,
     lifespan=lifespan,
@@ -664,7 +678,6 @@ api = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
-
 api.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -821,11 +834,8 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth.router)
 v1_router.include_router(users.router)
-v1_router.include_router(collection.users_collection_router)
 v1_router.include_router(config.router)
 v1_router.include_router(media.router)
-v1_router.include_router(collection.collection_router)
-v1_router.include_router(gacha.router)
 v1_router.include_router(graphs.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
@@ -833,7 +843,6 @@ v1_router.include_router(admin.router)
 v1_router.include_router(storage.router)
 v1_router.include_router(batches.router)
 v1_router.include_router(notifications.router)
-v1_router.include_router(trades.router)
 api.include_router(v1_router)
 
 
@@ -882,4 +891,15 @@ async def redoc_ui(_: User = Depends(docs_user)):
         title=f"{api.title} - ReDoc",
     )
 
+
 api.add_middleware(StorageMiddleware)
+from starlette.middleware.sessions import SessionMiddleware
+
+api.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.secret_key,
+    session_cookie="zukan_oidc",
+    max_age=600,
+    same_site="lax",
+    https_only=settings.oidc_callback_url.startswith("https:"),
+)

@@ -2,14 +2,10 @@ import uuid
 import json
 from datetime import datetime
 from typing import Literal
-
 from fastapi.exceptions import RequestValidationError
 from fastapi import File, Form, Request, UploadFile
 from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError, model_validator
-
-from backend.app.models.media import MediaVisibility
 from backend.app.schemas.relations import ExternalRefCreate
-
 
 _external_ref_list_adapter = TypeAdapter(list[ExternalRefCreate])
 
@@ -103,12 +99,7 @@ class MediaUploadRequest(BaseModel):
     captured_at: datetime | None = None
     captured_at_values: list[datetime] | None = None
     external_refs_values: list[list[ExternalRefCreate]] | None = None
-    visibility: MediaVisibility = MediaVisibility.private
-
-    model_config = {
-        "title": "MediaUploadRequest",
-        "arbitrary_types_allowed": True,
-    }
+    model_config = {"title": "MediaUploadRequest", "arbitrary_types_allowed": True}
 
     @classmethod
     def as_form(
@@ -119,7 +110,6 @@ class MediaUploadRequest(BaseModel):
         captured_at: datetime | None = Form(default=None),
         captured_at_values: list[datetime] | None = Form(default=None),
         external_refs_values: list[str] | None = Form(default=None),
-        visibility: MediaVisibility = Form(default=MediaVisibility.private),
     ) -> "MediaUploadRequest":
         return cls(
             files=files,
@@ -127,16 +117,14 @@ class MediaUploadRequest(BaseModel):
             tags=tags,
             captured_at=captured_at,
             captured_at_values=captured_at_values,
-            external_refs_values=parse_external_refs_values(external_refs_values, expected_count=len(files)),
-            visibility=visibility,
+            external_refs_values=parse_external_refs_values(
+                external_refs_values, expected_count=len(files)
+            ),
         )
 
     @classmethod
     async def from_request(
-        cls,
-        request: Request,
-        *,
-        max_files: int,
+        cls, request: Request, *, max_files: int
     ) -> "MediaUploadRequest":
         form = await request.form(max_files=max_files, max_fields=max_files * 2 + 20)
         files = form.getlist("files")
@@ -151,7 +139,6 @@ class MediaUploadRequest(BaseModel):
                     form.getlist("external_refs_values") or None,
                     expected_count=len(files),
                 ),
-                visibility=form.get("visibility") or MediaVisibility.private,
             )
         except ValidationError as exc:
             raise RequestValidationError(exc.errors()) from exc
@@ -166,8 +153,6 @@ class MediaAnnotatedUploadRequest(BaseModel):
     captured_at: datetime | None = None
     captured_at_values: list[datetime] | None = None
     external_refs_values: list[list[ExternalRefCreate]] | None = None
-    visibility: MediaVisibility = MediaVisibility.private
-
     model_config = {
         "title": "MediaAnnotatedUploadRequest",
         "arbitrary_types_allowed": True,
@@ -190,7 +175,6 @@ class MediaAnnotatedUploadRequest(BaseModel):
         captured_at: datetime | None = Form(default=None),
         captured_at_values: list[datetime] | None = Form(default=None),
         external_refs_values: list[str] | None = Form(default=None),
-        visibility: MediaVisibility = Form(default=MediaVisibility.private),
     ) -> "MediaAnnotatedUploadRequest":
         try:
             return cls(
@@ -201,18 +185,16 @@ class MediaAnnotatedUploadRequest(BaseModel):
                 series_names=series_names,
                 captured_at=captured_at,
                 captured_at_values=captured_at_values,
-                external_refs_values=parse_external_refs_values(external_refs_values, expected_count=len(files)),
-                visibility=visibility,
+                external_refs_values=parse_external_refs_values(
+                    external_refs_values, expected_count=len(files)
+                ),
             )
         except ValidationError as exc:
             raise RequestValidationError(exc.errors()) from exc
 
     @classmethod
     async def from_request(
-        cls,
-        request: Request,
-        *,
-        max_files: int,
+        cls, request: Request, *, max_files: int
     ) -> "MediaAnnotatedUploadRequest":
         form = await request.form(max_files=max_files, max_fields=max_files * 2 + 20)
         files = form.getlist("files")
@@ -229,7 +211,6 @@ class MediaAnnotatedUploadRequest(BaseModel):
                     form.getlist("external_refs_values") or None,
                     expected_count=len(files),
                 ),
-                visibility=form.get("visibility") or MediaVisibility.private,
             )
         except ValidationError as exc:
             raise RequestValidationError(exc.errors()) from exc
@@ -241,4 +222,3 @@ class UrlIngestRequest(BaseModel):
     album_id: uuid.UUID | None = None
     captured_at: datetime | None = None
     external_refs: list[ExternalRefCreate] | None = None
-    visibility: MediaVisibility = MediaVisibility.private

@@ -23,20 +23,29 @@
       <div class="panel-state">
         <mat-progress-spinner mode="indeterminate" diameter="24"></mat-progress-spinner>
       </div>
-    } @else if (error()) {
+    }
+    @if (error()) {
       <div class="panel-state">Unable to load notifications.</div>
-    } @else if (notifications().length === 0) {
+    }
+    @if (notifications().length === 0) {
       <div class="panel-state">No notifications yet.</div>
     } @else {
-        <div class="notifications-list">
-          @for (notification of notifications(); track notification.id) {
+      <div class="notifications-list">
+        @for (notification of notifications(); track notification.id) {
           <div
             class="notification-item"
             [class.notification-unread]="!notification.is_read"
             [class.notification-app-update]="isAppUpdate(notification)"
-            [class.notification-severity-info]="announcementSeverityFor(notification) === announcementSeverity.INFO"
-            [class.notification-severity-warning]="announcementSeverityFor(notification) === announcementSeverity.WARNING"
-            [class.notification-severity-critical]="announcementSeverityFor(notification) === announcementSeverity.CRITICAL">
+            [class.notification-severity-info]="
+              announcementSeverityFor(notification) === announcementSeverity.INFO
+            "
+            [class.notification-severity-warning]="
+              announcementSeverityFor(notification) === announcementSeverity.WARNING
+            "
+            [class.notification-severity-critical]="
+              announcementSeverityFor(notification) === announcementSeverity.CRITICAL
+            "
+          >
             <mat-icon class="notification-icon">{{ iconFor(notification.type) }}</mat-icon>
             <div class="notification-copy">
               <div class="notification-title-row">
@@ -49,65 +58,54 @@
                 <zukan-formatted-message [text]="notification.body"></zukan-formatted-message>
               </div>
               <div class="notification-meta">{{ notification.created_at | date: 'medium' }}</div>
-              @if (isPendingShareInvite(notification)) {
+              @if (isMetadataReview(notification)) {
                 <div class="notification-actions">
                   <button
                     mat-flat-button
                     color="primary"
                     type="button"
-                    [disabled]="isActioning(notification.id)"
-                    (click)="acceptInvite(notification, $event)">
-                    Accept
-                  </button>
-                  <button
-                    mat-stroked-button
-                    type="button"
-                    [disabled]="isActioning(notification.id)"
-                    (click)="rejectInvite(notification, $event)">
-                    Reject
-                  </button>
-                </div>
-              } @else if (isMetadataReview(notification)) {
-                <div class="notification-actions">
-                  <button
-                    mat-flat-button
-                    color="primary"
-                    type="button"
-                    (click)="reviewMetadata(notification, $event)">
+                    (click)="reviewMetadata(notification, $event)"
+                  >
                     Review now
                   </button>
                   <button
                     mat-stroked-button
                     type="button"
-                    (click)="dismissMetadataReminder(notification, $event)">
+                    (click)="dismissMetadataReminder(notification, $event)"
+                  >
                     Dismiss
                   </button>
                 </div>
-              } @else if (isAdminAppUpdate(notification)) {
+              }
+              @if (isAdminAppUpdate(notification)) {
                 <div class="notification-actions">
                   <button
                     mat-flat-button
                     color="primary"
                     type="button"
                     [disabled]="isActioning(notification.id)"
-                    (click)="triggerUpdate(notification, $event)">
+                    (click)="triggerUpdate(notification, $event)"
+                  >
                     Update Now
                   </button>
                   <button
                     mat-stroked-button
                     type="button"
                     [disabled]="isActioning(notification.id)"
-                    (click)="markRead(notification, $event)">
+                    (click)="markRead(notification, $event)"
+                  >
                     Dismiss
                   </button>
                 </div>
-              } @else if (canMarkRead(notification)) {
+              }
+              @if (canMarkRead(notification)) {
                 <div class="notification-actions">
                   <button
                     mat-stroked-button
                     type="button"
                     [disabled]="isActioning(notification.id)"
-                    (click)="markRead(notification, $event)">
+                    (click)="markRead(notification, $event)"
+                  >
                     Mark as read
                   </button>
                 </div>

@@ -4,7 +4,7 @@ import { Router, provideRouter } from '@angular/router';
 import { Observable, Subject, of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AlbumStore } from '../../services/album.store';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { GalleryStore } from '../../services/gallery.store';
 import { UploadTrackerService } from '../../services/upload-tracker.service';
@@ -17,11 +17,6 @@ import { MediaInspectionContextService } from '../../services/media-inspection-c
 function makeMedia(id: string, width: number, height: number) {
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'uploader',
-    owner_id: 'u1',
-    owner_username: 'owner',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: MediaType.IMAGE,
@@ -58,7 +53,9 @@ const galleryStoreMock = {
   hasMore: vi.fn(() => true),
   monthMap: vi.fn(() => new Map()),
   ensureMonthWindow: vi.fn(() => of(null)),
-  loadMoreForMonth: vi.fn(() => of({ items: [], total: null, next_cursor: null, has_more: false, page_size: 160 })),
+  loadMoreForMonth: vi.fn(() =>
+    of({ items: [], total: null, next_cursor: null, has_more: false, page_size: 160 }),
+  ),
   toggleFavorite: vi.fn((media) => of({ ...media, is_favorited: !media.is_favorited })),
 };
 

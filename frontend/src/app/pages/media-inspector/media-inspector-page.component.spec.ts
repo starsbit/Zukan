@@ -5,7 +5,7 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject, of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../models/media';
 import { GalleryStore } from '../../services/gallery.store';
 import { MediaInspectionContextService } from '../../services/media-inspection-context.service';
 import { MediaService } from '../../services/media.service';
@@ -16,11 +16,6 @@ import { MediaInspectorPageComponent } from './media-inspector-page.component';
 function makeMedia(id: string) {
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'admin',
-    owner_id: 'u1',
-    owner_username: 'admin',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: `${id}-original.jpg`,
     media_type: MediaType.IMAGE,

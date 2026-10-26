@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Any
-
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,24 +10,17 @@ _REPO_ROOT = _CONFIG_FILE.parents[2]
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(
-            str(_REPO_ROOT / ".env"),
-            str(_BACKEND_DIR / ".env"),
-            ".env",
-        ),
+        env_file=(str(_REPO_ROOT / ".env"), str(_BACKEND_DIR / ".env"), ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
     )
-
     database_url: str = "postgresql+asyncpg://zukan:zukan@localhost:5432/zukan"
     database_auto_repair_enabled: bool = True
-
     storage_dir: Path = Path("storage")
     generated_files_dir: str = ".zukan"
     library_paths_relative: bool = False
     library_root_identity: str | None = None
-
     tagger_backend: str = "wd_v3"
     tagger_model_repo: str = "SmilingWolf/wd-vit-tagger-v3"
     tagger_threshold_general: float = 0.35
@@ -59,76 +51,61 @@ class Settings(BaseSettings):
     library_classification_neighbor_count: int = 12
     library_classification_backfill_limit: int = 64
     library_classification_suggestion_min_similarity: float = 0.35
-    library_classification_auto_min_similarity: float = 0.60
+    library_classification_auto_min_similarity: float = 0.6
     library_classification_auto_min_margin: float = 0.18
     library_classification_auto_min_support: int = 2
     library_classification_min_visual_similarity: float = 0.32
-    library_classification_tag_overlap_weight: float = 0.20
+    library_classification_tag_overlap_weight: float = 0.2
     library_classification_prototype_max_per_entity: int = 4
     library_classification_prototype_cluster_similarity: float = 0.82
     library_classification_trusted_tagger_min_confidence: float = 0.98
-
     thumbnail_size: int = 512
-
-    auth_register_rate_limit_requests: int = 10
-    auth_register_rate_limit_window_seconds: int = 60
     auth_login_rate_limit_requests: int = 30
     auth_login_rate_limit_window_seconds: int = 60
     auth_refresh_rate_limit_requests: int = 60
     auth_refresh_rate_limit_window_seconds: int = 60
-    gacha_pull_rate_limit_requests: int = 60
-    gacha_pull_rate_limit_window_seconds: int = 60
-    gacha_daily_claim_rate_limit_requests: int = 10
-    gacha_daily_claim_rate_limit_window_seconds: int = 60
     upload_rate_limit_requests: int = 30
     upload_rate_limit_window_seconds: int = 60
     upload_max_batch_size: int = 1000
     upload_multipart_max_files: int = 1000
     trash_purge_interval_seconds: int = 60 * 60 * 24
-
     cobalt_api_url: str = ""
     cobalt_api_key: str = ""
     cobalt_request_timeout_seconds: float = 20.0
-
+    auth_mode: str = "local"
+    setup_token: str = ""
+    single_user_owner_id: str = ""
+    oidc_discovery_url: str = ""
+    oidc_issuer: str = ""
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    oidc_callback_url: str = ""
+    oidc_allowed_subject: str = ""
     secret_key: str = "change-me-in-production-use-openssl-rand-hex-32"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 30
     remember_me_refresh_token_expire_days: int = 90
-
     host: str = "0.0.0.0"
     port: int = 8000
     log_level: str = "INFO"
-    cors_allowed_origins: list[str] = [
-        "http://localhost:4200",
-        "http://127.0.0.1:4200",
-    ]
-
+    cors_allowed_origins: list[str] = ["http://localhost:4200", "http://127.0.0.1:4200"]
     app_version: str = "dev"
-
     update_poll_interval_seconds: int = 21600
     updater_url: str = Field(
         default="http://updater:8080",
         validation_alias=AliasChoices("UPDATER_URL", "WATCHTOWER_URL"),
     )
     updater_token: str = Field(
-        default="",
-        validation_alias=AliasChoices("UPDATER_TOKEN", "WATCHTOWER_TOKEN"),
+        default="", validation_alias=AliasChoices("UPDATER_TOKEN", "WATCHTOWER_TOKEN")
     )
 
 
 settings = Settings()
-
 RUNTIME_CONFIG_FIELDS = {
-    "auth_register_rate_limit_requests",
-    "auth_register_rate_limit_window_seconds",
     "auth_login_rate_limit_requests",
     "auth_login_rate_limit_window_seconds",
     "auth_refresh_rate_limit_requests",
     "auth_refresh_rate_limit_window_seconds",
-    "gacha_pull_rate_limit_requests",
-    "gacha_pull_rate_limit_window_seconds",
-    "gacha_daily_claim_rate_limit_requests",
-    "gacha_daily_claim_rate_limit_window_seconds",
     "upload_rate_limit_requests",
     "upload_rate_limit_window_seconds",
     "access_token_expire_minutes",

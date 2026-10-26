@@ -1,21 +1,22 @@
 import { describe, it, expect } from 'vitest';
 import { groupByDay, groupTimelineByYear } from './gallery-grouping.utils';
-import { MediaType, TaggingStatus, ProcessingStatus, MediaVisibility } from '../models/media';
+import { MediaType, TaggingStatus, ProcessingStatus } from '../models/media';
 import { TimelineBucket } from '../models/timeline';
 
 function makeMedia(id: string, captured_at: string) {
   return {
     id,
-    uploader_id: 'u1',
-    owner_id: 'u1',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: MediaType.IMAGE,
     metadata: {
-      file_size: 100, width: 10, height: 10,
-      duration_seconds: null, frame_count: null,
-      mime_type: 'image/jpeg', captured_at,
+      file_size: 100,
+      width: 10,
+      height: 10,
+      duration_seconds: null,
+      frame_count: null,
+      mime_type: 'image/jpeg',
+      captured_at,
     },
     version: 1,
     uploaded_at: captured_at,

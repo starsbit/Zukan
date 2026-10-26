@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus } from '../models/media';
+import { MediaType, ProcessingStatus } from '../models/media';
 import {
   formatConfidence,
   formatDateTime,
@@ -9,7 +9,6 @@ import {
   formatMetadataName,
   formatMediaType,
   formatProcessingStatus,
-  formatVisibility,
   humanizeBackendLabel,
   normalizeMetadataNameForSubmission,
 } from './media-display.utils';
@@ -34,7 +33,6 @@ describe('media-display utils', () => {
     expect(formatMetadataName("jeanne_d'arc_(fate)")).toBe("Jeanne D'Arc (Fate)");
     expect(formatMetadataName('fate_stay_night')).toBe('Fate Stay Night');
     expect(formatMediaType(MediaType.GIF)).toBe('GIF');
-    expect(formatVisibility(MediaVisibility.PUBLIC)).toBe('Public');
     expect(formatProcessingStatus(ProcessingStatus.NOT_APPLICABLE)).toBe('Not Applicable');
   });
 

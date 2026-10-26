@@ -1,9 +1,7 @@
 <div class="media-browser" [class.media-browser--compact]="isCompactLayout()">
   <div #contentPane class="media-browser__content">
     @if (showStories() && storyParams(); as params) {
-      <zukan-today-stories-rail
-        class="media-browser__stories"
-        [params]="params">
+      <zukan-today-stories-rail class="media-browser__stories" [params]="params">
       </zukan-today-stories-rail>
     }
 
@@ -16,29 +14,60 @@
 
         <div class="media-browser__action-buttons">
           @if (selectionActionMode() === 'trash') {
-            <button mat-icon-button type="button" (click)="requestRestoreSelection()" matTooltip="Restore selected" aria-label="Restore selected">
+            <button
+              mat-icon-button
+              type="button"
+              (click)="requestRestoreSelection()"
+              matTooltip="Restore selected"
+              aria-label="Restore selected"
+            >
               <mat-icon>restore_from_trash</mat-icon>
             </button>
           } @else {
-            <button mat-icon-button type="button" (click)="addSelectionToAlbum()" matTooltip="Add to album" aria-label="Add to album">
+            <button
+              mat-icon-button
+              type="button"
+              (click)="addSelectionToAlbum()"
+              matTooltip="Add to album"
+              aria-label="Add to album"
+            >
               <mat-icon>collections_bookmark</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="editSelectionMetadata()" matTooltip="Edit metadata" aria-label="Edit metadata">
+            <button
+              mat-icon-button
+              type="button"
+              (click)="editSelectionMetadata()"
+              matTooltip="Edit metadata"
+              aria-label="Edit metadata"
+            >
               <mat-icon>sell</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="trashSelection()" matTooltip="Move to trash" aria-label="Move to trash">
+            <button
+              mat-icon-button
+              type="button"
+              (click)="trashSelection()"
+              matTooltip="Move to trash"
+              aria-label="Move to trash"
+            >
               <mat-icon>delete_outline</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="reprocessSelection()" matTooltip="Reprocess tagging" aria-label="Reprocess tagging">
+            <button
+              mat-icon-button
+              type="button"
+              (click)="reprocessSelection()"
+              matTooltip="Reprocess tagging"
+              aria-label="Reprocess tagging"
+            >
               <mat-icon>local_offer</mat-icon>
             </button>
-            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PRIVATE)" matTooltip="Make private" aria-label="Make private">
-              <mat-icon>lock</mat-icon>
-            </button>
-            <button mat-icon-button type="button" (click)="updateSelectionVisibility(mediaVisibility.PUBLIC)" matTooltip="Make public" aria-label="Make public">
-              <mat-icon>public</mat-icon>
-            </button>
-            <button mat-icon-button type="button" (click)="downloadSelection()" matTooltip="Download as ZIP" aria-label="Download as ZIP">
+
+            <button
+              mat-icon-button
+              type="button"
+              (click)="downloadSelection()"
+              matTooltip="Download as ZIP"
+              aria-label="Download as ZIP"
+            >
               <mat-icon>download</mat-icon>
             </button>
           }
@@ -65,7 +94,11 @@
       </mat-card>
     } @else {
       @if (topSpacerHeight() > 0) {
-        <div class="media-browser__virtual-spacer" [style.height.px]="topSpacerHeight()" aria-hidden="true"></div>
+        <div
+          class="media-browser__virtual-spacer"
+          [style.height.px]="topSpacerHeight()"
+          aria-hidden="true"
+        ></div>
       }
 
       @for (monthGroup of virtualMonthGroups(); track monthKey(monthGroup.year, monthGroup.month)) {
@@ -73,7 +106,8 @@
           #monthSection
           class="media-browser__month"
           [id]="monthSectionId(monthGroup.year, monthGroup.month)"
-          [attr.data-month]="monthKey(monthGroup.year, monthGroup.month)">
+          [attr.data-month]="monthKey(monthGroup.year, monthGroup.month)"
+        >
           @for (group of monthGroup.days; track group.date) {
             <section
               class="media-browser__day"
@@ -81,25 +115,42 @@
               [id]="sectionId(group.date)"
               [attr.data-date]="group.date"
               (mouseenter)="!group.isSkeleton && onDayHover(group.date)"
-              (mouseleave)="!group.isSkeleton && onDayHover(null)">
+              (mouseleave)="!group.isSkeleton && onDayHover(null)"
+            >
               <header class="media-browser__day-header">
                 <h2>{{ group.label }}</h2>
                 <div
                   class="media-browser__day-header-actions"
-                  [class.media-browser__day-header-actions--with-selection]="allowSelection() && !group.isSkeleton && (hoveredDay() === group.date || isDaySelected(group) || isSelectionMode())">
+                  [class.media-browser__day-header-actions--with-selection]="
+                    allowSelection() &&
+                    !group.isSkeleton &&
+                    (hoveredDay() === group.date || isDaySelected(group) || isSelectionMode())
+                  "
+                >
                   <span>{{ group.itemCount }} item{{ group.itemCount === 1 ? '' : 's' }}</span>
                   @if (allowSelection() && !group.isSkeleton) {
                     <button
                       mat-icon-button
                       class="media-browser__day-selection-button"
-                      [class.media-browser__day-selection-button--visible]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode()"
+                      [class.media-browser__day-selection-button--visible]="
+                        hoveredDay() === group.date || isDaySelected(group) || isSelectionMode()
+                      "
                       [class.media-browser__day-selection-button--selected]="isDaySelected(group)"
                       type="button"
-                      [attr.aria-label]="isDaySelected(group) ? 'Unselect date group' : 'Select date group'"
+                      [attr.aria-label]="
+                        isDaySelected(group) ? 'Unselect date group' : 'Select date group'
+                      "
                       [attr.aria-pressed]="isDaySelected(group)"
-                      [attr.tabindex]="hoveredDay() === group.date || isDaySelected(group) || isSelectionMode() ? 0 : -1"
-                      (click)="toggleDaySelection(group, $event)">
-                      <mat-icon aria-hidden="true">{{ isDaySelected(group) ? 'check_circle' : 'radio_button_unchecked' }}</mat-icon>
+                      [attr.tabindex]="
+                        hoveredDay() === group.date || isDaySelected(group) || isSelectionMode()
+                          ? 0
+                          : -1
+                      "
+                      (click)="toggleDaySelection(group, $event)"
+                    >
+                      <mat-icon aria-hidden="true">{{
+                        isDaySelected(group) ? 'check_circle' : 'radio_button_unchecked'
+                      }}</mat-icon>
                     </button>
                   }
                 </div>
@@ -117,10 +168,10 @@
                           [selected]="isMediaSelected(media.id)"
                           [selectionMode]="isSelectionMode()"
                           [showFavorite]="true"
-                          [showPublicBadge]="showPublicBadge()"
                           (activatedWithAnchor)="onMediaActivated($event.media, $event.viewportTop)"
                           (selectionToggled)="onMediaSelectionToggled($event)"
-                          (favoriteToggled)="onFavoriteToggled($event)">
+                          (favoriteToggled)="onFavoriteToggled($event)"
+                        >
                         </zukan-media-card>
                       } @else {
                         <div class="media-browser__skeleton-card" aria-hidden="true">
@@ -137,7 +188,11 @@
       }
 
       @if (bottomSpacerHeight() > 0) {
-        <div class="media-browser__virtual-spacer" [style.height.px]="bottomSpacerHeight()" aria-hidden="true"></div>
+        <div
+          class="media-browser__virtual-spacer"
+          [style.height.px]="bottomSpacerHeight()"
+          aria-hidden="true"
+        ></div>
       }
     }
 
@@ -156,7 +211,8 @@
         [activeMonthKey]="activeMonthKey()"
         [activeProgress]="activeTimelineProgress()"
         (jumpRequested)="onJumpRequested($event)"
-        (scrollRequested)="onScrollRequested($event)">
+        (scrollRequested)="onScrollRequested($event)"
+      >
       </zukan-media-timeline>
     </div>
   }

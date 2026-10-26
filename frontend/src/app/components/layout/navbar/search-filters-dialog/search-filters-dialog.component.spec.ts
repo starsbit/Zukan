@@ -3,7 +3,13 @@ import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
-import { MediaType, MediaVisibility, NsfwFilter, SensitiveFilter, TagFilterMode, TaggingStatus } from '../../../../models/media';
+import {
+  MediaType,
+  NsfwFilter,
+  SensitiveFilter,
+  TagFilterMode,
+  TaggingStatus,
+} from '../../../../models/media';
 import { SearchFiltersDialogComponent } from './search-filters-dialog.component';
 import { API_BASE_URL } from '../../../../services/web/api.config';
 
@@ -17,9 +23,6 @@ describe('SearchFiltersDialogComponent', () => {
     sensitive: SensitiveFilter.ONLY,
     status: TaggingStatus.DONE,
     favorited: true,
-    visibility: MediaVisibility.PUBLIC,
-    ownerUsername: 'owner_user',
-    uploaderUsername: 'uploader_user',
     mediaTypes: [MediaType.IMAGE],
     sortBy: 'captured_at' as const,
     sortOrder: 'desc' as const,
@@ -65,9 +68,6 @@ describe('SearchFiltersDialogComponent', () => {
       sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
       favorited: 'only',
-      visibility: MediaVisibility.PUBLIC,
-      ownerUsername: 'owner_user',
-      uploaderUsername: 'uploader_user',
       mediaTypes: [MediaType.IMAGE],
       sortBy: 'captured_at',
       sortOrder: 'desc',
@@ -98,9 +98,6 @@ describe('SearchFiltersDialogComponent', () => {
       sensitive: SensitiveFilter.ONLY,
       status: TaggingStatus.DONE,
       favorited: false,
-      visibility: MediaVisibility.PUBLIC,
-      ownerUsername: 'owner_user',
-      uploaderUsername: 'uploader_user',
       mediaTypes: [MediaType.GIF, MediaType.VIDEO],
       sortBy: 'captured_at',
       sortOrder: 'desc',
@@ -157,9 +154,6 @@ describe('SearchFiltersDialogComponent', () => {
       sensitive: null,
       status: null,
       favorited: null,
-      visibility: null,
-      ownerUsername: null,
-      uploaderUsername: null,
       mediaTypes: [],
       sortBy: null,
       sortOrder: null,
@@ -184,26 +178,24 @@ describe('SearchFiltersDialogComponent', () => {
     component.excludeTagChips.set(['spoiler', 'hidden']);
     fixture.componentInstance.form.patchValue({
       favorited: 'any',
-      ownerUsername: ' owner_user ',
-      uploaderUsername: ' uploader_user ',
       capturedAfter: ' 2026-03-01T00:00 ',
       capturedBefore: ' 2026-03-31T23:59 ',
       mediaTypes: [],
     });
     fixture.componentInstance.apply();
 
-    expect(close).toHaveBeenCalledWith(expect.objectContaining({
-      excludeTags: ['spoiler', 'hidden'],
-      status: TaggingStatus.DONE,
-      favorited: null,
-      ownerUsername: 'owner_user',
-      uploaderUsername: 'uploader_user',
-      capturedAfter: '2026-03-01T00:00',
-      capturedBefore: '2026-03-31T23:59',
-      uploadedAfter: '2026-04-01T00:00',
-      uploadedBefore: '2026-04-30T23:59',
-      mediaTypes: [],
-    }));
+    expect(close).toHaveBeenCalledWith(
+      expect.objectContaining({
+        excludeTags: ['spoiler', 'hidden'],
+        status: TaggingStatus.DONE,
+        favorited: null,
+        capturedAfter: '2026-03-01T00:00',
+        capturedBefore: '2026-03-31T23:59',
+        uploadedAfter: '2026-04-01T00:00',
+        uploadedBefore: '2026-04-30T23:59',
+        mediaTypes: [],
+      }),
+    );
   });
 
   it('addExcludeTag deduplicates by lowercase', async () => {

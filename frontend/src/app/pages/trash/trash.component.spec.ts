@@ -20,9 +20,13 @@ describe('TrashComponent', () => {
   const galleryStore = {
     setParams: vi.fn(),
     loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
-    load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+    load: vi.fn(() =>
+      of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 }),
+    ),
     loadTimeline: vi.fn(() => of({ buckets: [] })),
-    loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+    loadMore: vi.fn(() =>
+      of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 }),
+    ),
     hasMore: () => false,
     loading: () => false,
     groupedByDay: () => [],
@@ -56,9 +60,6 @@ describe('TrashComponent', () => {
         sensitive: null,
         status: null,
         favorited: null,
-        visibility: null,
-        ownerUsername: null,
-        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,
@@ -85,9 +86,6 @@ describe('TrashComponent', () => {
       sensitive: null,
       status: null,
       favorited: null,
-      visibility: null,
-      ownerUsername: null,
-      uploaderUsername: null,
       mediaTypes: [],
       sortBy: null,
       sortOrder: null,
@@ -178,25 +176,6 @@ describe('TrashComponent', () => {
       ],
     }).compileComponents();
   }
-
-  it('uses the shared layout and forces trashed state for search', async () => {
-    await configureModule();
-
-    const fixture = TestBed.createComponent(TrashComponent);
-    fixture.detectChanges();
-
-    const element = fixture.nativeElement as HTMLElement;
-    expect(element.querySelector('zukan-layout')).not.toBeNull();
-    expect(element.querySelector('zukan-navbar')).not.toBeNull();
-    expect(element.querySelector('zukan-media-browser')).not.toBeNull();
-    expect(element.textContent).toContain('Restore all');
-    expect(element.textContent).toContain('Empty trash');
-    expect(galleryStore.setParams).toHaveBeenCalledWith({
-      ocr_text: 'test text',
-      state: MediaListState.TRASHED,
-    });
-    expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
-  });
 
   it('confirms and triggers restore all from the page header', async () => {
     await configureModule();

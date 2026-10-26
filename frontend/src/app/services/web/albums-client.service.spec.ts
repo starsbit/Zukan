@@ -4,30 +4,19 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { AlbumsClientService } from './albums-client.service';
 import { API_BASE_URL } from './api.config';
-import { AlbumAccessRole, AlbumShareRole, AlbumShareReadRole } from '../../models/albums';
 
 const mockAlbum = {
-  id: 'a1', owner_id: 'u1', name: 'Test', description: null,
-  owner: { id: 'u1', username: 'owner' }, access_role: AlbumAccessRole.OWNER,
-  cover_media_id: null, preview_media: [], media_count: 0, version: 1,
-  created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z',
+  id: 'a1',
+  name: 'Test',
+  description: null,
+  cover_media_id: null,
+  preview_media: [],
+  media_count: 0,
+  version: 1,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 };
 const mockPage = { total: 0, next_cursor: null, has_more: false, page_size: 20, items: [] };
-const mockAccess = {
-  owner: { id: 'u1', username: 'owner' },
-  entries: [
-    {
-      user_id: 'u2',
-      username: 'viewer',
-      role: AlbumShareReadRole.VIEWER,
-      status: 'accepted',
-      shared_at: '2026-01-01T00:00:00Z',
-      shared_by_user_id: 'u1',
-      shared_by_username: 'owner',
-    },
-  ],
-};
-
 describe('AlbumsClientService', () => {
   let service: AlbumsClientService;
   let http: HttpTestingController;
@@ -139,44 +128,6 @@ describe('AlbumsClientService', () => {
     expect(req.request.method).toBe('DELETE');
     expect(req.request.body).toEqual(body);
     req.flush(mock);
-  });
-
-  it('share sends POST /api/v1/albums/{id}/shares', () => {
-    const body = { username: 'viewer_user', role: AlbumShareRole.EDITOR };
-    const mock = { user_id: 'u2', role: AlbumShareReadRole.EDITOR, shared_at: '2026-01-01T00:00:00Z', shared_by_user_id: 'u1' };
-
-    service.share('a1', body).subscribe(res => expect(res).toEqual(mock));
-
-    const req = http.expectOne('/api/v1/albums/a1/shares');
-    expect(req.request.method).toBe('POST');
-    req.flush(mock);
-  });
-
-  it('listShares sends GET /api/v1/albums/{id}/shares', () => {
-    service.listShares('a1').subscribe(res => expect(res).toEqual(mockAccess));
-
-    const req = http.expectOne('/api/v1/albums/a1/shares');
-    expect(req.request.method).toBe('GET');
-    req.flush(mockAccess);
-  });
-
-  it('revokeShare sends DELETE /api/v1/albums/{albumId}/shares/{userId}', () => {
-    service.revokeShare('a1', 'u2').subscribe();
-
-    const req = http.expectOne('/api/v1/albums/a1/shares/u2');
-    expect(req.request.method).toBe('DELETE');
-    req.flush(null, { status: 204, statusText: 'No Content' });
-  });
-
-  it('transferOwnership sends POST /api/v1/albums/{id}/owner/transfer', () => {
-    const body = { new_owner_user_id: 'u2', keep_editor_access: false };
-
-    service.transferOwnership('a1', body).subscribe(res => expect(res).toEqual(mockAlbum));
-
-    const req = http.expectOne('/api/v1/albums/a1/owner/transfer');
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(body);
-    req.flush(mockAlbum);
   });
 
   it('download sends GET /api/v1/albums/{id}/download and returns blob', () => {

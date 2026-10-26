@@ -8,7 +8,7 @@ import { AuthStore } from '../../services/web/auth.store';
 import { ThemeService } from '../../services/theme.service';
 import { BrowseComponent } from './browse.component';
 import { of } from 'rxjs';
-import { MediaListState, MediaVisibility } from '../../models/media';
+import { MediaListState } from '../../models/media';
 import { describe, expect, it, vi } from 'vitest';
 
 describe('BrowseComponent', () => {
@@ -16,9 +16,13 @@ describe('BrowseComponent', () => {
     const galleryStore = {
       setParams: vi.fn(),
       loadInitial: vi.fn(() => of({ timeline: { buckets: [] }, page: null })),
-      load: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      load: vi.fn(() =>
+        of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 }),
+      ),
       loadTimeline: vi.fn(() => of({ buckets: [] })),
-      loadMore: vi.fn(() => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 })),
+      loadMore: vi.fn(() =>
+        of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 20 }),
+      ),
       clearOptimisticItems: vi.fn(),
       hasMore: () => false,
       loading: () => false,
@@ -115,12 +119,19 @@ describe('BrowseComponent', () => {
         {
           provide: MediaClientService,
           useValue: {
-            search: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
+            search: () =>
+              of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 100 }),
             getCharacterSuggestions: () => of([]),
           },
         },
         { provide: NavbarSearchService, useValue: searchService },
-        { provide: TagsClientService, useValue: { list: () => of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 6 }) } },
+        {
+          provide: TagsClientService,
+          useValue: {
+            list: () =>
+              of({ items: [], total: 0, next_cursor: null, has_more: false, page_size: 6 }),
+          },
+        },
         { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },
       ],
     }).compileComponents();
@@ -134,7 +145,6 @@ describe('BrowseComponent', () => {
     expect(galleryStore.setParams).toHaveBeenCalledWith({
       tag: ['Saber'],
       state: MediaListState.ACTIVE,
-      visibility: MediaVisibility.PUBLIC,
     });
     expect(galleryStore.loadInitial).toHaveBeenCalledTimes(1);
   });

@@ -1,14 +1,6 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { concatMap, finalize, from, map, Observable, of, reduce, tap } from 'rxjs';
-import {
-  AlbumAccessListResponse,
-  AlbumAccessRole,
-  AlbumCreate,
-  AlbumRead,
-  AlbumShareCreate,
-  AlbumShareRead,
-  AlbumUpdate,
-} from '../models/albums';
+import { AlbumCreate, AlbumRead, AlbumUpdate } from '../models/albums';
 import { BulkResult } from '../models/common';
 import { AlbumsClientService, AlbumListParams } from './web/albums-client.service';
 import { UserStore } from './user.store';
@@ -30,7 +22,9 @@ export class AlbumStore {
   readonly loaded = this._loaded.asReadonly();
   readonly selectedAlbum = this._selectedAlbum.asReadonly();
   readonly selectedAlbumLoading = this._selectedAlbumLoading.asReadonly();
-  readonly isEmpty = computed(() => this._loaded() && !this._loading() && this._items().length === 0);
+  readonly isEmpty = computed(
+    () => this._loaded() && !this._loading() && this._items().length === 0,
+  );
 
   load(params: AlbumListParams = {}): Observable<AlbumRead[]> {
     this._loading.set(true);
@@ -83,21 +77,6 @@ export class AlbumStore {
     );
   }
 
-  share(id: string, body: AlbumShareCreate): Observable<AlbumShareRead> {
-    this._selectedAlbumLoading.set(true);
-    return this.client.share(id, body).pipe(
-      finalize(() => this._selectedAlbumLoading.set(false)),
-    );
-  }
-
-  listShares(id: string): Observable<AlbumAccessListResponse> {
-    return this.client.listShares(id);
-  }
-
-  revokeShare(albumId: string, userId: string): Observable<void> {
-    return this.client.revokeShare(albumId, userId);
-  }
-
   addMedia(id: string, mediaIds: string[]): Observable<BulkResult> {
     if (mediaIds.length === 0) {
       return of({ processed: 0, skipped: 0 });
@@ -139,7 +118,7 @@ export class AlbumStore {
   private upsert(album: AlbumRead): void {
     this._items.update((items) =>
       items.some((candidate) => candidate.id === album.id)
-        ? items.map((candidate) => candidate.id === album.id ? album : candidate)
+        ? items.map((candidate) => (candidate.id === album.id ? album : candidate))
         : [album, ...items],
     );
   }
@@ -202,33 +181,12 @@ export class AlbumStore {
       preview_media: dedupedPreviewMedia,
     };
   }
-
   private normalizeAlbum(album: AlbumRead): AlbumRead {
-    const currentUser = this.userStore.currentUser();
-    const isOwner = !!currentUser && currentUser.id === album.owner_id;
-    const previewMedia = album.preview_media ?? (
-      album.cover_media_id
-        ? [{ id: album.cover_media_id }]
-        : []
-    );
-    const owner = album.owner ?? {
-      id: album.owner_id ?? currentUser?.id ?? '',
-      username: isOwner ? currentUser.username : 'Unknown',
-    };
-    const accessRole = album.access_role ?? (
-      isOwner
-        ? AlbumAccessRole.OWNER
-        : AlbumAccessRole.VIEWER
-    );
-
     return {
       ...album,
-      owner,
-      access_role: accessRole,
-      preview_media: previewMedia,
+      preview_media:
+        album.preview_media ?? (album.cover_media_id ? [{ id: album.cover_media_id }] : []),
       media_count: album.media_count ?? 0,
-      description: album.description ?? null,
-      cover_media_id: album.cover_media_id ?? null,
     };
   }
 

@@ -23,18 +23,6 @@ describe('AuthClientService', () => {
 
   afterEach(() => http.verify());
 
-  it('register sends POST with body', () => {
-    const body = { username: 'saber', email: 'saber@test.com', password: 'password123' };
-    const mock = { id: 'u1', username: 'saber', email: 'saber@test.com', show_nsfw: false, tag_confidence_threshold: 0.35, version: 1, created_at: '2026-01-01T00:00:00Z' };
-
-    service.register(body).subscribe(res => expect(res).toEqual(mock));
-
-    const req = http.expectOne('/api/v1/auth/register');
-    expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual(body);
-    req.flush(mock);
-  });
-
   it('login sends form-encoded POST', () => {
     const body = { username: 'saber', password: 'password123', remember_me: false };
     const mock = { access_token: 'a', refresh_token: 'r', token_type: 'bearer' };

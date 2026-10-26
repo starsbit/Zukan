@@ -2,16 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { API_BASE_URL } from './api.config';
-import {
-  AlbumAccessListResponse,
-  AlbumCreate,
-  AlbumListResponse,
-  AlbumOwnershipTransferRequest,
-  AlbumRead,
-  AlbumShareCreate,
-  AlbumShareRead,
-  AlbumUpdate,
-} from '../../models/albums';
+import { AlbumCreate, AlbumListResponse, AlbumRead, AlbumUpdate } from '../../models/albums';
 import { BulkResult, MediaIdsRequest } from '../../models/common';
 import { MediaCursorPage } from '../../models/media';
 import { TagFilterMode } from '../../models/media';
@@ -77,25 +68,6 @@ export class AlbumsClientService {
 
   removeMedia(id: string, body: MediaIdsRequest): Observable<BulkResult> {
     return this.http.delete<BulkResult>(`${this.base}/api/v1/albums/${id}/media`, { body });
-  }
-
-  share(id: string, body: AlbumShareCreate): Observable<AlbumShareRead> {
-    return this.http.post<AlbumShareRead>(`${this.base}/api/v1/albums/${id}/shares`, body);
-  }
-
-  listShares(id: string): Observable<AlbumAccessListResponse> {
-    return this.http.get<AlbumAccessListResponse>(`${this.base}/api/v1/albums/${id}/shares`);
-  }
-
-  revokeShare(albumId: string, userId: string): Observable<void> {
-    return this.http.delete<void>(`${this.base}/api/v1/albums/${albumId}/shares/${userId}`);
-  }
-
-  transferOwnership(
-    id: string,
-    body: AlbumOwnershipTransferRequest,
-  ): Observable<AlbumRead> {
-    return this.http.post<AlbumRead>(`${this.base}/api/v1/albums/${id}/owner/transfer`, body);
   }
 
   download(id: string): Observable<Blob> {

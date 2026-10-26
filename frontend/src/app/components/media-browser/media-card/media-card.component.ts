@@ -1,9 +1,22 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, effect, inject, input, output, signal, untracked, viewChild } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+  untracked,
+  viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { MediaRead, MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import { MediaRead, MediaType, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { BadgeVisibilityService } from '../../../services/badge-visibility.service';
 import { MediaService } from '../../../services/media.service';
 
@@ -23,7 +36,6 @@ export class MediaCardComponent {
   readonly selectedState = input(false, { alias: 'selected' });
   readonly selectionMode = input(false);
   readonly showFavorite = input(false);
-  readonly showPublicBadge = input(true);
   readonly activated = output<MediaRead>();
   readonly activatedWithAnchor = output<{ media: MediaRead; viewportTop: number }>();
   readonly selectionToggled = output<MediaRead>();
@@ -60,26 +72,33 @@ export class MediaCardComponent {
         return null;
     }
   });
-
-  readonly isPublic = computed(() => this.media().visibility === MediaVisibility.PUBLIC);
   readonly isNsfw = computed(() => this.media().is_nsfw && !this.badgeVisibility.hideNsfw());
-  readonly isSensitive = computed(() => this.media().is_sensitive && !this.badgeVisibility.hideSensitive());
+  readonly isSensitive = computed(
+    () => this.media().is_sensitive && !this.badgeVisibility.hideSensitive(),
+  );
   readonly isProcessing = computed(() => {
     const media = this.media();
-    const taggingInProgress = media.tagging_status === TaggingStatus.PENDING
-      || media.tagging_status === TaggingStatus.PROCESSING;
+    const taggingInProgress =
+      media.tagging_status === TaggingStatus.PENDING ||
+      media.tagging_status === TaggingStatus.PROCESSING;
 
     if (media.media_type === MediaType.VIDEO) {
-      return taggingInProgress
-        || media.poster_status === ProcessingStatus.PENDING
-        || media.poster_status === ProcessingStatus.PROCESSING;
+      return (
+        taggingInProgress ||
+        media.poster_status === ProcessingStatus.PENDING ||
+        media.poster_status === ProcessingStatus.PROCESSING
+      );
     }
 
-    return taggingInProgress
-      || media.thumbnail_status === ProcessingStatus.PENDING
-      || media.thumbnail_status === ProcessingStatus.PROCESSING;
+    return (
+      taggingInProgress ||
+      media.thumbnail_status === ProcessingStatus.PENDING ||
+      media.thumbnail_status === ProcessingStatus.PROCESSING
+    );
   });
-  readonly interactionDisabled = computed(() => this.media().client_is_optimistic === true && this.isProcessing());
+  readonly interactionDisabled = computed(
+    () => this.media().client_is_optimistic === true && this.isProcessing(),
+  );
 
   readonly displayUrl = computed(() => {
     if (this.media().client_preview_url) {
@@ -92,16 +111,18 @@ export class MediaCardComponent {
     return this.previewUrl();
   });
 
-  readonly showVideoPreview = computed(() =>
-    this.media().media_type === MediaType.VIDEO && this.hovered() && !!this.animatedPreviewUrl(),
+  readonly showVideoPreview = computed(
+    () =>
+      this.media().media_type === MediaType.VIDEO && this.hovered() && !!this.animatedPreviewUrl(),
   );
-  readonly showSelectionControl = computed(() =>
-    this.selectable() && (this.selectionMode() || this.hovered()),
+  readonly showSelectionControl = computed(
+    () => this.selectable() && (this.selectionMode() || this.hovered()),
   );
   readonly isFavorited = computed(() => this.media().is_favorited);
   readonly favoriteCount = computed(() => this.media().favorite_count ?? 0);
-  readonly showPublicOverlay = computed(() => this.isPublic() && this.showPublicBadge() && (this.hovered() || this.focused()));
-  readonly showFavoriteOverlay = computed(() => this.showFavorite() && (this.hovered() || this.focused()));
+  readonly showFavoriteOverlay = computed(
+    () => this.showFavorite() && (this.hovered() || this.focused()),
+  );
 
   private previewObserver?: IntersectionObserver;
   private hasRequestedPreview = false;
@@ -295,7 +316,10 @@ export class MediaCardComponent {
     }
 
     const target = event.target;
-    return !(target instanceof HTMLElement) || target.closest('button, a, input, textarea, select') == null;
+    return (
+      !(target instanceof HTMLElement) ||
+      target.closest('button, a, input, textarea, select') == null
+    );
   }
 
   private clearLongPress(): void {

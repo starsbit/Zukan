@@ -1,15 +1,11 @@
 import logging
 import uuid
-from typing import Literal
-
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.config import get_runtime_config, update_runtime_config
 from backend.app.database import get_db
 from backend.app.routers.deps import admin_user
-from backend.app.models.auth import User
 from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.schemas import (
@@ -23,14 +19,10 @@ from backend.app.schemas import (
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
     AdminStatsResponse,
-    AdminUserDetail,
-    AdminUserListResponse,
-    AdminUserUpdate,
     AppAnnouncementCreate,
     AppAnnouncementRead,
     TaggingJobQueuedResponse,
     UpdateCheckResponse,
-    UserRead,
     error_responses,
 )
 from backend.app.services.admin import AdminService
@@ -38,8 +30,12 @@ from backend.app.services.notifications import NotificationService
 from backend.app.services.update_check import check_for_updates_now, trigger_app_update
 from backend.app.utils.rate_limit import rate_limit_store
 
-router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_user)], responses=ADMIN_ERROR_RESPONSES)
-
+router = APIRouter(
+    prefix="/admin",
+    tags=["admin"],
+    dependencies=[Depends(admin_user)],
+    responses=ADMIN_ERROR_RESPONSES,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -71,75 +67,25 @@ async def admin_health(
     return await AdminService(db).get_health()
 
 
-@router.get("/users", response_model=AdminUserListResponse)
-async def list_users(
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=20, ge=1, le=200),
-    sort_by: Literal["username", "created_at"] = Query(default="created_at", description="Field to sort by."),
-    sort_order: Literal["asc", "desc"] = Query(default="desc", description="Sort direction."),
-    db: AsyncSession = Depends(get_db),
-):
-    return await AdminService(db).list_users(page, page_size, sort_by, sort_order)
-
-
-@router.get("/users/{user_id}", response_model=AdminUserDetail, responses=error_responses(404))
-async def get_user_detail(
-    user_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await AdminService(db).get_user_detail(user_id)
-
-
-@router.patch("/users/{user_id}", response_model=UserRead, responses=error_responses(404))
-async def update_user(
-    user_id: uuid.UUID,
-    body: AdminUserUpdate,
-    actor: User = Depends(admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    return await AdminService(db).update_user(actor, user_id, body)
-
-
-@router.delete("/users/{user_id}/media", response_model=dict[str, int], responses=error_responses(403, 404))
-async def delete_user_media(
-    user_id: uuid.UUID,
-    actor: User = Depends(admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    deleted = await AdminService(db).delete_user_media(actor, user_id)
-    return {"deleted": deleted}
-
-
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, responses=error_responses(403, 404))
-async def delete_user(
-    user_id: uuid.UUID,
-    delete_media: bool = Query(default=False),
-    actor: User = Depends(admin_user),
-    db: AsyncSession = Depends(get_db),
-):
-    await AdminService(db).delete_user(actor, user_id, delete_media)
-
-
-@router.post("/users/{user_id}/tagging-jobs", status_code=status.HTTP_202_ACCEPTED, response_model=TaggingJobQueuedResponse, responses=error_responses(404))
-async def retag_all(
-    user_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    queued = await AdminService(db).retag_all_media(user_id)
+@router.post(
+    "/tagging-jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TaggingJobQueuedResponse,
+    responses=error_responses(404),
+)
+async def retag_all(db: AsyncSession = Depends(get_db)):
+    queued = await AdminService(db).retag_all_media()
     return {"queued": queued}
 
 
 @router.post(
-    "/users/{user_id}/embedding-backfill",
+    "/embedding-backfill",
     status_code=status.HTTP_202_ACCEPTED,
     response_model=AdminEmbeddingBackfillResponse,
     responses=error_responses(404),
 )
-async def start_embedding_backfill(
-    user_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-):
-    return await AdminService(db).start_embedding_backfill(user_id)
+async def start_embedding_backfill(db: AsyncSession = Depends(get_db)):
+    return await AdminService(db).start_embedding_backfill()
 
 
 @router.get(
@@ -155,16 +101,17 @@ async def get_embedding_backfill_status(
 
 
 @router.get(
-    "/users/{user_id}/library-classification-metrics",
+    "/library-classification-metrics",
     response_model=AdminLibraryClassificationMetricsResponse,
     responses=error_responses(404),
 )
 async def get_library_classification_metrics(
-    user_id: uuid.UUID,
     model_version: str | None = Query(default=None, max_length=64),
     db: AsyncSession = Depends(get_db),
 ):
-    return await AdminService(db).get_library_classification_metrics(user_id, model_version=model_version)
+    return await AdminService(db).get_library_classification_metrics(
+        model_version=model_version
+    )
 
 
 @router.get("/announcements", response_model=list[AppAnnouncementRead])

@@ -1,32 +1,46 @@
 from __future__ import annotations
 from backend.app.utils.library_paths import stored_path
-
 import asyncio
 import logging
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timezone
 from typing import Any
-
 from fastapi import UploadFile
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.errors.error import AppError
 from backend.app.models.auth import User
-from backend.app.models.media import Media, MediaType, MediaVisibility
-from backend.app.models.processing import BatchStatus, BatchType, ImportBatch, ImportBatchItem, ItemStatus, ProcessingStep
+from backend.app.models.media import Media, MediaType
+from backend.app.models.processing import (
+    BatchStatus,
+    BatchType,
+    ImportBatch,
+    ImportBatchItem,
+    ItemStatus,
+    ProcessingStep,
+)
 from backend.app.models.relations import MediaEntity, MediaEntityType
 from backend.app.repositories.relations import MediaEntityRepository
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, ExternalRefCreate, UploadResult
-from backend.app.utils.media_common import build_tag_payloads, limit_error_message, normalize_manual_entity_names, normalize_manual_tags
+from backend.app.utils.media_common import (
+    build_tag_payloads,
+    limit_error_message,
+    normalize_manual_entity_names,
+    normalize_manual_tags,
+)
 from backend.app.services.media import get_tag_queue
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.relations import RelationService
 from backend.app.utils.media_metadata import extract_media_metadata
-from backend.app.utils.storage import SavedUpload, delete_media_files, save_bytes, save_upload
+from backend.app.utils.storage import (
+    SavedUpload,
+    delete_media_files,
+    save_bytes,
+    save_upload,
+)
 from backend.app.utils.tagging import tag_names_mark_nsfw, tag_names_mark_sensitive
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 from backend.app.ml.ocr import ocr_backend
@@ -45,7 +59,6 @@ class UploadBatchContext:
     queued_media_ids: list[uuid.UUID] = field(default_factory=list)
     processing_media_ids: list[uuid.UUID] = field(default_factory=list)
     results: list[UploadResult] = field(default_factory=list)
-    remaining_bytes: int | None = None
 
 
 def calculate_batch_status(*, total: int, pending: int, processing: int, failed: int) -> BatchStatus:
@@ -102,23 +115,9 @@ class MediaUploadWorkflow:
         series_names: list[str] | None = None,
         captured_at_values: list[datetime] | None = None,
         external_refs_values: list[list[ExternalRefCreate]] | None = None,
-        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         upload_batch = await self._create_upload_batch(user, len(files))
-        logger.info(
-            "Upload batch started batch_id=%s user_id=%s file_count=%s album_id=%s visibility=%s",
-            upload_batch.id,
-            user.id,
-            len(files),
-            album_id,
-            visibility.value,
-        )
         ctx = UploadBatchContext()
-        if not user.is_admin:
-            from backend.app.repositories.media import MediaRepository
-            current_storage = await MediaRepository(self._db).sum_file_size(uploader_id=user.id)
-            ctx.remaining_bytes = user.storage_quota_mb * 1024 * 1024 - current_storage
-
         for index, upload in enumerate(files):
             per_file_override = captured_at_override
             if captured_at_values and index < len(captured_at_values):
@@ -135,10 +134,8 @@ class MediaUploadWorkflow:
                 series_names=series_names,
                 captured_at_override=per_file_override,
                 external_refs=per_file_external_refs,
-                visibility=visibility,
                 ctx=ctx,
             )
-
         self._finalize_upload_batch(upload_batch, ctx)
         await self._db.commit()
         await self._attach_album_if_needed(album_id, ctx.queued_media_ids, user)
@@ -156,7 +153,6 @@ class MediaUploadWorkflow:
     async def _create_upload_batch(self, user: User, total_items: int) -> ImportBatch:
         now = datetime.now(timezone.utc)
         upload_batch = ImportBatch(
-            user_id=user.id,
             type=BatchType.upload,
             status=BatchStatus.running,
             total_items=total_items,
@@ -178,25 +174,15 @@ class MediaUploadWorkflow:
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
-        visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         original_name = upload.filename or "unknown"
         batch_item = self._new_batch_item(upload_batch.id, original_name)
-
         saved = await save_upload(upload)
         if saved is None:
             logger.warning("Upload file rejected original_name=%s", original_name)
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
-
-        if ctx.remaining_bytes is not None and saved.file_size > ctx.remaining_bytes:
-            logger.warning("Upload file rejected quota exceeded original_name=%s file_size=%s remaining=%s", original_name, saved.file_size, ctx.remaining_bytes)
-            from backend.app.utils.storage import delete_media_files
-            delete_media_files(str(saved.path))
-            await self._handle_failed_upload(batch_item, original_name, ctx, error="Storage quota exceeded")
-            return
-
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
         if captured_at_override is not None:
             captured_at = _normalize_utc(captured_at_override)
@@ -205,10 +191,13 @@ class MediaUploadWorkflow:
         else:
             file_mtime = saved.path.stat().st_mtime
             captured_at = datetime.fromtimestamp(file_mtime, tz=UTC)
-
-        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
+        existing = await self._query.get_media_by_sha256(saved.sha256)
         if existing is not None:
-            logger.info("Upload file matched existing media original_name=%s existing_media_id=%s", original_name, existing.id)
+            logger.info(
+                "Upload file matched existing media original_name=%s existing_media_id=%s",
+                original_name,
+                existing.id,
+            )
             await self._handle_existing_media(
                 batch_item=batch_item,
                 existing=existing,
@@ -222,9 +211,6 @@ class MediaUploadWorkflow:
                 ctx=ctx,
             )
             return
-
-        if ctx.remaining_bytes is not None:
-            ctx.remaining_bytes -= saved.file_size
         await self._handle_new_media(
             batch_item=batch_item,
             user=user,
@@ -236,7 +222,6 @@ class MediaUploadWorkflow:
             series_names=series_names,
             external_refs=external_refs,
             captured_at=captured_at_override or captured_at,
-            visibility=visibility,
             ctx=ctx,
         )
 
@@ -372,20 +357,22 @@ class MediaUploadWorkflow:
         character_names: list[str] | None = None,
         series_names: list[str] | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
-        visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         loop = asyncio.get_running_loop()
-        poster, thumb = await loop.run_in_executor(None, generate_poster_and_thumbnail, str(saved.path), saved.media_type)
+        poster, thumb = await loop.run_in_executor(
+            None, generate_poster_and_thumbnail, str(saved.path), saved.media_type
+        )
         normalized_tags = normalize_manual_tags(tags) if tags else []
         normalized_characters = _normalize_entity_names(character_names)
         normalized_series = _normalize_entity_names(series_names)
-        has_manual_annotations = bool(normalized_tags or normalized_characters or normalized_series)
-
+        has_manual_annotations = bool(
+            normalized_tags or normalized_characters or normalized_series
+        )
         media = Media(
-            id=uuid.UUID(saved.path.stem) if len(saved.path.stem) == 32 else uuid.uuid4(),
-            uploader_id=user.id,
-            owner_id=user.id,
+            id=uuid.UUID(saved.path.stem)
+            if len(saved.path.stem) == 32
+            else uuid.uuid4(),
             filename=saved.path.name,
             original_filename=original_name,
             filepath=stored_path(saved.path),
@@ -402,13 +389,13 @@ class MediaUploadWorkflow:
             thumbnail_path=stored_path(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
             poster_path=stored_path(poster) if poster else None,
-            poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
+            poster_status="done"
+            if poster or saved.media_type == MediaType.IMAGE
+            else "failed",
             captured_at=captured_at,
-            visibility=visibility,
         )
         self._db.add(media)
         await self._db.flush()
-
         if has_manual_annotations:
             await self._apply_manual_annotations(
                 media=media,
@@ -418,15 +405,6 @@ class MediaUploadWorkflow:
             )
         if external_refs is not None:
             await self._replace_external_refs(media, external_refs)
-        logger.info(
-            "Created new media from upload media_id=%s user_id=%s original_name=%s media_type=%s visibility=%s",
-            media.id,
-            user.id,
-            original_name,
-            getattr(media.media_type, "value", media.media_type),
-            getattr(media.visibility, "value", media.visibility),
-        )
-
         batch_item.media_id = media.id
         if has_manual_annotations:
             batch_item.status = ItemStatus.done
@@ -438,10 +416,8 @@ class MediaUploadWorkflow:
             batch_item.step = ProcessingStep.tag
             batch_item.progress_percent = 0
             ctx.pending_items += 1
-
         self._db.add(batch_item)
         await self._db.flush()
-
         ctx.accepted += 1
         ctx.queued_media_ids.append(media.id)
         ctx.processing_media_ids.append(media.id)
@@ -525,32 +501,30 @@ class MediaUploadWorkflow:
         tags: list[str] | None,
         captured_at_override: datetime | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
-        visibility: MediaVisibility,
     ) -> BatchUploadResponse:
-        from backend.app.repositories.media import MediaRepository
         from backend.app.services.media.cobalt import cobalt_enabled, resolve_via_cobalt
 
         resolved_items: list[tuple[str, bool]]
         if cobalt_enabled():
             try:
-                resolved_items = [(item.url, True) for item in await resolve_via_cobalt(url)]
+                resolved_items = [
+                    (item.url, True) for item in await resolve_via_cobalt(url)
+                ]
             except AppError as exc:
                 logger.info(
                     "Cobalt resolution failed, falling back to direct fetch url=%s error=%s",
                     url,
-                    exc.detail.get("message") if isinstance(exc.detail, dict) else exc.detail,
+                    exc.detail.get("message")
+                    if isinstance(exc.detail, dict)
+                    else exc.detail,
                 )
                 resolved_items = [(url, False)]
         else:
             resolved_items = [(url, False)]
-
-        if user.is_admin:
-            max_size = 10 * 1024 ** 3
-        else:
-            current_storage = await MediaRepository(self._db).sum_file_size(uploader_id=user.id)
-            max_size = user.storage_quota_mb * 1024 * 1024 - current_storage
-
-        upload_batch = await self._create_upload_batch(user, total_items=len(resolved_items))
+        max_size = 10 * 1024**3
+        upload_batch = await self._create_upload_batch(
+            user, total_items=len(resolved_items)
+        )
         logger.info(
             "URL ingest batch started batch_id=%s user_id=%s url=%s item_count=%s",
             upload_batch.id,
@@ -559,9 +533,6 @@ class MediaUploadWorkflow:
             len(resolved_items),
         )
         ctx = UploadBatchContext()
-        if not user.is_admin:
-            ctx.remaining_bytes = max(max_size, 0)
-
         for item_url, item_trusted in resolved_items:
             await self._process_single_url_item(
                 upload_batch=upload_batch,
@@ -571,10 +542,8 @@ class MediaUploadWorkflow:
                 tags=tags,
                 captured_at_override=captured_at_override,
                 external_refs=external_refs,
-                visibility=visibility,
                 ctx=ctx,
             )
-
         self._finalize_upload_batch(upload_batch, ctx)
         await self._db.commit()
         await self._attach_album_if_needed(album_id, ctx.queued_media_ids, user)
@@ -598,7 +567,6 @@ class MediaUploadWorkflow:
         tags: list[str] | None,
         captured_at_override: datetime | None,
         external_refs: list[ExternalRefCreate] | None,
-        visibility: MediaVisibility,
         ctx: UploadBatchContext,
     ) -> None:
         from backend.app.services.media.url_fetch import fetch_url_as_bytes
@@ -606,31 +574,32 @@ class MediaUploadWorkflow:
         path_segment = url.rstrip("/").split("/")[-1].split("?")[0] or "download"
         original_name = path_segment[:255]
         batch_item = self._new_batch_item(upload_batch.id, original_name)
-
-        max_size_bytes = ctx.remaining_bytes if ctx.remaining_bytes is not None else 10 * 1024 ** 3
-        if max_size_bytes <= 0:
-            await self._handle_failed_upload(batch_item, original_name, ctx, error="Storage quota exceeded")
-            return
-
+        max_size_bytes = 10 * 1024**3
         try:
-            content, mime_type = await fetch_url_as_bytes(url, max_size_bytes=max_size_bytes, trusted=trusted)
+            content, mime_type = await fetch_url_as_bytes(
+                url, max_size_bytes=max_size_bytes, trusted=trusted
+            )
         except AppError as exc:
-            message = exc.detail.get("message") if isinstance(exc.detail, dict) else str(exc.detail)
-            await self._handle_failed_upload(batch_item, original_name, ctx, error=message)
+            message = (
+                exc.detail.get("message")
+                if isinstance(exc.detail, dict)
+                else str(exc.detail)
+            )
+            await self._handle_failed_upload(
+                batch_item, original_name, ctx, error=message
+            )
             return
-
         saved = await save_bytes(content, declared_mime_type=mime_type, source_name=url)
         if saved is None:
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
-
-        if ctx.remaining_bytes is not None:
-            ctx.remaining_bytes -= saved.file_size
-
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        captured_at = _normalize_utc(captured_at_override) if captured_at_override is not None else datetime.now(UTC)
-
-        existing = await self._query.get_media_by_sha256(saved.sha256, user.id)
+        captured_at = (
+            _normalize_utc(captured_at_override)
+            if captured_at_override is not None
+            else datetime.now(UTC)
+        )
+        existing = await self._query.get_media_by_sha256(saved.sha256)
         if existing is not None:
             await self._handle_existing_media(
                 batch_item=batch_item,
@@ -645,7 +614,6 @@ class MediaUploadWorkflow:
                 ctx=ctx,
             )
             return
-
         await self._handle_new_media(
             batch_item=batch_item,
             user=user,
@@ -657,7 +625,6 @@ class MediaUploadWorkflow:
             series_names=None,
             external_refs=external_refs,
             captured_at=captured_at,
-            visibility=visibility,
             ctx=ctx,
         )
 
@@ -668,18 +635,18 @@ class MediaUploadWorkflow:
         original_name: str,
         saved: SavedUpload,
         captured_at: datetime,
-        visibility: MediaVisibility,
         tags: list[str] | None = None,
     ) -> Media:
         file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
         loop = asyncio.get_running_loop()
-        poster, thumb = await loop.run_in_executor(None, generate_poster_and_thumbnail, str(saved.path), saved.media_type)
+        poster, thumb = await loop.run_in_executor(
+            None, generate_poster_and_thumbnail, str(saved.path), saved.media_type
+        )
         normalized_tags = normalize_manual_tags(tags) if tags else []
-
         media = Media(
-            id=uuid.UUID(saved.path.stem) if len(saved.path.stem) == 32 else uuid.uuid4(),
-            uploader_id=user.id,
-            owner_id=user.id,
+            id=uuid.UUID(saved.path.stem)
+            if len(saved.path.stem) == 32
+            else uuid.uuid4(),
             filename=saved.path.name,
             original_filename=original_name,
             filepath=stored_path(saved.path),
@@ -696,18 +663,19 @@ class MediaUploadWorkflow:
             thumbnail_path=stored_path(thumb) if thumb else None,
             thumbnail_status="done" if thumb else "failed",
             poster_path=stored_path(poster) if poster else None,
-            poster_status="done" if poster or saved.media_type == MediaType.IMAGE else "failed",
+            poster_status="done"
+            if poster or saved.media_type == MediaType.IMAGE
+            else "failed",
             captured_at=captured_at,
-            visibility=visibility,
         )
         self._db.add(media)
         await self._db.flush()
-
         if normalized_tags:
-            await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
+            await self._tags_repo.set_media_tag_links(
+                media, build_tag_payloads(normalized_tags)
+            )
             media.is_nsfw = tag_names_mark_nsfw(normalized_tags)
             media.is_sensitive = tag_names_mark_sensitive(normalized_tags)
-
         return media
 
     def _finalize_upload_batch(self, upload_batch: ImportBatch, ctx: UploadBatchContext) -> None:
@@ -754,7 +722,12 @@ class MediaUploadWorkflow:
 
 
 class MediaUploadService:
-    def __init__(self, db: AsyncSession, processing: MediaProcessingService, query: MediaQueryService) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        processing: MediaProcessingService,
+        query: MediaQueryService,
+    ) -> None:
         self._db = db
         self._processing = processing
         self._query = query
@@ -771,7 +744,6 @@ class MediaUploadService:
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
         external_refs_values: list[list[ExternalRefCreate]] | None = None,
-        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
             db=self._db,
@@ -789,7 +761,6 @@ class MediaUploadService:
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             external_refs_values=external_refs_values,
-            visibility=visibility,
         )
 
     async def build_upload_response(
@@ -802,7 +773,6 @@ class MediaUploadService:
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
         external_refs_values: list[list[ExternalRefCreate]] | None = None,
-        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         return await self.upload_files(
             user,
@@ -812,7 +782,6 @@ class MediaUploadService:
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             external_refs_values=external_refs_values,
-            visibility=visibility,
         )
 
     async def upload_files_with_annotations(
@@ -827,7 +796,6 @@ class MediaUploadService:
         captured_at_override: datetime | None = None,
         captured_at_values: list[datetime] | None = None,
         external_refs_values: list[list[ExternalRefCreate]] | None = None,
-        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
             db=self._db,
@@ -845,7 +813,6 @@ class MediaUploadService:
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             external_refs_values=external_refs_values,
-            visibility=visibility,
         )
 
     async def ingest_url(
@@ -857,7 +824,6 @@ class MediaUploadService:
         tags: list[str] | None = None,
         captured_at_override: datetime | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
-        visibility: MediaVisibility = MediaVisibility.private,
     ) -> BatchUploadResponse:
         workflow = MediaUploadWorkflow(
             db=self._db,
@@ -872,7 +838,6 @@ class MediaUploadService:
             tags=tags,
             captured_at_override=captured_at_override,
             external_refs=external_refs,
-            visibility=visibility,
         )
 
     async def mark_upload_batch_item_done(self, media_id: uuid.UUID) -> None:
@@ -922,17 +887,19 @@ class MediaUploadService:
             batch.status = BatchStatus.done
         batch.finished_at = datetime.now(timezone.utc)
 
-    async def _auto_compute_recommendation_groups_for_batch(self, batch: ImportBatch) -> None:
+    async def _auto_compute_recommendation_groups_for_batch(
+        self, batch: ImportBatch
+    ) -> None:
         from backend.app.services.processing import ProcessingService
 
         try:
             await ProcessingService(self._db).list_batch_review_items(
-                batch_id=batch.id,
-                user_id=batch.user_id,
-                include_recommendations=True,
-                force_refresh=True,
+                batch_id=batch.id, include_recommendations=True, force_refresh=True
             )
-            logger.info("Auto-computed recommendation groups for completed upload batch batch_id=%s", batch.id)
+            logger.info(
+                "Auto-computed recommendation groups for completed upload batch batch_id=%s",
+                batch.id,
+            )
         except Exception:
             logger.exception(
                 "Failed to auto-compute recommendation groups for completed upload batch batch_id=%s",

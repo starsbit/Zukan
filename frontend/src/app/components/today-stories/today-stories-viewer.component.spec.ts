@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { of } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../models/media';
 import { MediaService } from '../../services/media.service';
 import { TodayStoriesViewerComponent } from './today-stories-viewer.component';
 import { TodayStoriesStore } from './today-stories.store';
@@ -244,9 +244,6 @@ function makeGroup(isFavorited: boolean) {
 function makeMedia(id: string, capturedAt: string, isFavorited = false) {
   return {
     id,
-    uploader_id: null,
-    owner_id: null,
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: `${id}.jpg`,
     media_type: MediaType.IMAGE,

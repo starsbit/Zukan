@@ -1,6 +1,13 @@
 import { Clipboard, ClipboardModule } from '@angular/cdk/clipboard';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,11 +21,10 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { catchError, EMPTY, finalize, forkJoin } from 'rxjs';
 import { ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
-import { CollectionPrivacyRead, CollectionPrivacyUpdate, CollectionVisibility } from '../../../../models/collection';
 import { BadgeVisibilityService } from '../../../../services/badge-visibility.service';
 import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
-import { CollectionClientService } from '../../../../services/web/collection-client.service';
+import { AuthClientService } from '../../../../services/web/auth-client.service';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 
 @Component({
@@ -48,21 +54,19 @@ export class UserSettingsDialogComponent implements OnInit {
   private readonly clipboard = inject(Clipboard);
   private readonly snackBar = inject(MatSnackBar);
   private readonly userStore = inject(UserStore);
-  private readonly collectionClient = inject(CollectionClientService);
   private readonly usersClient = inject(UsersClientService);
   private readonly galleryStore = inject(GalleryStore);
   readonly badgeVisibility = inject(BadgeVisibilityService);
 
+  private readonly auth = inject(AuthClientService);
+  readonly localLogin = signal(false);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
   readonly apiKeyLoading = signal(false);
   readonly apiKeyError = signal<string | null>(null);
   readonly apiKeyStatus = signal<ApiKeyStatusResponse | null>(null);
   readonly createdApiKey = signal<string | null>(null);
-  readonly privacyLoading = signal(false);
-  readonly privacyError = signal<string | null>(null);
   readonly currentUser = this.userStore.currentUser();
-  readonly collectionVisibility = CollectionVisibility;
 
   readonly form = this.fb.nonNullable.group({
     showNsfw: [this.currentUser?.show_nsfw ?? false],
@@ -74,17 +78,13 @@ export class UserSettingsDialogComponent implements OnInit {
       [Validators.required, Validators.min(0), Validators.max(1)],
     ],
     libraryClassificationEnabled: [this.currentUser?.library_classification_enabled ?? false],
-    collectionVisibility: [CollectionVisibility.PUBLIC],
-    allowTradeRequests: [true],
-    showCollectionStats: [true],
-    showCollectionNsfw: [false],
     password: [''],
     confirmPassword: [''],
   });
 
   ngOnInit(): void {
     this.loadApiKeyStatus();
-    this.loadCollectionPrivacy();
+    this.auth.configuration().subscribe((c) => this.localLogin.set(c.mode === 'local'));
   }
 
   save(): void {
@@ -100,10 +100,7 @@ export class UserSettingsDialogComponent implements OnInit {
       hideSensitiveBadge,
       tagConfidenceThreshold,
       libraryClassificationEnabled,
-      collectionVisibility,
-      allowTradeRequests,
-      showCollectionStats,
-      showCollectionNsfw,
+
       password,
       confirmPassword,
     } = this.form.getRawValue();
@@ -127,57 +124,29 @@ export class UserSettingsDialogComponent implements OnInit {
       version: this.currentUser.version,
     };
 
-    if (password) {
+    if (password && this.localLogin()) {
       body.password = password;
     }
 
-    const privacyBody: CollectionPrivacyUpdate = {
-      visibility: collectionVisibility,
-      allow_trade_requests: allowTradeRequests,
-      show_stats: showCollectionStats,
-      show_nsfw: showCollectionNsfw,
-    };
-
-    forkJoin({
-      user: this.usersClient.updateMe(body),
-      privacy: this.collectionClient.updatePrivacy(privacyBody),
-    }).pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.loading.set(false)),
-    ).subscribe({
-      next: ({ user }) => {
-        this.userStore.set(user);
-        this.galleryStore.refresh().pipe(
-          catchError(() => EMPTY),
-        ).subscribe();
-        this.dialogRef.close(user);
-      },
-      error: (err: { error?: { detail?: string } }) => {
-        this.error.set(err.error?.detail ?? 'Unable to save settings.');
-      },
-    });
-  }
-
-  private loadCollectionPrivacy(): void {
-    this.privacyLoading.set(true);
-    this.privacyError.set(null);
-
-    this.collectionClient.getPrivacy().pipe(
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => this.privacyLoading.set(false)),
-    ).subscribe({
-      next: (privacy: CollectionPrivacyRead) => {
-        this.form.patchValue({
-          collectionVisibility: privacy.visibility,
-          allowTradeRequests: privacy.allow_trade_requests,
-          showCollectionStats: privacy.show_stats,
-          showCollectionNsfw: privacy.show_nsfw,
-        });
-      },
-      error: (err: { error?: { detail?: string } }) => {
-        this.privacyError.set(err.error?.detail ?? 'Unable to load collection privacy.');
-      },
-    });
+    this.usersClient
+      .updateMe(body)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.loading.set(false)),
+      )
+      .subscribe({
+        next: (user) => {
+          this.userStore.set(user);
+          this.galleryStore
+            .refresh()
+            .pipe(catchError(() => EMPTY))
+            .subscribe();
+          this.dialogRef.close(user);
+        },
+        error: (err: { error?: { detail?: string } }) => {
+          this.error.set(err.error?.detail ?? 'Unable to save settings.');
+        },
+      });
   }
 
   createApiKey(): void {

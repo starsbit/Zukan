@@ -1,3 +1,4 @@
+import { AuthClientService } from '../../../../services/web/auth-client.service';
 import { Clipboard } from '@angular/cdk/clipboard';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { TestBed } from '@angular/core/testing';
@@ -7,10 +8,8 @@ import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
 import { of, throwError } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
-import { CollectionVisibility } from '../../../../models/collection';
 import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
-import { CollectionClientService } from '../../../../services/web/collection-client.service';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 import { NavbarProfileComponent } from '../navbar-profile/navbar-profile.component';
 import { UserSettingsDialogComponent } from './user-settings-dialog.component';
@@ -20,7 +19,6 @@ describe('UserSettingsDialogComponent', () => {
     id: 'u1',
     username: 'stars',
     email: 'saber@starsbit.space',
-    is_admin: true,
     show_nsfw: false,
     show_sensitive: false,
     tag_confidence_threshold: 0.5,
@@ -45,20 +43,22 @@ describe('UserSettingsDialogComponent', () => {
 
   function baseCollectionClient(overrides: Record<string, unknown> = {}) {
     return {
-      getPrivacy: vi.fn().mockReturnValue(of({
-        user_id: 'u1',
-        visibility: CollectionVisibility.PUBLIC,
-        allow_trade_requests: true,
-        show_stats: true,
-        show_nsfw: false,
-      })),
-      updatePrivacy: vi.fn().mockReturnValue(of({
-        user_id: 'u1',
-        visibility: CollectionVisibility.PUBLIC,
-        allow_trade_requests: true,
-        show_stats: true,
-        show_nsfw: false,
-      })),
+      getPrivacy: vi.fn().mockReturnValue(
+        of({
+          user_id: 'u1',
+          allow_trade_requests: true,
+          show_stats: true,
+          show_nsfw: false,
+        }),
+      ),
+      updatePrivacy: vi.fn().mockReturnValue(
+        of({
+          user_id: 'u1',
+          allow_trade_requests: true,
+          show_stats: true,
+          show_nsfw: false,
+        }),
+      ),
       ...overrides,
     };
   }
@@ -74,11 +74,14 @@ describe('UserSettingsDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -91,7 +94,6 @@ describe('UserSettingsDialogComponent', () => {
       showSensitive: false,
       tagConfidenceThreshold: 0.5,
       libraryClassificationEnabled: false,
-      collectionVisibility: CollectionVisibility.PUBLIC,
       password: '',
       confirmPassword: '',
     });
@@ -113,11 +115,14 @@ describe('UserSettingsDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore({ refresh }) },
       ],
     }).compileComponents();
@@ -153,11 +158,14 @@ describe('UserSettingsDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -180,10 +188,16 @@ describe('UserSettingsDialogComponent', () => {
     await TestBed.configureTestingModule({
       imports: [NavbarProfileComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: UserStore, useValue: { currentUser: () => user, isAdmin: () => true } },
-        { provide: UsersClientService, useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
+        {
+          provide: UsersClientService,
+          useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }),
+        },
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
@@ -201,20 +215,25 @@ describe('UserSettingsDialogComponent', () => {
     (overlay.querySelector('.profile-actions button') as HTMLButtonElement).click();
     fixture.detectChanges();
 
-    expect(overlayContainer.getContainerElement().textContent).toContain('Account Settings');
+    expect(overlayContainer.getContainerElement().textContent).toContain('Owner preferences');
   });
 
   it('shows backend save errors', async () => {
-    const updateMe = vi.fn().mockReturnValue(throwError(() => ({ error: { detail: 'Version conflict' } })));
+    const updateMe = vi
+      .fn()
+      .mockReturnValue(throwError(() => ({ error: { detail: 'Version conflict' } })));
 
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -228,36 +247,18 @@ describe('UserSettingsDialogComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Version conflict');
   });
 
-  it('renders the user id and api key status', async () => {
-    await TestBed.configureTestingModule({
-      imports: [UserSettingsDialogComponent, NoopAnimationsModule],
-      providers: [
-        provideRouter([]),
-        { provide: MatDialogRef, useValue: { close: vi.fn() } },
-        { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
-        { provide: UsersClientService, useValue: baseUsersClient() },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
-        { provide: GalleryStore, useValue: baseGalleryStore() },
-      ],
-    }).compileComponents();
-
-    const fixture = TestBed.createComponent(UserSettingsDialogComponent);
-    fixture.detectChanges();
-
-    const idInput = fixture.nativeElement.querySelector('input[disabled]') as HTMLInputElement;
-    expect(idInput.value).toBe(user.id);
-    expect(fixture.nativeElement.textContent).toContain('Active');
-  });
-
   it('marks password inputs as new-password fields', async () => {
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -270,20 +271,27 @@ describe('UserSettingsDialogComponent', () => {
     ) as HTMLInputElement[];
 
     expect(passwordInputs).toHaveLength(2);
-    expect(passwordInputs.every((input) => input.getAttribute('autocomplete') === 'new-password')).toBe(true);
+    expect(
+      passwordInputs.every((input) => input.getAttribute('autocomplete') === 'new-password'),
+    ).toBe(true);
   });
 
   it('creates an api key and shows the raw value once', async () => {
-    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+    const createApiKey = vi
+      .fn()
+      .mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
 
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -300,16 +308,21 @@ describe('UserSettingsDialogComponent', () => {
   });
 
   it('copies a newly created api key to the clipboard', async () => {
-    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+    const createApiKey = vi
+      .fn()
+      .mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
 
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -317,8 +330,13 @@ describe('UserSettingsDialogComponent', () => {
     const fixture = TestBed.createComponent(UserSettingsDialogComponent);
     fixture.detectChanges();
 
-    const copy = vi.spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy').mockReturnValue(true);
-    const open = vi.spyOn((fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar, 'open');
+    const copy = vi
+      .spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy')
+      .mockReturnValue(true);
+    const open = vi.spyOn(
+      (fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar,
+      'open',
+    );
 
     fixture.componentInstance.createApiKey();
     fixture.detectChanges();
@@ -330,16 +348,21 @@ describe('UserSettingsDialogComponent', () => {
   });
 
   it('shows an error when copying the api key fails', async () => {
-    const createApiKey = vi.fn().mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
+    const createApiKey = vi
+      .fn()
+      .mockReturnValue(of({ ...apiKeyStatus, api_key: 'zk_created_key' }));
 
     await TestBed.configureTestingModule({
       imports: [UserSettingsDialogComponent, NoopAnimationsModule],
       providers: [
+        {
+          provide: AuthClientService,
+          useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
+        },
         provideRouter([]),
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
-        { provide: CollectionClientService, useValue: baseCollectionClient() },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -347,8 +370,13 @@ describe('UserSettingsDialogComponent', () => {
     const fixture = TestBed.createComponent(UserSettingsDialogComponent);
     fixture.detectChanges();
 
-    const copy = vi.spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy').mockReturnValue(false);
-    const open = vi.spyOn((fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar, 'open');
+    const copy = vi
+      .spyOn((fixture.componentInstance as never as { clipboard: Clipboard }).clipboard, 'copy')
+      .mockReturnValue(false);
+    const open = vi.spyOn(
+      (fixture.componentInstance as never as { snackBar: MatSnackBar }).snackBar,
+      'open',
+    );
 
     fixture.componentInstance.createApiKey();
     fixture.detectChanges();

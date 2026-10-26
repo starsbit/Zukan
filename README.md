@@ -16,7 +16,7 @@ Zukan runs entirely on your own hardware. Nothing leaves your network unless you
 
 **Tag-based search** — filter your library by any combination of tags, characters, series, artists, and ratings. Include and exclude tags simultaneously. Filter by NSFW or sensitive content flags independently.
 
-**Albums** — organise media into curated albums with cover images and descriptions. Share individual albums with other users at viewer or editor access level, with invite notifications built in.
+**Albums** — organise media into curated albums with cover images and descriptions. All albums belong to the single library.
 
 **Favorites** — star any image or clip for fast access without moving it out of its album or timeline view.
 
@@ -30,7 +30,7 @@ Zukan runs entirely on your own hardware. Nothing leaves your network unless you
 
 **Trash and soft-delete** — deleted media goes to trash first with a configurable purge interval, so accidental deletes are recoverable.
 
-**Multi-user with admin controls** — register multiple accounts, manage users from the admin dashboard, and configure the whole application (tagger thresholds, token expiry, rate limits, OCR settings, and more) through a built-in admin panel without touching config files.
+**Single owner** — one global library with local password login or OIDC SSO (including Authentik). Configure tagging, OCR, processing and storage through application settings. There is no registration, user management, sharing, public media, gacha, collection economy, or trading.
 
 **SHA-256 deduplication** — uploading the same file twice doesn't create a duplicate. The second upload is silently ignored.
 
@@ -76,7 +76,7 @@ The script will:
 4. Generate a random `SECRET_KEY` and `POSTGRES_PASSWORD` and write them to `/opt/zukan/.env`
 5. Pull the images and start the stack
 
-Once complete the app is available at `http://<host-ip>`. The default login is **admin / admin** - change it immediately via the account settings.
+Once complete the app is available at `http://<host-ip>`. Create the owner login using `SETUP_TOKEN` from the generated environment file.
 
 Re-running the script later upgrades to the latest release while preserving your `.env` and all data volumes.
 
@@ -187,15 +187,9 @@ http://<container-ip>
 
 The frontend listens on port `80` inside the container, so you normally do not need to add a port to the URL.
 
-**7. Sign in and secure the default account**
+**7. Create the owner login**
 
-The first login is:
-
-```text
-admin / admin
-```
-
-Change the password immediately in the Zukan account settings after the first sign-in.
+Read `SETUP_TOKEN` from the generated environment file and use it with your chosen username and password on the setup page. Existing installations must follow the breaking migration instructions below.
 
 **8. Verify the deployment and manage the service**
 
@@ -287,7 +281,7 @@ curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/scripts/migrate
 
 Installs created before the compose-refreshing updater may need one manual rerun of the installer so the updater container gets write access to `/opt/zukan/docker-compose.yml`. After that, future compose template changes are fetched automatically.
 
-When a new version is available, all users will receive an in-app notification automatically.
+When a new version is available, the owner will receive an in-app notification automatically.
 
 ---
 
@@ -490,3 +484,44 @@ To delete a tag if something went wrong before the images were pushed:
 ```bash
 git push origin :v1.2.3
 ```
+
+## Breaking upgrade to a single owner
+
+Stop the API and all workers during the upgrade. Back up PostgreSQL and the library, including hidden generated files, before starting. The migration never moves or deletes library files, but removes other accounts, sharing, gacha, collection, trade, and economy records. All previous sessions and API keys stop working.
+
+Before upgrading an existing database, run the new release's read-only preflight command against the old database (without starting the API):
+
+```sh
+python -m backend.app.owner_migration preflight
+```
+
+For Docker, with the API stopped and the new image pulled:
+
+```sh
+docker compose run --rm --no-deps api python -m backend.app.owner_migration preflight
+```
+
+Set `SINGLE_USER_OWNER_ID` in the deployment environment to the selected existing account's UUID. Its username, password hash and preferences survive. Startup refuses an existing database without a valid selection, even when it contains only one account. Then start the new API and frontend together; never run the previous API against the migrated schema. Rollback requires restoring the backup and previous release. There is no downgrade migration.
+
+All media IDs, paths, annotations, trash states, albums and background jobs survive. Identical hashes remain separate records. Album names may repeat. Favorites are unioned. Tags merge by exact name and character/series entities by type and normalized name, with the selected owner's metadata taking priority. Other accounts cannot log in after migration. Storage quotas are removed; storage usage and disk availability remain visible.
+
+### Local owner setup
+
+Use `AUTH_MODE=local` (the default) and set a random `SETUP_TOKEN` generated with `openssl rand -hex 32`. Open the login page and enter the token, owner username and password. Setup is available only while no owner exists. There is no `admin/admin` account. The installer writes a setup token into its protected environment file. An upgraded installation uses the selected owner's existing password and does not run setup again.
+
+### OIDC / Authentik
+
+Set `AUTH_MODE=oidc` and configure all six values below through the deployment environment. Password login and password changes are disabled in this mode. The owner API key remains available for integrations.
+
+```dotenv
+OIDC_DISCOVERY_URL=https://sso.example.com/application/o/zukan/.well-known/openid-configuration
+OIDC_ISSUER=https://sso.example.com/application/o/zukan/
+OIDC_CLIENT_ID=your-client-id
+OIDC_CLIENT_SECRET=your-client-secret
+OIDC_CALLBACK_URL=https://zukan.example.com/api/v1/auth/oidc/callback
+OIDC_ALLOWED_SUBJECT=the-owner-immutable-subject
+```
+
+Create an Authentik OAuth2/OpenID provider with authorization-code flow, a signing certificate (RS256), and the exact callback URI above. Use its discovery URL and exact issuer, including trailing slash. Configure the owner's `sub` claim explicitly; email or username is not used to grant access. Other provider identities are rejected. The `openid profile` scopes suffice. Zukan's frontend and API must share an origin, as in the bundled reverse proxy. HTTPS is required except for localhost development.
+
+A fresh OIDC installation creates its singleton owner independently of provider claims. Changing authentication configuration invalidates existing application sessions; API keys remain independent. Logout ends the Zukan session without signing the owner out of the SSO provider. To recover access, update the deployment configuration while the API is stopped; switching an OIDC-only installation to local mode requires setting the owner's password hash through an operator-controlled database recovery procedure. There is no public recovery or fallback login.

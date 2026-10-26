@@ -30,14 +30,13 @@ const graphMocks = vi.hoisted(() => {
   return { forceAtlas2, SigmaMock };
 });
 
-vi.mock('graphology-layout-forceatlas2', () => ({
-  default: graphMocks.forceAtlas2 as unknown as typeof forceAtlas2Default,
-  inferSettings: graphMocks.forceAtlas2.inferSettings,
-}));
+vi.mock('graphology-layout-forceatlas2', () => {
+  return { default: graphMocks.forceAtlas2, inferSettings: graphMocks.forceAtlas2.inferSettings };
+});
 
-vi.mock('sigma', () => ({
-  default: graphMocks.SigmaMock as unknown as typeof SigmaDefault,
-}));
+vi.mock('sigma', () => {
+  return { default: graphMocks.SigmaMock };
+});
 
 @Component({
   selector: 'zukan-layout',

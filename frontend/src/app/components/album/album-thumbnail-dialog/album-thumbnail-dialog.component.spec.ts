@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MAT_DIALOG_DATA, MatDialogRef } from '@angular/material/dialog';
 import { of } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { MediaService } from '../../../services/media.service';
 import { AlbumsClientService } from '../../../services/web/albums-client.service';
 import { AlbumThumbnailDialogComponent } from './album-thumbnail-dialog.component';
@@ -10,9 +10,6 @@ import { AlbumThumbnailDialogComponent } from './album-thumbnail-dialog.componen
 function makeMedia(id: string, mediaType: MediaType = MediaType.IMAGE) {
   return {
     id,
-    uploader_id: 'u1',
-    owner_id: 'u1',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: mediaType,

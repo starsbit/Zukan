@@ -32,11 +32,6 @@ interface ReviewFixtureState {
 function buildMediaItem(id: string, filename: string, capturedAt: string) {
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'uploader',
-    owner_id: 'u1',
-    owner_username: 'owner',
-    visibility: 'private',
     filename,
     original_filename: filename,
     media_type: 'image',

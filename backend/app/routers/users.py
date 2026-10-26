@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from backend.app.database import get_db
 from backend.app.routers.deps import current_user
 from backend.app.models.auth import User
@@ -15,7 +14,9 @@ from backend.app.schemas import (
 )
 from backend.app.services.auth import AuthService
 
-router = APIRouter(prefix="/me", tags=["users"], responses=AUTHENTICATED_ERROR_RESPONSES)
+router = APIRouter(
+    prefix="/me", tags=["users"], responses=AUTHENTICATED_ERROR_RESPONSES
+)
 
 
 @router.get(
@@ -25,8 +26,10 @@ router = APIRouter(prefix="/me", tags=["users"], responses=AUTHENTICATED_ERROR_R
     description="Return the authenticated user's profile and preferences.",
 )
 async def me(user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
-    storage_bytes = await MediaRepository(db).sum_file_size(uploader_id=user.id)
-    return UserRead.model_validate(user).model_copy(update={"storage_used_mb": int(storage_bytes) // (1024 * 1024)})
+    storage_bytes = await MediaRepository(db).sum_file_size()
+    return UserRead.model_validate(user).model_copy(
+        update={"storage_used_mb": int(storage_bytes) // (1024 * 1024)}
+    )
 
 
 @router.patch(

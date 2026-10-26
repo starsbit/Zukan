@@ -9,21 +9,10 @@ import {
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
-  AdminUserDetail,
-  AdminUserUpdate,
-  DeleteUserMediaResponse,
   UpdateCheckResponse,
-  UserListResponse,
 } from '../../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../../models/notifications';
 import { TaggingJobQueuedResponse } from '../../models/uploads';
-
-export interface AdminUserListParams {
-  page?: number;
-  page_size?: number;
-  sort_by?: 'username' | 'created_at';
-  sort_order?: 'asc' | 'desc';
-}
 
 @Injectable({ providedIn: 'root' })
 export class AdminClientService {
@@ -38,42 +27,13 @@ export class AdminClientService {
     return this.http.get<AdminHealthResponse>(`${this.base}/api/v1/admin/health`);
   }
 
-  listUsers(p: AdminUserListParams = {}): Observable<UserListResponse> {
-    let params = new HttpParams();
-    if (p.page != null) params = params.set('page', p.page);
-    if (p.page_size != null) params = params.set('page_size', p.page_size);
-    if (p.sort_by != null) params = params.set('sort_by', p.sort_by);
-    if (p.sort_order != null) params = params.set('sort_order', p.sort_order);
-    return this.http.get<UserListResponse>(`${this.base}/api/v1/admin/users`, { params });
+  retagAll(): Observable<TaggingJobQueuedResponse> {
+    return this.http.post<TaggingJobQueuedResponse>(`${this.base}/api/v1/admin/tagging-jobs`, null);
   }
 
-  getUser(userId: string): Observable<AdminUserDetail> {
-    return this.http.get<AdminUserDetail>(`${this.base}/api/v1/admin/users/${userId}`);
-  }
-
-  updateUser(userId: string, body: AdminUserUpdate): Observable<UserRead> {
-    return this.http.patch<UserRead>(`${this.base}/api/v1/admin/users/${userId}`, body);
-  }
-
-  deleteUserMedia(userId: string): Observable<DeleteUserMediaResponse> {
-    return this.http.delete<DeleteUserMediaResponse>(`${this.base}/api/v1/admin/users/${userId}/media`);
-  }
-
-  deleteUser(userId: string, deleteMedia = false): Observable<void> {
-    const params = new HttpParams().set('delete_media', deleteMedia);
-    return this.http.delete<void>(`${this.base}/api/v1/admin/users/${userId}`, { params });
-  }
-
-  retagAll(userId: string): Observable<TaggingJobQueuedResponse> {
-    return this.http.post<TaggingJobQueuedResponse>(
-      `${this.base}/api/v1/admin/users/${userId}/tagging-jobs`,
-      null,
-    );
-  }
-
-  startEmbeddingBackfill(userId: string): Observable<AdminEmbeddingBackfillResponse> {
+  startEmbeddingBackfill(): Observable<AdminEmbeddingBackfillResponse> {
     return this.http.post<AdminEmbeddingBackfillResponse>(
-      `${this.base}/api/v1/admin/users/${userId}/embedding-backfill`,
+      `${this.base}/api/v1/admin/embedding-backfill`,
       null,
     );
   }
@@ -85,13 +45,12 @@ export class AdminClientService {
   }
 
   getLibraryClassificationMetrics(
-    userId: string,
     modelVersion?: string,
   ): Observable<AdminLibraryClassificationMetricsResponse> {
     let params = new HttpParams();
     if (modelVersion) params = params.set('model_version', modelVersion);
     return this.http.get<AdminLibraryClassificationMetricsResponse>(
-      `${this.base}/api/v1/admin/users/${userId}/library-classification-metrics`,
+      `${this.base}/api/v1/admin/library-classification-metrics`,
       { params },
     );
   }

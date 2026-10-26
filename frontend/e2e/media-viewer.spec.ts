@@ -18,11 +18,6 @@ function mediaItem(
 
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'admin',
-    owner_id: 'u1',
-    owner_username: 'admin',
-    visibility: 'private',
     filename: `${id}.${mediaType === 'video' ? 'mp4' : mediaType === 'gif' ? 'gif' : 'png'}`,
     original_filename: `${id}-original.${mediaType === 'video' ? 'mp4' : mediaType === 'gif' ? 'gif' : 'png'}`,
     media_type: mediaType,

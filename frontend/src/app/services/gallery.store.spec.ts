@@ -4,20 +4,36 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { GalleryStore } from './gallery.store';
 import { API_BASE_URL } from './web/api.config';
-import { MediaRead, MediaType, TaggingStatus, ProcessingStatus, MediaVisibility } from '../models/media';
+import { MediaRead, MediaType, TaggingStatus, ProcessingStatus } from '../models/media';
 
 function makeMedia(id: string, captured_at = '2026-03-28T12:00:00Z'): MediaRead {
   return {
     id,
-    uploader_id: 'u1', owner_id: 'u1', visibility: MediaVisibility.PRIVATE,
-    filename: `${id}.jpg`, original_filename: null,
+    filename: `${id}.jpg`,
+    original_filename: null,
     media_type: MediaType.IMAGE,
-    metadata: { file_size: 100, width: 10, height: 10, duration_seconds: null, frame_count: null, mime_type: 'image/jpeg', captured_at },
-    version: 1, uploaded_at: captured_at, deleted_at: null, tags: [],
-    ocr_text_override: null, is_nsfw: false,
-    tagging_status: TaggingStatus.DONE, tagging_error: null,
-    thumbnail_status: ProcessingStatus.DONE, poster_status: ProcessingStatus.NOT_APPLICABLE,
-    ocr_text: null, is_favorited: false, favorite_count: 0,
+    metadata: {
+      file_size: 100,
+      width: 10,
+      height: 10,
+      duration_seconds: null,
+      frame_count: null,
+      mime_type: 'image/jpeg',
+      captured_at,
+    },
+    version: 1,
+    uploaded_at: captured_at,
+    deleted_at: null,
+    tags: [],
+    ocr_text_override: null,
+    is_nsfw: false,
+    tagging_status: TaggingStatus.DONE,
+    tagging_error: null,
+    thumbnail_status: ProcessingStatus.DONE,
+    poster_status: ProcessingStatus.NOT_APPLICABLE,
+    ocr_text: null,
+    is_favorited: false,
+    favorite_count: 0,
   };
 }
 
@@ -87,12 +103,11 @@ describe('GalleryStore', () => {
     });
 
     it('passes current params to the search endpoint', () => {
-      store.setParams({ tag: ['cat'], nsfw: 'include' as any, visibility: MediaVisibility.PUBLIC });
+      store.setParams({ tag: ['cat'], nsfw: 'include' as any });
       store.load().subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/media/search');
+      const req = http.expectOne((r) => r.url === '/api/v1/media/search');
       expect(req.request.params.getAll('tag')).toEqual(['cat']);
       expect(req.request.params.get('nsfw')).toBe('include');
-      expect(req.request.params.get('visibility')).toBe('public');
       req.flush(makePage([]));
     });
 
@@ -223,11 +238,10 @@ describe('GalleryStore', () => {
     });
 
     it('strips date navigation params before calling timeline endpoint', () => {
-      store.setParams({ tag: ['cat'], visibility: MediaVisibility.PUBLIC, captured_year: 2026, captured_month: 3 });
+      store.setParams({ tag: ['cat'], captured_year: 2026, captured_month: 3 });
       store.loadTimeline().subscribe();
-      const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
+      const req = http.expectOne((r) => r.url === '/api/v1/media/timeline');
       expect(req.request.params.getAll('tag')).toEqual(['cat']);
-      expect(req.request.params.get('visibility')).toBe('public');
       expect(req.request.params.has('captured_year')).toBe(false);
       expect(req.request.params.has('captured_month')).toBe(false);
       req.flush({ buckets: [] });
@@ -238,17 +252,15 @@ describe('GalleryStore', () => {
         tag: ['cat'],
         exclude_tag: ['spoiler'],
         status: 'reviewed',
-        visibility: MediaVisibility.PUBLIC,
         favorited: true,
         captured_year: 2026,
       });
       store.loadTimeline().subscribe();
 
-      const req = http.expectOne(r => r.url === '/api/v1/media/timeline');
+      const req = http.expectOne((r) => r.url === '/api/v1/media/timeline');
       expect(req.request.params.getAll('tag')).toEqual(['cat']);
       expect(req.request.params.getAll('exclude_tag')).toEqual(['spoiler']);
       expect(req.request.params.get('status')).toBe('reviewed');
-      expect(req.request.params.get('visibility')).toBe('public');
       expect(req.request.params.get('favorited')).toBe('true');
       expect(req.request.params.has('captured_year')).toBe(false);
       req.flush({ buckets: [] });
@@ -330,7 +342,7 @@ describe('GalleryStore', () => {
       const file = new File(['a'], 'fresh.jpg', { type: 'image/jpeg' });
       Object.defineProperty(file, 'lastModified', { value: Date.UTC(2026, 2, 29, 10, 0, 0) });
 
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-accepted']);
+      store.addAcceptedUploads([file], 'b1', ['m-accepted']);
 
       expect(store.items()).toHaveLength(1);
       expect(store.items()[0].id).toBe('m-accepted');
@@ -342,7 +354,7 @@ describe('GalleryStore', () => {
     it('classifies newly supported video extensions as video even without a browser MIME type', () => {
       const file = new File(['a'], 'clip.mkv', { type: '' });
 
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-video']);
+      store.addAcceptedUploads([file], 'b1', ['m-video']);
 
       expect(store.items()).toHaveLength(1);
       expect(store.items()[0].media_type).toBe(MediaType.VIDEO);
@@ -352,7 +364,7 @@ describe('GalleryStore', () => {
 
     it('replaces optimistic uploads when the resolved media is patched in', () => {
       const file = new File(['a'], 'fresh.jpg', { type: 'image/jpeg' });
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-accepted']);
+      store.addAcceptedUploads([file], 'b1', ['m-accepted']);
 
       store.patchItem(makeMedia('m-accepted'));
 
@@ -364,14 +376,18 @@ describe('GalleryStore', () => {
 
     it('inserts optimistic uploads into the correct timeline position by captured date', () => {
       store.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
-        makeMedia('newer', '2025-11-02T12:00:00Z'),
-        makeMedia('older', '2025-10-24T12:00:00Z'),
-      ]));
+      http
+        .expectOne((r) => r.url === '/api/v1/media/search')
+        .flush(
+          makePage([
+            makeMedia('newer', '2025-11-02T12:00:00Z'),
+            makeMedia('older', '2025-10-24T12:00:00Z'),
+          ]),
+        );
 
       const file = new File(['a'], 'middle.jpg', { type: 'image/jpeg' });
       Object.defineProperty(file, 'lastModified', { value: Date.UTC(2025, 9, 31, 12, 0, 0) });
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-middle']);
+      store.addAcceptedUploads([file], 'b1', ['m-middle']);
 
       expect(store.groupedByDay().map((group) => group.date)).toEqual([
         '2025-11-02',
@@ -382,15 +398,19 @@ describe('GalleryStore', () => {
 
     it('keeps the optimistic local preview when the matching server item is still processing', () => {
       const file = new File(['a'], 'processing.jpg', { type: 'image/jpeg' });
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'b1', ['m-processing']);
+      store.addAcceptedUploads([file], 'b1', ['m-processing']);
 
       store.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
-        {
-          ...makeMedia('m-processing'),
-          thumbnail_status: ProcessingStatus.PROCESSING,
-        },
-      ]));
+      http
+        .expectOne((r) => r.url === '/api/v1/media/search')
+        .flush(
+          makePage([
+            {
+              ...makeMedia('m-processing'),
+              thumbnail_status: ProcessingStatus.PROCESSING,
+            },
+          ]),
+        );
 
       expect(store.items()).toHaveLength(1);
       expect(store.items()[0].id).toBe('m-processing');
@@ -459,75 +479,6 @@ describe('GalleryStore', () => {
       expect(store.total()).toBe(1);
       expect(store.timeline()).toEqual([{ year: 2026, month: 3, count: 1 }]);
       expect(result).toEqual({ processed: 1, skipped: 0 });
-    });
-
-    it('batchUpdateVisibility refreshes the gallery list and timeline after updating visibility', () => {
-      store.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('m1'), makeMedia('m2')]));
-      store.loadTimeline().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: 2 }],
-      });
-
-      store.batchUpdateVisibility(['m2'], MediaVisibility.PUBLIC).subscribe();
-      const req = http.expectOne('/api/v1/media');
-      expect(req.request.body).toEqual({ media_ids: ['m2'], visibility: MediaVisibility.PUBLIC });
-      req.flush({ processed: 1, skipped: 0 });
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: 2 }],
-      });
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([
-        makeMedia('m1'),
-        { ...makeMedia('m2'), visibility: MediaVisibility.PUBLIC },
-      ]));
-
-      expect(store.items()[0].visibility).toBe(MediaVisibility.PRIVATE);
-      expect(store.items()[1].visibility).toBe(MediaVisibility.PUBLIC);
-    });
-
-    it('batchUpdateVisibility splits large selections into API-sized chunks', () => {
-      const ids = Array.from({ length: 501 }, (_, index) => `m${index + 1}`);
-
-      store.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(ids.map((id) => makeMedia(id)), false, null, ids.length));
-      store.loadTimeline().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: ids.length }],
-      });
-
-      let result: { processed: number; skipped: number } | null = null;
-      store.batchUpdateVisibility(ids, MediaVisibility.PUBLIC).subscribe((value) => {
-        result = value;
-      });
-
-      const firstReq = http.expectOne('/api/v1/media');
-      expect(firstReq.request.method).toBe('PATCH');
-      expect(firstReq.request.body).toEqual({
-        media_ids: ids.slice(0, 500),
-        visibility: MediaVisibility.PUBLIC,
-      });
-      firstReq.flush({ processed: 500, skipped: 0 });
-
-      const secondReq = http.expectOne('/api/v1/media');
-      expect(secondReq.request.method).toBe('PATCH');
-      expect(secondReq.request.body).toEqual({
-        media_ids: ids.slice(500),
-        visibility: MediaVisibility.PUBLIC,
-      });
-      secondReq.flush({ processed: 1, skipped: 0 });
-
-      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
-        buckets: [{ year: 2026, month: 3, count: ids.length }],
-      });
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage(
-        ids.map((id) => ({ ...makeMedia(id), visibility: MediaVisibility.PUBLIC })),
-        false,
-        null,
-        ids.length,
-      ));
-
-      expect(result).toEqual({ processed: 501, skipped: 0 });
-      expect(store.items().every((item) => item.visibility === MediaVisibility.PUBLIC)).toBe(true);
     });
 
     it('batchUpdateAnnotations splits large selections and refreshes the gallery', () => {
@@ -716,9 +667,11 @@ describe('GalleryStore', () => {
       });
 
       store.load().subscribe();
-      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('server-item')]));
+      http
+        .expectOne((r) => r.url === '/api/v1/media/search')
+        .flush(makePage([makeMedia('server-item')]));
 
-      store.addAcceptedUploads([file], MediaVisibility.PRIVATE, 'batch-1', ['optimistic-item']);
+      store.addAcceptedUploads([file], 'batch-1', ['optimistic-item']);
       expect(store.items().map((item) => item.id)).toContain('optimistic-item');
       expect(store.items().map((item) => item.id)).toContain('server-item');
 

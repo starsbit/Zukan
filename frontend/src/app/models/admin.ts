@@ -1,37 +1,12 @@
 import { UserRead } from './auth';
 import { PagedList } from './common';
 
-export interface AdminUserUpdate {
-  username?: string | null;
-  is_admin?: boolean | null;
-  show_nsfw?: boolean | null;
-  show_sensitive?: boolean | null;
-  tag_confidence_threshold?: number | null;
-  password?: string | null;
-  storage_quota_mb?: number | null;
-}
-
-export interface AdminUserSummary extends UserRead {
-  media_count: number;
-}
-
-export interface AdminUserDetail extends AdminUserSummary {}
-
-export interface AdminStorageUserSummary {
-  user_id: string;
-  username: string;
-  media_count: number;
-  storage_used_bytes: number;
-}
-
 export interface AdminStatsResponse {
-  total_users: number;
   total_media: number;
   total_storage_bytes: number;
   pending_tagging: number;
   failed_tagging: number;
   trashed_media: number;
-  storage_by_user: AdminStorageUserSummary[];
 }
 
 export interface AdminHealthSample {
@@ -49,10 +24,6 @@ export interface AdminHealthResponse {
   system_memory_used_bytes: number | null;
   tagging_queue_depth: number;
   samples: AdminHealthSample[];
-}
-
-export interface DeleteUserMediaResponse {
-  deleted: number;
 }
 
 export interface AdminEmbeddingBackfillResponse {
@@ -96,8 +67,6 @@ export interface AdminLibraryClassificationMetricsResponse {
   rejection_rate: number | null;
   by_source: AdminLibraryClassificationSourceMetricsRead[];
 }
-
-export type UserListResponse = PagedList<AdminUserSummary>;
 
 export interface UpdateCheckResponse {
   current_version: string;

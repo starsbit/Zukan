@@ -23,18 +23,6 @@ describe('CharacterGraphClientService', () => {
 
   afterEach(() => http.verify());
 
-  it('searchCharacters sends owner graph autocomplete request', () => {
-    service.searchCharacters('Saber', 8).subscribe((result) => {
-      expect(result).toEqual([{ id: 'c1', name: 'Saber', media_count: 12 }]);
-    });
-
-    const req = http.expectOne((request) => request.url === '/api/v1/graphs/characters/search');
-    expect(req.request.method).toBe('GET');
-    expect(req.request.params.get('q')).toBe('Saber');
-    expect(req.request.params.get('limit')).toBe('8');
-    req.flush([{ id: 'c1', name: 'Saber', media_count: 12 }]);
-  });
-
   it('getCharacterGraph forwards graph filters', () => {
     service.getCharacterGraph({
       center_entity_id: 'c1',

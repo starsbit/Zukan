@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatDialog } from '@angular/material/dialog';
 import { of } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../models/media';
 import { GalleryStore } from '../../services/gallery.store';
 import { MediaService } from '../../services/media.service';
 import { MediaClientService } from '../../services/web/media-client.service';
@@ -68,9 +68,6 @@ describe('TodayStoriesRailComponent', () => {
 function makeMedia(id: string, capturedAt: string) {
   return {
     id,
-    uploader_id: null,
-    owner_id: null,
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: `${id}.jpg`,
     media_type: MediaType.IMAGE,

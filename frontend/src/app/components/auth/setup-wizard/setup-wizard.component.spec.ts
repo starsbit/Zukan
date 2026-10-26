@@ -14,6 +14,7 @@ describe('SetupWizardComponent', () => {
     const emitSpy = vi.spyOn(component.submitted, 'emit');
 
     component.credentialsForm.setValue({
+      setupToken: 'setup-token',
       username: 'admin',
       password: 'password1',
       confirmPassword: 'password1',
@@ -21,6 +22,7 @@ describe('SetupWizardComponent', () => {
     component.onSubmit();
 
     expect(emitSpy).toHaveBeenCalledWith({
+      setupToken: 'setup-token',
       username: 'admin',
       password: 'password1',
     });
@@ -39,6 +41,7 @@ describe('SetupWizardComponent', () => {
     const emitSpy = vi.spyOn(component.submitted, 'emit');
 
     component.credentialsForm.setValue({
+      setupToken: 'setup-token',
       username: 'admin',
       password: 'password1',
       confirmPassword: 'password1',

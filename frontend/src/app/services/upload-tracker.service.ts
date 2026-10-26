@@ -1,6 +1,16 @@
 import { inject, Injectable, OnDestroy, computed, signal } from '@angular/core';
-import { EMPTY, Subject, Subscription, catchError, concatMap, expand, forkJoin, reduce, tap } from 'rxjs';
-import { MediaRead, MediaVisibility, TaggingStatus } from '../models/media';
+import {
+  EMPTY,
+  Subject,
+  Subscription,
+  catchError,
+  concatMap,
+  expand,
+  forkJoin,
+  reduce,
+  tap,
+} from 'rxjs';
+import { MediaRead, TaggingStatus } from '../models/media';
 import {
   ImportBatchItemListResponse,
   ImportBatchItemRead,
@@ -35,7 +45,6 @@ const ITEMS_PAGE_SIZE = 200;
 
 interface UploadPendingRequest {
   id: string;
-  visibility: MediaVisibility;
   fileNames: string[];
   state: 'queued' | 'uploading' | 'completed' | 'failed';
   createdAt: string;
@@ -46,7 +55,6 @@ interface UploadPendingRequest {
 
 interface TrackedBatchState {
   id: string;
-  visibility: MediaVisibility;
   createdAt: string;
   pollAfterSeconds: number;
   requestId: string;
@@ -103,12 +111,16 @@ export class UploadTrackerService implements OnDestroy {
   private nextErrorId = 0;
 
   constructor() {
-    this.mediaRefreshSubscription = this.mediaRefreshQueue.pipe(
-      concatMap((mediaId) => this.mediaService.get(mediaId).pipe(
-        tap((media) => this.galleryStore.patchItem(media)),
-        catchError(() => EMPTY),
-      )),
-    ).subscribe();
+    this.mediaRefreshSubscription = this.mediaRefreshQueue
+      .pipe(
+        concatMap((mediaId) =>
+          this.mediaService.get(mediaId).pipe(
+            tap((media) => this.galleryStore.patchItem(media)),
+            catchError(() => EMPTY),
+          ),
+        ),
+      )
+      .subscribe();
   }
 
   readonly itemsByFilter = computed<Record<UploadStatusFilter, UploadStatusDialogItem[]>>(() => {
@@ -140,11 +152,12 @@ export class UploadTrackerService implements OnDestroy {
       }
 
       for (const result of batch.response.results) {
-        const resultTimestamp = batch.batch?.last_heartbeat_at
-          ?? batch.batch?.finished_at
-          ?? batch.batch?.started_at
-          ?? batch.batch?.created_at
-          ?? batch.createdAt;
+        const resultTimestamp =
+          batch.batch?.last_heartbeat_at ??
+          batch.batch?.finished_at ??
+          batch.batch?.started_at ??
+          batch.batch?.created_at ??
+          batch.createdAt;
 
         if (result.status === 'duplicate') {
           grouped.duplicate.push({
@@ -217,33 +230,42 @@ export class UploadTrackerService implements OnDestroy {
     return grouped;
   });
 
-  readonly hasTrackedUploads = computed(() =>
-    this.pendingRequests().length > 0
-    || Object.keys(this.trackedBatches()).length > 0
-    || Object.keys(this.trackedMedia()).length > 0
-    || this.failedUploadFiles().length > 0,
+  readonly hasTrackedUploads = computed(
+    () =>
+      this.pendingRequests().length > 0 ||
+      Object.keys(this.trackedBatches()).length > 0 ||
+      Object.keys(this.trackedMedia()).length > 0 ||
+      this.failedUploadFiles().length > 0,
   );
 
   readonly hasActiveWork = computed(() => {
     const requestCounts = this.pendingRequests();
-    if (requestCounts.some((request) => request.state === 'queued' || request.state === 'uploading')) {
+    if (
+      requestCounts.some((request) => request.state === 'queued' || request.state === 'uploading')
+    ) {
       return true;
     }
 
-    return Object.values(this.trackedBatches()).some((batch) => {
-      if (batch.refreshing || batch.batch === null) {
-        return true;
-      }
+    return (
+      Object.values(this.trackedBatches()).some((batch) => {
+        if (batch.refreshing || batch.batch === null) {
+          return true;
+        }
 
-      return !isTerminalBatchStatus(batch.batch.status);
-    }) || Object.values(this.trackedMedia()).some((media) =>
-      media.refreshing
-      || media.taggingStatus === TaggingStatus.PENDING
-      || media.taggingStatus === TaggingStatus.PROCESSING,
+        return !isTerminalBatchStatus(batch.batch.status);
+      }) ||
+      Object.values(this.trackedMedia()).some(
+        (media) =>
+          media.refreshing ||
+          media.taggingStatus === TaggingStatus.PENDING ||
+          media.taggingStatus === TaggingStatus.PROCESSING,
+      )
     );
   });
 
-  readonly visible = computed(() => this.hasTrackedUploads() && (!this.dismissed() || this.hasActiveWork()));
+  readonly visible = computed(
+    () => this.hasTrackedUploads() && (!this.dismissed() || this.hasActiveWork()),
+  );
   readonly reviewBatches = computed(() =>
     Object.values(this.trackedBatches())
       .filter((batch) => batch.reviewItems.length > 0 || batch.reviewBaselineTotal > 0)
@@ -303,18 +325,26 @@ export class UploadTrackerService implements OnDestroy {
     itemCounts.skipped = this.itemsByFilter().skipped.length;
     itemCounts.upload_error += this.failedUploadFiles().length;
 
-    const reviewItems = Object.values(this.trackedBatches()).reduce((sum, batch) => sum + batch.reviewItems.length, 0);
+    const reviewItems = Object.values(this.trackedBatches()).reduce(
+      (sum, batch) => sum + batch.reviewItems.length,
+      0,
+    );
     const totalTrackedItems = Object.values(itemCounts).reduce((sum, count) => sum + count, 0);
-    const completedItems = itemCounts.done + itemCounts.failed + itemCounts.skipped + itemCounts.duplicate + itemCounts.upload_error;
-    const progressPercent = totalTrackedItems > 0
-      ? Math.round((completedItems / totalTrackedItems) * 100)
-      : 0;
+    const completedItems =
+      itemCounts.done +
+      itemCounts.failed +
+      itemCounts.skipped +
+      itemCounts.duplicate +
+      itemCounts.upload_error;
+    const progressPercent =
+      totalTrackedItems > 0 ? Math.round((completedItems / totalTrackedItems) * 100) : 0;
 
     const uploadBytesTotal = this.pendingRequests().reduce((sum, r) => sum + r.bytesTotal, 0);
     const uploadBytesLoaded = this.pendingRequests().reduce((sum, r) => sum + r.bytesLoaded, 0);
-    const uploadProgressPercent = uploadBytesTotal > 0
-      ? Math.round(Math.min((uploadBytesLoaded / uploadBytesTotal) * 100, 100))
-      : null;
+    const uploadProgressPercent =
+      uploadBytesTotal > 0
+        ? Math.round(Math.min((uploadBytesLoaded / uploadBytesTotal) * 100, 100))
+        : null;
 
     return {
       requestCounts: mutableRequestCounts,
@@ -326,8 +356,8 @@ export class UploadTrackerService implements OnDestroy {
       completedItems,
       progressPercent,
       uploadProgressPercent,
-      activeBatchCount: Object.values(this.trackedBatches()).filter((batch) =>
-        batch.batch === null || !isTerminalBatchStatus(batch.batch.status),
+      activeBatchCount: Object.values(this.trackedBatches()).filter(
+        (batch) => batch.batch === null || !isTerminalBatchStatus(batch.batch.status),
       ).length,
       hasActiveWork: this.hasActiveWork(),
       latestBatch,
@@ -348,14 +378,13 @@ export class UploadTrackerService implements OnDestroy {
     return this.trackedBatches()[batchId] ?? null;
   }
 
-  registerPendingBatch(files: File[], visibility: MediaVisibility): string {
-    const requestId = `request-${this.nextRequestId += 1}`;
+  registerPendingBatch(files: File[]): string {
+    const requestId = `request-${(this.nextRequestId += 1)}`;
     this.dismissed.set(false);
     this.pendingRequests.update((requests) => [
       ...requests,
       {
         id: requestId,
-        visibility,
         fileNames: files.map((file) => file.name),
         state: 'queued',
         createdAt: new Date().toISOString(),
@@ -385,38 +414,35 @@ export class UploadTrackerService implements OnDestroy {
     ));
   }
 
-  registerBatchStarted(
-    requestId: string,
-    response: BatchUploadResponse,
-    files: File[],
-    visibility: MediaVisibility,
-  ): void {
+  registerBatchStarted(requestId: string, response: BatchUploadResponse, files: File[]): void {
     const now = new Date().toISOString();
     this.dismissed.set(false);
-    this.pendingRequests.update((requests) => requests.map((request) =>
-      request.id === requestId
-        ? { ...request, state: 'completed', error: null, bytesLoaded: request.bytesTotal }
-        : request,
-    ));
+    this.pendingRequests.update((requests) =>
+      requests.map((request) =>
+        request.id === requestId
+          ? { ...request, state: 'completed', error: null, bytesLoaded: request.bytesTotal }
+          : request,
+      ),
+    );
     this.trackedBatches.update((current) => ({
       ...current,
       [response.batch_id]: {
         id: response.batch_id,
-        visibility,
         createdAt: now,
         pollAfterSeconds: this.normalizePollAfter(response.poll_after_seconds),
         requestId,
         response: {
           ...response,
-          results: response.results.length > 0
-            ? response.results
-            : files.map((file) => ({
-              id: null,
-              batch_item_id: null,
-              original_filename: file.name,
-              status: 'accepted' as const,
-              message: null,
-            })),
+          results:
+            response.results.length > 0
+              ? response.results
+              : files.map((file) => ({
+                  id: null,
+                  batch_item_id: null,
+                  original_filename: file.name,
+                  status: 'accepted' as const,
+                  message: null,
+                })),
         },
         batch: null,
         items: [],
@@ -430,39 +456,40 @@ export class UploadTrackerService implements OnDestroy {
         refreshing: false,
       },
     }));
-    const acceptedResults = (response.results.length > 0
-      ? response.results
-      : files.map((file) => ({
-        id: null,
-        batch_item_id: null,
-        original_filename: file.name,
-        status: 'accepted' as const,
-        message: null,
-      })))
-      .filter((result) => result.status === 'accepted');
+    const acceptedResults = (
+      response.results.length > 0
+        ? response.results
+        : files.map((file) => ({
+            id: null,
+            batch_item_id: null,
+            original_filename: file.name,
+            status: 'accepted' as const,
+            message: null,
+          }))
+    ).filter((result) => result.status === 'accepted');
     const pendingFiles = [...files];
-    const acceptedFiles = acceptedResults.map((result) => {
-      const matchIndex = pendingFiles.findIndex((file) => file.name === result.original_filename);
-      const index = matchIndex >= 0 ? matchIndex : 0;
-      return pendingFiles.splice(index, 1)[0];
-    }).filter((file): file is File => !!file);
+    const acceptedFiles = acceptedResults
+      .map((result) => {
+        const matchIndex = pendingFiles.findIndex((file) => file.name === result.original_filename);
+        const index = matchIndex >= 0 ? matchIndex : 0;
+        return pendingFiles.splice(index, 1)[0];
+      })
+      .filter((file): file is File => !!file);
     this.galleryStore.addAcceptedUploads(
       acceptedFiles,
-      visibility,
       response.batch_id,
       acceptedResults.map((result) => result.id),
     );
     this.refreshBatch(response.batch_id);
   }
 
-  registerUrlIngestStarted(response: BatchUploadResponse, visibility: MediaVisibility): void {
+  registerUrlIngestStarted(response: BatchUploadResponse): void {
     const now = new Date().toISOString();
     this.dismissed.set(false);
     this.trackedBatches.update((current) => ({
       ...current,
       [response.batch_id]: {
         id: response.batch_id,
-        visibility,
         createdAt: now,
         pollAfterSeconds: this.normalizePollAfter(response.poll_after_seconds),
         requestId: `url-ingest-${response.batch_id}`,
@@ -488,7 +515,7 @@ export class UploadTrackerService implements OnDestroy {
     this.failedUploadFiles.update((entries) => [
       ...entries,
       {
-        id: `failed-file-${this.nextErrorId += 1}`,
+        id: `failed-file-${(this.nextErrorId += 1)}`,
         filename: url,
         error,
         requestId: 'url-ingest-rejected',
@@ -500,18 +527,20 @@ export class UploadTrackerService implements OnDestroy {
   registerBatchRequestFailed(requestId: string, files: File[], error: string): void {
     const createdAt = new Date().toISOString();
     this.dismissed.set(false);
-    this.pendingRequests.update((requests) => requests.map((request) =>
-      request.id === requestId ? { ...request, state: 'failed', error } : request,
-    ));
+    this.pendingRequests.update((requests) =>
+      requests.map((request) =>
+        request.id === requestId ? { ...request, state: 'failed', error } : request,
+      ),
+    );
     this.failedUploadFiles.update((entries) => [
       ...entries,
       ...files.map((file) => ({
-        id: `failed-file-${this.nextErrorId += 1}`,
+        id: `failed-file-${(this.nextErrorId += 1)}`,
         filename: file.name,
         error,
         requestId,
         createdAt,
-        })),
+      })),
     ]);
   }
 
@@ -525,7 +554,7 @@ export class UploadTrackerService implements OnDestroy {
     this.failedUploadFiles.update((entries) => [
       ...entries,
       ...files.map((file) => ({
-        id: `failed-file-${this.nextErrorId += 1}`,
+        id: `failed-file-${(this.nextErrorId += 1)}`,
         filename: file.name,
         error,
         requestId: 'selection-rejected',

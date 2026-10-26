@@ -12,7 +12,14 @@ import { ContactDialogComponent } from '../../../../components/contact-dialog/co
 
 @Component({
   selector: 'zukan-navbar-profile',
-  imports: [MatButtonModule, MatDialogModule, MatDividerModule, MatIconModule, MatMenuModule, RouterLink],
+  imports: [
+    MatButtonModule,
+    MatDialogModule,
+    MatDividerModule,
+    MatIconModule,
+    MatMenuModule,
+    RouterLink,
+  ],
   templateUrl: './navbar-profile.component.html',
   styleUrl: './navbar-profile.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -23,7 +30,7 @@ export class NavbarProfileComponent {
   private readonly userStore = inject(UserStore);
 
   readonly user = this.userStore.currentUser;
-  readonly isAdmin = this.userStore.isAdmin;
+  readonly authenticated = this.userStore.currentUser;
   readonly avatarLetter = computed(() => {
     const username = this.user()?.username?.trim();
     return username ? username.charAt(0).toUpperCase() : '?';

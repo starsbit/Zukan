@@ -10,7 +10,6 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 
 export interface UrlIngestDialogResult {
   url: string;
-  isPublic: boolean;
 }
 
 const URL_PATTERN = /^https?:\/\/.+/i;
@@ -32,14 +31,14 @@ const URL_PATTERN = /^https?:\/\/.+/i;
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class UrlIngestDialogComponent {
-  private readonly dialogRef = inject(MatDialogRef<UrlIngestDialogComponent, UrlIngestDialogResult>);
+  private readonly dialogRef = inject(
+    MatDialogRef<UrlIngestDialogComponent, UrlIngestDialogResult>,
+  );
   private readonly fb = inject(FormBuilder);
 
   readonly form = this.fb.nonNullable.group({
     url: ['', [Validators.required, Validators.pattern(URL_PATTERN)]],
   });
-
-  protected readonly isPublic = signal(false);
 
   save(): void {
     if (this.form.invalid) {
@@ -49,7 +48,6 @@ export class UrlIngestDialogComponent {
 
     this.dialogRef.close({
       url: this.form.getRawValue().url.trim(),
-      isPublic: this.isPublic(),
     });
   }
 }

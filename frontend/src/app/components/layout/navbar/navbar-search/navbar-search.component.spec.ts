@@ -118,16 +118,6 @@ describe('NavbarSearchComponent', () => {
     };
   }
 
-  it('uses owner-scoped suggestions outside browse and favorites', async () => {
-    const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/gallery');
-
-    await setInputValue(fixture, element, 'Sab');
-
-    expect(tagsList).toHaveBeenCalledWith(expect.objectContaining({ q: 'Sab', scope: 'owner' }));
-    expect(getCharacterSuggestions).toHaveBeenCalledWith('Sab', 6, 'owner');
-    expect(getSeriesSuggestions).toHaveBeenCalledWith('Sab', 6, 'owner');
-  });
-
   it('uses accessible suggestions on browse', async () => {
     const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/browse');
 
@@ -225,9 +215,6 @@ describe('NavbarSearchComponent', () => {
         sensitive: null,
         status: null,
         favorited: null,
-        visibility: null,
-        ownerUsername: null,
-        uploaderUsername: null,
         mediaTypes: [],
         sortBy: null,
         sortOrder: null,

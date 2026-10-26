@@ -10,17 +10,12 @@ import { GalleryStore } from '../../services/gallery.store';
 import { MediaService } from '../../services/media.service';
 import { UploadTrackerService } from '../../services/upload-tracker.service';
 import { DayGroup } from '../../utils/gallery-grouping.utils';
-import { MediaType, MediaVisibility, ProcessingStatus, TaggingStatus } from '../../models/media';
+import { MediaType, ProcessingStatus, TaggingStatus } from '../../models/media';
 import { MediaBrowserComponent } from './media-browser.component';
 
 function makeMedia(id: string) {
   return {
     id,
-    uploader_id: 'u1',
-    uploader_username: 'uploader',
-    owner_id: 'u1',
-    owner_username: 'owner',
-    visibility: MediaVisibility.PRIVATE,
     filename: `${id}.jpg`,
     original_filename: null,
     media_type: MediaType.IMAGE,

@@ -10,8 +10,10 @@ import { EMPTY, catchError } from 'rxjs';
 import { AlbumRead } from '../../models/albums';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
 import { AlbumCardComponent } from '../../components/album/album-card/album-card.component';
-import { AlbumFormDialogComponent, AlbumFormDialogValue } from '../../components/album/album-form-dialog/album-form-dialog.component';
-import { AlbumShareDialogComponent, AlbumShareDialogValue } from '../../components/album/album-share-dialog/album-share-dialog.component';
+import {
+  AlbumFormDialogComponent,
+  AlbumFormDialogValue,
+} from '../../components/album/album-form-dialog/album-form-dialog.component';
 import { AlbumStore } from '../../services/album.store';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
 import { UserStore } from '../../services/user.store';
@@ -101,42 +103,6 @@ export class AlbumComponent {
     });
   }
 
-  inviteToAlbum(album: AlbumRead): void {
-    if (!this.canInvite(album)) {
-      return;
-    }
-
-    this.dialog.open(AlbumShareDialogComponent, {
-      data: {
-        albumName: album.name,
-      },
-      maxWidth: '560px',
-      width: '100%',
-    }).afterClosed().pipe(
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe((value: AlbumShareDialogValue | undefined) => {
-      if (!value) {
-        return;
-      }
-
-      this.albumStore.share(album.id, {
-        username: value.username,
-        role: value.role,
-      }).pipe(
-        takeUntilDestroyed(this.destroyRef),
-        catchError((error: { error?: { detail?: string } }) => {
-          this.snackBar.open(error.error?.detail ?? 'Unable to send the album invite.', 'Close', { duration: 5000 });
-          return EMPTY;
-        }),
-      ).subscribe((result) => {
-        const message = result.status === 'pending'
-          ? `Invite sent to ${value.username}.`
-          : `Updated ${value.username}'s album access.`;
-        this.snackBar.open(message, 'Close', { duration: 4000 });
-      });
-    });
-  }
-
   deleteAlbum(album: AlbumRead): void {
     this.confirmDialog.open({
       title: 'Delete album?',
@@ -151,16 +117,10 @@ export class AlbumComponent {
       this.albumStore.delete(album.id).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
     });
   }
-
   canEdit(album: AlbumRead): boolean {
-    return album.access_role === 'owner' || album.access_role === 'editor';
+    return true;
   }
-
   canDelete(album: AlbumRead): boolean {
-    return album.access_role === 'owner' || this.userStore.isAdmin();
-  }
-
-  canInvite(album: AlbumRead): boolean {
-    return album.access_role === 'owner' || this.userStore.isAdmin();
+    return true;
   }
 }
