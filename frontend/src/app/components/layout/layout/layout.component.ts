@@ -4,11 +4,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { NavbarComponent } from '../navbar/navbar.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
 import { UploadStatusIslandComponent } from '../upload-status/upload-status-island/upload-status-island.component';
-import { UpdateStatusIslandComponent } from '../update-status/update-status-island.component';
 
 @Component({
   selector: 'zukan-layout',
-  imports: [NavbarComponent, SidebarComponent, UploadStatusIslandComponent, UpdateStatusIslandComponent],
+  imports: [NavbarComponent, SidebarComponent, UploadStatusIslandComponent],
   templateUrl: './layout.component.html',
   styleUrl: './layout.component.scss',
 })

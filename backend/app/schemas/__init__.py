@@ -10,7 +10,6 @@ from .admin import (
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
     AdminStatsResponse,
-    UpdateCheckResponse,
 )
 from .albums import (
     AlbumCreate,
@@ -225,7 +224,6 @@ __all__ = [
     "TaggingJobQueuedResponse",
     "TimelineBucket",
     "TokenResponse",
-    "UpdateCheckResponse",
     "UploadConfigResponse",
     "UploadResult",
     "UrlIngestRequest",

@@ -1,7 +1,5 @@
-import logging
 import uuid
-import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.config import get_runtime_config, update_runtime_config
 from backend.app.database import get_db
@@ -22,12 +20,10 @@ from backend.app.schemas import (
     AppAnnouncementCreate,
     AppAnnouncementRead,
     TaggingJobQueuedResponse,
-    UpdateCheckResponse,
     error_responses,
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
-from backend.app.services.update_check import check_for_updates_now, trigger_app_update
 from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(
@@ -36,7 +32,6 @@ router = APIRouter(
     dependencies=[Depends(admin_user)],
     responses=ADMIN_ERROR_RESPONSES,
 )
-logger = logging.getLogger(__name__)
 
 
 @router.get("/app-config", response_model=AdminAppConfigRead)
@@ -160,42 +155,3 @@ async def create_service_notification(
         data=body.data,
     )
     return {"notified": notified}
-
-
-@router.post(
-    "/check-updates",
-    response_model=UpdateCheckResponse,
-    summary="Check for Updates",
-    description="Query GitHub for the latest release and compare against the running version. Creates an announcement if a new version is found.",
-)
-async def check_updates():
-    return await check_for_updates_now()
-
-
-@router.post(
-    "/update",
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Trigger Application Update",
-    description="Initiate a self-update via Watchtower. The server will pull the latest images and restart shortly.",
-)
-async def trigger_update():
-    try:
-        await trigger_app_update()
-    except httpx.HTTPError as exc:
-        logger.exception("Failed to trigger updater service")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Could not reach the updater service. "
-                "Check that the updater container is running, reachable from the API container, "
-                "and able to access Docker."
-            ),
-        ) from exc
-    except Exception as exc:
-        logger.exception("Failed to trigger updater service")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to trigger the application update.",
-        ) from exc
-
-    return {"message": "Update initiated"}

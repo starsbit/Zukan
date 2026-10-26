@@ -3,7 +3,6 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 import uuid
 from unittest.mock import AsyncMock, patch
-import httpx
 from backend.app.repositories.notifications import AppAnnouncementRepository
 from backend.app.services.admin import AdminService
 from backend.app.config import settings
@@ -193,28 +192,9 @@ def test_admin_app_config_contract(api_client):
     assert payload["auth_login_rate_limit_requests"] >= 0
     assert payload["upload_rate_limit_window_seconds"] >= 0
 
-def test_admin_trigger_update_returns_202(api_client):
-    with patch("backend.app.routers.admin.trigger_app_update", new=AsyncMock()) as trigger_update_mock:
-        response = api_client.post("/api/v1/admin/update")
-
-    assert response.status_code == 202
-    assert response.json() == {"message": "Update initiated"}
-    trigger_update_mock.assert_awaited_once()
-
-def test_admin_trigger_update_returns_503_when_watchtower_is_unreachable(api_client):
-    with patch(
-        "backend.app.routers.admin.trigger_app_update",
-        new=AsyncMock(side_effect=httpx.ConnectError("boom")),
-    ):
-        response = api_client.post("/api/v1/admin/update")
-
-    assert response.status_code == 503
-    assert "updater service" in response.json()["detail"]
-
-def test_admin_trigger_update_requires_auth(unauthenticated_client):
-    response = unauthenticated_client.post("/api/v1/admin/update")
-
-    assert response.status_code == 401
+def test_update_endpoints_removed(api_client):
+    assert api_client.post("/api/v1/admin/update").status_code == 404
+    assert api_client.post("/api/v1/admin/check-updates").status_code == 404
 
 def test_admin_app_config_patch_updates_runtime_settings(api_client, monkeypatch):
     original_login_limit = settings.auth_login_rate_limit_requests

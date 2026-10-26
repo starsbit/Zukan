@@ -9,17 +9,17 @@ from __future__ import annotations
 
 from alembic import op
 
-from backend.app.database.base import Base
+from backend.migrations.legacy_models import Base
 
 # Ensure model metadata is loaded before create_all.
-from backend.app.models import albums as _albums  # noqa: F401
-from backend.app.models import auth as _auth  # noqa: F401
-from backend.app.models import media as _media  # noqa: F401
-from backend.app.models import media_interactions as _media_interactions  # noqa: F401
-from backend.app.models import notifications as _notifications  # noqa: F401
-from backend.app.models import processing as _processing  # noqa: F401
-from backend.app.models import relations as _relations  # noqa: F401
-from backend.app.models import tags as _tags  # noqa: F401
+from backend.migrations.legacy_models import albums as _albums  # noqa: F401
+from backend.migrations.legacy_models import auth as _auth  # noqa: F401
+from backend.migrations.legacy_models import media as _media  # noqa: F401
+from backend.migrations.legacy_models import media_interactions as _media_interactions  # noqa: F401
+from backend.migrations.legacy_models import notifications as _notifications  # noqa: F401
+from backend.migrations.legacy_models import processing as _processing  # noqa: F401
+from backend.migrations.legacy_models import relations as _relations  # noqa: F401
+from backend.migrations.legacy_models import tags as _tags  # noqa: F401
 
 
 revision = "0001_release_baseline"

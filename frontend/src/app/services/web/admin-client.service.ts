@@ -9,7 +9,6 @@ import {
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
-  UpdateCheckResponse,
 } from '../../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../../models/notifications';
 import { TaggingJobQueuedResponse } from '../../models/uploads';
@@ -63,11 +62,5 @@ export class AdminClientService {
     return this.http.post<AppAnnouncementRead>(`${this.base}/api/v1/admin/announcements`, body);
   }
 
-  checkForUpdates(): Observable<UpdateCheckResponse> {
-    return this.http.post<UpdateCheckResponse>(`${this.base}/api/v1/admin/check-updates`, null);
-  }
 
-  triggerUpdate(): Observable<{ message: string }> {
-    return this.http.post<{ message: string }>(`${this.base}/api/v1/admin/update`, null);
-  }
 }

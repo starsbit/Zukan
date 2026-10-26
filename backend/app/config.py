@@ -1,6 +1,5 @@
 from pathlib import Path
 from typing import Any
-from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CONFIG_FILE = Path(__file__).resolve()
@@ -90,14 +89,6 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_allowed_origins: list[str] = ["http://localhost:4200", "http://127.0.0.1:4200"]
     app_version: str = "dev"
-    update_poll_interval_seconds: int = 21600
-    updater_url: str = Field(
-        default="http://updater:8080",
-        validation_alias=AliasChoices("UPDATER_URL", "WATCHTOWER_URL"),
-    )
-    updater_token: str = Field(
-        default="", validation_alias=AliasChoices("UPDATER_TOKEN", "WATCHTOWER_TOKEN")
-    )
 
 
 settings = Settings()

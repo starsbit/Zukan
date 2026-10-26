@@ -46,9 +46,6 @@ import { extractApiError } from '../../utils/api-error.utils';
       <button mat-stroked-button (click)="backfill()" [disabled]="busy()">
         Backfill embeddings
       </button>
-      <button mat-stroked-button (click)="checkUpdates()" [disabled]="busy()">
-        Check for updates
-      </button>
       @if (message()) {
         <p role="status">{{ message() }}</p>
       }
@@ -127,16 +124,6 @@ export class AdminDashboardPageComponent {
         next: (b) => this.batch.set(b),
         error: (e) => this.error.set(extractApiError(e)),
       });
-  }
-  checkUpdates() {
-    this.busy.set(true);
-    this.client.checkForUpdates().subscribe({
-      next: (r) => {
-        this.busy.set(false);
-        this.message.set(r.message);
-      },
-      error: (e) => this.failed(e),
-    });
   }
   private failed(e: unknown) {
     this.busy.set(false);

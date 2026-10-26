@@ -61,227 +61,58 @@ Zukan runs entirely on your own hardware. Nothing leaves your network unless you
 
 ### Quick install
 
-Runs on any Debian 11+ or Ubuntu 22.04+ host, including Proxmox LXC containers.
+On Debian 11+ or Ubuntu 22.04+, clone the repository and run the installer as root:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install.sh | bash
+git clone https://github.com/starsbit/Zukan.git /opt/zukan
+cd /opt/zukan
+sudo bash install.sh
 ```
 
-If you are deploying on a Proxmox host and want Zukan to create and configure the LXC for you, use the dedicated [Proxmox LXC install](#proxmox-lxc-install) guide below instead of running this inside a container.
+The installer installs Docker, generates `.env` secrets and a one-time `SETUP_TOKEN`, builds the local frontend and API sources, and installs a systemd service. Set `GPU_ENABLED=1` when running it to enable NVIDIA support. An existing `.env` is retained. Restarting the service starts the built version; it never fetches source or builds a newer version.
 
-The script will:
-1. Install Docker and the Compose plugin if not already present
-2. Fetch the latest release from GitHub
-3. Create `/opt/zukan/` with a `docker-compose.yml` pinned to that version
-4. Generate a random `SECRET_KEY` and `POSTGRES_PASSWORD` and write them to `/opt/zukan/.env`
-5. Pull the images and start the stack
-
-Once complete the app is available at `http://<host-ip>`. Create the owner login using `SETUP_TOKEN` from the generated environment file.
-
-Re-running the script later upgrades to the latest release while preserving your `.env` and all data volumes.
-
----
+Open `http://<host-ip>` and create the owner login using `SETUP_TOKEN` from `.env`. See the authentication instructions below for OIDC instead.
 
 ### Proxmox LXC install
 
-This is the recommended path if you want to deploy Zukan as a Proxmox LXC. The installer runs on the Proxmox host as `root`, creates an unprivileged Debian 12 container, installs Docker inside it, and starts Zukan for you.
+Run `bash install-lxc.sh` from a checkout on the Proxmox host as root. The script creates an unprivileged Debian 12 container with Docker, clones the source into `/opt/zukan` inside it, and builds there. NVIDIA devices are detected automatically; `GPU_REQUIRED=1` requires a GPU. Defaults are 4 GB RAM, 4 cores, 32 GB disk, DHCP, and `local-lvm` storage. Override with `CTID`, `CT_HOSTNAME`, `MEMORY`, `CORES`, `DISK_SIZE`, `STORAGE`, `TEMPLATE_STORAGE`, `BRIDGE`, `IP`, and `GATEWAY`.
 
-**1. Check the prerequisites on the Proxmox host**
-
-- Proxmox VE 8.x
-- Internet access from both the Proxmox host and the future container
-- A valid Proxmox storage for the container disk, such as `local-lvm`
-- A valid storage for LXC templates, such as `local`
-- A valid bridge, usually `vmbr0`
-- Optional: NVIDIA drivers and `/dev/nvidia*` devices on the host if you want GPU tagging
-
-The installer auto-detects NVIDIA devices. If no GPU is found, it falls back to CPU-only mode. Set `GPU_REQUIRED=1` if the install should fail instead of continuing without GPU support.
-
-**2. Run the installer directly on the Proxmox host**
-
-Run this on the Proxmox host shell, not inside a container:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
-```
-
-This downloads only the installer script into a temporary shell process. It does not require cloning the repository and does not leave a Zukan checkout behind on the Proxmox node after the install finishes.
-
-If the installer fails after creating the container, it cleans up the partial LXC automatically so the Proxmox node is not left with a half-finished Zukan install.
-
-**3. Run the installer**
-
-The command above is the default install command. By default, the script:
-
-- Picks the next free container ID automatically
-- Creates a container named `zukan`
-- Uses `local-lvm` for the root disk and `local` for the Debian template
-- Creates a 32 GB disk
-- Assigns 4 GB RAM, 2 GB swap, and 4 CPU cores
-- Attaches the container to `vmbr0`
-- Uses DHCP networking
-- Deploys Zukan version `0.5.2`
-
-**4. Customize the install if needed**
-
-Set environment variables before the command to override the defaults:
-
-```bash
-CTID=201 \
-CT_HOSTNAME=zukan \
-STORAGE=local-lvm \
-TEMPLATE_STORAGE=local \
-DISK_SIZE=64 \
-MEMORY=8192 \
-SWAP=2048 \
-CORES=6 \
-BRIDGE=vmbr0 \
-IP=192.168.178.50/24 \
-GATEWAY=192.168.178.1 \
-APP_VERSION=0.5.2 \
-GPU_REQUIRED=1 \
-bash <(curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/install-lxc.sh)
-```
-
-Common options:
-
-| Variable | Default | Description |
-|---|---|---|
-| `CTID` | next free ID | Proxmox container ID |
-| `CT_HOSTNAME` | `zukan` | Hostname inside Proxmox |
-| `STORAGE` | `local-lvm` | Storage used for the LXC root disk |
-| `TEMPLATE_STORAGE` | `local` | Storage used for the Debian 12 template |
-| `DISK_SIZE` | `32` | Root disk size in GB |
-| `MEMORY` | `4096` | RAM in MB |
-| `SWAP` | `2048` | Swap in MB |
-| `CORES` | `4` | Number of CPU cores |
-| `BRIDGE` | `vmbr0` | Proxmox network bridge |
-| `IP` | `dhcp` | Static IP in CIDR format, or `dhcp` |
-| `GATEWAY` | empty | Gateway for static IP setups |
-| `APP_VERSION` | `0.5.2` | Zukan image tag to deploy |
-| `GPU_REQUIRED` | `0` | Fail if no NVIDIA GPU is available |
-
-**5. What the installer does**
-
-The Proxmox installer performs these steps automatically:
-
-1. Detect NVIDIA GPU devices on the host
-2. Resolve and download the latest Debian 12 LXC template
-3. Create an unprivileged LXC with `nesting=1` and `keyctl=1`
-4. Optionally add NVIDIA device passthrough to the container config
-5. Start the container
-6. Install base packages, Docker Engine, Buildx, and Docker Compose
-7. Install the NVIDIA Container Toolkit when GPU passthrough is enabled
-8. Generate `/opt/zukan/.env` with a random `POSTGRES_PASSWORD` and `SECRET_KEY`
-9. Write `/opt/zukan/docker-compose.yml`
-10. Install `/etc/systemd/system/zukan.service`
-11. Pull the Zukan images, start the stack, and verify the frontend and API startup logs
-
-**6. Open Zukan after the installer finishes**
-
-At the end, the script prints the container ID, detected IP address, and access URL. Open:
-
-```text
-http://<container-ip>
-```
-
-The frontend listens on port `80` inside the container, so you normally do not need to add a port to the URL.
-
-**7. Create the owner login**
-
-Read `SETUP_TOKEN` from the generated environment file and use it with your chosen username and password on the setup page. Existing installations must follow the breaking migration instructions below.
-
-**8. Verify the deployment and manage the service**
-
-Useful commands after install:
-
-```bash
-pct enter 201
-pct exec 201 -- systemctl status zukan
-pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml ps
-pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml logs -f
-```
-
-Replace `201` with your actual container ID. The installer also writes:
-
-- Compose file: `/opt/zukan/docker-compose.yml`
-- Secrets file: `/opt/zukan/.env`
-- Systemd unit: `/etc/systemd/system/zukan.service`
-
-**9. Upgrade the Proxmox LXC install later**
-
-To upgrade an existing LXC deployment in place:
-
-1. Edit `/opt/zukan/docker-compose.yml` inside the container and change the image tags to the target version.
-2. Restart the service:
-
-```bash
-pct exec 201 -- systemctl restart zukan
-```
-
-You can also inspect the current stack state with:
-
-```bash
-pct exec 201 -- docker compose -f /opt/zukan/docker-compose.yml ps
-```
-
-Database migrations run automatically on startup, and the named Docker volumes are preserved.
-
----
+Enter the container with `pct enter <id>`. The checkout, `.env`, and systemd service live inside the container. Use the manual upgrade procedure below there. The CPU compose file is `docker-compose.selfhost.yml`; GPU installs use `docker-compose.selfhost.gpu.yml`.
 
 ### Manual install
 
-**1. Copy the production env template and fill in the two required secrets:**
+Install Docker Engine with Compose, then:
 
 ```bash
+git clone https://github.com/starsbit/Zukan.git
+cd Zukan
 cp .env.prod.example .env
-# Edit .env - generate SECRET_KEY with: openssl rand -hex 32
+# Fill SECRET_KEY, POSTGRES_PASSWORD and SETUP_TOKEN with independent random secrets:
+openssl rand -hex 32
+docker compose -p zukan -f docker-compose.selfhost.yml up -d --build --remove-orphans
 ```
 
-**2. Start the stack:**
-
-```bash
-docker compose -f docker-compose.prod.yml up -d
-```
-
-On macOS hosts without NVIDIA GPUs, use the CPU-only compose variant instead:
-
-```bash
-docker compose -f docker-compose.prod.macos.yml up -d
-```
-
-All other settings (AniList OAuth, tagger thresholds, token expiry, OCR, rate limits, etc.) are configurable through the admin panel after first login - no env vars needed for those.
-
----
+Use `docker-compose.selfhost.gpu.yml` (or `docker-compose.prod.yml`) for NVIDIA GPUs. All deployment templates build the checked-out source. Keep the same compose file, project name and `.env` for subsequent commands. Named volumes retain the database, original media and model cache.
 
 ### Upgrading
 
-Trigger the update from the admin panel, or pull and restart manually:
+Back up the database, media, deployment configuration and current source revision first. Read release migration notes. The single-owner release requires the explicit owner selection and maintenance-window procedure below before API startup.
+
+For subsequent source-based upgrades, in the installation checkout:
 
 ```bash
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d
+docker compose -p zukan -f docker-compose.selfhost.yml stop api
+git pull --ff-only
+docker compose -p zukan -f docker-compose.selfhost.yml build
+docker compose -p zukan -f docker-compose.selfhost.yml up -d --remove-orphans
+docker compose -p zukan -f docker-compose.selfhost.yml logs --tail=100 api
 ```
 
-The updater refreshes the deployed compose file and updater helper scripts from the latest GitHub release before pulling images, so service-level requirements such as database image changes are applied automatically. Database migrations run automatically on startup. Named volumes (`postgres_data`, `storage_data`, `model_cache`) are preserved.
+Use your actual project name and GPU compose file when applicable. Database migrations run on API startup. Build failures leave the API stopped; fix the build before restarting. No update check, in-app update action, updater sidecar, or automatic deployment remains. `--remove-orphans` removes the old updater container when migrating an existing stack. Never use `down -v` during an upgrade.
 
-Version `0011_library_embeddings` requires PostgreSQL with the `pgvector` extension. If you installed Zukan before this requirement and upgrades fail with `extension "vector" is not available`, update the `db` image in your deployed compose file to `pgvector/pgvector:pg16`, then recreate the DB container without deleting volumes:
+**Moving an image-based installation to source:** stop its API and updater using the old compose file; back up its `.env`, compose configuration and data. Clone into a new directory rather than overwriting an existing non-Git installation. Copy the existing `.env` into the checkout. Preserve the old Compose project name (inspect `docker compose ls`) with `-p`; this retains the same named volumes. Port any custom bind mounts, volume names, ports and GPU settings to a local compose override, and use that override consistently. Keep `ZUKAN_LIBRARY_HOST_PATH` for NAS mounts. Update the systemd unit's working directory and compose paths to the checkout, and remove old timers or external Watchtower services you configured yourself. Do not start a second API against the same database. Build the new sources, run the breaking migration preflight below, then start the stack with `--remove-orphans`. Legacy updater scripts and `UPDATER_*`/`WATCHTOWER_*` environment entries can then be deleted.
 
-```bash
-docker compose pull db
-docker compose up -d --no-deps --force-recreate db
-docker compose up -d api
-```
-
-Or use the repair script, which backs up the compose file, preserves `postgres_data`, updates the database image, refreshes updater permissions, and restarts the affected containers:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/starsbit/zukan/main/scripts/migrate-prod-pgvector.sh | sudo bash
-```
-
-Installs created before the compose-refreshing updater may need one manual rerun of the installer so the updater container gets write access to `/opt/zukan/docker-compose.yml`. After that, future compose template changes are fetched automatically.
-
-When a new version is available, the owner will receive an in-app notification automatically.
+PostgreSQL must support `pgvector`. For legacy PostgreSQL 16 installs, the provided templates use `pgvector/pgvector:pg16` with the same data volume. `scripts/migrate-prod-pgvector.sh` is a manual, PostgreSQL-16-only helper that backs up the compose file and recreates only the database container; it leaves the API stopped for owner migration. It never downloads or installs updater components. Do not switch database major versions against an existing data volume.
 
 ---
 
@@ -293,17 +124,17 @@ PostgreSQL stays in its existing database volume. An admin can move media to a m
 
 1. Mount your NAS share on the Docker host, then set `ZUKAN_LIBRARY_HOST_PATH=/mnt/nas/anime` in the deployment `.env`. The Compose templates expose this directory to the API at `/library` and retain the old `storage_data` volume during migration. For Proxmox LXC, the path must be mounted inside the LXC where Docker runs.
 2. Recreate the API container with your usual Compose file, for example `docker compose -f docker-compose.prod.yml up -d api`.
-3. Open **Admin → Storage**, choose the user who will own discovered files, and save settings. Discovered media starts private. The default scan interval is 3600 seconds; set it to 0 for manual scanning.
-4. Enter `/library` as the destination, validate it, then choose **Copy, verify and migrate**. Existing IDs, metadata, ownership, albums, favorites, and embeddings are preserved. Migration includes trashed media.
+3. Open **Library maintenance → Storage** and save settings. Discovered files join the global library. The default scan interval is 3600 seconds; set it to 0 for manual scanning.
+4. Enter `/library` as the destination, validate it, then choose **Copy, verify and migrate**. Existing IDs, metadata, albums, favorites, and embeddings are preserved. Migration includes trashed media.
 5. Zukan copies and hashes every referenced asset, switches the library root, checks file access and image/video processing, then deletes only verified source copies. Unrelated source files remain. Reads continue during copying; writes and processing pause until migration finishes.
 
 Generated thumbnails and posters live under `.zukan/thumbnails/` and `.zukan/posters/` by default. You can choose another hidden subfolder. New uploads use `uploads/`; existing NAS files stay in place. **Scan now** discovers external additions and unambiguous file moves. Missing files keep their database records; changed content requires an admin to accept and reprocess it. Manual tags, character/series annotations, OCR overrides, and rating overrides remain intact. Permanent deletion also deletes the cataloged NAS original; soft deletion retains it.
 
 Storage settings and migration progress survive restarts. Interrupted copying and cleanup resume on startup; jobs paused by an error show **Resume migration** after you correct the reported issue. Missing source assets or conflicting destination content block migration without deleting source files. A NAS disconnect pauses file mutations and scanning, and retains metadata. Keep the `.zukan-library-id` marker in each library: it distinguishes the correct mounted library from an empty mountpoint. Existing thumbnails remain valid if you change the generated-files subfolder; new thumbnails use the updated setting.
 
-**Database maintenance:** In **Admin → Storage**, select **Inspect database** to review missing catalog assets, including trash. Cleanup requires acknowledgment and rechecks only the reviewed IDs. Records whose originals are still missing are permanently deleted through normal media deletion: foreign-key cascades and nulling rules remove dependent links, and collection/trade compensation is preserved. Surviving generated files are removed only when no other record references them. Recovered originals are skipped. Records missing only generated files retain their annotations and relationships; broken thumbnail/poster references are cleared and marked failed for reprocessing. Storage identity checks and migration/scan locks prevent cleanup of an unavailable library or during migration. This is explicit maintenance; periodic scans continue to preserve missing records. Review or restore externally moved files before choosing permanent cleanup.
+**Database maintenance:** In **Admin → Storage**, select **Inspect database** to review missing catalog assets, including trash. Cleanup requires acknowledgment and rechecks only the reviewed IDs. Records whose originals are still missing are permanently deleted through normal media deletion: foreign-key cascades and nulling rules remove dependent links. Surviving generated files are removed only when no other record references them. Recovered originals are skipped. Records missing only generated files retain their annotations and relationships; broken thumbnail/poster references are cleared and marked failed for reprocessing. Storage identity checks and migration/scan locks prevent cleanup of an unavailable library or during migration. This is explicit maintenance; periodic scans continue to preserve missing records. Review or restore externally moved files before choosing permanent cleanup.
 
-Run one API worker per database; startup enforces this with a PostgreSQL advisory lock so separate processes cannot bypass migration pauses. The provided deployment already runs one worker. The updater retains NAS mount configuration through the `.env` setting. Wait for migration to finish before running backup/export commands.
+Run one API worker per database; startup enforces this with a PostgreSQL advisory lock so separate processes cannot bypass migration pauses. The provided deployment already runs one worker. NAS mount configuration is retained in `.env`. Wait for migration to finish before running backup/export commands.
 
 ---
 
@@ -477,7 +308,7 @@ git push origin v1.2.3
    - Push both images to GHCR tagged `1.2.3` and `latest`
    - Create a GitHub Release with auto-generated release notes
 
-4. Self-hosters running a previous version will receive an in-app update notification the next time their instance starts.
+4. Self-hosters explicitly pull the desired source revision and rebuild their deployment using the upgrade procedure above.
 
 To delete a tag if something went wrong before the images were pushed:
 
@@ -495,10 +326,10 @@ Before upgrading an existing database, run the new release's read-only preflight
 python -m backend.app.owner_migration preflight
 ```
 
-For Docker, with the API stopped and the new image pulled:
+For Docker, with the API stopped and the new source built:
 
 ```sh
-docker compose run --rm --no-deps api python -m backend.app.owner_migration preflight
+docker compose -p zukan -f docker-compose.selfhost.yml run --rm --no-deps api python -m backend.app.owner_migration preflight
 ```
 
 Set `SINGLE_USER_OWNER_ID` in the deployment environment to the selected existing account's UUID. Its username, password hash and preferences survive. Startup refuses an existing database without a valid selection, even when it contains only one account. Then start the new API and frontend together; never run the previous API against the migrated schema. Rollback requires restoring the backup and previous release. There is no downgrade migration.

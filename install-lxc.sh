@@ -300,6 +300,9 @@ run "rm -f /tmp/zukan-install.sh"
 
 INSTALL_SUCCEEDED=1
 
+COMPOSE_PATH="${INSTALL_DIR}/docker-compose.selfhost.yml"
+if [[ "${GPU_ENABLED}" == "1" ]]; then COMPOSE_PATH="${INSTALL_DIR}/docker-compose.selfhost.gpu.yml"; fi
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 CT_IP="$(pct exec "${CTID}" -- bash -lc "hostname -I | awk '{print \$1}'" 2>/dev/null || true)"
 [[ -n "${CT_IP}" ]] || CT_IP="<pending>"
@@ -317,20 +320,20 @@ else
     echo "  Runtime    : CPU only"
 fi
 echo ""
-echo "  Config     : ${INSTALL_DIR}/docker-compose.yml"
+echo "  Config     : ${COMPOSE_PATH}"
 echo "  Secrets    : ${INSTALL_DIR}/.env"
 echo "  Service    : ${SERVICE_FILE}"
-echo "  Logs       : pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml logs -f"
+echo "  Logs       : pct exec ${CTID} -- docker compose -p zukan -f ${COMPOSE_PATH} logs -f"
 echo ""
-echo "  Default login : admin / admin"
-echo "  Change your password immediately via the admin panel."
+echo "  Create owner login with SETUP_TOKEN from ${INSTALL_DIR}/.env"
+echo "  Source checkout: ${INSTALL_DIR}"
 echo ""
 echo "  Useful commands:"
 echo "    pct enter ${CTID}"
 echo "    pct exec ${CTID} -- systemctl status zukan"
-echo "    pct exec ${CTID} -- docker compose -f ${INSTALL_DIR}/docker-compose.yml ps"
+echo "    pct exec ${CTID} -- docker compose -p zukan -f ${COMPOSE_PATH} ps"
 echo ""
-echo "  To upgrade: confirm the update notification in the Zukan admin panel,"
-echo "  or run: pct exec ${CTID} -- systemctl restart zukan"
+echo "  To upgrade: enter the container, git pull --ff-only in ${INSTALL_DIR},"
+echo "  then rebuild with Docker Compose (see README)."
 echo "══════════════════════════════════════════════════════"
 echo ""

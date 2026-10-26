@@ -67,10 +67,3 @@ export interface AdminLibraryClassificationMetricsResponse {
   rejection_rate: number | null;
   by_source: AdminLibraryClassificationSourceMetricsRead[];
 }
-
-export interface UpdateCheckResponse {
-  current_version: string;
-  latest_version: string | null;
-  up_to_date: boolean;
-  message: string;
-}

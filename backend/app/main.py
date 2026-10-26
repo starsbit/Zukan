@@ -64,7 +64,6 @@ from backend.app.services.processing import ProcessingService
 from backend.app.services.admin import AdminService
 from backend.app.services.database_repair import repair_database_after_migrations
 from backend.app.services.tags import TagService
-from backend.app.services.update_check import update_check_worker
 from backend.app.ml.tagger import tagger
 from backend.app.ml.embedding import embedding_backend
 from backend.app.ml.ocr import ocr_backend
@@ -524,7 +523,6 @@ async def lifespan(_api: FastAPI):
     embedding_workers: list[asyncio.Task] = []
     purge_worker: asyncio.Task | None = None
     failed_retry_worker: asyncio.Task | None = None
-    update_worker: asyncio.Task | None = None
     ml_worker: asyncio.Task | None = None
     storage_worker: asyncio.Task | None = None
     storage_lease = None
@@ -566,7 +564,6 @@ async def lifespan(_api: FastAPI):
         embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
         purge_worker = asyncio.create_task(trash_purge_worker())
         failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
-        update_worker = asyncio.create_task(update_check_worker())
         logger.info(
             "Background tagging workers started count=%s", settings.tagging_worker_count
         )
@@ -617,8 +614,6 @@ async def lifespan(_api: FastAPI):
             purge_worker.cancel()
         if failed_retry_worker is not None:
             failed_retry_worker.cancel()
-        if update_worker is not None:
-            update_worker.cancel()
         if ml_worker is not None:
             ml_worker.cancel()
         await health_monitor.stop()
@@ -653,11 +648,6 @@ async def lifespan(_api: FastAPI):
                 await failed_retry_worker
             except asyncio.CancelledError:
                 logger.info("Background failed tagging retry worker stopped")
-        if update_worker is not None:
-            try:
-                await update_worker
-            except asyncio.CancelledError:
-                logger.info("Background update check worker stopped")
         if ml_worker is not None:
             try:
                 await ml_worker

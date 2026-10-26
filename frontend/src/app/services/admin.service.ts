@@ -9,7 +9,6 @@ import {
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
-  UpdateCheckResponse,
 } from '../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../models/notifications';
 import { TaggingJobQueuedResponse } from '../models/uploads';
@@ -57,7 +56,4 @@ export class AdminService {
     return this.guard(() => this.client.createAnnouncement(body));
   }
 
-  checkForUpdates(): Observable<UpdateCheckResponse> {
-    return this.guard(() => this.client.checkForUpdates());
-  }
 }

@@ -1,10 +1,9 @@
 # Production docker-compose for self-hosted Zukan.
-# Replace the image tags below with the version you want to run.
-# See: https://github.com/starsbit/zukan/releases
+# Builds the local checkout. Pull source explicitly before rebuilding.
 
 services:
   frontend:
-    image: ghcr.io/starsbit/zukan-frontend:latest
+    build: ./frontend
     ports:
       - "80:80"
     depends_on:
@@ -13,7 +12,9 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/starsbit/zukan-api:latest
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://zukan:${POSTGRES_PASSWORD}@db:5432/zukan
       SECRET_KEY: ${SECRET_KEY}
@@ -26,8 +27,6 @@ services:
       OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
       OIDC_CALLBACK_URL: ${OIDC_CALLBACK_URL:-}
       OIDC_ALLOWED_SUBJECT: ${OIDC_ALLOWED_SUBJECT:-}
-      UPDATER_URL: http://updater:8080
-      UPDATER_TOKEN: ${UPDATER_TOKEN}
       LOG_LEVEL: INFO
       COBALT_API_URL: ${COBALT_API_URL:-}
       COBALT_API_KEY: ${COBALT_API_KEY:-}
@@ -38,8 +37,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      updater:
-        condition: service_started
     restart: unless-stopped
     deploy:
       resources:
@@ -62,28 +59,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    restart: unless-stopped
-
-  updater:
-    image: docker:29.4.0-cli
-    command:
-      - sh
-      - -c
-      - |
-        cp /scripts/serve-update.sh /tmp/serve-update.sh
-        chmod 755 /tmp/serve-update.sh
-        exec nc -lk -p 8080 -e /tmp/serve-update.sh
-    environment:
-      UPDATER_TOKEN: ${UPDATER_TOKEN}
-      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME:-zukan}
-      ZUKAN_COMPOSE_FILE: /work/docker-compose.prod.yml
-      ZUKAN_COMPOSE_TEMPLATE: docker-compose.prod.yml
-      ZUKAN_UPDATER_DIR: /work/updater
-      ZUKAN_REPO: ${ZUKAN_REPO:-starsbit/zukan}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - .:/work
-      - ./updater:/scripts:ro
     restart: unless-stopped
 
 volumes:
