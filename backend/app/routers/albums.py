@@ -1,3 +1,4 @@
+from backend.app.storage.io import run_storage_io
 import uuid
 from typing import Annotated, Literal
 from fastapi import APIRouter, Depends, Query, status
@@ -19,7 +20,7 @@ from backend.app.schemas import (
     error_responses,
 )
 from backend.app.services.albums import AlbumService
-from backend.app.utils.storage import zip_media
+from backend.app.utils.storage import zip_media, stream_archive
 
 router = APIRouter(
     prefix="/albums", tags=["albums"], responses=AUTHENTICATED_ERROR_RESPONSES
@@ -183,10 +184,10 @@ async def download_album(
     db: AsyncSession = Depends(get_db),
 ):
     album, rows = await AlbumService(db).get_album_download_media(album_id, user)
-    buf = zip_media(rows)
+    buf = await run_storage_io(zip_media, rows)
     safe_name = album.name.replace('"', "").replace("/", "-")
     return StreamingResponse(
-        content=iter([buf.read()]),
+        content=stream_archive(buf),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.zip"'},
     )

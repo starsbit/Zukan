@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _CONFIG_FILE = Path(__file__).resolve()
@@ -16,7 +17,10 @@ class Settings(BaseSettings):
     )
     database_url: str = "postgresql+asyncpg://zukan:zukan@localhost:5432/zukan"
     database_auto_repair_enabled: bool = True
-    storage_dir: Path = Path("storage")
+    storage_dir: Path = Field(default=Path("storage"), validation_alias=AliasChoices("LIBRARY_ROOT", "STORAGE_DIR"))
+    library_mount_path: Path | None = None
+    library_mount_types: str = ""
+    processing_temp_dir: Path | None = None
     generated_files_dir: str = ".zukan"
     library_paths_relative: bool = False
     library_root_identity: str | None = None
@@ -89,6 +93,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_allowed_origins: list[str] = ["http://localhost:4200", "http://127.0.0.1:4200"]
     app_version: str = "dev"
+
+
+    @field_validator('library_mount_path', 'processing_temp_dir', mode='before')
+    @classmethod
+    def optional_filesystem_path(cls, value):
+        return None if value == '' else value
 
 
 settings = Settings()

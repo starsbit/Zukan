@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.storage.io import run_storage_io
 from backend.app.utils.library_paths import resolve_media_path
 import asyncio
 import logging
@@ -301,7 +302,7 @@ class TagService:
         await self._db.commit()
         logger.info("Tagging started media_id=%s media_type=%s", media.id, media_type.value)
 
-        frames = sample_media_frames(media_filepath, media_type)
+        frames = await run_storage_io(sample_media_frames, media_filepath, media_type)
         try:
             results: list[TaggingResult] = []
             for frame_path in frames or [resolve_media_path(media_filepath)]:
@@ -309,7 +310,7 @@ class TagService:
             aggregated = aggregate_tagging_results(results)
             await self._store_tagging_result(media, aggregated)
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != resolve_media_path(media_filepath)])
+            await run_storage_io(cleanup_sampled_frames, [frame for frame in frames if frame != resolve_media_path(media_filepath)])
 
     async def _predict_with_retries(self, image_path: str) -> TaggingResult:
         attempts = max(1, settings.tagging_retry_attempts)

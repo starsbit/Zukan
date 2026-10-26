@@ -30,7 +30,7 @@ def test_sample_media_frames_image_and_cleanup(tmp_path):
     extra = tmp_path / "extra.png"
     extra.write_text("x")
     cleanup_sampled_frames([extra])
-    assert not extra.exists()
+    assert extra.exists()  # Cleanup cannot remove files outside its workspace.
 
 
 def test_sample_media_frames_gif(tmp_path):
@@ -40,7 +40,11 @@ def test_sample_media_frames_gif(tmp_path):
     im1.save(gif, save_all=True, append_images=[im2], duration=100, loop=0)
     frames = sample_media_frames(str(gif), MediaType.GIF, sample_count=2)
     assert len(frames) >= 1
+    workspace = frames[0].parent
+    assert workspace != gif.parent
     cleanup_sampled_frames(frames)
+    assert not workspace.exists()
+    assert sorted(tmp_path.iterdir()) == [gif]
 
 
 def test_sample_media_frames_video_with_mocked_ffmpeg(tmp_path):

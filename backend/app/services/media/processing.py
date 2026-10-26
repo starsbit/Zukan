@@ -1,4 +1,7 @@
 from __future__ import annotations
+from backend.app.config import settings
+from backend.app.storage.filesystem import current_filesystem
+from backend.app.storage.io import run_storage_io
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -81,6 +84,8 @@ class MediaProcessingService:
             media.tagging_error = None
             await self._db.commit()
         except Exception as exc:
+            if settings.library_paths_relative:
+                await run_storage_io(current_filesystem().snapshot)
             # OCR is best-effort and should not fail the upload/tag pipeline.
             media.ocr_text = None
             media.tagging_status = "done"

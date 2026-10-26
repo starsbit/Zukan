@@ -1,4 +1,6 @@
 from __future__ import annotations
+from backend.app.storage.filesystem import current_filesystem
+from backend.app.storage.io import run_storage_io
 import logging
 import uuid
 from collections import defaultdict
@@ -6,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from backend.app.config import settings
 from backend.app.errors.auth import user_not_found
 from backend.app.errors.error import AppError
 from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
@@ -229,6 +232,16 @@ class AdminService:
             item.progress_percent = 100
             item.error = None
         except Exception as exc:
+            try:
+                if settings.library_paths_relative:
+                    await run_storage_io(current_filesystem().snapshot)
+            except OSError:
+                item.status = ItemStatus.pending
+                item.error = None
+                item.progress_percent = 0
+                await self._refresh_batch_counts(batch_id)
+                await self._db.commit()
+                raise
             item.status = ItemStatus.failed
             item.progress_percent = 100
             item.error = str(exc)[:1024]

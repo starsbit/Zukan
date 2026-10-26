@@ -29,3 +29,12 @@ The chosen owner's credentials/preferences survive; other credentials, social
 features and gacha data are removed. Sessions and API keys must be recreated.
 There is no downgrade: restore the backup with the previous release to roll back.
 The frozen `legacy_models` package is historical DDL only and must not track live models.
+
+## NAS scan fingerprints (0023)
+
+Adds nullable `media.source_mtime_ns`. Existing media IDs, paths, hashes and files
+are unchanged. The first scan populates fingerprints. Scheduled scans hash new
+or changed files and reuse known hashes when size and nanosecond mtime match;
+manual scans always verify contents. `file_size` and the timestamp are stored
+only after a matching hash is verified or a newly discovered original is added.
+The release baseline remains frozen; do not add this field to `legacy_models`.

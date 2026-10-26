@@ -23,29 +23,33 @@ def sample_media_frames(filepath: str, media_type: MediaType, sample_count: int 
 
 
 def cleanup_sampled_frames(frames: list[Path]) -> None:
-    for frame in frames:
-        try:
-            if frame.exists():
-                frame.unlink()
-        except OSError:
-            pass
+    for directory in {p.parent for p in frames}:
+        # Never delete originals, even if a caller passes the image fallback.
+        if directory.name.startswith('zukan-frames-'):
+            shutil.rmtree(directory, ignore_errors=True)
+
+
+def _workspace() -> Path:
+    return Path(tempfile.mkdtemp(prefix='zukan-frames-', dir=settings.processing_temp_dir))
 
 
 def _sample_gif_frames(source_path: Path, sample_count: int) -> list[Path]:
-    frames: list[Path] = []
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_path = Path(tmpdir)
+    directory = _workspace()
+    frames = []
+    try:
         with PILImage.open(source_path) as img:
             frame_total = max(1, getattr(img, "n_frames", 1))
-            indexes = _sample_indexes(frame_total, sample_count)
-            for idx, frame_index in enumerate(indexes):
+            for idx, frame_index in enumerate(_sample_indexes(frame_total, sample_count)):
                 img.seek(frame_index)
-                frame_path = tmp_path / f"frame_{idx}.png"
+                frame_path = directory / f"frame_{idx}.png"
                 img.convert("RGB").save(frame_path, "PNG")
-                persisted = source_path.parent / f"{source_path.stem}_frame_{idx}.png"
-                shutil.copy(frame_path, persisted)
-                frames.append(persisted)
-    return frames
+                frames.append(frame_path)
+        if not frames:
+            directory.rmdir()
+        return frames
+    except BaseException:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
 
 
 def _sample_video_frames(source_path: Path, sample_count: int) -> list[Path]:
@@ -53,22 +57,26 @@ def _sample_video_frames(source_path: Path, sample_count: int) -> list[Path]:
         return []
     payload = probe_media(source_path)
     duration = _safe_float(payload.get("format", {}).get("duration")) or 0.0
-    timestamps = _sample_timestamps(duration, sample_count)
-    frames: list[Path] = []
-    for idx, timestamp in enumerate(timestamps):
-        frame_path = source_path.parent / f"{source_path.stem}_frame_{idx}.png"
-        try:
-            result = subprocess.run(
-                ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(frame_path)],
-                capture_output=True,
-                text=True,
-                timeout=settings.ffmpeg_timeout_seconds,
-            )
-        except subprocess.TimeoutExpired:
-            continue
-        if result.returncode == 0 and frame_path.exists():
-            frames.append(frame_path)
-    return frames
+    directory = _workspace()
+    frames = []
+    try:
+        for idx, timestamp in enumerate(_sample_timestamps(duration, sample_count)):
+            frame_path = directory / f"frame_{idx}.png"
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-y", "-ss", f"{timestamp:.3f}", "-i", str(source_path), "-frames:v", "1", str(frame_path)],
+                    capture_output=True, text=True, timeout=settings.ffmpeg_timeout_seconds,
+                )
+            except subprocess.TimeoutExpired:
+                continue
+            if result.returncode == 0 and frame_path.exists():
+                frames.append(frame_path)
+        if not frames:
+            shutil.rmtree(directory, ignore_errors=True)
+        return frames
+    except BaseException:
+        shutil.rmtree(directory, ignore_errors=True)
+        raise
 
 
 def _sample_indexes(total: int, sample_count: int) -> list[int]:

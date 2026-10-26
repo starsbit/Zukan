@@ -1,6 +1,6 @@
 from __future__ import annotations
 from backend.app.utils.library_paths import stored_path
-import asyncio
+from backend.app.storage.io import run_storage_io
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -183,13 +183,13 @@ class MediaUploadWorkflow:
             logger.warning("Upload file rejected original_name=%s", original_name)
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
-        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
+        file_metadata = await run_storage_io(extract_media_metadata, str(saved.path), saved.media_type)
         if captured_at_override is not None:
             captured_at = _normalize_utc(captured_at_override)
         elif file_metadata.captured_at:
             captured_at = file_metadata.captured_at
         else:
-            file_mtime = saved.path.stat().st_mtime
+            file_mtime = (await run_storage_io(saved.path.stat)).st_mtime
             captured_at = datetime.fromtimestamp(file_mtime, tz=UTC)
         existing = await self._query.get_media_by_sha256(saved.sha256)
         if existing is not None:
@@ -275,7 +275,7 @@ class MediaUploadWorkflow:
         external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
-        delete_media_files(saved_path)
+        await run_storage_io(delete_media_files, saved_path)
 
         if existing.deleted_at is None:
             batch_item.media_id = existing.id
@@ -359,9 +359,8 @@ class MediaUploadWorkflow:
         external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
-        loop = asyncio.get_running_loop()
-        poster, thumb = await loop.run_in_executor(
-            None, generate_poster_and_thumbnail, str(saved.path), saved.media_type
+        poster, thumb = await run_storage_io(
+            generate_poster_and_thumbnail, str(saved.path), saved.media_type
         )
         normalized_tags = normalize_manual_tags(tags) if tags else []
         normalized_characters = _normalize_entity_names(character_names)
@@ -593,7 +592,7 @@ class MediaUploadWorkflow:
         if saved is None:
             await self._handle_failed_upload(batch_item, original_name, ctx)
             return
-        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
+        file_metadata = await run_storage_io(extract_media_metadata, str(saved.path), saved.media_type)
         captured_at = (
             _normalize_utc(captured_at_override)
             if captured_at_override is not None
@@ -637,10 +636,9 @@ class MediaUploadWorkflow:
         captured_at: datetime,
         tags: list[str] | None = None,
     ) -> Media:
-        file_metadata = extract_media_metadata(str(saved.path), saved.media_type)
-        loop = asyncio.get_running_loop()
-        poster, thumb = await loop.run_in_executor(
-            None, generate_poster_and_thumbnail, str(saved.path), saved.media_type
+        file_metadata = await run_storage_io(extract_media_metadata, str(saved.path), saved.media_type)
+        poster, thumb = await run_storage_io(
+            generate_poster_and_thumbnail, str(saved.path), saved.media_type
         )
         normalized_tags = normalize_manual_tags(tags) if tags else []
         media = Media(

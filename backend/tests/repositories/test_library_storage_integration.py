@@ -276,3 +276,40 @@ async def test_maintenance_aborts_on_io_errors_and_unsafe_paths(library, db_sess
         await maintenance.cleanup(db_session, [media.id], str(library[0]), settings.library_root_identity)
     await db_session.refresh(media)
     assert media.id
+
+
+@pytest.mark.asyncio
+async def test_scheduled_nas_scan_persists_and_reuses_verified_fingerprint(library, db_session, monkeypatch):
+    source, _ = library
+    await service.initialize_library()
+    Image.new('RGB', (20, 30), 'red').save(source / 'original.png')
+    await service.scan_library(asyncio.Queue())
+    record = await db_session.scalar(select(Media))
+    assert record.source_mtime_ns == (source / 'original.png').stat().st_mtime_ns
+    assert record.sha256
+    def forbidden(*args, **kwargs):
+        raise AssertionError('Unchanged scheduled scan reread the NAS original')
+    monkeypatch.setattr('backend.app.storage.scanner.file_digest', forbidden)
+    result = await service.scan_library(asyncio.Queue(), verify_contents=False)
+    assert result['added'] == 0
+    assert result['changed'] == 0
+    assert result['missing'] == 0
+
+
+@pytest.mark.asyncio
+async def test_disconnect_during_discovery_commits_no_catalog_changes(library, db_session, monkeypatch):
+    source, _ = library
+    await service.initialize_library()
+    Image.new('RGB', (20, 30), 'red').save(source / 'original.png')
+    from backend.app.storage import scanner
+    real_detection = scanner.resolve_supported_media_type
+    def disconnect(*args, **kwargs):
+        result = real_detection(*args, **kwargs)
+        (source / service.MARKER).unlink()
+        return result
+    monkeypatch.setattr(scanner, 'resolve_supported_media_type', disconnect)
+    with pytest.raises(OSError):
+        await service.scan_library(asyncio.Queue())
+    assert (await db_session.scalars(select(Media))).all() == []
+    config = await db_session.get(LibraryStorage, 1, populate_existing=True)
+    assert config.last_scan is None

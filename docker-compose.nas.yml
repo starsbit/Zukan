@@ -1,0 +1,14 @@
+# Apply after a source deployment template with -f docker-compose.nas.yml.
+# Mount the NFS/SMB share on the host first; Docker must not create its path.
+services:
+  api:
+    environment:
+      LIBRARY_ROOT: /library
+      LIBRARY_MOUNT_PATH: /library
+      LIBRARY_MOUNT_TYPES: ${LIBRARY_MOUNT_TYPES:-nfs,nfs4,cifs,smb3}
+    volumes:
+      - type: bind
+        source: ${ZUKAN_LIBRARY_HOST_PATH:?Set ZUKAN_LIBRARY_HOST_PATH to the mounted NAS library directory}
+        target: /library
+        bind:
+          create_host_path: false

@@ -52,6 +52,7 @@ class Media(Base):
         String(24), nullable=False, default="available", server_default="available"
     )
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    source_mtime_ns: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     sha256: Mapped[str] = mapped_column(String(64), nullable=True, index=True)
     mime_type: Mapped[str] = mapped_column(String(64), nullable=True)
     media_type: Mapped[MediaType] = mapped_column(

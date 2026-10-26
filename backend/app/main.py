@@ -30,6 +30,8 @@ from backend.app.models.processing import (
     ItemStatus,
     ProcessingStep,
 )
+from backend.app.storage.filesystem import StorageUnavailable, current_filesystem
+from backend.app.storage.io import run_storage_io
 from backend.app.services.storage_gate import storage_gate, StorageMiddleware
 from backend.app.services.library_storage import (
     initialize_library,
@@ -165,8 +167,12 @@ async def tagging_worker():
                     logger.info("Tagging worker completed media_id=%s", media_id)
 
             except Exception as exc:
-                await _mark_tagging_job_failed(media_id, exc)
-                logger.exception("Tagging failed for media_id=%s", media_id)
+                if settings.library_paths_relative and not await run_storage_io(current_filesystem().available):
+                    await tag_queue.put(media_id)
+                    logger.warning("Tagging deferred until library reconnects media_id=%s", media_id)
+                else:
+                    await _mark_tagging_job_failed(media_id, exc)
+                    logger.exception("Tagging failed for media_id=%s", media_id)
             finally:
                 tag_queue.task_done()
 
@@ -206,7 +212,11 @@ async def post_tag_worker():
                     await MediaLibraryEnrichmentService(db).ensure_media_embedding(media_id)
                     logger.info("Post-tag worker completed media_id=%s", media_id)
             except Exception:
-                logger.exception("Post-tag processing failed for media_id=%s", media_id)
+                if settings.library_paths_relative and not await run_storage_io(current_filesystem().available):
+                    await post_tag_queue.put(media_id)
+                    logger.warning("Post-processing deferred until library reconnects media_id=%s", media_id)
+                else:
+                    logger.exception("Post-tag processing failed for media_id=%s", media_id)
             finally:
                 post_tag_queue.task_done()
 
@@ -241,7 +251,11 @@ async def embedding_backfill_worker():
                     await AdminService(db).run_embedding_backfill_item(item_id)
                 except Exception:
                     await db.rollback()
-                    logger.exception("Embedding backfill failed for item_id=%s", item_id)
+                    if settings.library_paths_relative and not await run_storage_io(current_filesystem().available):
+                        await embedding_backfill_queue.put(item_id)
+                        logger.warning("Embedding backfill deferred until library reconnects item_id=%s", item_id)
+                    else:
+                        logger.exception("Embedding backfill failed for item_id=%s", item_id)
                 finally:
                     embedding_backfill_queue.task_done()
 
@@ -711,6 +725,15 @@ def _json_error_response(*, status_code: int, payload: dict, headers: dict[str, 
     if isinstance(request_id, str) and request_id:
         response_headers.setdefault("x-request-id", request_id)
     return JSONResponse(status_code=status_code, content=payload, headers=response_headers or None)
+
+
+@api.exception_handler(StorageUnavailable)
+async def storage_unavailable_handler(request: Request, exc: StorageUnavailable) -> JSONResponse:
+    logger.warning("Library I/O unavailable path=%s error=%s", request.url.path, exc)
+    return JSONResponse(
+        status_code=503, content={"detail": "Library storage is unavailable; check mount health and share ACLs"},
+        headers={"Retry-After": "30"},
+    )
 
 
 @api.exception_handler(AppError)

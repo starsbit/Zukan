@@ -96,17 +96,14 @@ def test_new_nas_previews_can_be_reopened_from_stored_paths(tmp_path, monkeypatc
     monkeypatch.setattr(settings, "generated_files_dir", ".zukan")
     source = tmp_path / f"{uuid.uuid4().hex}.gif"
     Image.new("RGB", (16, 16), "red").save(source)
-    real_save = Image.Image.save
-
-    def nas_save(image, path, *args, **kwargs):
-        real_save(image, path, *args, **kwargs)
-        Path(path).chmod(0)
+    def forbidden_chmod(*args, **kwargs):
+        raise AssertionError("Share ACLs must be respected")
 
     def fake_ffmpeg(cmd, **kwargs):
         Image.new("RGB", (16, 16), "blue").save(Path(cmd[-1]), "PNG")
         return SimpleNamespace(returncode=0)
 
-    monkeypatch.setattr(Image.Image, "save", nas_save)
+    monkeypatch.setattr(Path, "chmod", forbidden_chmod)
     monkeypatch.setattr("backend.app.utils.thumbnails.ffmpeg_available", lambda: True)
     monkeypatch.setattr("backend.app.utils.thumbnails.probe_media", lambda path: {})
     monkeypatch.setattr("backend.app.utils.thumbnails.subprocess.run", fake_ffmpeg)
@@ -117,7 +114,6 @@ def test_new_nas_previews_can_be_reopened_from_stored_paths(tmp_path, monkeypatc
         assert poster is not None
     for path in (poster, thumb):
         if path is not None:
-            assert path.stat().st_mode & 0o777 == 0o644
             persisted = stored_path(path)
             with Image.open(resolve_media_path(persisted)) as reopened:
                 reopened.load()

@@ -1,5 +1,6 @@
 """Explicit, schema-aware maintenance of unavailable catalog assets."""
-import asyncio
+from backend.app.storage.io import run_storage_io
+from backend.app.storage.filesystem import current_filesystem
 import logging
 
 from sqlalchemy import select
@@ -31,16 +32,16 @@ def missing_fields(media):
 
 
 async def inspect(db):
-    if not storage.storage_available():
+    if not await run_storage_io(storage.storage_available):
         raise ValueError('Library is unavailable; maintenance cannot infer missing files')
     items = []
     records = (await db.scalars(select(Media).execution_options(populate_existing=True))).all()
     for media in records:
-        fields = await asyncio.to_thread(missing_fields, media)
+        fields = await run_storage_io(missing_fields, media)
         if fields:
             items.append({'id': str(media.id), 'path': media.filepath,
                           'missing_fields': fields, 'trashed': media.deleted_at is not None})
-    if not storage.storage_available():
+    if not await run_storage_io(storage.storage_available):
         raise ValueError('Library disconnected during inspection; results discarded')
     return {'root': str(root_path()), 'root_identity': storage.settings.library_root_identity,
             'checked_records': len(records), 'items': items}
@@ -54,7 +55,7 @@ async def cleanup(db, media_ids, root, identity):
         if root != str(root_path()) or identity != storage.settings.library_root_identity:
             raise ValueError('Library changed; inspect it again before cleanup')
         async with storage.scan_lock, storage.storage_gate.migration():
-            if not storage.storage_available():
+            if not await run_storage_io(storage.storage_available):
                 raise ValueError('Library is unavailable; cleanup refused')
             records = (await db.scalars(select(Media).with_for_update().execution_options(populate_existing=True))).all()
             selected = set(media_ids)
@@ -63,8 +64,8 @@ async def cleanup(db, media_ids, root, identity):
             skipped = [str(mid) for mid in selected - {m.id for m in records}]
             generated_candidates = set()
             # Complete filesystem checks before making database changes.
-            findings = [(m, await asyncio.to_thread(missing_fields, m)) for m in records if m.id in selected]
-            if not storage.storage_available():
+            findings = [(m, await run_storage_io(missing_fields, m)) for m in records if m.id in selected]
+            if not await run_storage_io(storage.storage_available):
                 raise ValueError('Library disconnected; cleanup refused')
             for media, fields in findings:
                 if 'filepath' in fields:
@@ -79,7 +80,7 @@ async def cleanup(db, media_ids, root, identity):
                     repaired.append(str(media.id))
                 else:
                     skipped.append(str(media.id))
-            if not storage.storage_available():
+            if not await run_storage_io(storage.storage_available):
                 await db.rollback()
                 raise ValueError('Library disconnected; cleanup rolled back')
             await db.commit()
@@ -88,9 +89,9 @@ async def cleanup(db, media_ids, root, identity):
             errors = []
             for value in generated_candidates - references:
                 try:
-                    if not storage.storage_available():
+                    if not await run_storage_io(storage.storage_available):
                         raise OSError('Library disconnected')
-                    contained_path(root_path(), value).unlink(missing_ok=True)
+                    await run_storage_io(current_filesystem().remove, value)
                 except (OSError, ValueError) as exc:
                     errors.append({'path': value, 'error': str(exc)})
             logger.warning('Storage maintenance deleted=%s repaired=%s skipped=%s', deleted, repaired, skipped)

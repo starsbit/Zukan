@@ -223,33 +223,17 @@ def test_ffmpeg_available_returns_bool():
 
 
 @pytest.mark.asyncio
-async def test_new_nas_upload_can_be_reopened_from_stored_path(tmp_path, monkeypatch):
-    import aiofiles
+async def test_nas_upload_uses_share_permissions_without_chmod(tmp_path, monkeypatch):
     from backend.app.config import settings
     from backend.app.utils.library_paths import resolve_media_path, stored_path
 
     monkeypatch.setattr(settings, "storage_dir", tmp_path)
     monkeypatch.setattr(settings, "library_paths_relative", True)
-    real_open = aiofiles.open
-
-    class NasWrite:
-        def __init__(self, path, *args, **kwargs):
-            self.path = path
-            self.context = real_open(path, *args, **kwargs)
-
-        async def __aenter__(self):
-            return await self.context.__aenter__()
-
-        async def __aexit__(self, *args):
-            result = await self.context.__aexit__(*args)
-            # Simulate a share applying restrictive permissions on close.
-            self.path.chmod(0)
-            return result
-
-    monkeypatch.setattr(aiofiles, "open", NasWrite)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("NAS ACLs must not be replaced by chmod")
+    monkeypatch.setattr(Path, "chmod", forbidden)
     saved = await save_bytes(b"image content", declared_mime_type="image/png")
     assert saved is not None
-    assert saved.path.stat().st_mode & 0o777 == 0o644
     persisted = stored_path(saved.path)
     assert not Path(persisted).is_absolute()
     assert resolve_media_path(persisted).read_bytes() == b"image content"

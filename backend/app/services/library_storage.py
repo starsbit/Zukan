@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 import asyncio
-import hashlib
 import logging
 import time
-import os
 import shutil
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from sqlalchemy import select, text
 from backend.app.config import settings
+from backend.app.storage.filesystem import (
+    MARKER as MARKER, current_filesystem, configured_filesystem,
+    prepare_library_root, ensure_marker as initialize_marker, file_digest,
+)
+from backend.app.storage.io import run_storage_io
+from backend.app.storage.migration import copy_verified, cleanup_verified_source
+from backend.app.storage.scanner import KnownAsset, scan_files, discover_paths as walk_library
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.library_storage import LibraryStorage, StorageMigration
@@ -27,38 +32,23 @@ from backend.app.utils.media_metadata import extract_media_metadata
 from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 
 logger = logging.getLogger(__name__)
-MARKER = ".zukan-library-id"
 PATH_FIELDS = ("filepath", "thumbnail_path", "poster_path")
 job_tasks: set[asyncio.Task] = set()
 scan_lock = asyncio.Lock()
 control_lock = asyncio.Lock()
 
 
-def file_digest(path: Path) -> tuple[int, str]:
-    before = path.stat()
-    digest = hashlib.sha256()
-    with path.open('rb') as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b''):
-            digest.update(chunk)
-    after = path.stat()
-    if (before.st_size, before.st_mtime_ns, before.st_ino) != (after.st_size, after.st_mtime_ns, after.st_ino):
-        raise OSError(f'File changed while being read: {path}')
-    return after.st_size, digest.hexdigest()
-
-
 def storage_available(root: Path | None = None, identity: str | None = None) -> bool:
-    root = root or root_path()
-    identity = identity if identity is not None else settings.library_root_identity
-    try:
-        return root.is_dir() and (not identity or (root / MARKER).read_text().strip() == identity)
-    except OSError:
-        return False
+    if root is None:
+        return current_filesystem().available()
+    return configured_filesystem(root, identity).available()
 
 
 def legacy_relative(value: str, root: Path) -> str:
     raw = Path(value)
     # Original installs recorded either absolute paths or storage/xx/file paths.
-    candidate = raw if raw.is_absolute() else raw.resolve()
+    candidate = raw.absolute()
+    root = root.absolute()
     if candidate.is_relative_to(root):
         relative = str(candidate.relative_to(root))
     else:
@@ -72,7 +62,6 @@ def apply_config(config: LibraryStorage):
     settings.generated_files_dir = config.generated_dir
     settings.library_root_identity = config.root_identity
     settings.library_paths_relative = True
-    storage_gate.available = storage_available()
 
 
 async def acquire_storage_lease():
@@ -115,10 +104,11 @@ async def initialize_library():
     async with AsyncSessionLocal() as db:
         config = await db.get(LibraryStorage, 1)
         if config is None:
-            root = settings.storage_dir.resolve()
-            root.mkdir(parents=True, exist_ok=True)
+            root = settings.storage_dir.absolute()
+            identity = await run_storage_io(prepare_library_root, root, settings.library_mount_path,
+                                            tuple(x.strip() for x in settings.library_mount_types.split(",") if x.strip()))
             config = LibraryStorage(id=1, root=str(root), generated_dir='.zukan', scan_interval_seconds=3600)
-            config.root_identity = ensure_marker(root)
+            config.root_identity = identity
             paused = await pause_version_trigger(db)
             for media in (await db.scalars(select(Media))).all():
                 for field in PATH_FIELDS:
@@ -129,27 +119,22 @@ async def initialize_library():
             await restore_version_trigger(db, paused)
             await db.commit()
         apply_config(config)
+        storage_gate.available = await run_storage_io(storage_available)
 
 
 def ensure_marker(root: Path, identity: str | None = None) -> str:
-    marker = root / MARKER
-    if marker.is_symlink():
-        raise ValueError('Library identity marker cannot be a symlink')
-    if marker.exists():
-        existing = marker.read_text().strip()
-        uuid.UUID(existing)
-        if identity and existing != identity:
-            raise ValueError('Library destination identity changed')
-        return existing
-    identity = identity or str(uuid.uuid4())
-    with marker.open('x') as stream:
-        stream.write(identity)
-    return identity
+    return initialize_marker(configured_filesystem(root), identity)
 
 
 async def get_storage_status(db):
     config = await db.get(LibraryStorage, 1)
-    available = await asyncio.to_thread(storage_available)
+    availability_error = None
+    try:
+        await run_storage_io(current_filesystem().snapshot)
+        available = True
+    except OSError as exc:
+        available = False
+        availability_error = str(exc)
     storage_gate.available = available
     latest = await db.scalar(
         select(StorageMigration).order_by(StorageMigration.created_at.desc()).limit(1)
@@ -163,6 +148,8 @@ async def get_storage_status(db):
         "folder_configured": config.folder_configured,
         "scan_interval_seconds": config.scan_interval_seconds,
         "available": available,
+        "availability_error": availability_error,
+        "mount_path": str(settings.library_mount_path) if settings.library_mount_path else None,
         "scanning": scan_lock.locked(),
         "last_scan": config.last_scan,
         "migration": job_status(latest) if latest else None,
@@ -188,8 +175,9 @@ async def confirm_storage_folder(db, root: str):
         config = await db.get(LibraryStorage, 1, populate_existing=True)
         if root != config.root:
             raise ValueError('The library folder changed; refresh and confirm the current folder')
-        if not storage_available(Path(config.root), config.root_identity) or not os.access(config.root, os.R_OK | os.W_OK | os.X_OK):
+        if not await run_storage_io(storage_available, Path(config.root), config.root_identity):
             raise ValueError('The library folder must be available, readable and writable')
+        await run_storage_io(configured_filesystem(Path(config.root), config.root_identity).probe_writable)
         config.folder_configured = True
         await db.commit()
     return {'folder_configured': True}
@@ -221,8 +209,7 @@ def inspect_destination(destination: str, manifest: list, source: Path):
         raise ValueError('Source and destination must not overlap')
     if not target.is_dir():
         raise ValueError('Destination directory does not exist; mount it first')
-    if not os.access(target, os.R_OK | os.W_OK | os.X_OK):
-        raise ValueError('Destination must be readable and writable')
+    configured_filesystem(target).probe_writable()
     required = 0
     for entry in manifest:
         src = contained_path(source, entry['source'])
@@ -249,7 +236,7 @@ async def build_manifest(db):
                 continue
             path = contained_path(root_path(), relative)
             try:
-                size, digest = await asyncio.to_thread(file_digest, path)
+                size, digest = await run_storage_io(file_digest, path)
             except FileNotFoundError as exc:
                 raise ValueError(f'Source asset is missing: {relative}. Open Database maintenance to review and clean missing records before migration.') from exc
             if field == "filepath" and media.sha256 and digest != media.sha256 and media.file_status == "available":
@@ -266,10 +253,10 @@ async def build_manifest(db):
 
 
 async def validate_destination(db, destination):
-    if not storage_available():
+    if not await run_storage_io(storage_available):
         raise ValueError('Source library is unavailable')
     manifest = await build_manifest(db)
-    return await asyncio.to_thread(inspect_destination, destination, manifest, root_path())
+    return await run_storage_io(inspect_destination, destination, manifest, root_path())
 
 
 async def start_migration(db, destination):
@@ -286,11 +273,11 @@ async def _start_migration(db, destination):
     # Hold writer pause through manifest construction, then transfer it to the job.
     async with storage_gate.migration():
         manifest = await build_manifest(db)
-        if not storage_available():
+        if not await run_storage_io(storage_available):
             raise ValueError('Source library is unavailable')
-        result = await asyncio.to_thread(inspect_destination, destination, manifest, root_path())
+        result = await run_storage_io(inspect_destination, destination, manifest, root_path())
         target = Path(result['destination_root'])
-        identity = await asyncio.to_thread(ensure_marker, target)
+        identity = await run_storage_io(ensure_marker, target)
         job = StorageMigration(id=str(uuid.uuid4()), source_root=str(root_path()),
                                destination_root=str(target), destination_identity=identity,
                                state='copying', source_identity=settings.library_root_identity, manifest=manifest)
@@ -311,90 +298,6 @@ def spawn_job(job_id):
 async def save_manifest(db, job, manifest):
     job.manifest = [dict(entry) for entry in manifest]
     await db.commit()
-
-
-def publish_without_overwrite(temp: Path, target: Path):
-    import errno
-    try:
-        os.link(temp, target)
-        return
-    except OSError as exc:
-        if exc.errno not in (errno.EPERM, errno.ENOTSUP, errno.EXDEV):
-            raise
-    # Shares without hard-link support can still publish via an exclusive
-    # atomic rename. Never fall back to an overwrite-capable rename.
-    import ctypes
-    import sys
-    libc = ctypes.CDLL(None, use_errno=True)
-    if sys.platform == 'darwin':
-        result = libc.renamex_np(os.fsencode(temp), os.fsencode(target), 4)  # RENAME_EXCL
-    elif hasattr(libc, 'renameat2'):
-        result = libc.renameat2(-100, os.fsencode(temp), -100, os.fsencode(target), 1)  # RENAME_NOREPLACE
-    else:
-        raise OSError('This filesystem does not support exclusive atomic file publication')
-    if result:
-        error = ctypes.get_errno()
-        raise OSError(error, os.strerror(error), str(target))
-
-
-def copy_verified(source: Path, target: Path, entry: dict, job_id: str):
-    expected = (entry['size'], entry['sha256'])
-    if file_digest(source) != expected:
-        raise ValueError(f'Source content changed: {source}')
-    if target.exists():
-        if file_digest(target) != expected:
-            raise ValueError(f'Destination conflict: {target}')
-        return
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temp = target.with_name(f'.{target.name}.{job_id}.partial')
-    if temp.is_symlink():
-        raise ValueError('Temporary migration path is a symlink')
-    with source.open('rb') as src, temp.open('wb') as dst:
-        # Use explicit media permissions rather than inheriting NAS defaults.
-        os.fchmod(dst.fileno(), 0o644)
-        shutil.copyfileobj(src, dst, 1024 * 1024)
-        dst.flush()
-        os.fsync(dst.fileno())
-    if file_digest(temp) != expected or file_digest(source) != expected:
-        raise ValueError(f'Copy verification failed: {source}')
-    # Exclusive hard-link publication prevents replacing a concurrently-created file.
-    try:
-        publish_without_overwrite(temp, target)
-        target.chmod(0o644)
-        # Some shares alter permissions on publication. Detect this per asset,
-        # before recording it as copied, rather than at final verification.
-        with target.open('rb') as stream:
-            stream.read(1)
-    except FileExistsError:
-        if file_digest(target) != expected:
-            raise ValueError(f'Destination conflict: {target}')
-    finally:
-        temp.unlink(missing_ok=True)
-
-
-def cleanup_verified_source(source: Path, destination: Path, entry: dict, job_id: str):
-    expected = (entry['size'], entry['sha256'])
-    quarantine = source.with_name(f'.{source.name}.{job_id}.cleanup')
-    if quarantine.is_symlink():
-        raise ValueError('Cleanup staging path is a symlink')
-    if quarantine.exists():
-        if file_digest(quarantine) != expected or file_digest(destination) != expected:
-            raise ValueError(f'Cleanup staging content changed; retained: {quarantine}')
-        quarantine.unlink()
-    if not source.exists():
-        return
-    if file_digest(source) != expected or file_digest(destination) != expected:
-        raise ValueError(f'Source or destination changed; source retained: {source}')
-    source.rename(quarantine)
-    try:
-        if file_digest(quarantine) != expected or file_digest(destination) != expected:
-            raise ValueError(f'File changed during cleanup; retained: {quarantine}')
-    except BaseException:
-        if not source.exists():
-            publish_without_overwrite(quarantine, source)
-            quarantine.unlink(missing_ok=True)
-        raise
-    quarantine.unlink()
 
 
 def verify_manifest(target: Path, manifest: list):
@@ -441,7 +344,7 @@ async def run_migration(job_id):
             config = await db.get(LibraryStorage, 1)
             switched = config.root == job.destination_root
             try:
-                if not storage_available(target, job.destination_identity):
+                if not await run_storage_io(storage_available, target, job.destination_identity):
                     raise ValueError('Destination NAS is unavailable or changed identity')
                 job.error = None
                 if switched:
@@ -450,17 +353,18 @@ async def run_migration(job_id):
                     job.state = 'cleanup'
                     await db.commit()
                 if not switched:
-                    if not storage_available(source, config.root_identity):
+                    if not await run_storage_io(storage_available, source, config.root_identity):
                         raise ValueError('Source library is unavailable')
                     job.state = 'copying'
                     await db.commit()
                     checkpoint = time.monotonic()
                     for entry in manifest:
-                        if not storage_available(source, job.source_identity) or not storage_available(target, job.destination_identity):
+                        if not await run_storage_io(storage_available, source, job.source_identity) or not await run_storage_io(storage_available, target, job.destination_identity):
                             raise ValueError('Storage disconnected during copy')
                         src = contained_path(source, entry['source'])
                         dest = contained_path(target, entry['destination'])
-                        await asyncio.to_thread(copy_verified, src, dest, entry, job.id)
+                        await run_storage_io(copy_verified, src, dest, entry, job.id, target, job.destination_identity,
+                                             configured_filesystem(source, job.source_identity))
                         was_copied = entry.get('copied', False)
                         entry['copied'] = True
                         if not was_copied and time.monotonic() - checkpoint >= 30:
@@ -468,7 +372,7 @@ async def run_migration(job_id):
                             checkpoint = time.monotonic()
                     job.state = 'verifying'
                     await save_manifest(db, job, manifest)
-                    await asyncio.to_thread(verify_manifest, target, manifest)
+                    await run_storage_io(verify_manifest, target, manifest)
                     async with storage_gate.cutover():
                         # No mutation can have escaped the pause since manifest capture.
                         paused = await pause_version_trigger(db)
@@ -485,25 +389,27 @@ async def run_migration(job_id):
                         await db.commit()
                         apply_config(config)
                         switched = True
-                if not storage_available(source, job.source_identity):
+                if not await run_storage_io(storage_available, source, job.source_identity):
                     raise ValueError("Source storage unavailable; cleanup deferred")
                 # Recheck every destination asset before removing any source asset.
-                await asyncio.to_thread(verify_manifest, target, manifest)
-                await asyncio.to_thread(verify_runtime_assets, manifest)
+                await run_storage_io(verify_manifest, target, manifest)
+                await run_storage_io(verify_runtime_assets, manifest)
                 checkpoint = time.monotonic()
                 for entry in manifest:
                     if entry.get('cleaned'):
                         continue
-                    if not storage_available(source, job.source_identity):
+                    if not await run_storage_io(storage_available, source, job.source_identity):
                         raise ValueError('Source disappeared during cleanup')
-                    if not storage_available(target, job.destination_identity):
+                    if not await run_storage_io(storage_available, target, job.destination_identity):
                         raise ValueError('Destination disappeared during cleanup')
                     src = contained_path(source, entry['source'])
                     dest = contained_path(target, entry['destination'])
                     expected = (entry['size'], entry['sha256'])
-                    if await asyncio.to_thread(file_digest, dest) != expected:
+                    if await run_storage_io(file_digest, dest) != expected:
                         raise ValueError('Destination changed during cleanup')
-                    await asyncio.to_thread(cleanup_verified_source, src, dest, entry, job.id)
+                    await run_storage_io(cleanup_verified_source, src, dest, entry, job.id,
+                                         configured_filesystem(source, job.source_identity),
+                                         configured_filesystem(target, job.destination_identity))
                     entry['cleaned'] = True
                     if time.monotonic() - checkpoint >= 30:
                         await save_manifest(db, job, manifest)
@@ -529,25 +435,16 @@ async def resume_migrations():
 
 
 def discover_paths(root: Path):
-    generated = Path(settings.generated_files_dir)
-    def walk_error(error):
-        raise error
-    for base, dirs, files in os.walk(root, followlinks=False, onerror=walk_error):
-        dirs[:] = [d for d in dirs if (Path(base) / d).relative_to(root) != generated and not (Path(base) / d).is_symlink()]
-        for name in files:
-            path = Path(base) / name
-            if name == MARKER or name.endswith(('.partial', '.tmp', '.part', '.cleanup')) or path.is_symlink():
-                continue
-            yield path
+    return walk_library(root, settings.generated_files_dir)
 
 
-async def scan_library(queue):
+async def scan_library(queue, *, verify_contents: bool = True):
     if scan_lock.locked() or storage_gate.paused:
         raise ValueError("A scan or migration is already running")
     async with scan_lock, storage_gate.operation():
         async with AsyncSessionLocal() as db:
             config = await db.get(LibraryStorage, 1)
-            if not storage_available():
+            if not await run_storage_io(storage_available):
                 storage_gate.available = False
                 raise ValueError("NAS library is unavailable")
             records = list((await db.scalars(select(Media))).all())
@@ -558,33 +455,22 @@ async def scan_library(queue):
                 for f in ("thumbnail_path", "poster_path")
             }
             root = root_path()
-            discovered = []
-            paths = await asyncio.to_thread(lambda: list(discover_paths(root)))
-            for path in paths:
-                relative = str(path.relative_to(root))
-                if relative in derivative_paths:
-                    continue
-                contained_path(root, relative)
-                with path.open("rb") as stream:
-                    header = stream.read(65536)
-                supported = await asyncio.to_thread(
-                    resolve_supported_media_type, header, source_name=path.name
-                )
-                if supported is None and relative not in by_path:
-                    continue
-                size, digest = await asyncio.to_thread(file_digest, path)
-                discovered.append((relative, path, size, digest, supported))
-            if not storage_available():
+            discovered = await run_storage_io(
+                scan_files, current_filesystem(), settings.generated_files_dir,
+                {m.filepath: KnownAsset(m.file_size, m.source_mtime_ns, m.sha256, m.file_status == 'available') for m in records},
+                derivative_paths, verify_contents=verify_contents,
+            )
+            if not await run_storage_io(storage_available):
                 raise ValueError("NAS disconnected during scan; changes discarded")
-            seen = {x[0] for x in discovered}
+            seen = {x.relative for x in discovered}
             missing_by_hash = {}
             for media in records:
                 if media.filepath not in seen and media.sha256:
                     missing_by_hash.setdefault(media.sha256, []).append(media)
             new_by_hash = {}
             for item in discovered:
-                if item[0] not in by_path:
-                    new_by_hash.setdefault(item[3], []).append(item)
+                if item.relative not in by_path:
+                    new_by_hash.setdefault(item.sha256, []).append(item)
             result = {
                 "scanned_at": datetime.now(timezone.utc).isoformat(),
                 "added": 0,
@@ -595,7 +481,8 @@ async def scan_library(queue):
                 "errors": [],
             }
             queued = []
-            for relative, path, size, digest, supported in discovered:
+            for item in discovered:
+                relative, path, size, digest, supported = item.relative, item.path, item.size, item.sha256, item.supported
                 media = by_path.get(relative)
                 if media:
                     if media.sha256 and media.sha256 != digest:
@@ -604,6 +491,8 @@ async def scan_library(queue):
                     else:
                         previous_status = media.file_status
                         media.sha256 = digest
+                        media.file_size = size
+                        media.source_mtime_ns = item.mtime_ns
                         media.file_status = "available"
                         if (
                             previous_status != "available"
@@ -619,14 +508,15 @@ async def scan_library(queue):
                 if len(matches) == 1 and len(new_by_hash[digest]) == 1:
                     media = matches[0]
                     media.filepath = relative
+                    media.source_mtime_ns = item.mtime_ns
                     media.file_status = "available"
                     result["moved"] += 1
                     continue
                 media_id = uuid.uuid4()
-                metadata = await asyncio.to_thread(
+                metadata = await run_storage_io(
                     extract_media_metadata, str(path), supported.media_type
                 )
-                poster, thumb = await asyncio.to_thread(
+                poster, thumb = await run_storage_io(
                     generate_poster_and_thumbnail,
                     str(path),
                     supported.media_type,
@@ -638,6 +528,7 @@ async def scan_library(queue):
                     original_filename=path.name,
                     filepath=relative,
                     file_size=size,
+                    source_mtime_ns=item.mtime_ns,
                     sha256=digest,
                     mime_type=supported.canonical_mime_type,
                     media_type=supported.media_type,
@@ -646,7 +537,7 @@ async def scan_library(queue):
                     duration_seconds=metadata.duration_seconds,
                     frame_count=metadata.frame_count,
                     captured_at=datetime.fromtimestamp(
-                        path.stat().st_mtime, timezone.utc
+                        item.mtime, timezone.utc
                     ),
                     tagging_status=TaggingStatus.PENDING,
                     thumbnail_path=str(thumb.relative_to(root)) if thumb else None,
@@ -667,7 +558,7 @@ async def scan_library(queue):
                 if media.filepath not in seen:
                     media.file_status = "missing"
                     result["missing"] += 1
-            if not storage_available():
+            if not await run_storage_io(storage_available):
                 raise ValueError("NAS disconnected during scan; changes discarded")
             config.last_scan = result
             await db.commit()
@@ -684,26 +575,26 @@ async def accept_changed_file(db, media_id, queue):
         if media is None or media.file_status != "changed" or media.deleted_at:
             raise ValueError("Select an active record with changed content")
         path = contained_path(root_path(), media.filepath)
-        with path.open("rb") as stream:
-            header = stream.read(65536)
-        supported = resolve_supported_media_type(header, source_name=path.name)
+        header = await run_storage_io(current_filesystem().read_header, media.filepath)
+        supported = await run_storage_io(resolve_supported_media_type, header, source_name=path.name)
         if supported is None:
             raise ValueError("Changed file has an unsupported media type")
-        size, digest = await asyncio.to_thread(file_digest, path)
+        size, digest = await run_storage_io(file_digest, path)
         duplicate = await db.scalar(
             select(Media).where(Media.sha256 == digest, Media.id != media.id)
         )
         if duplicate:
             raise ValueError(
-                "Changed content duplicates another record belonging to this user"
+                "Changed content duplicates another library record"
             )
-        metadata = await asyncio.to_thread(
+        metadata = await run_storage_io(
             extract_media_metadata, str(path), supported.media_type
         )
-        poster, thumb = await asyncio.to_thread(
+        poster, thumb = await run_storage_io(
             generate_poster_and_thumbnail, str(path), supported.media_type, media.id
         )
         media.sha256, media.file_size = (digest, size)
+        media.source_mtime_ns = None
         media.mime_type, media.media_type = (
             supported.canonical_mime_type,
             supported.media_type,
@@ -737,7 +628,7 @@ async def library_worker(queue):
     last_scan = 0.0
     while True:
         try:
-            storage_gate.available = await asyncio.to_thread(storage_available)
+            storage_gate.available = await run_storage_io(storage_available)
             async with AsyncSessionLocal() as db:
                 config = await db.get(LibraryStorage, 1)
                 interval = config.scan_interval_seconds
@@ -748,7 +639,7 @@ async def library_worker(queue):
                 and (now - last_scan >= interval)
                 and (not storage_gate.paused)
             ):
-                await scan_library(queue)
+                await scan_library(queue, verify_contents=False)
                 last_scan = now
         except Exception:
             logger.exception("Library scan failed; metadata retained")

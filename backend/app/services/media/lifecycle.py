@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.storage.io import run_storage_io
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -35,7 +36,7 @@ class MediaLifecycleService:
 
         await MediaRepository(self._db).delete(media)
         if delete_files:
-            delete_media_files(media.filepath, media.poster_path, media.thumbnail_path)
+            await run_storage_io(delete_media_files, media.filepath, media.poster_path, media.thumbnail_path)
         logger.info("Purged media record media_id=%s", media.id)
 
     async def soft_delete_media(self, media_id: uuid.UUID, user: User) -> None:

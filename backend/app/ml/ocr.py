@@ -1,4 +1,5 @@
 from __future__ import annotations
+from backend.app.storage.io import run_storage_io
 from backend.app.utils.library_paths import resolve_media_path
 
 import asyncio
@@ -67,7 +68,7 @@ class TesseractOCR:
 
         loop = asyncio.get_running_loop()
         source_path = resolve_media_path(media_path)
-        frames = sample_media_frames(media_path, media_type, sample_count=settings.ocr_sample_frames)
+        frames = await run_storage_io(sample_media_frames, media_path, media_type, sample_count=settings.ocr_sample_frames)
         frame_paths = frames or [source_path]
 
         try:
@@ -77,7 +78,7 @@ class TesseractOCR:
             extracted = [t for t in texts if t]
             return _merge_ocr_chunks(extracted)
         finally:
-            cleanup_sampled_frames([frame for frame in frames if frame != source_path])
+            await run_storage_io(cleanup_sampled_frames, [frame for frame in frames if frame != source_path])
 
 
 def _normalize_ocr_text(text: str | None) -> str:

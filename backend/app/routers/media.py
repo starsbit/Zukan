@@ -68,7 +68,9 @@ from backend.app.utils.idempotency import (
     idempotency_store,
 )
 from backend.app.utils.rate_limit import rate_limit
-from backend.app.utils.storage import zip_media
+from backend.app.utils.storage import zip_media, stream_archive
+from backend.app.storage.io import run_storage_io
+from backend.app.storage.filesystem import StorageUnavailable
 
 router = APIRouter(
     prefix="/media", tags=["media"], responses=AUTHENTICATED_ERROR_RESPONSES
@@ -93,6 +95,10 @@ def _media_asset_path(value: str):
         if not path.is_file():
             raise HTTPException(404, 'Media file is unavailable; metadata is retained')
         return path
+    except StorageUnavailable as exc:
+        raise HTTPException(503, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(503, "Library file is not readable; check share ACLs") from exc
     except (ValueError, OSError) as exc:
         raise HTTPException(404, 'Media file is unavailable; metadata is retained') from exc
 
@@ -918,9 +924,9 @@ async def empty_trash(user: User = Depends(current_user), db: AsyncSession = Dep
 async def download_media(body: MediaIdsRequest, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     query, _, _, _, _, _ = _media_services(db)
     rows = await query.get_downloadable_media(user, body.media_ids)
-    buf = zip_media(rows)
+    buf = await run_storage_io(zip_media, rows)
     return StreamingResponse(
-        content=iter([buf.read()]),
+        content=stream_archive(buf),
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=media.zip"},
     )
@@ -1039,7 +1045,7 @@ async def update_media(
 async def get_media_file(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     query, _, _, _, _, _ = _media_services(db)
     media = await query.get_visible_media(media_id, user)
-    return FileResponse(_media_asset_path(media.filepath), media_type=media.mime_type)
+    return FileResponse(await run_storage_io(_media_asset_path, media.filepath), media_type=media.mime_type)
 
 
 @router.get(
@@ -1064,7 +1070,7 @@ async def get_media_thumbnail(media_id: uuid.UUID, user: User = Depends(current_
     media = await query.get_visible_media(media_id, user)
     if not media.thumbnail_path:
         raise AppError(status_code=404, code=thumbnail_not_available, detail="Thumbnail not available")
-    return FileResponse(_media_asset_path(media.thumbnail_path), media_type="image/webp")
+    return FileResponse(await run_storage_io(_media_asset_path, media.thumbnail_path), media_type="image/webp")
 
 
 @router.get(
@@ -1089,7 +1095,7 @@ async def get_media_poster(media_id: uuid.UUID, user: User = Depends(current_use
     media = await query.get_visible_media(media_id, user)
     if not media.poster_path:
         raise AppError(status_code=404, code=poster_not_available, detail="Poster not available")
-    return FileResponse(_media_asset_path(media.poster_path), media_type="image/png")
+    return FileResponse(await run_storage_io(_media_asset_path, media.poster_path), media_type="image/png")
 
 
 @router.delete(

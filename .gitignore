@@ -4,10 +4,13 @@ __pycache__/
 *.pyo
 .venv/
 venv/
-storage/
+/storage/
+/backend/storage/
 model_cache/
 node_modules/
 .metadata-review/
 *.onnx
 .DS_Store
 .coverage
+
+/.e2e/

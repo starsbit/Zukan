@@ -118,23 +118,53 @@ PostgreSQL must support `pgvector`. For legacy PostgreSQL 16 installs, the provi
 
 ### NAS-backed media storage
 
-After a first setup or upgrade, admins see a folder prompt until the library folder is explicitly confirmed. Choose **Keep current folder** to retain the current location, **Open storage settings** to configure another folder, or **Later** to defer until the next sign-in or page reload. Successful storage migration also confirms the folder.
+Use an OS-mounted NFS or SMB share as the primary library. PostgreSQL, model cache, and processing scratch space should stay on local disks. Zukan keeps original filenames and directory structure when discovering existing NAS files; new uploads go under `uploads/` and generated assets under `.zukan/`.
 
-PostgreSQL stays in its existing database volume. An admin can move media to a mounted NAS folder and catalog existing images, GIFs, and videos there without changing their filenames or subfolders.
+**Fresh Docker installation:** mount the share on the host first, then set `ZUKAN_LIBRARY_HOST_PATH=/mnt/nas/zukan` in `.env`. Start with both compose files:
 
-1. Mount your NAS share on the Docker host, then set `ZUKAN_LIBRARY_HOST_PATH=/mnt/nas/anime` in the deployment `.env`. The Compose templates expose this directory to the API at `/library` and retain the old `storage_data` volume during migration. For Proxmox LXC, the path must be mounted inside the LXC where Docker runs.
-2. Recreate the API container with your usual Compose file, for example `docker compose -f docker-compose.prod.yml up -d api`.
-3. Open **Library maintenance → Storage** and save settings. Discovered files join the global library. The default scan interval is 3600 seconds; set it to 0 for manual scanning.
-4. Enter `/library` as the destination, validate it, then choose **Copy, verify and migrate**. Existing IDs, metadata, albums, favorites, and embeddings are preserved. Migration includes trashed media.
-5. Zukan copies and hashes every referenced asset, switches the library root, checks file access and image/video processing, then deletes only verified source copies. Unrelated source files remain. Reads continue during copying; writes and processing pause until migration finishes.
+```bash
+mountpoint /mnt/nas
+# Create the zukan directory on the mounted share before proceeding.
+docker compose -p zukan -f docker-compose.selfhost.yml -f docker-compose.nas.yml up -d --build --remove-orphans
+```
 
-Generated thumbnails and posters live under `.zukan/thumbnails/` and `.zukan/posters/` by default. You can choose another hidden subfolder. New uploads use `uploads/`; existing NAS files stay in place. **Scan now** discovers external additions and unambiguous file moves. Missing files keep their database records; changed content requires an admin to accept and reprocess it. Manual tags, character/series annotations, OCR overrides, and rating overrides remain intact. Permanent deletion also deletes the cataloged NAS original; soft deletion retains it.
+Use the GPU template in place of `docker-compose.selfhost.yml` when applicable. Keep the NAS override in **every** subsequent build, startup and upgrade command. It mounts the existing host directory at `/library`, selects it for first-time initialization, disables Docker's automatic creation of the host directory, and requires an NFS/SMB filesystem. A local directory bound into the container is rejected. For Proxmox LXC, mount the share inside the container that runs Docker. Restart the API container after a host unmount/remount so Docker sees the current mount.
 
-Storage settings and migration progress survive restarts. Interrupted copying and cleanup resume on startup; jobs paused by an error show **Resume migration** after you correct the reported issue. Missing source assets or conflicting destination content block migration without deleting source files. A NAS disconnect pauses file mutations and scanning, and retains metadata. Keep the `.zukan-library-id` marker in each library: it distinguishes the correct mounted library from an empty mountpoint. Existing thumbnails remain valid if you change the generated-files subfolder; new thumbnails use the updated setting.
+**Native backend:** use absolute paths in deployment settings:
 
-**Database maintenance:** In **Admin → Storage**, select **Inspect database** to review missing catalog assets, including trash. Cleanup requires acknowledgment and rechecks only the reviewed IDs. Records whose originals are still missing are permanently deleted through normal media deletion: foreign-key cascades and nulling rules remove dependent links. Surviving generated files are removed only when no other record references them. Recovered originals are skipped. Records missing only generated files retain their annotations and relationships; broken thumbnail/poster references are cleared and marked failed for reprocessing. Storage identity checks and migration/scan locks prevent cleanup of an unavailable library or during migration. This is explicit maintenance; periodic scans continue to preserve missing records. Review or restore externally moved files before choosing permanent cleanup.
+```dotenv
+LIBRARY_ROOT=/mnt/nas/zukan
+LIBRARY_MOUNT_PATH=/mnt/nas
+LIBRARY_MOUNT_TYPES=nfs,nfs4,cifs,smb3
+# Optional existing directory on a local disk; otherwise use the OS temp directory.
+PROCESSING_TEMP_DIR=/var/tmp/zukan
+```
 
-Run one API worker per database; startup enforces this with a PostgreSQL advisory lock so separate processes cannot bypass migration pauses. The provided deployment already runs one worker. NAS mount configuration is retained in `.env`. Wait for migration to finish before running backup/export commands.
+`LIBRARY_MOUNT_PATH` must be the actual mountpoint, while `LIBRARY_ROOT` can be a subdirectory. `LIBRARY_ROOT` supersedes the legacy `STORAGE_DIR` setting. `LIBRARY_MOUNT_TYPES` is a comma-separated allowlist of kernel filesystem types. Leave it unset for a local library. Virtualized Docker file sharing can hide the host's real filesystem type; in that case set a deliberate allowlist for the visible filesystem and enforce the NAS mount on the host. Kernel filesystem type checks are available on Linux; native macOS installations can use the mountpoint and identity checks without a type allowlist.
+
+**Existing databases:** the active root is persisted in the database. An environment change does not silently remap existing records. Mount the share, add the NAS override, then use **Library maintenance → Storage** to validate `/library` and run **Copy, verify and migrate**. This preserves IDs, annotations, albums, favorites, embeddings, and trash. Copies are hashed and verified before the database switches roots; cleanup rechecks both libraries and each destination before removing a source. Interrupted jobs can be resumed. Keep the old `storage_data` volume until migration and your backup checks finish.
+
+**Host boot ordering:** configure the systemd service or mount unit to require the share before starting Zukan. For example, add a service override (with your actual host mountpoint) and use both compose files in `ExecStart`:
+
+```ini
+[Unit]
+RequiresMountsFor=/mnt/nas
+
+[Service]
+ExecStartPre=/usr/bin/mountpoint -q /mnt/nas
+ExecStart=
+ExecStart=/usr/bin/docker compose -p zukan -f /opt/zukan/docker-compose.selfhost.yml -f /opt/zukan/docker-compose.nas.yml up -d --remove-orphans
+```
+
+Mount credentials stay in the host's protected NFS/SMB configuration. Give the API process read, create, rename and delete access through share ACLs and UID/GID mappings. Zukan respects those permissions and the process umask; it does not run `chmod` or `chown` on NAS files. Directory confirmation and migration validation perform an actual write/read/delete probe rather than trusting `os.access`.
+
+**Disconnects and processing:** retain `.zukan-library-id`; it identifies the expected library. Mount or identity failures pause writes, scanning and processing. Existing metadata, settings and authentication remain accessible; media requests return 503 when the library is unavailable. Interrupted processing is deferred until the library reconnects. Inspect `/api/v1/admin/storage` for availability and its error reason. NAS calls run off the event loop with bounded workflow I/O concurrency. Cancellation waits for in-flight disk operations before releasing migration leases. OS mount settings determine how long a stalled NFS/SMB call takes; application cancellation cannot interrupt a kernel filesystem call.
+
+Uploads copy and hash incrementally. Uploads, thumbnails and posters stage on the destination filesystem, flush and reopen before publication, and use atomic publication. New originals and migration copies never overwrite an existing file. No hard-link support is required when the share supports exclusive atomic rename; shares supporting neither operation fail safely. GIF/video sampling uses isolated local temporary directories, and exports spill to local temporary storage rather than holding the entire library archive in RAM.
+
+**Discovery:** scheduled scans reuse verified hashes for records whose size and nanosecond modification time are unchanged. **Scan now** always hashes full contents, including edits made by tools that preserve size and timestamps. Scans exclude generated assets, symlinks and staged outputs, and discard their database changes on enumeration/read errors or mount loss. Separate files with identical content remain separate records. Missing originals retain metadata; changed contents require confirmation before reprocessing. Set the scan interval to zero for manual scanning only.
+
+**Maintenance and backup:** database inspection/cleanup requires the expected mounted library, explicit acknowledgment, and rechecks of selected records. Missing originals may be permanently removed from the catalog; missing previews are marked for reprocessing. Periodic scans never delete records. Back up PostgreSQL and the entire library, including the identity marker and hidden generated assets. Wait for storage migration to finish before backup/export. Run one API worker per database; startup enforces that ownership with a PostgreSQL advisory lock.
 
 ---
 
