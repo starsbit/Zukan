@@ -59,6 +59,8 @@ export async function seedAuthenticatedSession(
     await route.fulfill({ json: { setup_required: false } });
   });
 
+  await stubStorageSetupStatus(page);
+
   await page.unroute(/\/api\/v1\/me(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/me(?:\?.*)?$/, async (route) => {
     await route.fulfill({ json: profile });
@@ -162,11 +164,25 @@ export async function fillPasswordFields(
   await page.locator(`${host} input[formcontrolname="confirmPassword"]`).fill(confirm);
 }
 
+async function stubStorageSetupStatus(page: Page): Promise<void> {
+  await page.unroute(/\/api\/v1\/admin\/storage(?:\?.*)?$/).catch(() => undefined);
+  await page.route(/\/api\/v1\/admin\/storage(?:\?.*)?$/, async (route) => {
+    if (route.request().method() !== 'GET') {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: { root: '/tmp/e2e-storage', folder_configured: true, migration: null },
+    });
+  });
+}
+
 export async function ensureAdminAuthenticated(page: Page): Promise<void> {
   // Prefer seedAuthenticatedSession for mocked UI-isolation specs.
   // This helper intentionally exercises the real setup/login backend flow.
   const setupRequired = await isSetupRequired();
 
+  await stubStorageSetupStatus(page);
   await page.goto('/login');
 
   if (setupRequired) {
