@@ -683,6 +683,33 @@ def test_get_media_contract(api_client, monkeypatch):
     assert response.json()["id"] == str(media_id)
     assert response.json()["related_posts"][0]["similarity"] == 0.87
 
+def test_list_similar_media_contract(api_client, monkeypatch):
+    media_id = uuid.uuid4()
+    captured = {}
+
+    async def _fake_list(self, requested_media_id, user, *, after, page_size):
+        captured.update(media_id=requested_media_id, after=after, page_size=page_size)
+        return {
+            "items": [{**_media_read_payload(str(uuid.uuid4())), "similarity": 0.91}],
+            "next_cursor": "next",
+            "has_more": True,
+            "page_size": page_size,
+        }
+
+    monkeypatch.setattr(MediaQueryService, "list_similar_media", _fake_list)
+
+    response = api_client.get(f"/api/v1/media/{media_id}/similar", params={"after": "abc", "page_size": 10})
+
+    assert response.status_code == 200
+    assert captured == {"media_id": media_id, "after": "abc", "page_size": 10}
+    assert response.json()["next_cursor"] == "next"
+    assert response.json()["items"][0]["similarity"] == 0.91
+
+def test_list_similar_media_rejects_oversized_pages(api_client):
+    response = api_client.get(f"/api/v1/media/{uuid.uuid4()}/similar", params={"page_size": 101})
+
+    assert response.status_code == 422
+
 def test_update_media_contract(api_client, monkeypatch):
     media_id = uuid.uuid4()
 

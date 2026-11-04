@@ -75,3 +75,32 @@ async def test_embedding_repository_accessible_neighbors_returns_empty_without_t
     await db_session.flush()
     neighbors = await repo.nearest_accessible_neighbors(media_id=target.id, user=viewer, limit=8, model_version='test_v1')
     assert neighbors == []
+
+@pytest.mark.asyncio
+async def test_embedding_repository_neighbor_page_walks_without_gaps_and_respects_cap(db_session, make_user, make_media):
+    viewer = await make_user(username='pager', email='pager@example.com')
+    target = await make_media(tagging_status=TaggingStatus.DONE)
+    repo = MediaEmbeddingRepository(db_session)
+    await repo.upsert(media_id=target.id, embedding=_vector(1.0, 0.0), model_version='test_v1')
+    matches = []
+    for index in range(5):
+        media = await make_media(tagging_status=TaggingStatus.DONE)
+        same_distance = index in (1, 2)
+        await repo.upsert(media_id=media.id, embedding=_vector(1.0, 0.1 if same_distance else 0.1 * (index + 1)), model_version='test_v1')
+        matches.append(media.id)
+    await db_session.flush()
+
+    async def walk(max_results: int) -> list[uuid.UUID]:
+        seen: list[uuid.UUID] = []
+        after = None
+        while True:
+            page = await repo.accessible_neighbor_page(media_id=target.id, user=viewer, limit=2, max_results=max_results, model_version='test_v1', after=after)
+            if not page:
+                return seen
+            seen.extend(neighbor.media_id for neighbor in page)
+            after = (page[-1].distance, page[-1].media_id)
+
+    everything = await walk(10)
+    assert sorted(everything) == sorted(matches)
+    assert len(set(everything)) == len(matches)
+    assert await walk(3) == everything[:3]

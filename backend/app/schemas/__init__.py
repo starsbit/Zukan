@@ -52,6 +52,7 @@ from .graphs import (
 )
 from .media import (
     MediaCursorPage,
+    SimilarMediaPage,
     MediaDetail,
     MediaListResponse,
     MediaListState,
@@ -188,6 +189,7 @@ __all__ = [
     "MediaAnnotationBatchUpdate",
     "MediaBatchUpdate",
     "MediaCursorPage",
+    "SimilarMediaPage",
     "MediaDetail",
     "MediaEntityBatchUpdate",
     "MediaIdsRequest",

@@ -12,6 +12,45 @@ from backend.app.database.vector import _vector_literal
 class MediaNeighbor:
     media_id: uuid.UUID
     similarity: float
+    distance: float = 0.0
+
+
+ACCESSIBLE_NEIGHBOR_PAGE_SQL = """
+WITH target AS (
+    SELECT embedding
+    FROM media_embeddings
+    WHERE media_id = :media_id
+      AND model_version = :model_version
+),
+ranked AS (
+    SELECT
+        neighbors.media_id AS media_id,
+        neighbors.embedding <=> target.embedding AS distance
+    FROM target
+    JOIN media_embeddings AS neighbors
+      ON neighbors.model_version = :model_version
+     AND neighbors.media_id != :media_id
+    JOIN media AS candidate
+      ON candidate.id = neighbors.media_id
+    WHERE candidate.deleted_at IS NULL
+      AND (
+        :show_nsfw
+        OR COALESCE(candidate.is_nsfw_override, candidate.is_nsfw) IS FALSE
+      )
+      AND (
+        :show_sensitive
+        OR COALESCE(candidate.is_sensitive_override, candidate.is_sensitive) IS FALSE
+      )
+    ORDER BY distance, media_id
+    LIMIT :max_results
+)
+SELECT media_id, distance
+FROM ranked
+WHERE CAST(:after_distance AS double precision) IS NULL
+   OR (distance, media_id) > (CAST(:after_distance AS double precision), CAST(:after_id AS uuid))
+ORDER BY distance, media_id
+LIMIT :limit
+"""
 
 
 class MediaEmbeddingRepository:
@@ -132,18 +171,37 @@ class MediaEmbeddingRepository:
     async def nearest_accessible_neighbors(
         self, *, media_id: uuid.UUID, user: User, limit: int, model_version: str
     ) -> list[MediaNeighbor]:
+        return await self.accessible_neighbor_page(
+            media_id=media_id,
+            user=user,
+            limit=limit,
+            max_results=limit,
+            model_version=model_version,
+        )
+
+    async def accessible_neighbor_page(
+        self,
+        *,
+        media_id: uuid.UUID,
+        user: User,
+        limit: int,
+        max_results: int,
+        model_version: str,
+        after: tuple[float, uuid.UUID] | None = None,
+    ) -> list[MediaNeighbor]:
         rows = (
             (
                 await self._db.execute(
-                    text(
-                        "\n                    WITH target AS (\n                        SELECT embedding\n                        FROM media_embeddings\n                        WHERE media_id = :media_id\n                          AND model_version = :model_version\n                    )\n                    SELECT\n                        neighbors.media_id AS media_id,\n                        1 - (neighbors.embedding <=> target.embedding) AS similarity\n                    FROM target\n                    JOIN media_embeddings AS neighbors\n                      ON neighbors.model_version = :model_version\n                     AND neighbors.media_id != :media_id\n                    JOIN media AS candidate\n                      ON candidate.id = neighbors.media_id\n                    WHERE candidate.deleted_at IS NULL\n                      AND (\n                        :show_nsfw\n                        OR COALESCE(candidate.is_nsfw_override, candidate.is_nsfw) IS FALSE\n                      )\n                      AND (\n                        :show_sensitive\n                        OR COALESCE(candidate.is_sensitive_override, candidate.is_sensitive) IS FALSE\n                      )\n                    ORDER BY neighbors.embedding <=> target.embedding\n                    LIMIT :limit\n                    "
-                    ),
+                    text(ACCESSIBLE_NEIGHBOR_PAGE_SQL),
                     {
                         "media_id": media_id,
                         "show_nsfw": bool(user.show_nsfw),
                         "show_sensitive": bool(user.show_sensitive),
                         "limit": limit,
+                        "max_results": max_results,
                         "model_version": model_version,
+                        "after_distance": after[0] if after else None,
+                        "after_id": after[1] if after else None,
                     },
                 )
             )
@@ -152,7 +210,9 @@ class MediaEmbeddingRepository:
         )
         return [
             MediaNeighbor(
-                media_id=row["media_id"], similarity=float(row["similarity"] or 0.0)
+                media_id=row["media_id"],
+                similarity=1 - float(row["distance"] or 0.0),
+                distance=float(row["distance"] or 0.0),
             )
             for row in rows
         ]
