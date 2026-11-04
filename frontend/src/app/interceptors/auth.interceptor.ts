@@ -12,6 +12,13 @@ function withBearer<T>(req: HttpRequest<T>, token: string): HttpRequest<T> {
   return req.clone({ setHeaders: { Authorization: `Bearer ${token}` } });
 }
 
+function redirectToLogin(router: Router): void {
+  const returnUrl = window.location.pathname + window.location.search;
+  if (window.location.pathname !== '/login') {
+    router.navigate(['/login'], { queryParams: { returnUrl } });
+  }
+}
+
 function handleTokenRefresh(
   req: HttpRequest<unknown>,
   next: HttpHandlerFn,
@@ -30,7 +37,7 @@ function handleTokenRefresh(
   const refreshToken = authStore.getRefreshToken();
   if (!refreshToken) {
     authStore.clear();
-    router.navigate(['/login']);
+    redirectToLogin(router);
     return EMPTY;
   }
 
@@ -47,7 +54,7 @@ function handleTokenRefresh(
     catchError(err => {
       authStore.isRefreshing = false;
       authStore.clear();
-      router.navigate(['/login']);
+      redirectToLogin(router);
       return throwError(() => err);
     }),
   );

@@ -23,9 +23,9 @@ test.describe.serial('Route guards', () => {
   });
 
   test('guest is redirected to login when visiting a protected route', async ({ page }) => {
-    await page.goto('/browse');
+    await page.goto('/gallery');
 
-    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fbrowse$/);
+    await expect(page).toHaveURL(/\/login\?returnUrl=%2Fgallery$/);
     await expect(page.locator('zukan-login-page')).toBeVisible();
   });
 

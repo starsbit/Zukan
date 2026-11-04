@@ -20,12 +20,18 @@ export class AuthService {
   configuration() {
     return this.client.configuration();
   }
-  startSso(returnUrl: string) {
-    this.client.startSso(returnUrl);
+  startSso(returnUrl: string, silent = false) {
+    this.client.startSso(returnUrl, silent);
+  }
+  isSignedOut() {
+    return this.tokens.isSignedOut();
   }
   private establish(result: Observable<TokenResponse>, remember: boolean): Observable<void> {
     return result.pipe(
-      tap((tokens) => this.tokens.setTokens(tokens, remember)),
+      tap((tokens) => {
+        this.tokens.setTokens(tokens, remember);
+        this.tokens.setSignedOut(false);
+      }),
       switchMap(() => this.users.getMe()),
       tap((owner) => {
         this.uploads.reset();
@@ -52,6 +58,7 @@ export class AuthService {
       finalize(() => {
         this.uploads.reset();
         this.tokens.clear();
+        this.tokens.setSignedOut(true);
         this.owner.clear();
         this.router.navigate(['/login']);
       }),

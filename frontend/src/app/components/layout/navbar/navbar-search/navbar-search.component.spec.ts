@@ -118,8 +118,8 @@ describe('NavbarSearchComponent', () => {
     };
   }
 
-  it('uses accessible suggestions on browse', async () => {
-    const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/browse');
+  it('uses accessible suggestions on favorites', async () => {
+    const { fixture, element, tagsList, getCharacterSuggestions, getSeriesSuggestions } = await createComponent('/favorites');
 
     await setInputValue(fixture, element, 'Sab');
 

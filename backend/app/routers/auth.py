@@ -164,6 +164,14 @@ def internal_return_url(value: str) -> str:
     return value
 
 
+def login_redirect(**query: str) -> RedirectResponse:
+    return RedirectResponse(
+        "/login?" + urlencode(query),
+        status_code=303,
+        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
+    )
+
+
 def docs_cookie(response: Response, tokens: TokenResponse):
     response.set_cookie(
         "zukan_docs",
@@ -234,13 +242,16 @@ async def setup(
 
 
 @router.get("/oidc/start")
-async def oidc_start(request: Request, return_url: str = "/"):
+async def oidc_start(request: Request, return_url: str = "/", silent: bool = False):
     client = oidc_client()
     browser = secrets.token_urlsafe(32)
     request.session["owner_browser"] = browser
     request.session["owner_return"] = internal_return_url(return_url)
     request.session["owner_auth"] = auth_fingerprint()
-    response = await client.authorize_redirect(request, settings.oidc_callback_url)
+    request.session["owner_silent"] = silent
+    response = await client.authorize_redirect(
+        request, settings.oidc_callback_url, **({"prompt": "none"} if silent else {})
+    )
     response.set_cookie(
         "zukan_oidc_browser",
         browser,
@@ -256,14 +267,18 @@ async def oidc_start(request: Request, return_url: str = "/"):
 @router.get("/oidc/callback")
 async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
     client = oidc_client()
+    silent = request.session.get("owner_silent", False)
+    destination = internal_return_url(request.session.get("owner_return", "/"))
     browser = request.cookies.get("zukan_oidc_browser", "")
-    if (
-        not browser
-        or not secrets.compare_digest(browser, request.session.get("owner_browser", ""))
-        or request.session.get("owner_auth") != auth_fingerprint()
-    ):
-        raise HTTPException(401, "Invalid login session")
     try:
+        if (
+            not browser
+            or not secrets.compare_digest(
+                browser, request.session.get("owner_browser", "")
+            )
+            or request.session.get("owner_auth") != auth_fingerprint()
+        ):
+            raise ValueError("Invalid login session")
         token = await client.authorize_access_token(request)
         claims = token["userinfo"]
         if (
@@ -273,7 +288,9 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
             raise ValueError("Identity does not match installation owner")
     except Exception:
         request.session.clear()
-        raise HTTPException(401, "SSO authentication failed") from None
+        return login_redirect(
+            sso="required" if silent else "failed", returnUrl=destination
+        )
     code = secrets.token_urlsafe(32)
     db.add(
         AuthExchange(
@@ -284,13 +301,8 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
         )
     )
     await db.commit()
-    destination = internal_return_url(request.session.get("owner_return", "/"))
     request.session.clear()
-    return RedirectResponse(
-        "/login?" + urlencode({"code": code, "returnUrl": destination}),
-        status_code=303,
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-    )
+    return login_redirect(code=code, returnUrl=destination)
 
 
 @router.post("/oidc/exchange", response_model=TokenResponse)

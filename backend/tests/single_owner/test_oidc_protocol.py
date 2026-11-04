@@ -8,6 +8,7 @@ import pytest
 from authlib.integrations.starlette_client import OAuth
 from joserfc import jwt
 from joserfc.jwk import RSAKey
+from backend.app.routers import auth
 
 
 @pytest.fixture
@@ -77,3 +78,63 @@ async def test_authorization_uses_pkce_nonce_and_state(provider):
     with pytest.raises(Exception):
         await client.authorize_access_token(request)
     client.fetch_access_token.assert_not_awaited()
+
+
+def callback_request(session, browser="browser", **query):
+    return SimpleNamespace(
+        session=session,
+        cookies={"zukan_oidc_browser": browser},
+        scope={"method": "GET"},
+        query_params=query,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "silent,prompt", [(True, ["none"]), (False, None)], ids=["silent", "interactive"]
+)
+async def test_start_requests_prompt_none_only_when_silent(
+    provider, monkeypatch, silent, prompt
+):
+    client, _ = provider
+    monkeypatch.setattr(auth, "oidc_client", lambda: client)
+    request = SimpleNamespace(session={})
+    response = await auth.oidc_start(request, "/album/1", silent)
+    params = parse_qs(urlsplit(response.headers["location"]).query)
+    assert params.get("prompt") == prompt
+    assert request.session["owner_silent"] is silent
+    assert request.session["owner_return"] == "/album/1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "silent,outcome", [(True, "required"), (False, "failed")], ids=["silent", "interactive"]
+)
+async def test_provider_rejection_returns_to_login_with_destination(
+    provider, monkeypatch, silent, outcome
+):
+    client, _ = provider
+    monkeypatch.setattr(auth, "oidc_client", lambda: client)
+    monkeypatch.setattr(auth, "auth_fingerprint", lambda: "fingerprint")
+    session = {
+        "owner_browser": "browser",
+        "owner_auth": "fingerprint",
+        "owner_return": "/album/1",
+        "owner_silent": silent,
+    }
+    response = await auth.oidc_callback(
+        callback_request(session, error="login_required", state="state"), db=None
+    )
+    assert response.status_code == 303
+    params = parse_qs(urlsplit(response.headers["location"]).query)
+    assert params == {"sso": [outcome], "returnUrl": ["/album/1"]}
+    assert session == {}
+
+
+@pytest.mark.asyncio
+async def test_callback_without_login_session_returns_to_login(provider, monkeypatch):
+    client, _ = provider
+    monkeypatch.setattr(auth, "oidc_client", lambda: client)
+    response = await auth.oidc_callback(callback_request({}), db=None)
+    params = parse_qs(urlsplit(response.headers["location"]).query)
+    assert params == {"sso": ["failed"], "returnUrl": ["/"]}

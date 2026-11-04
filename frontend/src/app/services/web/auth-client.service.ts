@@ -23,10 +23,13 @@ export class AuthClientService {
       setup_token,
     });
   }
-  startSso(returnUrl: string): void {
-    window.location.assign(
-      `${this.base}/api/v1/auth/oidc/start?return_url=${encodeURIComponent(returnUrl)}`,
-    );
+  startSso(returnUrl: string, silent = false): void {
+    const url = `${this.base}/api/v1/auth/oidc/start?return_url=${encodeURIComponent(returnUrl)}`;
+    if (silent) {
+      window.location.replace(`${url}&silent=true`);
+    } else {
+      window.location.assign(url);
+    }
   }
   exchange(code: string): Observable<TokenResponse> {
     return this.http.post<TokenResponse>(

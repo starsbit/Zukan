@@ -248,7 +248,7 @@ async def test_oidc_callback_rejects_wrong_identity(owner_client, monkeypatch, c
         session={"owner_browser": "browser", "owner_auth": auth_fingerprint()},
     )
     async with maker() as db:
-        with pytest.raises(auth.HTTPException) as error:
-            await auth.oidc_callback(request, db)
-        assert error.value.status_code == 401
+        response = await auth.oidc_callback(request, db)
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login?sso=failed&returnUrl=%2F"
         assert await db.scalar(select(AuthExchange)) is None

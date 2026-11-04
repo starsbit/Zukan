@@ -18,9 +18,15 @@ describe('routes', () => {
     expect(galleryRoute?.canActivate).toEqual([authGuard]);
   });
 
+  it('redirects the retired browse route to gallery', () => {
+    const browseRoute = routes.find((route) => route.path === 'browse');
+
+    expect(browseRoute?.redirectTo).toBe('gallery');
+    expect(browseRoute?.pathMatch).toBe('full');
+  });
+
   it('protects the authenticated pages', () => {
     const protectedPaths = [
-      'browse',
       'media/:mediaId',
       'graph/characters',
       'album',

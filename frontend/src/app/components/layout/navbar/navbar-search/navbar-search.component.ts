@@ -57,7 +57,7 @@ export class NavbarSearchComponent {
 
   private readonly suggestionScope = computed<MetadataListScope>(() => {
     const url = this.router.url ?? '';
-    return url.startsWith('/browse') || url.startsWith('/favorites') ? 'accessible' : 'owner';
+    return url.startsWith('/favorites') ? 'accessible' : 'owner';
   });
 
   readonly autocompleteTrigger = viewChild(MatAutocompleteTrigger);

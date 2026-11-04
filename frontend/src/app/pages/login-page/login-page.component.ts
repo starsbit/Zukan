@@ -27,7 +27,11 @@ import { extractApiError } from '../../utils/api-error.utils';
           @if (setupRequired()) {
             <zukan-setup-wizard [loading]="loading()" (submitted)="onSetup($event)" />
           } @else if (mode() === 'oidc') {
-            <button mat-flat-button (click)="sso()" [disabled]="loading()">Sign in with SSO</button>
+            @if (loading()) {
+              <p role="status">Signing in…</p>
+            } @else {
+              <button mat-flat-button (click)="sso()">Sign in with SSO</button>
+            }
           } @else {
             <zukan-login-form [loading]="loading()" (submitted)="onLogin($event)" />
           }
@@ -56,21 +60,26 @@ export class LoginPageComponent implements OnInit {
   }
   ngOnInit(): void {
     const code = this.route.snapshot.queryParamMap.get('code');
+    const sso = this.route.snapshot.queryParamMap.get('sso');
     this.auth.configuration().subscribe({
       next: (config) => {
         this.mode.set(config.mode);
         this.setupRequired.set(config.setup_required);
         this.ready.set(true);
-        if (code && config.mode === 'oidc') {
+        if (config.mode !== 'oidc') return;
+        if (code) {
           const destination = this.returnUrl();
           window.history.replaceState(null, '', '/login');
           this.loading.set(true);
-          this.auth
-            .exchange(code)
-            .subscribe({
-              next: () => this.router.navigateByUrl(destination),
-              error: (e) => this.failed(e),
-            });
+          this.auth.exchange(code).subscribe({
+            next: () => this.router.navigateByUrl(destination, { replaceUrl: true }),
+            error: (e) => this.failed(e),
+          });
+        } else if (sso === 'failed') {
+          this.error.set('Single sign-on failed. Please try again.');
+        } else if (!sso && !this.auth.isSignedOut()) {
+          this.loading.set(true);
+          this.auth.startSso(this.returnUrl(), true);
         }
       },
       error: (e) => this.failed(e),

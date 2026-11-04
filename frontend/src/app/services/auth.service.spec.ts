@@ -39,6 +39,7 @@ describe('AuthService', () => {
     const authStore = {
       setTokens: vi.fn(),
       getRefreshToken: vi.fn(() => null),
+      setSignedOut: vi.fn(),
       clear: vi.fn(),
     };
     const userStore = {
@@ -74,6 +75,7 @@ describe('AuthService', () => {
     });
 
     expect(authStore.setTokens).toHaveBeenCalledTimes(1);
+    expect(authStore.setSignedOut).toHaveBeenCalledWith(false);
     expect(uploadTracker.reset).toHaveBeenCalledTimes(1);
     expect(userStore.set).toHaveBeenCalledWith(expect.objectContaining({ id: 'u1' }));
   });
@@ -87,6 +89,7 @@ describe('AuthService', () => {
     const authStore = {
       setTokens: vi.fn(),
       getRefreshToken: vi.fn(() => 'refresh'),
+      setSignedOut: vi.fn(),
       clear: vi.fn(),
     };
     const userStore = {
@@ -124,6 +127,7 @@ describe('AuthService', () => {
     expect(authClient.logout).toHaveBeenCalledWith({ refresh_token: 'refresh' });
     expect(uploadTracker.reset).toHaveBeenCalledTimes(1);
     expect(authStore.clear).toHaveBeenCalledTimes(1);
+    expect(authStore.setSignedOut).toHaveBeenCalledWith(true);
     expect(userStore.clear).toHaveBeenCalledTimes(1);
     expect(router.navigate).toHaveBeenCalledWith(['/login']);
   });

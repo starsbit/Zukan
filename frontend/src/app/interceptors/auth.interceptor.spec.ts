@@ -108,17 +108,21 @@ describe('authInterceptor', () => {
     expect(authStore.getRefreshToken()).toBe('new-rt');
   });
 
-  it('on 401 with no refresh token, clears store and navigates to /login', () => {
+  it('on 401 with no refresh token, clears store and navigates to /login with the current page', () => {
+    window.history.pushState(null, '', '/album/1?sort=new');
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     http.get('/api/v1/me').subscribe({ error: () => {} });
     httpMock.expectOne('/api/v1/me').flush({}, { status: 401, statusText: 'Unauthorized' });
 
     expect(authStore.getAccessToken()).toBeNull();
-    expect(navigateSpy).toHaveBeenCalledWith(['/login']);
+    expect(navigateSpy).toHaveBeenCalledWith(['/login'], {
+      queryParams: { returnUrl: '/album/1?sort=new' },
+    });
   });
 
-  it('on 401 with failing refresh, clears store and navigates to /login', () => {
+  it('on 401 with failing refresh, clears store and navigates to /login with the current page', () => {
+    window.history.pushState(null, '', '/album/1');
     authStore.setTokens({ access_token: 'expired', refresh_token: 'bad-rt', token_type: 'bearer' }, false);
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
@@ -127,7 +131,17 @@ describe('authInterceptor', () => {
     httpMock.expectOne('/api/v1/auth/refresh').flush({}, { status: 401, statusText: 'Unauthorized' });
 
     expect(authStore.getAccessToken()).toBeNull();
-    expect(navigateSpy).toHaveBeenCalledWith(['/login']);
+    expect(navigateSpy).toHaveBeenCalledWith(['/login'], { queryParams: { returnUrl: '/album/1' } });
+  });
+
+  it('on 401 while already on /login, keeps the login page and its destination', () => {
+    window.history.pushState(null, '', '/login?returnUrl=%2Falbum%2F1');
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    http.get('/api/v1/me').subscribe({ error: () => {} });
+    httpMock.expectOne('/api/v1/me').flush({}, { status: 401, statusText: 'Unauthorized' });
+
+    expect(navigateSpy).not.toHaveBeenCalled();
   });
 
   it('concurrent 401s only trigger one refresh', () => {

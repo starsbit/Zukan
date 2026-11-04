@@ -14,6 +14,7 @@ export const SESSION_STORAGE = new InjectionToken<Storage>('SESSION_STORAGE', {
 
 const AT_KEY = 'zukan_at';
 const RT_KEY = 'zukan_rt';
+const SIGNED_OUT_KEY = 'zukan_signed_out';
 
 @Injectable({ providedIn: 'root' })
 export class AuthStore {
@@ -62,6 +63,18 @@ export class AuthStore {
 
   isPersisted(): boolean {
     return this.ls.getItem(AT_KEY) !== null;
+  }
+
+  isSignedOut(): boolean {
+    return this.ls.getItem(SIGNED_OUT_KEY) !== null;
+  }
+
+  setSignedOut(signedOut: boolean): void {
+    if (signedOut) {
+      this.ls.setItem(SIGNED_OUT_KEY, '1');
+    } else {
+      this.ls.removeItem(SIGNED_OUT_KEY);
+    }
   }
 
   clear(): void {

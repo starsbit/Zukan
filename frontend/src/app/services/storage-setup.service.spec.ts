@@ -31,7 +31,7 @@ describe('StorageSetupService', () => {
     expect(s.open).toHaveBeenCalledOnce();
     s.closed.next('settings');
     expect(s.navigate).toHaveBeenCalledWith(['/admin'], {fragment: 'storage'});
-    s.events.next(new NavigationEnd(1, '/browse', '/browse')); TestBed.tick();
+    s.events.next(new NavigationEnd(1, '/gallery', '/gallery')); TestBed.tick();
     s.http.expectNone('/api/v1/admin/storage'); s.http.verify();
   });
   it('does not prompt once a folder has been confirmed', () => {

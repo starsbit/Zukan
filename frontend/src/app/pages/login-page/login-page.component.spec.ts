@@ -7,12 +7,16 @@ import { LoginPageComponent } from './login-page.component';
 import { AuthService } from '../../services/auth.service';
 
 describe('Owner login', () => {
-  async function render(mode: 'local' | 'oidc', setup = false) {
+  async function render(
+    mode: 'local' | 'oidc',
+    { query = {}, signedOut = false }: { query?: Record<string, string>; signedOut?: boolean } = {},
+  ) {
     const auth = {
-      configuration: () => of({ mode, setup_required: setup }),
+      configuration: () => of({ mode, setup_required: false }),
       login: vi.fn(() => of(void 0)),
       setup: vi.fn(() => of(void 0)),
       startSso: vi.fn(),
+      isSignedOut: () => signedOut,
     };
     await TestBed.configureTestingModule({
       imports: [LoginPageComponent],
@@ -20,7 +24,10 @@ describe('Owner login', () => {
         provideRouter([]),
         provideNoopAnimations(),
         { provide: AuthService, useValue: auth },
-        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: new Map() } } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParamMap: new Map(Object.entries(query)) } },
+        },
       ],
     }).compileComponents();
     const fixture = TestBed.createComponent(LoginPageComponent);
@@ -32,10 +39,32 @@ describe('Owner login', () => {
     expect(fixture.nativeElement.querySelector('zukan-login-form')).toBeTruthy();
     expect(fixture.nativeElement.textContent).not.toContain('Register');
   });
-  it('shows only SSO for an OIDC installation', async () => {
-    const { fixture, auth } = await render('oidc');
+  it('never starts SSO for a local installation', async () => {
+    const { auth } = await render('local');
+    expect(auth.startSso).not.toHaveBeenCalled();
+  });
+  it('tries silent SSO to the requested page without showing the button', async () => {
+    const { fixture, auth } = await render('oidc', { query: { returnUrl: '/album/1' } });
+    expect(auth.startSso).toHaveBeenCalledWith('/album/1', true);
+    expect(fixture.nativeElement.querySelector('button')).toBeNull();
+  });
+  it('shows only the SSO button after silent SSO finds no provider session', async () => {
+    const { fixture, auth } = await render('oidc', { query: { sso: 'required' } });
+    expect(auth.startSso).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('zukan-login-form')).toBeNull();
     fixture.nativeElement.querySelector('button').click();
     expect(auth.startSso).toHaveBeenCalledWith('/');
+  });
+  it('reports a failed SSO attempt without retrying', async () => {
+    const { fixture, auth } = await render('oidc', { query: { sso: 'failed' } });
+    expect(auth.startSso).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeTruthy();
+    expect(fixture.nativeElement.querySelector('button')).toBeTruthy();
+  });
+  it('stays on the button after an explicit sign out', async () => {
+    const { fixture, auth } = await render('oidc', { signedOut: true });
+    expect(auth.startSso).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('button')).toBeTruthy();
   });
 });
