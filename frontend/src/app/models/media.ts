@@ -103,6 +103,13 @@ export interface RelatedMediaRead extends MediaRead {
   similarity: number;
 }
 
+export interface SimilarMediaPage {
+  items: RelatedMediaRead[];
+  next_cursor: string | null;
+  has_more: boolean;
+  page_size: number;
+}
+
 export interface MediaMetadataUpdate {
   captured_at: string | null;
 }

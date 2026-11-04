@@ -21,7 +21,12 @@ export class BlobUrlCache {
   constructor(private readonly maxEntries = 300) {}
 
   get(key: string): string | undefined {
-    return this.cache.get(key);
+    const url = this.cache.get(key);
+    if (url !== undefined) {
+      this.cache.delete(key);
+      this.cache.set(key, url);
+    }
+    return url;
   }
 
   has(key: string): boolean {
