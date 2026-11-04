@@ -242,16 +242,13 @@ async def setup(
 
 
 @router.get("/oidc/start")
-async def oidc_start(request: Request, return_url: str = "/", silent: bool = False):
+async def oidc_start(request: Request, return_url: str = "/"):
     client = oidc_client()
     browser = secrets.token_urlsafe(32)
     request.session["owner_browser"] = browser
     request.session["owner_return"] = internal_return_url(return_url)
     request.session["owner_auth"] = auth_fingerprint()
-    request.session["owner_silent"] = silent
-    response = await client.authorize_redirect(
-        request, settings.oidc_callback_url, **({"prompt": "none"} if silent else {})
-    )
+    response = await client.authorize_redirect(request, settings.oidc_callback_url)
     response.set_cookie(
         "zukan_oidc_browser",
         browser,
@@ -267,7 +264,6 @@ async def oidc_start(request: Request, return_url: str = "/", silent: bool = Fal
 @router.get("/oidc/callback")
 async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
     client = oidc_client()
-    silent = request.session.get("owner_silent", False)
     destination = internal_return_url(request.session.get("owner_return", "/"))
     browser = request.cookies.get("zukan_oidc_browser", "")
     try:
@@ -288,9 +284,7 @@ async def oidc_callback(request: Request, db: AsyncSession = Depends(get_db)):
             raise ValueError("Identity does not match installation owner")
     except Exception:
         request.session.clear()
-        return login_redirect(
-            sso="required" if silent else "failed", returnUrl=destination
-        )
+        return login_redirect(sso="failed", returnUrl=destination)
     code = secrets.token_urlsafe(32)
     db.add(
         AuthExchange(

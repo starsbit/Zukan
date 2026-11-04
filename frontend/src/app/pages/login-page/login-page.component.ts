@@ -60,7 +60,7 @@ export class LoginPageComponent implements OnInit {
   }
   ngOnInit(): void {
     const code = this.route.snapshot.queryParamMap.get('code');
-    const sso = this.route.snapshot.queryParamMap.get('sso');
+    const ssoFailed = this.route.snapshot.queryParamMap.get('sso') === 'failed';
     this.auth.configuration().subscribe({
       next: (config) => {
         this.mode.set(config.mode);
@@ -75,9 +75,9 @@ export class LoginPageComponent implements OnInit {
             next: () => this.router.navigateByUrl(destination, { replaceUrl: true }),
             error: (e) => this.failed(e),
           });
-        } else if (sso === 'failed') {
+        } else if (ssoFailed) {
           this.error.set('Single sign-on failed. Please try again.');
-        } else if (!sso && !this.auth.isSignedOut()) {
+        } else if (!this.auth.isSignedOut()) {
           this.loading.set(true);
           this.auth.startSso(this.returnUrl(), true);
         }

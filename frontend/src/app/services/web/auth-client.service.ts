@@ -23,10 +23,10 @@ export class AuthClientService {
       setup_token,
     });
   }
-  startSso(returnUrl: string, silent = false): void {
+  startSso(returnUrl: string, replaceHistory = false): void {
     const url = `${this.base}/api/v1/auth/oidc/start?return_url=${encodeURIComponent(returnUrl)}`;
-    if (silent) {
-      window.location.replace(`${url}&silent=true`);
+    if (replaceHistory) {
+      window.location.replace(url);
     } else {
       window.location.assign(url);
     }

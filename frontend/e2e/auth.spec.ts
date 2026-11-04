@@ -86,11 +86,11 @@ test.describe.serial('Single owner workflows', () => {
     await page.route('**/api/v1/auth/config', (r) =>
       r.fulfill({ json: { mode: 'oidc', setup_required: false } }),
     );
-    await page.goto('/login?sso=required');
+    await page.goto('/login?sso=failed');
     await expect(page.getByRole('button', { name: 'Sign in with SSO' })).toBeVisible();
     await expect(page.locator('zukan-login-form')).toHaveCount(0);
   });
-  test('attempts silent SSO when an OIDC login page opens', async ({ page }) => {
+  test('redirects to the provider when an OIDC login page opens', async ({ page }) => {
     await page.route('**/api/v1/auth/config', (r) =>
       r.fulfill({ json: { mode: 'oidc', setup_required: false } }),
     );
@@ -98,7 +98,6 @@ test.describe.serial('Single owner workflows', () => {
     const start = page.waitForRequest('**/api/v1/auth/oidc/start*');
     await page.goto('/login?returnUrl=%2Falbum%2F1');
     const url = new URL((await start).url());
-    expect(url.searchParams.get('silent')).toBe('true');
     expect(url.searchParams.get('return_url')).toBe('/album/1');
   });
 });

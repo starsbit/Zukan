@@ -90,28 +90,21 @@ def callback_request(session, browser="browser", **query):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "silent,prompt", [(True, ["none"]), (False, None)], ids=["silent", "interactive"]
-)
-async def test_start_requests_prompt_none_only_when_silent(
-    provider, monkeypatch, silent, prompt
+async def test_start_lets_provider_show_login_and_keeps_destination(
+    provider, monkeypatch
 ):
     client, _ = provider
     monkeypatch.setattr(auth, "oidc_client", lambda: client)
     request = SimpleNamespace(session={})
-    response = await auth.oidc_start(request, "/album/1", silent)
+    response = await auth.oidc_start(request, "/album/1")
     params = parse_qs(urlsplit(response.headers["location"]).query)
-    assert params.get("prompt") == prompt
-    assert request.session["owner_silent"] is silent
+    assert "prompt" not in params
     assert request.session["owner_return"] == "/album/1"
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "silent,outcome", [(True, "required"), (False, "failed")], ids=["silent", "interactive"]
-)
 async def test_provider_rejection_returns_to_login_with_destination(
-    provider, monkeypatch, silent, outcome
+    provider, monkeypatch
 ):
     client, _ = provider
     monkeypatch.setattr(auth, "oidc_client", lambda: client)
@@ -120,14 +113,13 @@ async def test_provider_rejection_returns_to_login_with_destination(
         "owner_browser": "browser",
         "owner_auth": "fingerprint",
         "owner_return": "/album/1",
-        "owner_silent": silent,
     }
     response = await auth.oidc_callback(
-        callback_request(session, error="login_required", state="state"), db=None
+        callback_request(session, error="access_denied", state="state"), db=None
     )
     assert response.status_code == 303
     params = parse_qs(urlsplit(response.headers["location"]).query)
-    assert params == {"sso": [outcome], "returnUrl": ["/album/1"]}
+    assert params == {"sso": ["failed"], "returnUrl": ["/album/1"]}
     assert session == {}
 
 

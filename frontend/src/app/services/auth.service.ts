@@ -20,8 +20,8 @@ export class AuthService {
   configuration() {
     return this.client.configuration();
   }
-  startSso(returnUrl: string, silent = false) {
-    this.client.startSso(returnUrl, silent);
+  startSso(returnUrl: string, replaceHistory = false) {
+    this.client.startSso(returnUrl, replaceHistory);
   }
   isSignedOut() {
     return this.tokens.isSignedOut();

@@ -43,28 +43,23 @@ describe('Owner login', () => {
     const { auth } = await render('local');
     expect(auth.startSso).not.toHaveBeenCalled();
   });
-  it('tries silent SSO to the requested page without showing the button', async () => {
+  it('redirects to the provider for the requested page without showing the button', async () => {
     const { fixture, auth } = await render('oidc', { query: { returnUrl: '/album/1' } });
     expect(auth.startSso).toHaveBeenCalledWith('/album/1', true);
     expect(fixture.nativeElement.querySelector('button')).toBeNull();
-  });
-  it('shows only the SSO button after silent SSO finds no provider session', async () => {
-    const { fixture, auth } = await render('oidc', { query: { sso: 'required' } });
-    expect(auth.startSso).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('zukan-login-form')).toBeNull();
-    fixture.nativeElement.querySelector('button').click();
-    expect(auth.startSso).toHaveBeenCalledWith('/');
   });
-  it('reports a failed SSO attempt without retrying', async () => {
+  it('reports a failed SSO attempt and only retries from the button', async () => {
     const { fixture, auth } = await render('oidc', { query: { sso: 'failed' } });
     expect(auth.startSso).not.toHaveBeenCalled();
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeTruthy();
-    expect(fixture.nativeElement.querySelector('button')).toBeTruthy();
+    fixture.nativeElement.querySelector('button').click();
+    expect(auth.startSso).toHaveBeenCalledWith('/');
   });
   it('stays on the button after an explicit sign out', async () => {
     const { fixture, auth } = await render('oidc', { signedOut: true });
     expect(auth.startSso).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
     expect(fixture.nativeElement.querySelector('button')).toBeTruthy();
   });
 });
