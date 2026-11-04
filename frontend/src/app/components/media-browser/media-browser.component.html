@@ -168,7 +168,7 @@
                           [selected]="isMediaSelected(media.id)"
                           [selectionMode]="isSelectionMode()"
                           [showFavorite]="true"
-                          (activatedWithAnchor)="onMediaActivated($event.media, $event.viewportTop)"
+                          (activated)="onMediaActivated($event)"
                           (selectionToggled)="onMediaSelectionToggled($event)"
                           (favoriteToggled)="onFavoriteToggled($event)"
                         >

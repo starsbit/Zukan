@@ -15,7 +15,8 @@
       [class.inspector-media-pane--mobile]="isMobile()"
       [class.inspector-media-pane--draggable]="isImage() && zoom() > 1"
       [class.inspector-media-pane--dragging]="dragging()"
-      [class.inspector-media-pane--touch-enabled]="isImage()"
+      [class.inspector-media-pane--touch-enabled]="isImage() && (!pageScrollEnabled() || zoom() > 1)"
+      [class.inspector-media-pane--page-scroll]="isImage() && pageScrollEnabled() && zoom() <= 1"
       (wheel)="onWheelZoom($event)"
       (pointerdown)="onStagePointerDown($event)"
     >
@@ -545,7 +546,7 @@
           </mat-card-content>
         </mat-card>
 
-        @if (relatedPosts().length > 0) {
+        @if (!pageScrollEnabled() && relatedPosts().length > 0) {
           <mat-card appearance="outlined">
             <mat-card-header>
               <mat-card-title>Related Posts</mat-card-title>

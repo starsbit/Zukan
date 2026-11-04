@@ -7,6 +7,7 @@ import {
   forkJoin,
   from,
   map,
+  merge,
   Observable,
   of,
   reduce,
@@ -45,6 +46,7 @@ export interface GalleryMonthState {
 export class GalleryStore {
   static readonly PAGE_SIZE = 1000;
   static readonly MONTH_PAGE_SIZE = 160;
+  static readonly LOAD_AROUND_MARGIN = 8;
   static readonly BULK_MUTATION_CHUNK_SIZE = 500;
   private readonly client = inject(MediaClientService);
 
@@ -292,6 +294,57 @@ export class GalleryStore {
     });
   }
 
+  patchExisting(updated: MediaRead): void {
+    this._months.update((months) => {
+      const next = new Map(months);
+      for (const [monthKey, month] of next) {
+        if (month.items.some((item) => item.id === updated.id)) {
+          next.set(monthKey, {
+            ...month,
+            items: month.items.map((item) => (item.id === updated.id ? updated : item)),
+          });
+        }
+      }
+      return next;
+    });
+  }
+
+  loadAroundItem(mediaId: string): Observable<unknown> {
+    const month = this.months().find((candidate) =>
+      candidate.items.some((item) => item.id === mediaId),
+    );
+    if (!month) {
+      return EMPTY;
+    }
+
+    const index = month.items.findIndex((item) => item.id === mediaId);
+    const buckets = this._timeline();
+    const bucketIndex = buckets.findIndex(
+      (bucket) => this.monthKey(bucket.year, bucket.month) === month.key,
+    );
+    const requests: Observable<unknown>[] = [];
+
+    if (index >= month.items.length - GalleryStore.LOAD_AROUND_MARGIN) {
+      if (month.hasMore) {
+        if (!month.loading) {
+          requests.push(this.loadMoreForMonth(month.key));
+        }
+      } else {
+        requests.push(this.ensureAdjacentMonth(buckets[bucketIndex + 1]));
+      }
+    }
+
+    if (index < GalleryStore.LOAD_AROUND_MARGIN && bucketIndex > 0) {
+      requests.push(this.ensureAdjacentMonth(buckets[bucketIndex - 1]));
+    }
+
+    return requests.length > 0 ? merge(...requests) : EMPTY;
+  }
+
+  private ensureAdjacentMonth(bucket: TimelineBucket | undefined): Observable<unknown> {
+    return bucket ? this.ensureMonthWindow(this.monthKey(bucket.year, bucket.month)) : EMPTY;
+  }
+
   toggleFavorite(media: MediaRead): Observable<MediaRead> {
     const next = !media.is_favorited;
     const countDelta = next ? 1 : -1;
@@ -301,7 +354,7 @@ export class GalleryStore {
       favorite_count: Math.max(0, (media.favorite_count ?? 0) + countDelta),
     };
 
-    this.patchItem(optimisticMedia);
+    this.patchExisting(optimisticMedia);
     return this.client.batchUpdate({ media_ids: [media.id], favorited: next }).pipe(
       tap(() => {
         if (this.shouldRemoveAfterFavoriteToggle(next)) {
@@ -309,11 +362,11 @@ export class GalleryStore {
           return;
         }
 
-        this.patchItem(optimisticMedia);
+        this.patchExisting(optimisticMedia);
       }),
       map(() => optimisticMedia),
       catchError((err) => {
-        this.patchItem(media);
+        this.patchExisting(media);
         return throwError(() => err);
       }),
     );

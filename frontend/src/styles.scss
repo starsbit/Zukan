@@ -52,6 +52,10 @@ body {
   height: 100%;
 }
 
+zukan-layout:has(~ zukan-media-inspector-page) {
+  visibility: hidden;
+}
+
 .upload-confirm-dialog .mat-mdc-dialog-content {
   overflow: hidden;
 }

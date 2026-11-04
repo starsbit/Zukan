@@ -4,10 +4,12 @@ import {
   DestroyRef,
   ElementRef,
   HostListener,
+  Injector,
   NgZone,
   QueryList,
   ViewChild,
   ViewChildren,
+  afterNextRender,
   computed,
   effect,
   inject,
@@ -23,7 +25,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { EMPTY, catchError } from 'rxjs';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead } from '../../models/media';
@@ -47,7 +49,13 @@ import {
 } from './bulk-metadata-dialog/bulk-metadata-dialog.component';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 import { MediaService } from '../../services/media.service';
-import { MediaInspectionContextService } from '../../services/media-inspection-context.service';
+import { MediaNavigator, parseMediaUrl } from '../../services/media-navigator.service';
+
+interface LayerOpenPoint {
+  mediaId: string;
+  query: string;
+  viewportTop: number | null;
+}
 
 interface JustifiedRowItem {
   media: MediaRead | null;
@@ -144,7 +152,8 @@ export class MediaBrowserComponent {
   private readonly router = inject(Router);
   private readonly zone = inject(NgZone);
   private readonly mediaService = inject(MediaService);
-  private readonly inspectionContext = inject(MediaInspectionContextService);
+  private readonly mediaNavigator = inject(MediaNavigator);
+  private readonly injector = inject(Injector);
 
   @ViewChildren('monthSection', { read: ElementRef })
   private readonly monthSections?: QueryList<ElementRef<HTMLElement>>;
@@ -197,15 +206,11 @@ export class MediaBrowserComponent {
   private resizeObserver?: ResizeObserver;
   private resizeDebounceTimer?: ReturnType<typeof setTimeout>;
   private removeContentScrollListener?: () => void;
-  private removeReturnAnchorCancelListeners?: () => void;
   private metricsFrameId: number | null = null;
   private frameId: number | null = null;
   private pendingJumpRetryTimer?: ReturnType<typeof setTimeout>;
   private pendingJumpFinalizeTimer?: ReturnType<typeof setTimeout>;
-  private returnAnchorRestoreFrameId: number | null = null;
-  private returnAnchorRestoreAttempts = 0;
-  private returnAnchorStableFrames = 0;
-  private activeReturnAnchorSequence: number | null = null;
+  private openPoint: LayerOpenPoint | null = null;
   private pendingJumpTargetKey: string | null = null;
   private readonly scrollTop = signal(0);
   private readonly viewportHeight = signal(900);
@@ -235,20 +240,23 @@ export class MediaBrowserComponent {
       this.dayGroups();
       this.timeline();
       this.loading();
-      this.inspectionContext.returnAnchor();
       untracked(() => {
         this.tryResolvePendingJump();
         this.scheduleLayoutSync();
         this.ensureRenderedMonthsLoaded();
-        this.scheduleReturnAnchorRestore();
       });
+    });
+
+    this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event instanceof NavigationEnd) {
+        this.onNavigationEnd(event.urlAfterRedirects);
+      }
     });
   }
 
   ngAfterViewInit(): void {
     this.observeContentWidth();
     this.watchContentScroll();
-    this.watchReturnAnchorCancellation();
     this.watchMonthSections();
     this.scheduleLayoutSync();
   }
@@ -256,16 +264,12 @@ export class MediaBrowserComponent {
   ngOnDestroy(): void {
     this.resizeObserver?.disconnect();
     this.removeContentScrollListener?.();
-    this.removeReturnAnchorCancelListeners?.();
     clearTimeout(this.resizeDebounceTimer);
     if (this.metricsFrameId != null) {
       cancelAnimationFrame(this.metricsFrameId);
     }
     if (this.frameId != null) {
       cancelAnimationFrame(this.frameId);
-    }
-    if (this.returnAnchorRestoreFrameId != null) {
-      cancelAnimationFrame(this.returnAnchorRestoreFrameId);
     }
     clearTimeout(this.pendingJumpRetryTimer);
     clearTimeout(this.pendingJumpFinalizeTimer);
@@ -283,15 +287,10 @@ export class MediaBrowserComponent {
     return `${year}-${String(month).padStart(2, '0')}`;
   }
 
-  onMediaActivated(media: MediaRead, viewportTop?: number): void {
+  onMediaActivated(media: MediaRead): void {
     this.mediaSelected.emit(media);
-    const items = this.dayGroups().flatMap((group) => group.items);
-    this.inspectionContext.setContext(
-      items,
-      this.router.url,
-      this.captureReturnAnchor(media.id, viewportTop),
-    );
-    void this.router.navigate(['/media', media.id]);
+    this.openPoint = this.captureOpenPoint(media.id, parseMediaUrl(this.router.url).query);
+    this.mediaNavigator.open(media.id);
   }
 
   onFavoriteToggled(media: MediaRead): void {
@@ -605,141 +604,79 @@ export class MediaBrowserComponent {
     this.monthSections.changes.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.tryResolvePendingJump();
       this.scheduleLayoutSync();
-      this.scheduleReturnAnchorRestore();
     });
     this.scheduleLayoutSync();
   }
 
-  private watchReturnAnchorCancellation(): void {
-    if (typeof window === 'undefined' || this.removeReturnAnchorCancelListeners) {
+  private onNavigationEnd(url: string): void {
+    const { mediaId, query } = parseMediaUrl(url);
+    if (mediaId !== null) {
+      this.openPoint ??= this.captureOpenPoint(mediaId, query);
       return;
     }
 
-    const cancel = () => this.cancelReturnAnchorRestore();
-    const options: AddEventListenerOptions = { passive: true };
-    window.addEventListener('wheel', cancel, options);
-    window.addEventListener('touchstart', cancel, options);
-    window.addEventListener('pointerdown', cancel, options);
-    window.addEventListener('keydown', cancel);
-    this.removeReturnAnchorCancelListeners = () => {
-      window.removeEventListener('wheel', cancel);
-      window.removeEventListener('touchstart', cancel);
-      window.removeEventListener('pointerdown', cancel);
-      window.removeEventListener('keydown', cancel);
-      this.removeReturnAnchorCancelListeners = undefined;
-    };
-  }
-
-  private cancelReturnAnchorRestore(): void {
-    const anchor = this.inspectionContext.returnAnchor();
-    if (!anchor || this.activeReturnAnchorSequence !== anchor.sequence) {
-      return;
-    }
-
-    this.inspectionContext.consumeReturnAnchor(anchor.sequence);
-    this.activeReturnAnchorSequence = null;
-    this.resetReturnAnchorRestoreState();
-    if (this.returnAnchorRestoreFrameId != null) {
-      cancelAnimationFrame(this.returnAnchorRestoreFrameId);
-      this.returnAnchorRestoreFrameId = null;
+    const openPoint = this.openPoint;
+    const lastViewedId = this.mediaNavigator.lastViewedId();
+    this.openPoint = null;
+    this.mediaNavigator.lastViewedId.set(null);
+    if (openPoint && openPoint.query === query) {
+      this.reconcilePositionAfterClose(openPoint, lastViewedId ?? openPoint.mediaId);
     }
   }
 
-  private captureReturnAnchor(mediaId: string, viewportTop?: number) {
-    const card = this.findMediaCardElement(mediaId);
-    if (!card) {
-      return null;
-    }
-
+  private captureOpenPoint(mediaId: string, query: string): LayerOpenPoint {
     return {
       mediaId,
-      originUrl: this.router.url,
-      scrollY: this.readDocumentScrollTop(),
-      viewportTop: viewportTop ?? card.getBoundingClientRect().top,
+      query,
+      viewportTop: this.findMediaCardElement(mediaId)?.getBoundingClientRect().top ?? null,
     };
   }
 
-  private scheduleReturnAnchorRestore(): void {
-    const anchor = this.inspectionContext.returnAnchor();
-    if (!anchor || anchor.originUrl !== this.router.url || this.returnAnchorRestoreFrameId != null) {
-      return;
-    }
-
-    if (this.activeReturnAnchorSequence !== anchor.sequence) {
-      this.activeReturnAnchorSequence = anchor.sequence;
-      this.resetReturnAnchorRestoreState();
-    }
-
-    this.returnAnchorRestoreFrameId = requestAnimationFrame(() => {
-      this.returnAnchorRestoreFrameId = null;
-      this.restoreReturnAnchor();
-    });
-  }
-
-  private restoreReturnAnchor(): void {
-    const anchor = this.inspectionContext.returnAnchor();
-    if (!anchor || anchor.originUrl !== this.router.url) {
-      this.activeReturnAnchorSequence = null;
-      this.resetReturnAnchorRestoreState();
-      return;
-    }
-
-    if (this.activeReturnAnchorSequence !== anchor.sequence) {
-      this.activeReturnAnchorSequence = anchor.sequence;
-      this.resetReturnAnchorRestoreState();
-    }
-
-    this.returnAnchorRestoreAttempts += 1;
-    const card = this.findMediaCardElement(anchor.mediaId);
-
-    if (!card) {
-      if (this.returnAnchorRestoreAttempts === 1) {
-        window.scrollTo({ top: anchor.scrollY, behavior: 'auto' });
+  private reconcilePositionAfterClose(openPoint: LayerOpenPoint, mediaId: string): void {
+    const card = this.findMediaCardElement(mediaId);
+    if (card && mediaId === openPoint.mediaId && openPoint.viewportTop !== null) {
+      const delta = card.getBoundingClientRect().top - openPoint.viewportTop;
+      if (Math.abs(delta) > 0.5) {
+        window.scrollBy({ top: delta, behavior: 'instant' });
       }
-      if (this.returnAnchorRestoreAttempts < 240) {
-        this.scheduleReturnAnchorRestore();
-      } else {
-        this.inspectionContext.consumeReturnAnchor(anchor.sequence);
-        this.activeReturnAnchorSequence = null;
-        this.resetReturnAnchorRestoreState();
-      }
+      this.focusCard(card);
       return;
     }
 
-    const delta = card.getBoundingClientRect().top - anchor.viewportTop;
-    if (Math.abs(delta) > 0.5) {
-      window.scrollTo({ top: this.readDocumentScrollTop() + delta, behavior: 'auto' });
+    if (card && this.isInViewport(card)) {
+      this.focusCard(card);
+      return;
     }
 
+    const monthKey = this.dayGroups()
+      .find((group) => group.items.some((item) => item.id === mediaId))
+      ?.date.slice(0, 7);
+    const metric = this.virtualMonthMetrics().find((candidate) => candidate.key === monthKey);
+    if (!metric) {
+      return;
+    }
+
+    this.scrollDocumentToLocalTop(metric.offset);
     this.scrollTop.set(this.readLocalScrollTop());
-    this.scheduleActiveSectionSync();
-    this.ensureRenderedMonthsLoaded();
-
-    const remainingDelta = Math.abs(card.getBoundingClientRect().top - anchor.viewportTop);
-    this.returnAnchorStableFrames = remainingDelta <= 0.5
-      ? this.returnAnchorStableFrames + 1
-      : 0;
-
-    this.retryOrFinishReturnAnchorRestore(anchor);
+    afterNextRender(
+      () => {
+        const target = this.findMediaCardElement(mediaId);
+        if (target) {
+          target.scrollIntoView({ block: 'center', behavior: 'instant' });
+          this.focusCard(target);
+        }
+      },
+      { injector: this.injector },
+    );
   }
 
-  private retryOrFinishReturnAnchorRestore(anchor: { originUrl: string }): void {
-    const settled = this.returnAnchorStableFrames >= 45;
-    const exhausted = this.returnAnchorRestoreAttempts >= 120;
-    if (settled || exhausted || anchor.originUrl !== this.router.url) {
-      const sequence = this.activeReturnAnchorSequence ?? undefined;
-      this.inspectionContext.consumeReturnAnchor(sequence);
-      this.activeReturnAnchorSequence = null;
-      this.resetReturnAnchorRestoreState();
-      return;
-    }
-
-    this.scheduleReturnAnchorRestore();
+  private isInViewport(element: HTMLElement): boolean {
+    const { top, bottom } = element.getBoundingClientRect();
+    return bottom > 0 && top < window.innerHeight;
   }
 
-  private resetReturnAnchorRestoreState(): void {
-    this.returnAnchorRestoreAttempts = 0;
-    this.returnAnchorStableFrames = 0;
+  private focusCard(card: HTMLElement): void {
+    card.querySelector<HTMLElement>('.media-card')?.focus({ preventScroll: true });
   }
 
   private findMediaCardElement(mediaId: string): HTMLElement | null {
@@ -793,7 +730,7 @@ export class MediaBrowserComponent {
     for (const ref of sections) {
       const el = ref.nativeElement;
       const key = el.dataset['month'];
-      if (key) {
+      if (key && !el.querySelector('.media-browser__day--skeleton')) {
         heights[key] = el.offsetHeight + MONTH_SECTION_MARGIN;
       }
     }

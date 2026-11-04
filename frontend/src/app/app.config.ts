@@ -9,13 +9,15 @@ import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { authInterceptor } from './interceptors/auth.interceptor';
 import { AuthSessionService } from './services/auth-session.service';
+import { ScrollPolicy } from './services/scroll-policy.service';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideAnimationsAsync(),
     provideAppInitializer(() => inject(AuthSessionService).restore()),
-    provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'enabled', anchorScrolling: 'enabled' })),
+    provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'disabled', anchorScrolling: 'enabled' })),
+    provideAppInitializer(() => inject(ScrollPolicy).init()),
     provideHttpClient(withInterceptors([authInterceptor])),
     provideServiceWorker('ngsw-worker.js', {
       enabled: environment.production,

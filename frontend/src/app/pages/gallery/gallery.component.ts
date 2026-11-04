@@ -1,4 +1,5 @@
 import { Component, DestroyRef, computed, effect, inject } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MediaBrowserComponent } from '../../components/media-browser/media-browser.component';
 import { LayoutComponent } from '../../components/layout/layout/layout.component';
@@ -10,7 +11,7 @@ import { buildTodayStoriesParams } from '../../utils/today-stories.utils';
 
 @Component({
   selector: 'zukan-gallery',
-  imports: [LayoutComponent, MediaBrowserComponent],
+  imports: [LayoutComponent, MediaBrowserComponent, RouterOutlet],
   templateUrl: './gallery.component.html',
   styleUrl: './gallery.component.scss',
 })
