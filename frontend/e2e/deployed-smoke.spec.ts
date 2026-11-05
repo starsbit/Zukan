@@ -68,7 +68,15 @@ test.describe.serial('Deployed smoke workflow', () => {
 
     const shellResponse = await page.goto('/');
     expect(shellResponse?.ok()).toBeTruthy();
+  });
 
+  test('registers the service worker in a production build', async ({ page }) => {
+    test.skip(
+      !process.env['ZUKAN_E2E_PRODUCTION_BUILD'],
+      'The service worker only registers in production builds; the e2e build is not one.',
+    );
+
+    await page.goto('/');
     await expect.poll(async () =>
       page.evaluate(async () => {
         const registration = await navigator.serviceWorker.getRegistration();

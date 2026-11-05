@@ -32,6 +32,10 @@ async function uploadPngs(
 
       context.fillStyle = `rgb(${(80 + index * 45) % 255}, ${(140 + index * 35) % 255}, ${(200 + index * 25) % 255})`;
       context.fillRect(0, 0, canvas.width, canvas.height);
+      for (let pixel = 0; pixel < 8; pixel += 1) {
+        context.fillStyle = `rgb(${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)})`;
+        context.fillRect(pixel, 0, 1, 1);
+      }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((resultBlob) => {

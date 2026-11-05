@@ -66,7 +66,7 @@ async function setupFavoritesMocks(
   });
 }
 
-test.describe.serial('Favorites page', () => {
+test.describe('Favorites page', () => {
   test.beforeEach(async ({ page }) => {
     await resetBrowserState(page);
   });

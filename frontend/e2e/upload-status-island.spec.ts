@@ -228,7 +228,7 @@ async function registerUploadStatusRoutes(page: Page): Promise<void> {
   });
 }
 
-test.describe.serial('Upload status island', () => {
+test.describe('Upload status island', () => {
   test.beforeEach(async ({ page }) => {
     await resetBrowserState(page);
   });

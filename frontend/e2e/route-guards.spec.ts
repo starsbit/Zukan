@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { fillLoginForm, isSetupRequired, resetBrowserState, seedAuthenticatedSession, submitLoginForm, TEST_ADMIN } from './helpers/auth';
+import { fillLoginForm, isSetupRequired, resetBrowserState, seedAuthenticatedSession, stubStorageSetupStatus, submitLoginForm, TEST_ADMIN } from './helpers/auth';
 
 test.describe.serial('Route guards', () => {
   test.beforeEach(async ({ page }) => {
@@ -107,6 +107,7 @@ test.describe.serial('Route guards', () => {
     const setupRequired = await isSetupRequired();
     test.skip(setupRequired, 'Setup not yet completed');
 
+    await stubStorageSetupStatus(page);
     await page.route('**/api/v1/auth/login', async (route) => {
       await route.fulfill({
         json: {

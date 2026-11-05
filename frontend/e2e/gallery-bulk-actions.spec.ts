@@ -41,6 +41,10 @@ async function uploadTaggedMedia(
 
       context.fillStyle = `rgb(${(40 + seed + index * 30) % 255}, ${(90 + seed + index * 20) % 255}, ${(160 + seed - index * 20 + 255) % 255})`;
       context.fillRect(0, 0, canvas.width, canvas.height);
+      for (let pixel = 0; pixel < 8; pixel += 1) {
+        context.fillStyle = `rgb(${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)})`;
+        context.fillRect(pixel, 0, 1, 1);
+      }
       context.fillStyle = `rgb(${(seed + index * 50) % 255}, ${(seed + index * 70) % 255}, ${(seed + index * 90) % 255})`;
       context.fillRect(index * 2, index * 2, 4, 4);
 

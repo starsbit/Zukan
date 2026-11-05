@@ -34,7 +34,7 @@ function mediaItem(
     uploaded_at: '2026-03-28T12:00:00Z',
     deleted_at: null,
     tags: mediaType === 'image' ? ['starter-tag'] : [],
-    ocr_text_override: null,
+    ocr_text_override: null as string | null,
     is_nsfw: false,
     tagging_status: 'done',
     tagging_error: null,
@@ -72,7 +72,7 @@ function mediaDetail(media: ReturnType<typeof mediaItem>) {
               name: 'Saber Alter',
               role: 'primary',
               source: 'manual',
-              confidence: 0.95,
+              confidence: 0.95 as number | null,
             },
           ]
         : [],
@@ -267,7 +267,7 @@ async function registerScrollableViewerRoutes(page: Page) {
   });
 }
 
-test.describe.serial('Media viewer', () => {
+test.describe('Media viewer', () => {
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/');

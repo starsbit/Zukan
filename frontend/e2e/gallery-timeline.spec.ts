@@ -104,7 +104,7 @@ async function registerGalleryRoutes(page: Page): Promise<void> {
   await page.exposeFunction('__gallerySearchRequests', () => searchRequests);
 }
 
-test.describe.serial('Gallery timeline', () => {
+test.describe('Gallery timeline', () => {
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/');

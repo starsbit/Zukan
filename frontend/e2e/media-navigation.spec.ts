@@ -611,3 +611,262 @@ test.describe('Media navigation position', () => {
     await expect.poll(() => tagsRequested.at(-1)).toEqual([]);
   });
 });
+
+test.describe('Media navigation from each feed', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await seedAuthenticatedSession(page);
+  });
+
+  test('album images return to the album', async ({ page }) => {
+    await registerRoutes(page);
+    await page.route('**/api/v1/albums/album-1', async (route: Route) => {
+      await route.fulfill({
+        json: {
+          id: 'album-1',
+          name: 'Album 1',
+          description: null,
+          cover_media_id: null,
+          preview_media: [],
+          media_count: 500,
+          version: 1,
+          uploaded_at: '2026-03-20T00:00:00Z',
+          updated_at: '2026-03-20T00:00:00Z',
+        },
+      });
+    });
+    await page.goto('/album/album-1');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    const top = await openCard(page, card, 'n-2026-3-2');
+    await expect(page).toHaveURL('/album/album-1/media/n-2026-3-2');
+
+    await page.goBack();
+    await expect(page).toHaveURL('/album/album-1');
+    await expectCardAt(page, 'n-2026-3-2', top);
+  });
+
+  test('favorites images return to favorites', async ({ page }) => {
+    await registerRoutes(page);
+    await page.goto('/favorites');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    const top = await openCard(page, card, 'n-2026-3-2');
+    await expect(page).toHaveURL('/favorites/media/n-2026-3-2');
+
+    await page.goBack();
+    await expect(page).toHaveURL('/favorites');
+    await expectCardAt(page, 'n-2026-3-2', top);
+  });
+
+  test('trash images hide similar images and return to trash', async ({ page }) => {
+    await registerRoutes(page);
+    const similarRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/similar')) {
+        similarRequests.push(request.url());
+      }
+    });
+    await page.goto('/trash');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    await openCard(page, card, 'n-2026-3-2');
+    await expect(page).toHaveURL('/trash/media/n-2026-3-2');
+    await expect(page.locator('zukan-similar-media-grid')).toHaveCount(0);
+    expect(similarRequests).toEqual([]);
+
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL('/trash');
+  });
+});
+
+test.describe('Media navigation controls', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await seedAuthenticatedSession(page);
+    await registerRoutes(page);
+  });
+
+  test('stepping does not add history, so one Back returns to the grid', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    await openCard(page, card, 'n-2026-3-2');
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await viewer.getByRole('button', { name: 'Next media' }).click();
+    await expect(page).not.toHaveURL(/n-2026-3-2$/);
+    await viewer.getByRole('button', { name: 'Next media' }).click();
+
+    await page.goBack();
+    await expect(page).toHaveURL('/gallery');
+    await expect(page.locator('zukan-media-inspector-page')).toHaveCount(0);
+  });
+
+  test('arrow keys step through the feed in both directions', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    await openCard(page, card, 'n-2026-3-2');
+
+    await page.keyboard.press('ArrowRight');
+    await expect(page).not.toHaveURL(/n-2026-3-2$/);
+    await page.keyboard.press('ArrowLeft');
+    await expect(page).toHaveURL('/gallery/media/n-2026-3-2');
+  });
+
+  test('the previous button is disabled on the first image of the feed', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const first = page.locator('.media-browser__day:not(.media-browser__day--skeleton) zukan-media-card').first();
+    await first.waitFor();
+    await first.click();
+
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(viewer.getByRole('button', { name: 'Previous media' })).toBeDisabled();
+    await expect(viewer.getByRole('button', { name: 'Next media' })).toBeEnabled();
+  });
+
+  test('images opened from similar results have no feed to step through', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    await openCard(page, card, 'n-2026-3-2');
+    await openSimilar(page, 2);
+
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(viewer.getByRole('button', { name: 'Previous media' })).toBeDisabled();
+    await expect(viewer.getByRole('button', { name: 'Next media' })).toBeDisabled();
+  });
+
+  test('focus returns to the opened card after closing', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const card = await scrollUntilCardExists(page, 'n-2026-3-2');
+    await openCard(page, card, 'n-2026-3-2');
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL('/gallery');
+
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          document.activeElement?.closest('zukan-media-card')?.getAttribute('data-media-id'),
+        ),
+      )
+      .toBe('n-2026-3-2');
+  });
+
+  test('similar images stop loading once the last page arrives', async ({ page }) => {
+    const similarRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/similar')) {
+        similarRequests.push(request.url());
+      }
+    });
+    await page.goto('/gallery/media/n-2026-3-2');
+
+    const cards = page.locator('zukan-similar-media-grid zukan-media-card');
+    await expect(cards).toHaveCount(40);
+    for (const expected of [80, 120]) {
+      await layerScroller(page).evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      await expect(cards).toHaveCount(expected);
+    }
+
+    await layerScroller(page).evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    await page.waitForTimeout(500);
+    expect(similarRequests).toHaveLength(3);
+  });
+
+  test('favoriting a similar image updates it without touching the feed', async ({ page }) => {
+    const favoriteRequests: Array<{ media_ids: string[]; favorited: boolean }> = [];
+    await page.route('**/api/v1/media', async (route: Route) => {
+      if (route.request().method() !== 'PATCH') {
+        await route.fallback();
+        return;
+      }
+      favoriteRequests.push(route.request().postDataJSON());
+      await route.fulfill({ json: { processed: 1, skipped: 0, results: [] } });
+    });
+    await page.goto('/gallery/media/n-2026-3-2');
+
+    const card = page.locator('zukan-similar-media-grid zukan-media-card').first();
+    await card.scrollIntoViewIfNeeded();
+    const mediaId = (await card.getAttribute('data-media-id'))!;
+    await card.hover();
+    await card.getByRole('button', { name: 'Add to favorites', exact: true }).click();
+
+    await expect(card.getByRole('button', { name: 'Remove from favorites', exact: true })).toBeAttached();
+    expect(favoriteRequests).toEqual([{ media_ids: [mediaId], favorited: true }]);
+    await expect(page).toHaveURL('/gallery/media/n-2026-3-2');
+    await expect(page.locator(`.media-browser__day zukan-media-card[data-media-id="${mediaId}"]`)).toHaveCount(0);
+  });
+});
+
+test.describe('Media navigation failures', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await seedAuthenticatedSession(page);
+    await registerRoutes(page);
+  });
+
+  test('a failed detail request shows an error with a way back', async ({ page }) => {
+    await page.route(/\/api\/v1\/media\/n-2020-1-1$/, async (route: Route) => {
+      await route.fulfill({ status: 500, json: { detail: 'boom' } });
+    });
+    await page.goto('/gallery/media/n-2020-1-1');
+
+    await expect(page.getByText('Unable to load this media.')).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page).toHaveURL('/gallery');
+  });
+
+  test('a failed similar request leaves the image usable', async ({ page }) => {
+    await page.route('**/api/v1/media/*/similar**', async (route: Route) => {
+      await route.fulfill({ status: 500, json: { detail: 'boom' } });
+    });
+    await page.goto('/gallery/media/n-2026-3-2');
+
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(viewer).toContainText('n-2026-3-2.png');
+    await expect(page.getByText('No similar images yet.')).toBeAttached();
+
+    await page.keyboard.press('Escape');
+    await expect(page).toHaveURL('/gallery');
+  });
+});
+
+test.describe('Media navigation on a phone', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await seedAuthenticatedSession(page);
+    await registerRoutes(page);
+  });
+
+  test('returns to the card after Back', async ({ page }) => {
+    await page.goto('/gallery');
+
+    const card = await scrollUntilCardExists(page, OLDER_MONTH_CARD);
+    const top = await openCard(page, card, OLDER_MONTH_CARD);
+
+    await page.goBack();
+    await expectCardAt(page, OLDER_MONTH_CARD, top);
+  });
+
+  test('similar images fit in two columns without horizontal scrolling', async ({ page }) => {
+    await page.goto('/gallery/media/n-2026-3-2');
+
+    const cards = page.locator('zukan-similar-media-grid zukan-media-card');
+    await expect(cards).toHaveCount(40);
+
+    const columns = await cards.evaluateAll((nodes) =>
+      new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size,
+    );
+    expect(columns).toBe(2);
+
+    const overflow = await layerScroller(page).evaluate((node) => node.scrollWidth - node.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+});

@@ -1,16 +1,16 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import { seedAuthenticatedSession } from './helpers/auth';
 
-type MockMedia = ReturnType<typeof sampleMedia> & {
+type MockMedia = ReturnType<typeof baseMedia> & {
   searchable_status?: string;
+  visibility?: string;
 };
 
-function sampleMedia(
+function baseMedia(
   id: string,
   capturedAt: string,
   width: number,
   height: number,
-  overrides: Partial<MockMedia> = {},
 ) {
   return {
     id,
@@ -29,7 +29,7 @@ function sampleMedia(
     version: 1,
     uploaded_at: capturedAt,
     deleted_at: null,
-    tags: [],
+    tags: [] as string[],
     ocr_text_override: null,
     is_nsfw: false,
     is_sensitive: false,
@@ -37,11 +37,19 @@ function sampleMedia(
     tagging_error: null,
     thumbnail_status: 'done',
     poster_status: 'not_applicable',
-    ocr_text: null,
+    ocr_text: null as string | null,
     is_favorited: false,
-    searchable_status: 'done',
-    ...overrides,
   };
+}
+
+function sampleMedia(
+  id: string,
+  capturedAt: string,
+  width: number,
+  height: number,
+  overrides: Partial<MockMedia> = {},
+): MockMedia {
+  return { ...baseMedia(id, capturedAt, width, height), searchable_status: 'done', ...overrides };
 }
 
 function fulfillEmptySearch(route: Route): Promise<void> {
@@ -84,7 +92,7 @@ async function registerSearchRoutes(page: Page, searchRequests: URL[]): Promise<
   });
 
   await page.route('**/api/v1/media/timeline**', async (route) => {
-    await route.fulfill({ json: { buckets: [] } });
+    await route.fulfill({ json: { buckets: [{ year: 2026, month: 3, count: 1 }] } });
   });
 
   await page.route('**/api/v1/tags**', async (route) => {
@@ -443,7 +451,14 @@ async function registerAdvancedFilterRoutes(
 
   await page.route('**/api/v1/media/timeline**', async (route) => {
     timelineRequests.push(new URL(route.request().url()));
-    await route.fulfill({ json: { buckets: [] } });
+    await route.fulfill({
+      json: {
+        buckets: [
+          { year: 2026, month: 3, count: 3 },
+          { year: 2025, month: 12, count: 1 },
+        ],
+      },
+    });
   });
 
   await page.route('**/api/v1/media/*', async (route) => {
@@ -590,7 +605,9 @@ function chipRow(page: Page, label: string) {
   return page.getByRole('button', { name: `Remove ${label}` });
 }
 
-test.describe.serial('Navbar search', () => {
+test.describe('Navbar search', () => {
+  test.use({ viewport: { width: 1280, height: 2400 } });
+
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
     await page.goto('/');

@@ -100,7 +100,7 @@ async function clickFavoriteButton(page: Page): Promise<void> {
   });
 }
 
-test.describe.serial('Home page favorites', () => {
+test.describe('Home page favorites', () => {
   test.beforeEach(async ({ page }) => {
     await resetBrowserState(page);
   });

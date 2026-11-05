@@ -151,7 +151,7 @@ async function registerMetadataManagerRoutes(page: Page) {
     await route.fulfill({ json: { matched_media: 20, updated_media: 20, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
 
-  await page.route('**/api/v1/character-names/artoria/actions/remove-from-media', async (route) => {
+  await page.route('**/api/v1/character-names/Artoria/actions/remove-from-media', async (route) => {
     characters = [];
     await route.fulfill({ json: { matched_media: 27, updated_media: 27, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
@@ -165,7 +165,7 @@ async function registerMetadataManagerRoutes(page: Page) {
     await route.fulfill({ json: { matched_media: 20, updated_media: 20, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
 
-  await page.route('**/api/v1/series-names/fate_stay_night/actions/remove-from-media', async (route) => {
+  await page.route('**/api/v1/series-names/Fate%2Fstay%20night/actions/remove-from-media', async (route) => {
     series = [];
     await route.fulfill({ json: { matched_media: 29, updated_media: 29, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
@@ -286,7 +286,7 @@ async function registerMultiUserMetadataManagerRoutes(page: Page) {
     await route.fulfill({ json: { matched_media: 20, updated_media: 20, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
 
-  await page.route('**/api/v1/character-names/artoria/actions/remove-from-media', async (route) => {
+  await page.route('**/api/v1/character-names/Artoria/actions/remove-from-media', async (route) => {
     ownerCharacters = [];
     await route.fulfill({ json: { matched_media: 27, updated_media: 27, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
@@ -300,7 +300,7 @@ async function registerMultiUserMetadataManagerRoutes(page: Page) {
     await route.fulfill({ json: { matched_media: 20, updated_media: 20, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
 
-  await page.route('**/api/v1/series-names/fate_stay_night/actions/remove-from-media', async (route) => {
+  await page.route('**/api/v1/series-names/Fate%2Fstay%20night/actions/remove-from-media', async (route) => {
     ownerSeries = [];
     await route.fulfill({ json: { matched_media: 29, updated_media: 29, trashed_media: 0, already_trashed: 0, deleted_tag: false, deleted_source: true } });
   });
@@ -411,8 +411,8 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   let accessibleTagsByName = Object.fromEntries(accessibleTags.items.map((item: TagItem) => [item.name, item.media_count]));
-  expect(accessibleTagsByName.shared).toBe(55);
-  expect(accessibleTagsByName.legacy).toBe(13);
+  expect(accessibleTagsByName['shared']).toBe(55);
+  expect(accessibleTagsByName['legacy']).toBe(13);
 
   await confirmRemoval(page, 'shared');
   await expect(resultBanner(page, 'Removed "Shared" from 26 media. The source tag no longer has any remaining references.')).toBeVisible();
@@ -423,8 +423,8 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   accessibleTagsByName = Object.fromEntries(accessibleTags.items.map((item: TagItem) => [item.name, item.media_count]));
-  expect(accessibleTagsByName.shared).toBe(29);
-  expect(accessibleTagsByName.legacy).toBe(13);
+  expect(accessibleTagsByName['shared']).toBe(29);
+  expect(accessibleTagsByName['legacy']).toBe(13);
 
   await page.getByRole('tab', { name: 'Characters' }).click();
   await expect(page.getByRole('heading', { name: 'Characters' })).toBeVisible();
@@ -445,8 +445,8 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   let accessibleCharactersByName = Object.fromEntries(accessibleCharacters.items.map((item: MetadataItem) => [item.name, item.media_count]));
-  expect(accessibleCharactersByName.Saber).toBe(29);
-  expect(accessibleCharactersByName.Artoria).toBe(27);
+  expect(accessibleCharactersByName['Saber']).toBe(29);
+  expect(accessibleCharactersByName['Artoria']).toBe(27);
 
   await confirmRemoval(page, 'Artoria');
   await expect(resultBanner(page, 'Removed "Artoria" from 27 media. The source character name no longer has any remaining references.')).toBeVisible();
@@ -457,8 +457,8 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   accessibleCharactersByName = Object.fromEntries(accessibleCharacters.items.map((item: MetadataItem) => [item.name, item.media_count]));
-  expect(accessibleCharactersByName.Saber).toBe(29);
-  expect(accessibleCharactersByName.Artoria).toBeUndefined();
+  expect(accessibleCharactersByName['Saber']).toBe(29);
+  expect(accessibleCharactersByName['Artoria']).toBeUndefined();
 
   await page.getByRole('tab', { name: 'Series' }).click();
   await expect(page.getByRole('heading', { name: 'Series' })).toBeVisible();
@@ -479,7 +479,7 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   let accessibleSeriesByName = Object.fromEntries(accessibleSeries.items.map((item: MetadataItem) => [item.name, item.media_count]));
-  expect(accessibleSeriesByName.Fate).toBe(31);
+  expect(accessibleSeriesByName['Fate']).toBe(31);
   expect(accessibleSeriesByName['Fate/stay night']).toBe(29);
 
   await confirmRemoval(page, 'Fate/stay night');
@@ -491,6 +491,6 @@ test('keeps tag management owner-scoped when other users share the same names', 
     return response.json();
   });
   accessibleSeriesByName = Object.fromEntries(accessibleSeries.items.map((item: MetadataItem) => [item.name, item.media_count]));
-  expect(accessibleSeriesByName.Fate).toBe(31);
+  expect(accessibleSeriesByName['Fate']).toBe(31);
   expect(accessibleSeriesByName['Fate/stay night']).toBeUndefined();
 });

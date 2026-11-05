@@ -59,6 +59,7 @@ export async function seedAuthenticatedSession(
     await route.fulfill({ json: { setup_required: false } });
   });
 
+  await blockUnmockedApi(page);
   await stubStorageSetupStatus(page);
 
   await page.unroute(/\/api\/v1\/me(?:\?.*)?$/).catch(() => undefined);
@@ -164,7 +165,20 @@ export async function fillPasswordFields(
   await page.locator(`${host} input[formcontrolname="confirmPassword"]`).fill(confirm);
 }
 
-async function stubStorageSetupStatus(page: Page): Promise<void> {
+const UNMOCKED_API_PATTERN = '**/api/v1/**';
+
+export async function blockUnmockedApi(page: Page): Promise<void> {
+  await page.context().unroute(UNMOCKED_API_PATTERN).catch(() => undefined);
+  await page.context().route(UNMOCKED_API_PATTERN, async (route) => {
+    if (new URL(route.request().url()).pathname.startsWith('/api/v1/config/')) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 404, json: { detail: 'Not mocked in this test' } });
+  });
+}
+
+export async function stubStorageSetupStatus(page: Page): Promise<void> {
   await page.unroute(/\/api\/v1\/admin\/storage(?:\?.*)?$/).catch(() => undefined);
   await page.route(/\/api\/v1\/admin\/storage(?:\?.*)?$/, async (route) => {
     if (route.request().method() !== 'GET') {

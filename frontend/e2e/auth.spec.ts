@@ -37,6 +37,10 @@ test.describe.serial('Single owner workflows', () => {
       const context = canvas.getContext('2d')!;
       context.fillStyle = `rgb(${Date.now() % 255},45,96)`;
       context.fillRect(0, 0, 20, 20);
+      for (let pixel = 0; pixel < 8; pixel += 1) {
+        context.fillStyle = `rgb(${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)}, ${Math.floor(Math.random() * 256)})`;
+        context.fillRect(pixel, 0, 1, 1);
+      }
       return canvas.toDataURL('image/png').split(',')[1];
     });
     const uploaded = page.waitForResponse(
