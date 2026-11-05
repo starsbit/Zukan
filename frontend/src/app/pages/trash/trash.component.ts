@@ -1,4 +1,5 @@
 import { Component, DestroyRef, computed, effect, inject } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
 import { MatSnackBar } from '@angular/material/snack-bar';
@@ -12,7 +13,7 @@ import { AuthStore } from '../../services/web/auth.store';
 
 @Component({
   selector: 'zukan-trash',
-  imports: [LayoutComponent, MediaBrowserComponent, MatButtonModule],
+  imports: [LayoutComponent, MediaBrowserComponent, MatButtonModule, RouterOutlet],
   templateUrl: './trash.component.html',
   styleUrl: './trash.component.scss',
 })

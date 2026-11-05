@@ -124,6 +124,10 @@
   touch-action: none;
 }
 
+.inspector-media-pane--page-scroll {
+  touch-action: pan-y;
+}
+
 .inspector-overlay {
   position: absolute;
   z-index: 2;

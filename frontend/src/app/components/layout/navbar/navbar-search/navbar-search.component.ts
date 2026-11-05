@@ -14,6 +14,7 @@ import { AuthStore } from '../../../../services/web/auth.store';
 import { TagsClientService } from '../../../../services/web/tags-client.service';
 import { MediaClientService } from '../../../../services/web/media-client.service';
 import { NavbarSearchService, SearchChip } from '../../../../services/navbar-search.service';
+import { parseMediaUrl } from '../../../../services/media-navigator.service';
 import { debounceTime, distinctUntilChanged, forkJoin, of, switchMap } from 'rxjs';
 import { MetadataListScope } from '../../../../models/tags';
 import { formatMetadataName } from '../../../../utils/media-display.utils';
@@ -131,7 +132,7 @@ export class NavbarSearchComponent {
       }
 
       const params = this.route.snapshot.queryParamMap;
-      if (this.queryParamsMatch(params)) {
+      if (this.queryParamsMatch(params) || parseMediaUrl(this.router.url).mediaId !== null) {
         return;
       }
 

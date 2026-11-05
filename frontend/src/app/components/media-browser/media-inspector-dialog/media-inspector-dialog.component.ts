@@ -112,6 +112,7 @@ const CLASSIFICATION_OVERRIDE_OPTIONS: ReadonlyArray<{
 @Component({
   selector: 'zukan-media-inspector-dialog',
   standalone: true,
+  host: { '[class.inspector--page-scroll]': 'pageScrollEnabled()' },
   imports: [
     MatAutocompleteModule,
     MatButtonModule,
@@ -151,8 +152,11 @@ export class MediaInspectorDialogComponent {
   private readonly tagsClient = inject(TagsClientService);
   private readonly zoomStage = viewChild<ElementRef<HTMLElement>>('zoomStage');
   readonly activeMediaId = input<string | null>(null);
+  readonly pageScrollEnabled = input(false);
+  readonly prefetchedDetail = input<MediaDetail | null>(null);
   readonly initialItems = input<MediaRead[] | null>(null, { alias: 'items' });
   readonly activeMediaChanged = output<string>();
+  readonly relatedPostSelected = output<MediaRead>();
   readonly closeRequested = output<void>();
   readonly metadataFilterSelected = output<MetadataFilterSelection>();
   readonly mediaUpdated = output<MediaRead>();
@@ -291,7 +295,7 @@ export class MediaInspectorDialogComponent {
   private lastMediaTapAt = 0;
   private favoriteFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
   private favoriteFeedbackId = 0;
-  private configuredKey = '';
+  private loadedMediaId: string | null = null;
 
   constructor() {
     effect(() => {
@@ -650,6 +654,10 @@ export class MediaInspectorDialogComponent {
       return;
     }
 
+    if (this.pageScrollEnabled() && this.zoom() <= 1 && !event.ctrlKey) {
+      return;
+    }
+
     this.revealChrome();
     event.preventDefault();
     this.applyZoom(this.zoom() + -event.deltaY * 0.0015, event.clientX, event.clientY);
@@ -835,6 +843,11 @@ export class MediaInspectorDialogComponent {
   }
 
   openRelatedPost(post: RelatedMediaRead): void {
+    if (!this.dialogRef) {
+      this.relatedPostSelected.emit(post);
+      return;
+    }
+
     const existingIndex = this.items().findIndex((item) => item.id === post.id);
     if (existingIndex >= 0) {
       this.navigateTo(existingIndex);
@@ -929,16 +942,12 @@ export class MediaInspectorDialogComponent {
 
     const nextItems = [...items];
     const nextIndex = Math.max(0, nextItems.findIndex((item) => item.id === activeMediaId));
-    const nextActiveId = nextItems[nextIndex]?.id;
-    const nextKey = `${activeMediaId}:${nextItems.map((item) => item.id).join(',')}`;
-    const currentActiveId = this.activeItem()?.id ?? null;
-    if (this.configuredKey === nextKey && currentActiveId === nextActiveId) {
+    this.items.set(nextItems);
+    this.activeIndex.set(nextIndex);
+    if (this.loadedMediaId === nextItems[nextIndex]?.id) {
       return;
     }
 
-    this.configuredKey = nextKey;
-    this.items.set(nextItems);
-    this.activeIndex.set(nextIndex);
     this.editing.set(false);
     this.resetViewport();
     this.beginLoadForActiveItem();
@@ -997,6 +1006,7 @@ export class MediaInspectorDialogComponent {
     }
 
     this.revealChrome();
+    this.loadedMediaId = media.id;
     const requestId = ++this.loadRequestId;
     this.detail.set(null);
     this.mediaUrl.set(null);
@@ -1008,8 +1018,8 @@ export class MediaInspectorDialogComponent {
     this.clearRelatedPreviews();
     this.revokeObjectUrl();
 
-    this.mediaService
-      .get(media.id)
+    const prefetched = this.prefetchedDetail();
+    (prefetched?.id === media.id ? of(prefetched) : this.mediaService.get(media.id))
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (detail) => {

@@ -16,6 +16,7 @@ import { BlobUrlCache } from '../utils/blob-url.utils';
 import {
   MediaCursorPage,
   MediaDetail,
+  SimilarMediaPage,
   MediaEntityBatchUpdate,
   MediaRead,
   MediaUpdate,
@@ -42,7 +43,7 @@ export class MediaService implements OnDestroy {
 
   private _activeParams: MediaSearchParams = {};
 
-  private readonly thumbnailCache = new BlobUrlCache(300);
+  private readonly thumbnailCache = new BlobUrlCache(1000);
   private readonly posterCache = new BlobUrlCache(120);
   private readonly thumbnailRequests = new Map<string, Observable<string>>();
   private readonly posterRequests = new Map<string, Observable<string>>();
@@ -99,6 +100,10 @@ export class MediaService implements OnDestroy {
 
   get(id: string): Observable<MediaDetail> {
     return this.client.get(id);
+  }
+
+  getSimilar(id: string, after: string | null = null): Observable<SimilarMediaPage> {
+    return this.client.getSimilar(id, after);
   }
 
   update(id: string, body: MediaUpdate): Observable<MediaDetail> {

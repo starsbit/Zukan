@@ -35,6 +35,7 @@ from backend.app.schemas import (
     MediaIdsRequest,
     MediaBatchUpdate,
     MediaCursorPage,
+    SimilarMediaPage,
     MediaDetail,
     MediaListState,
     MediaMetadataFilter,
@@ -960,6 +961,24 @@ async def queue_bulk_media_tagging_jobs(
 async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db: AsyncSession = Depends(get_db)):
     query, _, _, _, _, _ = _media_services(db)
     return await query.get_media_detail(media_id, user)
+
+
+@router.get(
+    "/{media_id:uuid}/similar",
+    response_model=SimilarMediaPage,
+    summary="List Similar Media",
+    description="Return accessible media ordered by visual similarity, up to 200 results in total.",
+    responses=error_responses(403, 404),
+)
+async def list_similar_media(
+    media_id: uuid.UUID,
+    after: str | None = Query(default=None, description="Cursor from the previous page."),
+    page_size: int = Query(default=40, ge=1, le=100, description="Items per page."),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.list_similar_media(media_id, user, after=after, page_size=page_size)
 
 
 @router.patch(

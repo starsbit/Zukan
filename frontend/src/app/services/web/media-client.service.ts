@@ -5,6 +5,7 @@ import { API_BASE_URL } from './api.config';
 import {
   MediaCursorPage,
   MediaDetail,
+  SimilarMediaPage,
   MediaUpdate,
   MediaAnnotationBatchUpdate,
   MediaBatchUpdate,
@@ -303,6 +304,11 @@ export class MediaClientService {
 
   get(id: string): Observable<MediaDetail> {
     return this.http.get<MediaDetail>(`${this.base}/api/v1/media/${id}`);
+  }
+
+  getSimilar(id: string, after: string | null = null): Observable<SimilarMediaPage> {
+    const params = after ? new HttpParams().set('after', after) : undefined;
+    return this.http.get<SimilarMediaPage>(`${this.base}/api/v1/media/${id}/similar`, { params });
   }
 
   update(id: string, body: MediaUpdate): Observable<MediaDetail> {

@@ -12,7 +12,6 @@ import { DayGroup } from '../../utils/gallery-grouping.utils';
 import { MediaBrowserComponent } from './media-browser.component';
 import { MediaService } from '../../services/media.service';
 import { MediaClientService } from '../../services/web/media-client.service';
-import { MediaInspectionContextService } from '../../services/media-inspection-context.service';
 
 function makeMedia(id: string, width: number, height: number) {
   return {
@@ -584,25 +583,28 @@ describe('MediaBrowserComponent', () => {
     expect(galleryStoreMock.toggleFavorite).toHaveBeenCalledWith(media);
   });
 
-  it('navigates to the media page and records the current list context when a media card is activated', async () => {
+  it('opens the media detail under the current feed when a media card is activated', async () => {
     await configureBrowserTestingModule();
 
     const fixture = TestBed.createComponent(MediaBrowserComponent);
     const router = TestBed.inject(Router);
-    const inspectionContext = TestBed.inject(MediaInspectionContextService);
     const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
     const media = makeMedia('m1', 100, 100);
-    const second = makeMedia('m2', 100, 100);
     fixture.componentRef.setInput('dayGroups', [
-      { date: '2026-03-28', label: 'March 28, 2026', items: [media, second] },
+      { date: '2026-03-28', label: 'March 28, 2026', items: [media] },
     ] satisfies DayGroup[]);
     fixture.detectChanges();
 
     fixture.componentInstance.onMediaActivated(media);
 
-    expect(inspectionContext.items()).toEqual([media, second]);
-    expect(inspectionContext.originUrl()).toBe(router.url);
-    expect(navigateSpy).toHaveBeenCalledWith(['/media', 'm1']);
+    expect(navigateSpy).toHaveBeenCalledWith(
+      ['/gallery', 'media', 'm1'],
+      expect.objectContaining({
+        queryParamsHandling: 'preserve',
+        replaceUrl: false,
+        state: expect.objectContaining({ mediaDepth: 1 }),
+      }),
+    );
   });
 
   it('keeps click behavior in selection mode on selection toggle instead of opening the inspector', async () => {

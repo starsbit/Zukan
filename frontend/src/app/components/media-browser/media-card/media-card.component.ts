@@ -37,7 +37,6 @@ export class MediaCardComponent {
   readonly selectionMode = input(false);
   readonly showFavorite = input(false);
   readonly activated = output<MediaRead>();
-  readonly activatedWithAnchor = output<{ media: MediaRead; viewportTop: number }>();
   readonly selectionToggled = output<MediaRead>();
   readonly favoriteToggled = output<MediaRead>();
 
@@ -212,12 +211,7 @@ export class MediaCardComponent {
       return;
     }
 
-    const media = this.media();
-    this.activatedWithAnchor.emit({
-      media,
-      viewportTop: this.host().nativeElement.getBoundingClientRect().top,
-    });
-    this.activated.emit(media);
+    this.activated.emit(this.media());
   }
 
   onSelectionToggle(event: Event): void {

@@ -32,6 +32,7 @@ from backend.app.schemas import (
     EntityRead,
     ExternalRefRead,
     MediaCursorPage,
+    SimilarMediaPage,
     MediaDetail,
     MediaListState,
     MediaMetadataFilter,
@@ -54,12 +55,14 @@ from backend.app.utils.pagination import (
     apply_cursor_where,
     captured_timestamp_expr,
     decode_cursor,
+    decode_cursor_typed,
     encode_cursor,
 )
 
 
 class MediaQueryService:
     RELATED_POST_LIMIT = 8
+    SIMILAR_MEDIA_MAX_RESULTS = 200
     SORT_FIELDS: dict[str, Any] = {
         "captured_at": captured_timestamp_expr(),
         "uploaded_at": Media.uploaded_at,
@@ -243,6 +246,41 @@ class MediaQueryService:
             model_version=EMBEDDING_MODEL_VERSION,
         )
         return await self._build_related_media(neighbors)
+
+    async def list_similar_media(
+        self,
+        media_id: uuid.UUID,
+        user: User,
+        *,
+        after: str | None,
+        page_size: int,
+    ) -> SimilarMediaPage:
+        from backend.app.ml.embedding import EMBEDDING_MODEL_VERSION
+
+        await self.get_visible_media(media_id, user)
+        neighbors = await self._embedding_repo.accessible_neighbor_page(
+            media_id=media_id,
+            user=user,
+            limit=page_size + 1,
+            max_results=self.SIMILAR_MEDIA_MAX_RESULTS,
+            model_version=EMBEDDING_MODEL_VERSION,
+            after=self._decode_similar_cursor(after),
+        )
+        page = neighbors[:page_size]
+        has_more = len(neighbors) > page_size
+        return SimilarMediaPage(
+            items=await self._build_related_media(page),
+            next_cursor=encode_cursor(page[-1].distance, page[-1].media_id) if has_more else None,
+            has_more=has_more,
+            page_size=page_size,
+        )
+
+    @staticmethod
+    def _decode_similar_cursor(cursor: str | None) -> tuple[float, uuid.UUID] | None:
+        decoded = decode_cursor_typed(cursor, "float") if cursor else None
+        if decoded is None or not isinstance(decoded[0], (int, float)):
+            return None
+        return float(decoded[0]), decoded[1]
 
     async def _build_related_media(
         self, neighbors: list[MediaNeighbor]

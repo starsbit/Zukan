@@ -7,7 +7,7 @@
   <div class="media-inspector-page__state">
     <mat-icon aria-hidden="true">broken_image</mat-icon>
     <p>{{ error() }}</p>
-    <button mat-stroked-button type="button" (click)="goToGallery()">
+    <button mat-stroked-button type="button" (click)="close()">
       <mat-icon aria-hidden="true">arrow_back</mat-icon>
       <span>Back</span>
     </button>
@@ -15,10 +15,23 @@
 } @else {
   <zukan-media-inspector-dialog
     [items]="items()"
+    [pageScrollEnabled]="showSimilar()"
+    [prefetchedDetail]="prefetchedDetail()"
     [activeMediaId]="activeMediaId()"
     (activeMediaChanged)="onActiveMediaChanged($event)"
-    (closeRequested)="goBack()"
+    (relatedPostSelected)="onRelatedPostSelected($event)"
+    (closeRequested)="close()"
     (metadataFilterSelected)="onMetadataFilterSelected($event)"
     (mediaUpdated)="onMediaUpdated($event)">
   </zukan-media-inspector-dialog>
+  @if (showSimilar() && similarEntry(); as entry) {
+    <zukan-similar-media-grid
+      [items]="entry.similarItems"
+      [loading]="similarLoading()"
+      [containerWidth]="containerWidth()"
+      (selected)="onRelatedPostSelected($event)"
+      (favoriteToggled)="onSimilarFavoriteToggled($event)"
+    >
+    </zukan-similar-media-grid>
+  }
 }

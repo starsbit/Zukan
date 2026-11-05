@@ -1,0 +1,27 @@
+<section class="similar-media" aria-label="Similar images">
+  <h2 class="similar-media__title">More like this</h2>
+
+  <div class="similar-media__grid" [style.height.px]="layout().totalHeight">
+    @for (placement of layout().placements; track placement.item.id) {
+      <zukan-media-card
+        class="similar-media__card"
+        [attr.data-media-id]="placement.item.id"
+        [style.left.px]="placement.left"
+        [style.top.px]="placement.top"
+        [style.width.px]="placement.width"
+        [style.height.px]="placement.height"
+        [media]="placement.item"
+        [showFavorite]="true"
+        (activated)="selected.emit(placement.item)"
+        (favoriteToggled)="favoriteToggled.emit(placement.item)"
+      >
+      </zukan-media-card>
+    }
+  </div>
+
+  @if (loading()) {
+    <p class="similar-media__status">Loading similar images...</p>
+  } @else if (items().length === 0) {
+    <p class="similar-media__status">No similar images yet.</p>
+  }
+</section>

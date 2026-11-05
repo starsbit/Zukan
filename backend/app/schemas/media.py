@@ -132,6 +132,18 @@ class RelatedMediaRead(MediaRead):
     similarity: float = Field(ge=0.0, le=1.0, description="Cosine similarity score relative to the inspected media.")
 
 
+class SimilarMediaPage(BaseModel):
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for fetching the next page of similar media.",
+    )
+    has_more: bool = Field(description="Whether there are additional items after this page.")
+    page_size: int = Field(description="Number of items requested per page.")
+    items: list[RelatedMediaRead] = Field(
+        description="Accessible media ordered from most to least similar."
+    )
+
+
 class MediaDetail(MediaRead):
     tag_details: list[TagWithConfidence] = Field(
         default_factory=list,

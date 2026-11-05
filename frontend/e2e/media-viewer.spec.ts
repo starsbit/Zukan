@@ -288,7 +288,7 @@ test.describe.serial('Media viewer', () => {
     const firstCard = page.locator('.media-card').first();
     await expect(firstCard).toBeVisible();
     await firstCard.click();
-    await expect(page).toHaveURL('/media/m1');
+    await expect(page).toHaveURL('/gallery/media/m1');
 
     const viewer = page.locator('zukan-media-inspector-dialog');
     await expect(viewer).toBeVisible();
@@ -296,29 +296,25 @@ test.describe.serial('Media viewer', () => {
     await expect(viewer.locator('img')).toBeVisible();
 
     await viewer.getByRole('button', { name: 'Next media' }).click();
-    await expect(page).toHaveURL('/media/m2');
+    await expect(page).toHaveURL('/gallery/media/m2');
     await expect(viewer).toContainText('m2.gif');
     await expect(viewer.locator('img')).toBeVisible();
-
-    await page.goBack();
-    await expect(page).toHaveURL('/media/m1');
-    await expect(viewer).toContainText('m1.png');
 
     await page.goBack();
     await expect(page).toHaveURL('/');
     await expect(firstCard).toBeVisible();
     await firstCard.click();
-    await expect(page).toHaveURL('/media/m1');
+    await expect(page).toHaveURL('/gallery/media/m1');
 
     await viewer.getByRole('button', { name: 'Next media' }).click();
     await viewer.getByRole('button', { name: 'Next media' }).click();
-    await expect(page).toHaveURL('/media/m3');
+    await expect(page).toHaveURL('/gallery/media/m3');
     await expect(viewer).toContainText('m3.mp4');
     await expect(viewer.locator('video')).toBeVisible();
 
     await viewer.getByRole('button', { name: 'Previous media' }).click();
     await viewer.getByRole('button', { name: 'Previous media' }).click();
-    await expect(page).toHaveURL('/media/m1');
+    await expect(page).toHaveURL('/gallery/media/m1');
     await expect(viewer).toContainText('m1.png');
 
     await viewer.getByRole('button', { name: 'Edit' }).click();
@@ -373,7 +369,7 @@ test.describe.serial('Media viewer', () => {
         (cardBox?.x ?? 0) + (cardBox?.width ?? 0) / 2,
         (cardBox?.y ?? 0) + (cardBox?.height ?? 0) / 2,
       );
-      await expect(page).toHaveURL(`/media/${mediaId}`);
+      await expect(page).toHaveURL(`/gallery/media/${mediaId}`);
       await expect(page.locator('zukan-media-inspector-dialog')).toContainText(`${mediaId}.png`);
 
       await page.goBack();

@@ -8,7 +8,7 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatSnackBarModule } from '@angular/material/snack-bar';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterOutlet } from '@angular/router';
 import {
   EMPTY,
   catchError,
@@ -51,6 +51,7 @@ import {
   imports: [
     LayoutComponent,
     MediaBrowserComponent,
+    RouterOutlet,
     MatButtonModule,
     MatCardModule,
     MatChipsModule,
