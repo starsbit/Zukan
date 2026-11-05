@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     library_root_identity: str | None = None
     tagger_backend: str = "wd_v3"
     tagger_model_repo: str = "SmilingWolf/wd-vit-tagger-v3"
+    tagger_pixai_model_repo: str = "HentaiSL/pixai-tagger-v1.0-onnx-1008-672-336-ft"
+    tagger_pixai_model_revision: str = "29c4dc4ade24556f69694ecbd9abdd9046363442"
+    tagger_pixai_model_file: str = "336-ft/onnx/int8_dyn.onnx"
+    tagger_pixai_config_file: str = "336-ft/onnx/config.json"
+    tagger_pixai_outputs_logits: bool = True
     tagger_threshold_general: float = 0.35
     tagger_threshold_character: float = 0.85
     model_cache_dir: Path = Path("model_cache")

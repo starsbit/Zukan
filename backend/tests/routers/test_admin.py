@@ -214,3 +214,78 @@ def test_admin_app_config_patch_updates_runtime_settings(api_client, monkeypatch
     payload = response.json()
     assert payload["auth_login_rate_limit_requests"] == 0
     assert payload["upload_rate_limit_requests"] == 0
+
+
+def _tagger_status(**overrides):
+    return {
+        "active": "wd_v3",
+        "status": "ready",
+        "target": None,
+        "error": None,
+        "execution_provider": "CPUExecutionProvider",
+        "options": [
+            {"id": "wd_v3", "label": "WD", "description": "d", "download_size_bytes": 1},
+            {"id": "pixai_v1_336_int8", "label": "PixAI", "description": "d", "download_size_bytes": 2},
+        ],
+        **overrides,
+    }
+
+
+def test_get_tagger_status(api_client):
+    with patch("backend.app.routers.admin.tagger") as tagger:
+        tagger.status_payload.return_value = _tagger_status()
+        response = api_client.get("/api/v1/admin/tagger")
+
+    assert response.status_code == 200
+    assert response.json()["active"] == "wd_v3"
+    assert [option["id"] for option in response.json()["options"]] == ["wd_v3", "pixai_v1_336_int8"]
+
+
+def test_put_tagger_starts_switch(api_client):
+    with patch("backend.app.routers.admin.tagger") as tagger:
+        tagger.can_switch = True
+        tagger.start_switch.return_value = True
+        tagger.status_payload.return_value = _tagger_status(status="loading", target="pixai_v1_336_int8")
+        response = api_client.put("/api/v1/admin/tagger", json={"backend": "pixai_v1_336_int8"})
+
+    assert response.status_code == 202
+    assert response.json()["target"] == "pixai_v1_336_int8"
+    assert tagger.start_switch.call_args.args[0] == "pixai_v1_336_int8"
+
+
+def test_put_tagger_for_active_backend_returns_ok(api_client):
+    with patch("backend.app.routers.admin.tagger") as tagger:
+        tagger.can_switch = True
+        tagger.start_switch.return_value = False
+        tagger.status_payload.return_value = _tagger_status()
+        response = api_client.put("/api/v1/admin/tagger", json={"backend": "wd_v3"})
+
+    assert response.status_code == 200
+
+
+def test_put_tagger_conflicts_while_loading(api_client):
+    with patch("backend.app.routers.admin.tagger") as tagger:
+        tagger.can_switch = False
+        response = api_client.put("/api/v1/admin/tagger", json={"backend": "pixai_v1_336_int8"})
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "tagger_switch_unavailable"
+    tagger.start_switch.assert_not_called()
+
+
+def test_put_tagger_rejects_unknown_backend(api_client):
+    response = api_client.put("/api/v1/admin/tagger", json={"backend": "nope"})
+
+    assert response.status_code == 422
+
+
+def test_switching_tagger_does_not_queue_retag(api_client):
+    with patch("backend.app.routers.admin.tagger") as tagger, patch(
+        "backend.app.routers.admin.AdminService"
+    ) as admin_service:
+        tagger.can_switch = True
+        tagger.start_switch.return_value = True
+        tagger.status_payload.return_value = _tagger_status(status="loading")
+        api_client.put("/api/v1/admin/tagger", json={"backend": "pixai_v1_336_int8"})
+
+    admin_service.assert_not_called()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import enum
 import re
 from dataclasses import dataclass
 from typing import Protocol
@@ -24,6 +25,12 @@ NSFW_HINT_TAGS = {
 SENSITIVE_HINT_TAGS = {
     "sensitive",
 }
+NON_SERIES_NAMES = {"original"}
+
+
+class TaggerBackendName(str, enum.Enum):
+    wd_v3 = "wd_v3"
+    pixai_v1_336_int8 = "pixai_v1_336_int8"
 
 
 @dataclass(frozen=True)
@@ -65,6 +72,8 @@ def derive_series_predictions(predictions: list[TagPrediction]) -> list[TagPredi
 
     def _store(prediction: TagPrediction) -> None:
         key = prediction.name.casefold()
+        if key in NON_SERIES_NAMES:
+            return
         existing = series_by_name.get(key)
         if existing is None or prediction.confidence > existing.confidence:
             series_by_name[key] = prediction

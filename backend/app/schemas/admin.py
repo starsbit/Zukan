@@ -1,6 +1,7 @@
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, Field
+from backend.app.utils.tagging import TaggerBackendName
 
 
 class AdminStatsResponse(BaseModel):
@@ -110,6 +111,26 @@ class AdminAppConfigUpdate(BaseModel):
     ocr_max_chars: int | None = Field(default=None, ge=0)
     thumbnail_size: int | None = Field(default=None, ge=64)
     trash_purge_interval_seconds: int | None = Field(default=None, ge=60)
+
+
+class AdminTaggerOption(BaseModel):
+    id: TaggerBackendName
+    label: str
+    description: str
+    download_size_bytes: int = Field(ge=0)
+
+
+class AdminTaggerStatus(BaseModel):
+    active: TaggerBackendName
+    status: str
+    target: TaggerBackendName | None = None
+    error: str | None = None
+    execution_provider: str | None = None
+    options: list[AdminTaggerOption]
+
+
+class AdminTaggerUpdate(BaseModel):
+    backend: TaggerBackendName
 
 
 class AdminServiceNotificationCreate(BaseModel):

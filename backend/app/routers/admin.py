@@ -1,8 +1,11 @@
 import uuid
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.config import get_runtime_config, update_runtime_config
 from backend.app.database import get_db
+from backend.app.errors.error import AppError
+from backend.app.errors.tagger import tagger_switch_unavailable
+from backend.app.ml.tagger import tagger
 from backend.app.routers.deps import admin_user
 from backend.app.models.notifications import AppAnnouncement
 from backend.app.repositories.notifications import AppAnnouncementRepository
@@ -17,6 +20,8 @@ from backend.app.schemas import (
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
     AdminStatsResponse,
+    AdminTaggerStatus,
+    AdminTaggerUpdate,
     AppAnnouncementCreate,
     AppAnnouncementRead,
     TaggingJobQueuedResponse,
@@ -24,6 +29,7 @@ from backend.app.schemas import (
 )
 from backend.app.services.admin import AdminService
 from backend.app.services.notifications import NotificationService
+from backend.app.services.tagger_settings import save_tagger_backend
 from backend.app.utils.rate_limit import rate_limit_store
 
 router = APIRouter(
@@ -46,6 +52,29 @@ async def update_app_config(
     next_config = update_runtime_config(body.model_dump(exclude_none=True))
     await rate_limit_store.reset()
     return AdminAppConfigRead(**next_config)
+
+
+@router.get("/tagger", response_model=AdminTaggerStatus)
+async def get_tagger_status() -> AdminTaggerStatus:
+    return AdminTaggerStatus(**tagger.status_payload())
+
+
+@router.put(
+    "/tagger",
+    response_model=AdminTaggerStatus,
+    status_code=status.HTTP_202_ACCEPTED,
+    responses=error_responses(409),
+)
+async def set_tagger(body: AdminTaggerUpdate, response: Response) -> AdminTaggerStatus:
+    if not tagger.can_switch:
+        raise AppError(
+            status_code=status.HTTP_409_CONFLICT,
+            code=tagger_switch_unavailable,
+            detail="The tagger is still loading. Try again when it has finished.",
+        )
+    if not tagger.start_switch(body.backend.value, save_tagger_backend):
+        response.status_code = status.HTTP_200_OK
+    return AdminTaggerStatus(**tagger.status_payload())
 
 
 @router.get("/stats", response_model=AdminStatsResponse)

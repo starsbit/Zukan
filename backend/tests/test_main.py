@@ -94,6 +94,7 @@ async def test_initialize_ml_services_marks_state_ready(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr("backend.app.main.load_saved_tagger_backend", AsyncMock(return_value=None))
     monkeypatch.setattr("backend.app.main.tagger.load", lambda: calls.append("tagger.load"))
     monkeypatch.setattr("backend.app.main.ocr_backend.load", lambda: calls.append("ocr_backend.load"))
     monkeypatch.setattr("backend.app.main.embedding_backend.load", lambda: calls.append("embedding_backend.load"))
@@ -120,6 +121,7 @@ async def test_initialize_ml_services_marks_state_failed(monkeypatch):
         return func(*args, **kwargs)
 
     monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr("backend.app.main.load_saved_tagger_backend", AsyncMock(return_value=None))
 
     def fail_load():
         raise failure
@@ -173,3 +175,24 @@ async def test_post_tag_library_enrichment_skips_disabled_user(monkeypatch):
     monkeypatch.setattr('backend.app.main.MediaLibraryEnrichmentService', enrichment_cls)
     await _run_library_enrichment_after_post_tag(db, media_id)
     enrichment_cls.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_initialize_ml_services_selects_saved_tagger_before_loading(monkeypatch):
+    calls: list[str] = []
+    ml_startup_state.reset()
+
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr("backend.app.main.asyncio.to_thread", fake_to_thread)
+    monkeypatch.setattr("backend.app.main.load_saved_tagger_backend", AsyncMock(return_value="pixai_v1_336_int8"))
+    monkeypatch.setattr("backend.app.main.tagger.select", lambda backend: calls.append(f"select:{backend}"))
+    monkeypatch.setattr("backend.app.main.tagger.load", lambda: calls.append("tagger.load"))
+    monkeypatch.setattr("backend.app.main.ocr_backend.load", lambda: None)
+    monkeypatch.setattr("backend.app.main.embedding_backend.load", lambda: None)
+
+    await _initialize_ml_services()
+
+    assert calls == ["select:pixai_v1_336_int8", "tagger.load"]
+    ml_startup_state.reset()

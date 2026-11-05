@@ -10,6 +10,9 @@ from .admin import (
     AdminServiceNotificationCreate,
     AdminServiceNotificationResult,
     AdminStatsResponse,
+    AdminTaggerOption,
+    AdminTaggerStatus,
+    AdminTaggerUpdate,
 )
 from .albums import (
     AlbumCreate,
@@ -144,6 +147,9 @@ __all__ = [
     "AdminServiceNotificationCreate",
     "AdminServiceNotificationResult",
     "AdminStatsResponse",
+    "AdminTaggerOption",
+    "AdminTaggerStatus",
+    "AdminTaggerUpdate",
     "AlbumCreate",
     "AlbumListResponse",
     "AlbumPreviewMedia",

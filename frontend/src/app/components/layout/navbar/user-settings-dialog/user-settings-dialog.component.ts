@@ -20,6 +20,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSelectModule } from '@angular/material/select';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { catchError, EMPTY, finalize, forkJoin } from 'rxjs';
+import { TaggerSettingsComponent } from '../../../admin/tagger-settings.component';
 import { ApiKeyStatusResponse, UserUpdate } from '../../../../models/auth';
 import { BadgeVisibilityService } from '../../../../services/badge-visibility.service';
 import { GalleryStore } from '../../../../services/gallery.store';
@@ -42,6 +43,7 @@ import { UsersClientService } from '../../../../services/web/users-client.servic
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
+    TaggerSettingsComponent,
   ],
   templateUrl: './user-settings-dialog.component.html',
   styleUrl: './user-settings-dialog.component.scss',

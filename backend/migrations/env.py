@@ -13,6 +13,7 @@ from backend.app.database.base import Base
 # Ensure model metadata is registered for autogenerate.
 from backend.app.models import library_storage as _library_storage  # noqa: F401
 from backend.app.models import albums as _albums  # noqa: F401
+from backend.app.models import app_settings as _app_settings  # noqa: F401
 from backend.app.models import auth as _auth  # noqa: F401
 from backend.app.models import embeddings as _embeddings  # noqa: F401
 from backend.app.models import media as _media  # noqa: F401

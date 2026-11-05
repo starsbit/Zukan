@@ -65,6 +65,7 @@ from backend.app.services.media.upload import MediaUploadService
 from backend.app.services.processing import ProcessingService
 from backend.app.services.admin import AdminService
 from backend.app.services.database_repair import repair_database_after_migrations
+from backend.app.services.tagger_settings import load_saved_tagger_backend
 from backend.app.services.tags import TagService
 from backend.app.ml.tagger import tagger
 from backend.app.ml.embedding import embedding_backend
@@ -486,6 +487,9 @@ async def _recover_pending_embedding_backfill_jobs(queue: asyncio.Queue) -> int:
 async def _initialize_ml_services() -> None:
     try:
         logger.info("Startup phase: loading tagger model")
+        saved_tagger_backend = await load_saved_tagger_backend()
+        if saved_tagger_backend is not None:
+            tagger.select(saved_tagger_backend)
         await asyncio.to_thread(tagger.load)
         logger.info("Startup phase complete: loading tagger model")
 
@@ -630,6 +634,7 @@ async def lifespan(_api: FastAPI):
             failed_retry_worker.cancel()
         if ml_worker is not None:
             ml_worker.cancel()
+        await tagger.shutdown()
         await health_monitor.stop()
         for w in workers:
             try:

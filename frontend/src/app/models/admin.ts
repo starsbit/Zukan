@@ -67,3 +67,19 @@ export interface AdminLibraryClassificationMetricsResponse {
   rejection_rate: number | null;
   by_source: AdminLibraryClassificationSourceMetricsRead[];
 }
+
+export interface AdminTaggerOption {
+  id: string;
+  label: string;
+  description: string;
+  download_size_bytes: number;
+}
+
+export interface AdminTaggerStatus {
+  active: string;
+  status: 'loading' | 'ready' | 'failed';
+  target: string | null;
+  error: string | null;
+  execution_provider: string | null;
+  options: AdminTaggerOption[];
+}

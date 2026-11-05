@@ -9,6 +9,7 @@ import {
   AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
+  AdminTaggerStatus,
 } from '../../models/admin';
 import { AppAnnouncementCreate, AppAnnouncementRead } from '../../models/notifications';
 import { TaggingJobQueuedResponse } from '../../models/uploads';
@@ -28,6 +29,14 @@ export class AdminClientService {
 
   retagAll(): Observable<TaggingJobQueuedResponse> {
     return this.http.post<TaggingJobQueuedResponse>(`${this.base}/api/v1/admin/tagging-jobs`, null);
+  }
+
+  getTagger(): Observable<AdminTaggerStatus> {
+    return this.http.get<AdminTaggerStatus>(`${this.base}/api/v1/admin/tagger`);
+  }
+
+  setTagger(backend: string): Observable<AdminTaggerStatus> {
+    return this.http.put<AdminTaggerStatus>(`${this.base}/api/v1/admin/tagger`, { backend });
   }
 
   startEmbeddingBackfill(): Observable<AdminEmbeddingBackfillResponse> {

@@ -12,7 +12,7 @@ Zukan runs entirely on your own hardware. Nothing leaves your network unless you
 
 ### What you get
 
-**Automatic tagging** — every image and video you upload is analysed by WD ViT tagger v3, a state-of-the-art ONNX model trained on Danbooru. Characters, series, artists, styles, and ratings are detected without any manual work. Tags are stored at configurable confidence thresholds you can tune in the admin panel.
+**Automatic tagging** — every image and video you upload is analysed by an ONNX model trained on Danbooru: WD ViT tagger v3 by default, or PixAI v1.0 336px INT8, selectable in **Owner preferences**. Characters, series, artists, styles, and ratings are detected without any manual work. Tags are stored at configurable confidence thresholds you can tune in the admin panel.
 
 **Tag-based search** — filter your library by any combination of tags, characters, series, artists, and ratings. Include and exclude tags simultaneously. Filter by NSFW or sensitive content flags independently.
 
@@ -200,6 +200,8 @@ Both scripts accept `--compose-file`, `--env-file`, and `--project-name` for non
 |---|---|---|
 | `SECRET_KEY` | Yes | JWT signing key. Generate with `openssl rand -hex 32`. |
 | `POSTGRES_PASSWORD` | Yes | PostgreSQL password (used to build `DATABASE_URL` inside the compose file). |
+
+The tagger is selected in **Owner preferences**. Switching applies to new uploads and future retags; it does not retag existing media. PixAI v1.0 336px INT8 is a [community fine-tune](https://huggingface.co/HentaiSL/pixai-tagger-v1.0-onnx-1008-672-336-ft) of PixAI Tagger v1.0, not PixAI's own weights. In a CPU-only test (3 CPUs) it took about 1.3s per image and 800 MB, similar to WD. The full 1008px exports ran out of memory under a 2.5 GiB limit.
 
 Everything else is configured through the **Admin → App Config** panel after login, including:
 

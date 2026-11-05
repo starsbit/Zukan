@@ -46,6 +46,16 @@ def test_derive_series_predictions_uses_explicit_and_character_suffixes():
     assert derive_series_predictions(predictions) == [TagPrediction("blue_archive", 3, 0.91)]
 
 
+def test_derive_series_predictions_skips_original():
+    predictions = [
+        TagPrediction("original", 3, 0.99),
+        TagPrediction("oc_(original)", 4, 0.9),
+        TagPrediction("blue_archive", 3, 0.8),
+    ]
+
+    assert derive_series_predictions(predictions) == [TagPrediction("blue_archive", 3, 0.8)]
+
+
 def test_aggregate_tagging_results_keeps_max_confidence_and_nsfw():
     r1 = TaggingResult(predictions=[TagPrediction("a", 0, 0.1), TagPrediction("b", 0, 0.5)], is_nsfw=False)
     r2 = TaggingResult(predictions=[TagPrediction("a", 0, 0.9)], is_nsfw=False)

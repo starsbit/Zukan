@@ -6,10 +6,11 @@ import { MatDialogRef } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { NoopAnimationsModule } from '@angular/platform-browser/animations';
 import { provideRouter } from '@angular/router';
-import { of, throwError } from 'rxjs';
+import { EMPTY, of, throwError } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
 import { GalleryStore } from '../../../../services/gallery.store';
 import { UserStore } from '../../../../services/user.store';
+import { AdminClientService } from '../../../../services/web/admin-client.service';
 import { UsersClientService } from '../../../../services/web/users-client.service';
 import { NavbarProfileComponent } from '../navbar-profile/navbar-profile.component';
 import { UserSettingsDialogComponent } from './user-settings-dialog.component';
@@ -82,6 +83,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -123,6 +125,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore({ refresh }) },
       ],
     }).compileComponents();
@@ -166,6 +169,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -199,6 +203,7 @@ describe('UserSettingsDialogComponent', () => {
           useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }),
         },
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -234,6 +239,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ updateMe }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -259,6 +265,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient() },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -292,6 +299,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -323,6 +331,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();
@@ -363,6 +372,7 @@ describe('UserSettingsDialogComponent', () => {
         { provide: MatDialogRef, useValue: { close: vi.fn() } },
         { provide: UserStore, useValue: { currentUser: () => user, set: vi.fn() } },
         { provide: UsersClientService, useValue: baseUsersClient({ createApiKey }) },
+        { provide: AdminClientService, useValue: { getTagger: () => EMPTY } },
         { provide: GalleryStore, useValue: baseGalleryStore() },
       ],
     }).compileComponents();

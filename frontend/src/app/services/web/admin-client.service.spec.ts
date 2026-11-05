@@ -68,6 +68,21 @@ describe('AdminClientService', () => {
     req.flush(mockHealth);
   });
 
+  it('getTagger sends GET /api/v1/admin/tagger', () => {
+    service.getTagger().subscribe();
+    const req = http.expectOne('/api/v1/admin/tagger');
+    expect(req.request.method).toBe('GET');
+    req.flush({});
+  });
+
+  it('setTagger sends PUT /api/v1/admin/tagger with the backend', () => {
+    service.setTagger('pixai_v1_336_int8').subscribe();
+    const req = http.expectOne('/api/v1/admin/tagger');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ backend: 'pixai_v1_336_int8' });
+    req.flush({});
+  });
+
   it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {
     const mock = { queued: 5 };
 
