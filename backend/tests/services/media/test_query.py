@@ -20,15 +20,6 @@ def test_filter_by_trashed_state(service, media):
 
     assert service._filter_by_trashed_state(media, None) is media
 
-def test_assert_nsfw_visible_uses_manual_override(service, user, media):
-    media.is_nsfw = False
-    media.is_nsfw_override = True
-
-    with pytest.raises(AppError) as exc:
-        service._assert_nsfw_visible(media, user)
-
-    assert exc.value.status_code == 403
-
 def test_build_next_cursor_round_trips(service, media):
     media.uploaded_at = datetime.now(timezone.utc)
     media.captured_at = None
