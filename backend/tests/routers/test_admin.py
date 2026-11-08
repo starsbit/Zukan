@@ -30,34 +30,6 @@ def test_admin_stats_contract(api_client, monkeypatch):
     response = api_client.get('/api/v1/admin/stats')
     assert response.status_code == 200
 
-def test_admin_health_contract(api_client, monkeypatch):
-    now = datetime.now(timezone.utc).isoformat()
-
-    async def _fake_health(self):
-        return {
-            "generated_at": now,
-            "uptime_seconds": 42.5,
-            "cpu_percent": 15.2,
-            "memory_rss_bytes": 2048,
-            "system_memory_total_bytes": 4096,
-            "system_memory_used_bytes": 1024,
-            "tagging_queue_depth": 3,
-            "samples": [
-                {
-                    "captured_at": now,
-                    "cpu_percent": 10.5,
-                    "memory_rss_bytes": 1024,
-                }
-            ],
-        }
-
-    monkeypatch.setattr(AdminService, "get_health", _fake_health)
-
-    response = api_client.get("/api/v1/admin/health")
-
-    assert response.status_code == 200
-    assert response.json()["tagging_queue_depth"] == 3
-
 def test_admin_retag_contract(api_client, monkeypatch):
 
     async def _fake_retag(self):

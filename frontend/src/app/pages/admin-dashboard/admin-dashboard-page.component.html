@@ -1,0 +1,75 @@
+<zukan-layout>
+  <section class="admin-shell">
+    <header class="admin-header">
+      <h1>Library maintenance</h1>
+      <p>Library overview, processing jobs and storage.</p>
+    </header>
+
+    @if (error()) {
+      <p class="admin-alert" role="alert">
+        <mat-icon aria-hidden="true">error_outline</mat-icon>
+        {{ error() }}
+      </p>
+    }
+
+    <div class="stat-grid">
+      @for (tile of tiles(); track tile.label) {
+        <article class="stat-tile" [class.stat-tile--warn]="tile.tone === 'warn'">
+          <mat-icon aria-hidden="true">{{ tile.icon }}</mat-icon>
+          <div>
+            <span class="stat-tile__label">{{ tile.label }}</span>
+            <strong class="stat-tile__value">{{ tile.value }}</strong>
+          </div>
+        </article>
+      }
+    </div>
+
+    <section class="admin-card" aria-labelledby="processing-title">
+      <header class="admin-card__head">
+        <h2 id="processing-title">Processing</h2>
+        <p>Re-run AI work across the whole library.</p>
+      </header>
+
+      <div class="action-list">
+        <div class="action-item">
+          <div class="action-item__copy">
+            <strong>Retag library</strong>
+            <span>Queue every item for AI tagging again.</span>
+          </div>
+          <button mat-stroked-button type="button" (click)="retag()" [disabled]="busy()">
+            Retag library
+          </button>
+        </div>
+        <div class="action-item">
+          <div class="action-item__copy">
+            <strong>Backfill embeddings</strong>
+            <span>Compute missing similarity embeddings.</span>
+          </div>
+          <button mat-stroked-button type="button" (click)="backfill()" [disabled]="busy()">
+            Backfill embeddings
+          </button>
+        </div>
+      </div>
+
+      @if (message()) {
+        <p class="admin-status" role="status">{{ message() }}</p>
+      }
+      @if (batch(); as b) {
+        <div class="job-progress">
+          <div class="job-progress__label">
+            <span>Embedding backfill · {{ b.status }}</span>
+            <span>
+              {{ b.done_items | number }}/{{ b.total_items | number }}
+              @if (b.failed_items) {
+                · {{ b.failed_items | number }} failed
+              }
+            </span>
+          </div>
+          <mat-progress-bar mode="determinate" [value]="batchProgress()" />
+        </div>
+      }
+    </section>
+
+    <zukan-storage-panel />
+  </section>
+</zukan-layout>

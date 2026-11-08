@@ -21,6 +21,7 @@ describe('Library maintenance', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Backfill embeddings');
     expect(fixture.nativeElement.textContent).not.toContain('Manage users');
+    expect(fixture.nativeElement.textContent).not.toContain('CPU');
     fixture.destroy();
   });
 });

@@ -1,6 +1,5 @@
 from __future__ import annotations
 import uuid
-from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 import pytest
@@ -38,28 +37,6 @@ async def test_retag_all_media_marks_pending_and_queues(fake_db, user):
     assert media1.tagging_status == 'pending'
     assert media2.tagging_status == 'pending'
     assert queue.put.await_count == 2
-
-@pytest.mark.asyncio
-async def test_get_health_returns_monitor_payload(fake_db):
-    service = AdminService(fake_db)
-    sample_time = datetime.now(UTC)
-    sample = SimpleNamespace(captured_at=sample_time, cpu_percent=12.5, memory_rss_bytes=2048)
-    queue = SimpleNamespace(qsize=lambda: 3)
-
-    with patch("backend.app.services.admin.health_monitor") as monitor, patch(
-        "backend.app.services.admin.get_tag_queue", return_value=queue
-    ):
-        monitor.capture_sample.return_value = sample
-        monitor.uptime_seconds.return_value = 15.2
-        monitor.system_memory.return_value = (8192, 4096)
-        monitor.samples.return_value = [sample]
-
-        health = await service.get_health()
-
-    assert health.cpu_percent == 12.5
-    assert health.memory_rss_bytes == 2048
-    assert health.tagging_queue_depth == 3
-    assert health.samples[0].captured_at == sample_time
 
 @pytest.mark.asyncio
 async def test_get_library_classification_metrics_summarizes_feedback(fake_db, user):

@@ -28,12 +28,9 @@ from backend.app.models.processing import (
     ProcessingStep,
 )
 from backend.app.repositories.media import MediaRepository
-from backend.app.runtime import health_monitor
 from backend.app.schemas import (
     AdminEmbeddingBackfillResponse,
     AdminEmbeddingBackfillStatus,
-    AdminHealthResponse,
-    AdminHealthSample,
     AdminLibraryClassificationMetricsResponse,
     AdminLibraryClassificationSourceMetricsRead,
     AdminStatsResponse,
@@ -309,28 +306,6 @@ class AdminService:
                         item[0],
                     ),
                 )
-            ],
-        )
-
-    async def get_health(self) -> AdminHealthResponse:
-        latest = health_monitor.capture_sample()
-        total_memory, used_memory = health_monitor.system_memory()
-        queue = get_tag_queue()
-        return AdminHealthResponse(
-            generated_at=latest.captured_at,
-            uptime_seconds=round(health_monitor.uptime_seconds(), 2),
-            cpu_percent=latest.cpu_percent,
-            memory_rss_bytes=latest.memory_rss_bytes,
-            system_memory_total_bytes=total_memory,
-            system_memory_used_bytes=used_memory,
-            tagging_queue_depth=queue.qsize() if queue is not None else 0,
-            samples=[
-                AdminHealthSample(
-                    captured_at=sample.captured_at,
-                    cpu_percent=sample.cpu_percent,
-                    memory_rss_bytes=sample.memory_rss_bytes,
-                )
-                for sample in health_monitor.samples()
             ],
         )
 

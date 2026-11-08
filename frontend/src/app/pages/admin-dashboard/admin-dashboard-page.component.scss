@@ -3,414 +3,155 @@
 }
 
 .admin-shell {
-  padding: clamp(1rem, 2vw, 2rem);
-  background: var(--mat-sys-surface);
-  color: var(--mat-sys-on-surface);
-  min-height: 100%;
-}
-
-.hero {
-  margin-bottom: 1.5rem;
-}
-
-.eyebrow {
-  margin: 0 0 0.25rem;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.72rem;
-  color: var(--mat-sys-primary);
-  font-weight: 700;
-}
-
-h1 {
-  margin: 0;
-  font-size: clamp(2rem, 4vw, 3rem);
-  line-height: 1;
-  color: var(--mat-sys-on-surface);
-}
-
-.hero-copy {
-  margin: 0.75rem 0 0;
-  max-width: 56rem;
-  color: var(--mat-sys-on-surface-variant);
-  font-size: 1rem;
-}
-
-.kpi-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 20px;
+  max-width: 1100px;
+  padding: clamp(16px, 2vw, 32px);
+  color: var(--mat-sys-on-surface);
 }
 
-.kpi-card mat-card-content {
+.admin-header h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 3vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.admin-header p {
+  margin: 6px 0 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.admin-alert {
   display: flex;
   align-items: center;
-  gap: 1rem;
-}
-
-.kpi-card p,
-.storage-total span {
+  gap: 8px;
   margin: 0;
-  color: var(--mat-sys-on-surface-variant);
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
 }
 
-.kpi-card h2,
-.storage-total strong {
-  margin: 0.35rem 0 0;
-  color: var(--mat-sys-on-surface);
-}
-
-.kpi-icon {
+.stat-grid {
   display: grid;
-  place-items: center;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--mat-sys-primary-container) 58%, var(--mat-sys-surface-container-high));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.stat-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container);
+}
+
+.stat-tile mat-icon {
+  flex: 0 0 auto;
   color: var(--mat-sys-primary);
 }
 
-.content-grid {
+.stat-tile > div {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.content-grid > *,
-.chart-grid > *,
-.announcement-form > * {
   min-width: 0;
 }
 
-.panel-wide {
-  grid-column: 1 / -1;
-}
-
-.panel,
-.kpi-card,
-.status-card {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 52%, transparent);
-  box-shadow: 0 12px 32px color-mix(in srgb, black 12%, transparent);
-  background: color-mix(in srgb, var(--mat-sys-surface-container-low) 94%, transparent);
-}
-
-.card-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: auto;
-  flex-wrap: wrap;
-}
-
-.update-status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.85rem;
-  color: var(--mat-sys-on-surface-variant);
-
-  mat-icon {
-    font-size: 1.1rem;
-    width: 1.1rem;
-    height: 1.1rem;
-  }
-}
-
-.update-status.update-available {
-  color: color-mix(in srgb, #f59e0b 78%, var(--mat-sys-on-surface));
-}
-
-.health-summary {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.update-check-message {
-  margin-bottom: 1rem;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
-  color: var(--mat-sys-on-surface-variant);
-}
-
-.health-summary article {
-  min-width: 0;
-  padding: 0.9rem 1rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
-}
-
-.health-summary span {
-  display: block;
-  color: var(--mat-sys-on-surface-variant);
-  font-size: 0.84rem;
-}
-
-.health-summary strong {
-  display: block;
-  margin-top: 0.3rem;
-  color: var(--mat-sys-on-surface);
-  font-size: 1.12rem;
-}
-
-.chart-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.chart-grid h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-  color: var(--mat-sys-on-surface);
-}
-
-.admin-action-panel mat-card-content {
-  display: grid;
-  gap: 1rem;
-}
-
-.admin-action-panel button {
-  justify-self: start;
-}
-
-.admin-action-panel button mat-spinner {
-  display: inline-block;
-  margin-right: 0.35rem;
-}
-
-.panel-copy {
-  margin: 0;
-  color: var(--mat-sys-on-surface-variant);
-}
-
-.toolbar-row {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  flex-wrap: wrap;
-  margin-bottom: 1rem;
-}
-
-.toolbar-row mat-form-field {
-  flex: 1 1 16rem;
-}
-
-.table-shell {
-  min-width: 0;
-  width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-}
-
-.admin-table {
-  width: max-content;
-  min-width: 100%;
-}
-
-.primary-cell {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.self-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.15rem 0.45rem;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--mat-sys-primary-container) 72%, transparent);
-  color: var(--mat-sys-primary);
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.action-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.action-row button mat-icon {
-  margin-right: 0.25rem;
-  font-size: 1.05rem;
-  width: 1.05rem;
-  height: 1.05rem;
-}
-
-.action-status {
+.stat-tile__label {
   color: var(--mat-sys-on-surface-variant);
   font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.stat-tile__value {
+  overflow: hidden;
+  font-size: 1.35rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.announcement-form {
+.stat-tile--warn mat-icon,
+.stat-tile--warn .stat-tile__value {
+  color: var(--mat-sys-error);
+}
+
+.admin-card {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  margin-bottom: 1rem;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-low);
+  border: 1px solid var(--mat-sys-outline-variant);
 }
 
-.announcement-form .full-span {
-  grid-column: 1 / -1;
+.admin-card__head h2 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 800;
 }
 
-.announcement-list {
-  display: grid;
-  gap: 0.85rem;
-  margin-top: 1rem;
-}
-
-.announcement-item {
-  padding: 1rem;
-  border-radius: 1rem;
-  background: color-mix(in srgb, var(--mat-sys-surface-container-high) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--mat-sys-outline-variant) 45%, transparent);
-}
-
-.announcement-header {
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.announcement-message,
-.empty-copy,
-.panel-error {
-  margin: 0.35rem 0 0;
+.admin-card__head p {
+  margin: 4px 0 0;
   color: var(--mat-sys-on-surface-variant);
 }
 
-.severity-pill {
-  display: inline-flex;
-  text-transform: capitalize;
-  font-size: 0.78rem;
-  font-weight: 700;
-  padding: 0.3rem 0.6rem;
-  border-radius: 999px;
-}
-
-.severity-info {
-  background: color-mix(in srgb, var(--mat-sys-primary-container) 72%, transparent);
-  color: var(--mat-sys-primary);
-}
-
-.severity-warning {
-  background: color-mix(in srgb, #f59e0b 18%, var(--mat-sys-surface-container-high));
-  color: color-mix(in srgb, #f59e0b 78%, var(--mat-sys-on-surface));
-}
-
-.severity-critical {
-  background: color-mix(in srgb, #dc2626 16%, var(--mat-sys-surface-container-high));
-  color: color-mix(in srgb, #dc2626 82%, var(--mat-sys-on-surface));
-}
-
-.loading-block {
+.action-list {
   display: grid;
-  place-items: center;
-  min-height: 12rem;
+  border-radius: 12px;
+  border: 1px solid var(--mat-sys-outline-variant);
 }
 
-.error-card,
-.panel-error {
-  color: color-mix(in srgb, #dc2626 82%, var(--mat-sys-on-surface));
-}
-
-.announcement-item strong,
-.primary-cell strong {
-  color: var(--mat-sys-on-surface);
-}
-
-.announcement-item small {
-  color: var(--mat-sys-on-surface-variant);
-}
-
-:host ::ng-deep .mat-mdc-card-header {
+.action-item {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
 }
 
-:host ::ng-deep .admin-table .mat-mdc-header-cell,
-:host ::ng-deep .admin-table .mat-mdc-cell {
-  color: var(--mat-sys-on-surface);
-  border-bottom-color: color-mix(in srgb, var(--mat-sys-outline-variant) 38%, transparent);
+.action-item + .action-item {
+  border-top: 1px solid var(--mat-sys-outline-variant);
 }
 
-:host ::ng-deep .admin-table {
-  background: transparent;
+.action-item__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 }
 
-@media (max-width: 1023px) {
-  .content-grid,
-  .chart-grid,
-  .announcement-form {
-    grid-template-columns: 1fr;
-  }
+.action-item__copy span {
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.9rem;
+}
 
-  .toolbar-row,
-  .announcement-header {
+.action-item button {
+  flex: 0 0 auto;
+}
+
+.admin-status {
+  margin: 0;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.job-progress {
+  display: grid;
+  gap: 8px;
+}
+
+.job-progress__label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--mat-sys-on-surface-variant);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 599px) {
+  .action-item {
     flex-direction: column;
     align-items: stretch;
-  }
-
-  .card-header-actions {
-    width: 100%;
-    margin-left: 0;
-  }
-
-  .card-header-actions > * {
-    min-width: 0;
-  }
-
-  .card-header-actions > button {
-    width: 100%;
-    justify-content: center;
-  }
-
-  .update-status {
-    width: 100%;
-  }
-
-  .chart-grid > div,
-  .health-summary,
-  .update-check-message {
-    min-width: 0;
-  }
-
-  .panel-wide mat-card-content,
-  .table-shell {
-    min-width: 0;
-    max-width: 100%;
-  }
-
-  .admin-table th,
-  .admin-table td {
-    white-space: nowrap;
-  }
-}
-
-@media (max-width: 767px) {
-  .admin-shell {
-    padding: 0.9rem;
-  }
-
-  .health-summary {
-    grid-template-columns: 1fr;
-  }
-
-  :host ::ng-deep .mat-mdc-card-header,
-  :host ::ng-deep .mat-mdc-card-content {
-    min-width: 0;
   }
 }

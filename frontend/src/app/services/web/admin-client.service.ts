@@ -6,7 +6,6 @@ import { UserRead } from '../../models/auth';
 import {
   AdminEmbeddingBackfillResponse,
   AdminEmbeddingBackfillStatus,
-  AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
   AdminTaggerStatus,
@@ -21,10 +20,6 @@ export class AdminClientService {
 
   getStats(): Observable<AdminStatsResponse> {
     return this.http.get<AdminStatsResponse>(`${this.base}/api/v1/admin/stats`);
-  }
-
-  getHealth(): Observable<AdminHealthResponse> {
-    return this.http.get<AdminHealthResponse>(`${this.base}/api/v1/admin/health`);
   }
 
   retagAll(): Observable<TaggingJobQueuedResponse> {

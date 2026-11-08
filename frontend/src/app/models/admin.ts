@@ -9,23 +9,6 @@ export interface AdminStatsResponse {
   trashed_media: number;
 }
 
-export interface AdminHealthSample {
-  captured_at: string;
-  cpu_percent: number;
-  memory_rss_bytes: number;
-}
-
-export interface AdminHealthResponse {
-  generated_at: string;
-  uptime_seconds: number;
-  cpu_percent: number;
-  memory_rss_bytes: number;
-  system_memory_total_bytes: number | null;
-  system_memory_used_bytes: number | null;
-  tagging_queue_depth: number;
-  samples: AdminHealthSample[];
-}
-
 export interface AdminEmbeddingBackfillResponse {
   batch_id: string | null;
   queued: number;

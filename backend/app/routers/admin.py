@@ -15,7 +15,6 @@ from backend.app.schemas import (
     AdminAppConfigUpdate,
     AdminEmbeddingBackfillResponse,
     AdminEmbeddingBackfillStatus,
-    AdminHealthResponse,
     AdminLibraryClassificationMetricsResponse,
     AdminStatsResponse,
     AdminTaggerStatus,
@@ -80,13 +79,6 @@ async def admin_stats(
     db: AsyncSession = Depends(get_db),
 ):
     return await AdminService(db).get_admin_stats()
-
-
-@router.get("/health", response_model=AdminHealthResponse)
-async def admin_health(
-    db: AsyncSession = Depends(get_db),
-):
-    return await AdminService(db).get_health()
 
 
 @router.post(

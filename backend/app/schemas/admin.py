@@ -12,23 +12,6 @@ class AdminStatsResponse(BaseModel):
     trashed_media: int
 
 
-class AdminHealthSample(BaseModel):
-    captured_at: datetime
-    cpu_percent: float = Field(ge=0.0)
-    memory_rss_bytes: int = Field(ge=0)
-
-
-class AdminHealthResponse(BaseModel):
-    generated_at: datetime
-    uptime_seconds: float = Field(ge=0.0)
-    cpu_percent: float = Field(ge=0.0)
-    memory_rss_bytes: int = Field(ge=0)
-    system_memory_total_bytes: int | None = Field(default=None, ge=0)
-    system_memory_used_bytes: int | None = Field(default=None, ge=0)
-    tagging_queue_depth: int = Field(ge=0)
-    samples: list[AdminHealthSample]
-
-
 class AdminEmbeddingBackfillResponse(BaseModel):
     batch_id: uuid.UUID | None = None
     queued: int = Field(ge=0)

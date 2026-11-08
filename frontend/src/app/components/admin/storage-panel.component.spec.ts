@@ -12,7 +12,6 @@ const status = {
   available: true,
   scanning: false,
   last_scan: null,
-  migration: null,
   conflicts: [],
 };
 
@@ -43,16 +42,14 @@ describe('StoragePanelComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('metadata retained');
     fixture.destroy();
   });
-  it('validates before migration and shows server conflicts', () => {
-    const fixture = create(); const c = fixture.componentInstance;
-    c.destination = '/nas'; c.validate();
-    http.expectOne('/api/v1/admin/storage/validate').flush({detail: 'Destination contains different content'}, {status: 409, statusText: 'Conflict'});
-    expect(c.validation()).toBeNull(); expect(c.error()).toContain('different content');
-    c.validate(); http.expectOne('/api/v1/admin/storage/validate').flush({total_files: 3, required_bytes: 1024});
-    c.migrate();
-    const request = http.expectOne('/api/v1/admin/storage/migrations');
-    expect(request.request.body).toEqual({root: '/nas'}); request.flush({id: 'job'});
-    http.expectOne('/api/v1/admin/storage').flush(status); fixture.destroy();
+  it('shows the library location without migration controls', () => {
+    const fixture = create();
+    const text = fixture.nativeElement.textContent as string;
+    expect(text).toContain('/library');
+    expect(text).toContain('Scan now');
+    expect(text).not.toContain('Move library');
+    expect(text).not.toContain('Validate destination');
+    fixture.destroy();
   });
   it('requires acknowledgment and sends only the reviewed maintenance IDs', () => {
     const fixture = create(); const c = fixture.componentInstance;

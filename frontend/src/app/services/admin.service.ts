@@ -6,7 +6,6 @@ import { UserRead } from '../models/auth';
 import {
   AdminEmbeddingBackfillResponse,
   AdminEmbeddingBackfillStatus,
-  AdminHealthResponse,
   AdminLibraryClassificationMetricsResponse,
   AdminStatsResponse,
 } from '../models/admin';
@@ -24,10 +23,6 @@ export class AdminService {
 
   getStats(): Observable<AdminStatsResponse> {
     return this.guard(() => this.client.getStats());
-  }
-
-  getHealth(): Observable<AdminHealthResponse> {
-    return this.guard(() => this.client.getHealth());
   }
 
   retagAll(): Observable<TaggingJobQueuedResponse> {

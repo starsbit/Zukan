@@ -58,23 +58,6 @@ describe('AdminService', () => {
       req.flush(mock);
     });
 
-    it('getHealth sends GET /api/v1/admin/health', () => {
-      const mock = {
-        generated_at: '2026-04-02T10:00:00Z',
-        uptime_seconds: 42,
-        cpu_percent: 10,
-        memory_rss_bytes: 1024,
-        system_memory_total_bytes: 4096,
-        system_memory_used_bytes: 2048,
-        tagging_queue_depth: 2,
-        samples: [],
-      };
-      service.getHealth().subscribe(res => expect(res).toEqual(mock));
-      const req = http.expectOne('/api/v1/admin/health');
-      expect(req.request.method).toBe('GET');
-      req.flush(mock);
-    });
-
     it('retagAll sends POST /api/v1/admin/users/{id}/tagging-jobs', () => {
       const mock = { queued_count: 42 };
       service.retagAll().subscribe((res) => expect(res).toEqual(mock));

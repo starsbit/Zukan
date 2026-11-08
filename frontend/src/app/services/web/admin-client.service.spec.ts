@@ -22,16 +22,6 @@ const mockStats = {
   failed_tagging: 0,
   trashed_media: 0,
 };
-const mockHealth = {
-  generated_at: '2026-04-02T10:00:00Z',
-  uptime_seconds: 12,
-  cpu_percent: 4,
-  memory_rss_bytes: 1024,
-  system_memory_total_bytes: 4096,
-  system_memory_used_bytes: 2048,
-  tagging_queue_depth: 1,
-  samples: [],
-};
 const mockUserPage = { total: 1, page: 1, page_size: 20, items: [mockUserDetail] };
 
 describe('AdminClientService', () => {
@@ -58,14 +48,6 @@ describe('AdminClientService', () => {
     const req = http.expectOne('/api/v1/admin/stats');
     expect(req.request.method).toBe('GET');
     req.flush(mockStats);
-  });
-
-  it('getHealth sends GET /api/v1/admin/health', () => {
-    service.getHealth().subscribe(res => expect(res).toEqual(mockHealth));
-
-    const req = http.expectOne('/api/v1/admin/health');
-    expect(req.request.method).toBe('GET');
-    req.flush(mockHealth);
   });
 
   it('getTagger sends GET /api/v1/admin/tagger', () => {

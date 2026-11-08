@@ -1,27 +1,16 @@
 import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { interval } from 'rxjs';
 import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { MatSelectModule } from '@angular/material/select';
 import { API_BASE_URL } from '../../services/web/api.config';
-import { AdminClientService } from '../../services/web/admin-client.service';
 
-interface Migration {
-  id: string;
-  state: string;
-  error: string | null;
-  source_root: string;
-  destination_root: string;
-  total_files: number;
-  copied_files: number;
-  cleaned_files: number;
-}
 interface ScanResult {
   scanned_at: string;
   added: number;
@@ -44,205 +33,369 @@ interface StorageStatus {
   available: boolean;
   scanning: boolean;
   last_scan: ScanResult | null;
-  migration: Migration | null;
   conflicts: { id: string; path: string; status: string }[];
 }
 
 @Component({
   selector: 'zukan-storage-panel',
   imports: [
+    DatePipe,
+    DecimalPipe,
     FormsModule,
     MatButtonModule,
-    MatCardModule,
-    MatFormFieldModule,
-    MatInputModule,
-    MatSelectModule,
     MatCheckboxModule,
+    MatFormFieldModule,
+    MatIconModule,
+    MatInputModule,
   ],
   template: `
-    <mat-card id="storage">
-      <mat-card-header><mat-card-title>Storage</mat-card-title></mat-card-header>
-      <mat-card-content>
-        @if (error()) {
-          <p role="alert">{{ error() }}</p>
-        }
+    <section class="admin-card" id="storage" aria-labelledby="storage-title">
+      <header class="admin-card__head">
+        <div>
+          <h2 id="storage-title">Storage</h2>
+          <p>Where your originals live and how they are kept in sync.</p>
+        </div>
         @if (status(); as s) {
-          @if (!s.folder_configured) {
-            <p>Confirm your current folder or move your library to another folder below.</p>
+          <span class="status-pill" [class.status-pill--bad]="!s.available">
+            <mat-icon aria-hidden="true">{{ s.available ? 'check_circle' : 'error' }}</mat-icon>
+            {{ s.available ? 'Available' : 'Unavailable — metadata retained' }}
+          </span>
+        }
+      </header>
+
+      @if (error()) {
+        <p class="panel-alert" role="alert">{{ error() }}</p>
+      }
+
+      @if (status(); as s) {
+        <div class="location">
+          <mat-icon aria-hidden="true">folder</mat-icon>
+          <code>{{ s.root }}</code>
+        </div>
+
+        @if (!s.folder_configured) {
+          <div class="notice">
+            <span>Confirm this folder as your library location.</span>
             <button
-              mat-stroked-button
+              mat-flat-button
+              type="button"
               (click)="confirmFolder()"
-              [disabled]="busy() || migrating() || !s.available"
+              [disabled]="busy() || !s.available"
             >
               Use current folder
             </button>
-          }
-          <p>
-            <strong>{{ s.available ? 'Available' : 'Unavailable — metadata retained' }}</strong
-            >: {{ s.root }}
-          </p>
-          <p>
-            PostgreSQL remains in its current location. Mount the NAS folder in the API container
-            before selecting it.
-          </p>
-          <div class="fields">
-            <mat-form-field
-              ><mat-label>Generated files subfolder</mat-label
-              ><input matInput [(ngModel)]="generatedDir"
-            /></mat-form-field>
-
-            <mat-form-field
-              ><mat-label>Scan interval (seconds; 0 = manual)</mat-label
-              ><input matInput type="number" min="0" [(ngModel)]="scanInterval"
-            /></mat-form-field>
           </div>
-          <p>Discovered files remain in place. Missing and changed files retain their metadata.</p>
-          <button mat-stroked-button (click)="save()" [disabled]="busy() || migrating()">
-            Save settings
-          </button>
-          <button
-            mat-stroked-button
-            (click)="scan()"
-            [disabled]="busy() || migrating() || !s.available || s.scanning"
-          >
-            {{ s.scanning ? 'Scanning…' : 'Scan now' }}
-          </button>
+        }
+
+        <div class="section">
+          <h3>Settings</h3>
+          <div class="settings-row">
+            <mat-form-field subscriptSizing="dynamic">
+              <mat-label>Generated files subfolder</mat-label>
+              <input matInput [(ngModel)]="generatedDir" />
+            </mat-form-field>
+            <mat-form-field subscriptSizing="dynamic">
+              <mat-label>Scan interval (seconds)</mat-label>
+              <input matInput type="number" min="0" [(ngModel)]="scanInterval" />
+              <mat-hint>0 = manual scans only</mat-hint>
+            </mat-form-field>
+            <button mat-stroked-button type="button" (click)="save()" [disabled]="busy()">
+              Save settings
+            </button>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section__head">
+            <div>
+              <h3>Library scan</h3>
+              <p>Picks up new, moved and changed files. Missing files keep their metadata.</p>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="scan()"
+              [disabled]="busy() || !s.available || s.scanning"
+            >
+              {{ s.scanning ? 'Scanning…' : 'Scan now' }}
+            </button>
+          </div>
           @if (s.last_scan; as scan) {
-            <p>
-              Last scan: {{ scan.scanned_at }} — {{ scan.added }} added, {{ scan.moved }} moved,
-              {{ scan.missing }} missing, {{ scan.changed }} changed.
-            </p>
-            @for (path of scan.duplicates; track path) {
-              <p>Duplicate requiring review: {{ path }}</p>
+            <p class="muted">Last scan {{ scan.scanned_at | date: 'medium' }}</p>
+            <div class="counts">
+              <span><strong>{{ scan.added | number }}</strong> added</span>
+              <span><strong>{{ scan.moved | number }}</strong> moved</span>
+              <span><strong>{{ scan.missing | number }}</strong> missing</span>
+              <span><strong>{{ scan.changed | number }}</strong> changed</span>
+            </div>
+            @if (scan.duplicates.length) {
+              <ul class="item-list">
+                @for (path of scan.duplicates; track path) {
+                  <li><span>Duplicate needs review</span><code>{{ path }}</code></li>
+                }
+              </ul>
             }
+          } @else {
+            <p class="muted">No scan has run yet.</p>
           }
-          <h3>Database maintenance</h3>
-          <p>
-            Inspect catalog references for missing originals and generated files. Unavailable
-            storage stops the check.
-          </p>
-          <button
-            mat-stroked-button
-            (click)="inspectMaintenance()"
-            [disabled]="busy() || migrating() || !s.available || s.scanning"
-          >
-            Inspect database
-          </button>
+        </div>
+
+        @if (s.conflicts.length) {
+          <div class="section">
+            <h3>Files needing attention</h3>
+            <ul class="item-list">
+              @for (file of s.conflicts; track file.id) {
+                <li>
+                  <span>{{ file.status }}</span>
+                  <code>{{ file.path }}</code>
+                  @if (file.status === 'changed') {
+                    <button
+                      mat-stroked-button
+                      type="button"
+                      (click)="accept(file.id)"
+                      [disabled]="busy()"
+                    >
+                      Accept and reprocess
+                    </button>
+                  }
+                </li>
+              }
+            </ul>
+          </div>
+        }
+
+        <div class="section">
+          <div class="section__head">
+            <div>
+              <h3>Database check</h3>
+              <p>Find catalog entries whose original or generated files are missing.</p>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="inspectMaintenance()"
+              [disabled]="busy() || !s.available || s.scanning"
+            >
+              Inspect database
+            </button>
+          </div>
           @if (maintenance(); as report) {
-            <p>
-              {{ report.checked_records }} records checked; {{ report.items.length }} need
-              attention.
+            <p class="muted">
+              {{ report.checked_records | number }} records checked ·
+              {{ report.items.length | number }} need attention
             </p>
-            @for (item of report.items; track item.id) {
-              <p>
-                {{ item.path }} — missing {{ item.missing_fields.join(', ')
-                }}{{ item.trashed ? ' (in trash)' : '' }}
-              </p>
-            }
             @if (report.items.length) {
-              <p>
-                Cleanup permanently deletes records with missing originals, including their
-                annotations and relationships, and removes their remaining generated files. Records
-                with only missing thumbnails or posters keep their metadata; broken generated-file
-                references are cleared and marked failed for reprocessing.
-              </p>
-              <mat-checkbox [(ngModel)]="maintenanceConfirmed"
-                >I accept permanent deletion of records whose originals are missing.</mat-checkbox
-              >
-              <button
-                mat-flat-button
-                (click)="cleanupMaintenance()"
-                [disabled]="busy() || migrating() || !s.available || !maintenanceConfirmed"
-              >
-                Clean reviewed entries
-              </button>
+              <ul class="item-list">
+                @for (item of report.items; track item.id) {
+                  <li>
+                    <span>{{ missingLabel(item) }}</span>
+                    <code>{{ item.path }}</code>
+                  </li>
+                }
+              </ul>
+              <div class="danger-zone">
+                <p>
+                  Cleanup permanently deletes records whose originals are missing, including their
+                  annotations, and removes leftover generated files. Records that only lack a
+                  thumbnail or poster are kept and marked for reprocessing.
+                </p>
+                <mat-checkbox [(ngModel)]="maintenanceConfirmed">
+                  I accept permanent deletion of records whose originals are missing.
+                </mat-checkbox>
+                <button
+                  mat-flat-button
+                  type="button"
+                  (click)="cleanupMaintenance()"
+                  [disabled]="busy() || !s.available || !maintenanceConfirmed"
+                >
+                  Clean reviewed entries
+                </button>
+              </div>
             }
           }
           @if (maintenanceResult()) {
-            <p role="status">{{ maintenanceResult() }}</p>
+            <p class="muted" role="status">{{ maintenanceResult() }}</p>
           }
-          <h3>Move library</h3>
-          <mat-form-field class="destination"
-            ><mat-label>Destination folder (absolute path in API container)</mat-label
-            ><input matInput [(ngModel)]="destination" (ngModelChange)="validation.set(null)"
-          /></mat-form-field>
-          <p>
-            Files will be copied and verified before switching. Verified old copies will then be
-            deleted; unrelated files remain.
-          </p>
-          <button
-            mat-stroked-button
-            (click)="validate()"
-            [disabled]="busy() || migrating() || !destination"
-          >
-            Validate destination
-          </button>
-          @if (validation(); as v) {
-            <p>{{ v.total_files }} files; {{ v.required_bytes }} bytes to copy.</p>
-          }
-          <button
-            mat-flat-button
-            (click)="migrate()"
-            [disabled]="busy() || migrating() || !validation()"
-          >
-            Copy, verify and migrate
-          </button>
-          @if (s.migration; as job) {
-            <p role="status">
-              Migration: {{ job.state }} — {{ job.copied_files }}/{{ job.total_files }} copied;
-              {{ job.cleaned_files }}/{{ job.total_files }} old copies removed.
-            </p>
-            @if (job.error) {
-              <p role="alert">{{ job.error }}</p>
-            }
-            @if (job.state === 'failed' || job.state === 'cleanup_pending') {
-              <button mat-stroked-button (click)="resume(job.id)" [disabled]="busy()">
-                Resume migration
-              </button>
-            }
-          }
-          @if (s.conflicts.length) {
-            <h3>Files needing attention</h3>
-          }
-          @for (file of s.conflicts; track file.id) {
-            <p>
-              {{ file.path }} — {{ file.status }}
-              @if (file.status === 'changed') {
-                <button
-                  mat-stroked-button
-                  (click)="accept(file.id)"
-                  [disabled]="busy() || migrating()"
-                >
-                  Accept changed content and reprocess
-                </button>
-              }
-            </p>
-          }
-        }
-      </mat-card-content>
-    </mat-card>
+        </div>
+      }
+    </section>
   `,
   styles: [
     `
-      mat-card {
-        margin: 24px 0;
+      :host {
+        display: block;
       }
-      mat-card-content {
-        padding-top: 16px;
+      .admin-card {
+        display: grid;
+        gap: 20px;
+        padding: 20px;
+        border-radius: 16px;
+        background: var(--mat-sys-surface-container-low);
+        border: 1px solid var(--mat-sys-outline-variant);
       }
-      .fields {
+      .admin-card__head {
         display: flex;
-        gap: 16px;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
         flex-wrap: wrap;
       }
-      .destination {
-        width: 100%;
+      h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        font-weight: 800;
       }
-      button {
-        margin: 0 8px 8px 0;
+      h3 {
+        margin: 0;
+        font-size: 1rem;
+        font-weight: 700;
       }
       p {
+        margin: 0;
         overflow-wrap: anywhere;
+      }
+      .admin-card__head p,
+      .section__head p,
+      .muted {
+        margin-top: 4px;
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.9rem;
+      }
+      .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px 4px 8px;
+        border-radius: 999px;
+        background: var(--mat-sys-secondary-container);
+        color: var(--mat-sys-on-secondary-container);
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+      .status-pill mat-icon {
+        width: 18px;
+        height: 18px;
+        font-size: 18px;
+      }
+      .status-pill--bad {
+        background: var(--mat-sys-error-container);
+        color: var(--mat-sys-on-error-container);
+      }
+      .panel-alert {
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: var(--mat-sys-error-container);
+        color: var(--mat-sys-on-error-container);
+      }
+      .location {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: var(--mat-sys-surface-container);
+      }
+      .location mat-icon {
+        color: var(--mat-sys-primary);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.88rem;
+        overflow-wrap: anywhere;
+      }
+      .notice {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 14px;
+        border-radius: 12px;
+        background: var(--mat-sys-tertiary-container);
+        color: var(--mat-sys-on-tertiary-container);
+      }
+      .section {
+        display: grid;
+        gap: 12px;
+        padding-top: 20px;
+        border-top: 1px solid var(--mat-sys-outline-variant);
+      }
+      .section__head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      .section__head button {
+        flex: 0 0 auto;
+      }
+      .settings-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .settings-row mat-form-field {
+        flex: 1 1 220px;
+      }
+      .settings-row button {
+        margin-top: 8px;
+      }
+      .counts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .counts span {
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: var(--mat-sys-surface-container);
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.88rem;
+      }
+      .counts strong {
+        color: var(--mat-sys-on-surface);
+      }
+      .item-list {
+        display: grid;
+        gap: 6px;
+        max-height: 320px;
+        margin: 0;
+        padding: 0;
+        overflow: auto;
+        list-style: none;
+      }
+      .item-list li {
+        display: grid;
+        grid-template-columns: 200px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: var(--mat-sys-surface-container);
+      }
+      .item-list li > span {
+        color: var(--mat-sys-on-surface-variant);
+        font-size: 0.85rem;
+      }
+      .item-list li > span::first-letter {
+        text-transform: uppercase;
+      }
+      .danger-zone {
+        display: grid;
+        justify-items: start;
+        gap: 10px;
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid var(--mat-sys-error);
+      }
+      @media (max-width: 599px) {
+        .section__head {
+          flex-direction: column;
+        }
+        .item-list li {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
     `,
   ],
@@ -250,18 +403,15 @@ interface StorageStatus {
 export class StoragePanelComponent {
   private readonly http = inject(HttpClient);
   private readonly base = inject(API_BASE_URL) + '/api/v1/admin/storage';
-  private readonly admin = inject(AdminClientService);
   private readonly destroyRef = inject(DestroyRef);
   readonly status = signal<StorageStatus | null>(null);
   readonly busy = signal(false);
   readonly error = signal<string | null>(null);
-  readonly validation = signal<{ total_files: number; required_bytes: number } | null>(null);
   readonly maintenance = signal<MaintenanceReport | null>(null);
   readonly maintenanceResult = signal<string | null>(null);
   maintenanceConfirmed = false;
   generatedDir = '.zukan';
   scanInterval = 3600;
-  destination = '';
 
   constructor() {
     this.refresh(true);
@@ -269,7 +419,6 @@ export class StoragePanelComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe(() => this.refresh());
   }
-  migrating() { return ['copying', 'verifying', 'cleanup'].includes(this.status()?.migration?.state ?? ''); }
   private refresh(initial = false) {
     this.http
       .get<StorageStatus>(this.base)
@@ -293,7 +442,6 @@ export class StoragePanelComponent {
     });
   }
   save() {
-    this.validation.set(null);
     this.request(
       '',
       { generated_dir: this.generatedDir, scan_interval_seconds: this.scanInterval },
@@ -302,9 +450,16 @@ export class StoragePanelComponent {
   }
   confirmFolder() { this.request('/confirm', {root: this.status()?.root}); }
   scan() { this.request('/scan'); }
-  migrate() { this.request('/migrations', {root: this.destination}); this.validation.set(null); }
-  resume(id: string) { this.request('/migrations/' + id + '/resume'); }
   accept(id: string) { this.request('/conflicts/' + id + '/accept'); }
+  missingLabel(item: MaintenanceReport['items'][number]): string {
+    const names: Record<string, string> = {
+      filepath: 'original',
+      thumbnail_path: 'thumbnail',
+      poster_path: 'poster',
+    };
+    const fields = item.missing_fields.map((field) => names[field] ?? field.replace(/_/g, ' '));
+    return `Missing ${fields.join(', ')}${item.trashed ? ' · in trash' : ''}`;
+  }
   inspectMaintenance() {
     this.busy.set(true); this.error.set(null); this.maintenance.set(null);
     this.maintenanceConfirmed = false; this.maintenanceResult.set(null);
@@ -316,7 +471,7 @@ export class StoragePanelComponent {
   cleanupMaintenance() {
     const report = this.maintenance();
     if (!report || !this.maintenanceConfirmed) return;
-    this.busy.set(true); this.error.set(null); this.validation.set(null);
+    this.busy.set(true); this.error.set(null);
     this.http.post<{deleted_ids: string[]; repaired_ids: string[]; skipped_ids: string[]; file_cleanup_errors: {path: string; error: string}[]}>(this.base + '/maintenance/cleanup', {
       media_ids: report.items.map(item => item.id), root: report.root, root_identity: report.root_identity, confirm_permanent_deletion: true,
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
@@ -327,13 +482,6 @@ export class StoragePanelComponent {
         this.refresh();
       },
       error: e => { this.busy.set(false); this.error.set(e.error?.detail ?? 'Database cleanup failed.'); },
-    });
-  }
-  validate() {
-    this.busy.set(true); this.error.set(null); this.validation.set(null);
-    this.http.post<{total_files: number; required_bytes: number}>(this.base + '/validate', {root: this.destination}).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: v => { this.validation.set(v); this.busy.set(false); },
-      error: e => { this.busy.set(false); this.error.set(e.error?.detail ?? 'Destination validation failed.'); },
     });
   }
 }

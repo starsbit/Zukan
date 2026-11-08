@@ -42,7 +42,6 @@ from backend.app.services.library_storage import (
     release_storage_lease,
 )
 from backend.app.routers import storage
-from backend.app.runtime import health_monitor
 from backend.app.routers import (
     admin,
     albums,
@@ -564,7 +563,6 @@ async def lifespan(_api: FastAPI):
         logger.info("Startup phase: wiring background services")
         set_tag_queue(tag_queue)
         set_embedding_backfill_queue(embedding_backfill_queue)
-        health_monitor.start()
         recovered_count = await _recover_pending_media_jobs(tag_queue)
         recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(
             embedding_backfill_queue
@@ -633,7 +631,6 @@ async def lifespan(_api: FastAPI):
         if ml_worker is not None:
             ml_worker.cancel()
         await tagger.shutdown()
-        await health_monitor.stop()
         for w in workers:
             try:
                 await w
