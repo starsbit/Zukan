@@ -29,18 +29,42 @@
       }
 
       @if (activeItem(); as item) {
-        <button
-          mat-icon-button
-          type="button"
-          class="stories-viewer__favorite-button"
-          data-story-control
-          [disabled]="togglingFavorite()"
-          [attr.aria-pressed]="item.is_favorited"
-          [attr.aria-label]="item.is_favorited ? 'Remove from favorites' : 'Add to favorites'"
-          (click)="toggleFavorite()"
-        >
-          <mat-icon aria-hidden="true">{{ item.is_favorited ? 'favorite' : 'favorite_border' }}</mat-icon>
-        </button>
+        <div class="stories-viewer__actions">
+          <button
+            mat-icon-button
+            type="button"
+            class="stories-viewer__action-button"
+            data-story-control
+            matTooltip="Show in timeline"
+            aria-label="Show in timeline"
+            (click)="revealActive()"
+          >
+            <mat-icon aria-hidden="true">my_location</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="stories-viewer__action-button"
+            data-story-control
+            matTooltip="Open"
+            aria-label="Open media"
+            (click)="openActive()"
+          >
+            <mat-icon aria-hidden="true">open_in_full</mat-icon>
+          </button>
+          <button
+            mat-icon-button
+            type="button"
+            class="stories-viewer__favorite-button"
+            data-story-control
+            [disabled]="togglingFavorite()"
+            [attr.aria-pressed]="item.is_favorited"
+            [attr.aria-label]="item.is_favorited ? 'Remove from favorites' : 'Add to favorites'"
+            (click)="toggleFavorite()"
+          >
+            <mat-icon aria-hidden="true">{{ item.is_favorited ? 'favorite' : 'favorite_border' }}</mat-icon>
+          </button>
+        </div>
       } @else {
         <span class="stories-viewer__header-spacer" aria-hidden="true"></span>
       }
@@ -91,9 +115,10 @@
               ></video>
             } @else {
               <img
-                class="stories-viewer__media"
+                class="stories-viewer__media stories-viewer__media--clickable"
                 [src]="mediaUrl()!"
                 [alt]="item.original_filename ?? item.filename"
+                (click)="openActive()"
               >
             }
           </div>

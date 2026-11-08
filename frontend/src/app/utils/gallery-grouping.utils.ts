@@ -25,7 +25,7 @@ export function groupByDay(items: MediaRead[]): DayGroup[] {
   const order: string[] = [];
 
   for (const item of items) {
-    const date = item.metadata.captured_at.slice(0, 10); // "YYYY-MM-DD"
+    const date = (item.metadata.captured_at || item.uploaded_at).slice(0, 10);
     if (!map.has(date)) {
       const d = new Date(`${date}T00:00:00Z`);
       map.set(date, { date, label: DATE_FORMAT.format(d), items: [] });

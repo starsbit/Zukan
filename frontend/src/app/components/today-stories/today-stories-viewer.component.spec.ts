@@ -49,6 +49,41 @@ describe('TodayStoriesViewerComponent', () => {
     expect(fixture.componentInstance.activeIndex()).toBe(1);
   });
 
+  it('closes with reveal and open actions for the active story', async () => {
+    const store = createStore();
+    const dialogRef = { close: vi.fn() };
+    const mediaService = { getFileUrl: vi.fn(() => of('blob:file')) };
+
+    await TestBed.configureTestingModule({
+      imports: [TodayStoriesViewerComponent],
+      providers: [
+        { provide: TodayStoriesStore, useValue: store },
+        { provide: MediaService, useValue: mediaService },
+        { provide: MatDialogRef, useValue: dialogRef },
+        { provide: MAT_DIALOG_DATA, useValue: { yearsAgo: 2, initialIndex: 0 } },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(TodayStoriesViewerComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const revealButton = fixture.nativeElement.querySelector('[aria-label="Show in timeline"]') as HTMLButtonElement;
+    revealButton.click();
+    expect(dialogRef.close).toHaveBeenLastCalledWith({
+      action: 'reveal',
+      item: expect.objectContaining({ id: 'a' }),
+    });
+
+    const image = fixture.nativeElement.querySelector('img.stories-viewer__media') as HTMLImageElement;
+    image.click();
+    expect(dialogRef.close).toHaveBeenLastCalledWith({
+      action: 'open',
+      item: expect.objectContaining({ id: 'a' }),
+    });
+  });
+
   it('does not reload the media file after liking the active story', async () => {
     const groupsSignal = signal([makeGroup(false)]);
     const toggleFavorite = vi.fn(() => {

@@ -15,7 +15,12 @@
   min-width: 0;
   min-height: 0;
   overflow: visible;
+  overflow-anchor: none;
   padding-right: 18px;
+}
+
+.media-browser__list {
+  overflow-anchor: none;
 }
 
 .media-browser__action-bar {
@@ -65,8 +70,29 @@
   margin-bottom: 18px;
 }
 
-.media-browser__month + .media-browser__month {
-  margin-top: 40px;
+.media-browser__month {
+  box-sizing: border-box;
+  padding-bottom: 40px;
+}
+
+.media-browser__month--skeleton {
+  overflow: hidden;
+}
+
+.media-browser__card--highlight {
+  border-radius: 10px;
+  animation: media-browser-card-highlight 1.6s ease-out;
+}
+
+@keyframes media-browser-card-highlight {
+  0%,
+  60% {
+    box-shadow: 0 0 0 3px var(--mat-sys-primary);
+  }
+
+  100% {
+    box-shadow: 0 0 0 3px transparent;
+  }
 }
 
 .media-browser__day + .media-browser__day {
@@ -210,6 +236,11 @@
   .media-browser__skeleton-spinner {
     animation: none;
   }
+
+  .media-browser__card--highlight {
+    animation: none;
+    box-shadow: 0 0 0 3px var(--mat-sys-primary);
+  }
 }
 
 .media-browser__empty {
@@ -330,8 +361,8 @@
     gap: 14px;
   }
 
-  .media-browser__month + .media-browser__month {
-    margin-top: 32px;
+  .media-browser__month {
+    padding-bottom: 32px;
   }
 
   .media-browser__day + .media-browser__day {
@@ -353,8 +384,8 @@
     gap: 12px;
   }
 
-  .media-browser__month + .media-browser__month {
-    margin-top: 26px;
+  .media-browser__month {
+    padding-bottom: 26px;
   }
 
   .media-browser__day + .media-browser__day {

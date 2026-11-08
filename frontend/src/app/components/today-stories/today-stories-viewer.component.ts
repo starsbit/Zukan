@@ -14,11 +14,12 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MAT_DIALOG_DATA, MatDialogModule, MatDialogRef } from '@angular/material/dialog';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
+import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { fromEvent } from 'rxjs';
 import { MediaType } from '../../models/media';
-import { TodayStoriesViewerData } from '../../models/today-stories';
+import { TodayStoriesViewerData, TodayStoriesViewerResult } from '../../models/today-stories';
 import {
   IMAGE_STORY_DURATION_MS,
 } from '../../utils/today-stories.utils';
@@ -34,6 +35,7 @@ import { TodayStoriesStore } from './today-stories.store';
     MatIconModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
+    MatTooltipModule,
   ],
   templateUrl: './today-stories-viewer.component.html',
   styleUrl: './today-stories-viewer.component.scss',
@@ -148,6 +150,14 @@ export class TodayStoriesViewerComponent {
 
   close(): void {
     this.dialogRef.close();
+  }
+
+  openActive(): void {
+    this.closeWithAction('open');
+  }
+
+  revealActive(): void {
+    this.closeWithAction('reveal');
   }
 
   previous(): void {
@@ -274,6 +284,15 @@ export class TodayStoriesViewerComponent {
       event.preventDefault();
       this.next();
     }
+  }
+
+  private closeWithAction(action: TodayStoriesViewerResult['action']): void {
+    const item = this.activeItem();
+    if (!item) {
+      return;
+    }
+
+    this.dialogRef.close({ action, item } satisfies TodayStoriesViewerResult);
   }
 
   private loadActiveMedia(id: string): void {

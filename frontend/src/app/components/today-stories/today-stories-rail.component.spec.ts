@@ -10,7 +10,7 @@ import { TodayStoriesRailComponent } from './today-stories-rail.component';
 
 describe('TodayStoriesRailComponent', () => {
   it('renders one card per years-ago group and opens the matching group', async () => {
-    const dialog = { open: vi.fn() };
+    const dialog = { open: vi.fn((..._args: unknown[]) => ({ afterClosed: () => of(undefined) })) };
     const mediaClient = {
       search: vi.fn(() => of({
         items: [
@@ -58,10 +58,60 @@ describe('TodayStoriesRailComponent', () => {
     (cards[0] as HTMLButtonElement).click();
 
     expect(dialog.open).toHaveBeenCalled();
-    expect(dialog.open.mock.calls[0]?.[1]?.data).toEqual({
+    expect((dialog.open.mock.calls[0]?.[1] as { data?: unknown } | undefined)?.data).toEqual({
       yearsAgo: 2,
       initialIndex: 0,
     });
+  });
+
+  it('emits reveal and open requests from the viewer close result', async () => {
+    const closeResults: unknown[] = [
+      { action: 'reveal', item: { id: 'm1' } },
+      { action: 'open', item: { id: 'm1' } },
+    ];
+    const dialog = { open: vi.fn(() => ({ afterClosed: () => of(closeResults.shift()) })) };
+    const mediaClient = {
+      search: vi.fn(() => of({
+        items: [makeMedia('m1', '2024-04-02T12:00:00Z')],
+        total: 1,
+        next_cursor: null,
+        has_more: false,
+        page_size: 100,
+      })),
+    };
+
+    await TestBed.configureTestingModule({
+      imports: [TodayStoriesRailComponent],
+      providers: [
+        { provide: MatDialog, useValue: dialog },
+        { provide: MediaClientService, useValue: mediaClient },
+        { provide: GalleryStore, useValue: { patchItem: vi.fn(), removeItem: vi.fn() } },
+        {
+          provide: MediaService,
+          useValue: {
+            getThumbnailUrl: vi.fn((id: string) => of(`blob:${id}`)),
+            getPosterUrl: vi.fn((id: string) => of(`blob:${id}`)),
+          },
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(TodayStoriesRailComponent);
+    fixture.componentRef.setInput('params', { captured_month: 4, captured_day: 2, captured_before_year: 2026 });
+    const revealed: string[] = [];
+    const opened: string[] = [];
+    fixture.componentInstance.revealRequested.subscribe((item) => revealed.push(item.id));
+    fixture.componentInstance.openRequested.subscribe((item) => opened.push(item.id));
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const yearsAgo = fixture.componentInstance.groups()[0]!.yearsAgo;
+    fixture.componentInstance.openStory(yearsAgo);
+    fixture.componentInstance.openStory(yearsAgo);
+
+    expect(revealed).toEqual(['m1']);
+    expect(opened).toEqual(['m1']);
   });
 });
 

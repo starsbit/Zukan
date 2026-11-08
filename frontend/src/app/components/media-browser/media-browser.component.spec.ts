@@ -397,8 +397,8 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
-    const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    placeContentAtDocumentTop(content);
+    const list = fixture.nativeElement.querySelector('.media-browser__list') as HTMLElement;
+    placeContentAtDocumentTop(list);
     setWindowInnerHeight(400);
     setWindowScrollY(1000);
     fixture.componentInstance.monthMetrics.set([
@@ -427,8 +427,8 @@ describe('MediaBrowserComponent', () => {
     ]);
     fixture.detectChanges();
 
-    const content = fixture.nativeElement.querySelector('.media-browser__content') as HTMLElement;
-    placeContentAtDocumentTop(content);
+    const list = fixture.nativeElement.querySelector('.media-browser__list') as HTMLElement;
+    placeContentAtDocumentTop(list);
     setWindowScrollY(260);
     (fixture.componentInstance as any).measuredMonthHeights.set({
       '2026-03': 250,
@@ -448,7 +448,7 @@ describe('MediaBrowserComponent', () => {
     expect(fixture.componentInstance.activeYear()).toBe(2026);
   });
 
-  it('positions timeline months from measured scroll offsets when available', async () => {
+  it('positions timeline months by item count so ticks stay put while heights settle', async () => {
     await configureBrowserTestingModule();
 
     const fixture = TestBed.createComponent(MediaBrowserComponent);
@@ -471,8 +471,137 @@ describe('MediaBrowserComponent', () => {
     });
     fixture.componentInstance.maxScrollTop.set(500);
 
-    const months = fixture.componentInstance.timelineEntries()[0]?.months ?? [];
-    expect(months.map((month) => month.position)).toEqual([0, 50, 100]);
+    const positions = () =>
+      (fixture.componentInstance.timelineEntries()[0]?.months ?? []).map((month) => month.position);
+    expect(positions()).toEqual([0, (3 / 9) * 100, (5 / 9) * 100]);
+
+    (fixture.componentInstance as any).measuredMonthHeights.set({
+      '2026-03': 900,
+      '2026-02': 120,
+      '2026-01': 400,
+    });
+    expect(positions()).toEqual([0, (3 / 9) * 100, (5 / 9) * 100]);
+  });
+
+  it('maps scrubber progress to content offsets and back', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', []);
+    fixture.componentRef.setInput('timeline', [
+      { year: 2026, month: 3, count: 10 },
+      { year: 2026, month: 2, count: 30 },
+    ]);
+    fixture.detectChanges();
+
+    (fixture.componentInstance as any).measuredMonthHeights.set({
+      '2026-03': 1000,
+      '2026-02': 1000,
+    });
+    fixture.componentInstance.maxScrollTop.set(2000);
+    const component = fixture.componentInstance as any;
+
+    expect(component.progressToLocalTop(0)).toBe(0);
+    expect(component.progressToLocalTop(0.25)).toBeCloseTo(1000);
+    expect(component.progressToLocalTop(1)).toBeCloseTo(2000);
+    for (const progress of [0, 0.1, 0.25, 0.6, 1]) {
+      expect(component.localTopToProgress(component.progressToLocalTop(progress))).toBeCloseTo(progress);
+    }
+  });
+
+  it('compensates the scroll position when content above the anchor changes height', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', []);
+    fixture.componentRef.setInput('timeline', [{ year: 2026, month: 3, count: 4 }]);
+    fixture.detectChanges();
+
+    const anchorElement = document.createElement('div');
+    document.body.appendChild(anchorElement);
+    let anchorTop = 120;
+    Object.defineProperty(anchorElement, 'getBoundingClientRect', {
+      value: () => ({ top: anchorTop }),
+      configurable: true,
+    });
+    setWindowScrollY(500);
+    const scrollBySpy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const component = fixture.componentInstance as any;
+    component.scrollAnchor = { element: anchorElement, top: 120, scrollY: 500 };
+
+    anchorTop = 300;
+    component.restoreScrollAnchor();
+
+    expect(scrollBySpy).toHaveBeenCalledWith({ top: 180, behavior: 'instant' });
+    anchorElement.remove();
+  });
+
+  it('does not fight user scrolling that happened since the anchor was recorded', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', []);
+    fixture.componentRef.setInput('timeline', [{ year: 2026, month: 3, count: 4 }]);
+    fixture.detectChanges();
+
+    const anchorElement = document.createElement('div');
+    document.body.appendChild(anchorElement);
+    Object.defineProperty(anchorElement, 'getBoundingClientRect', {
+      value: () => ({ top: 90 }),
+      configurable: true,
+    });
+    const scrollBySpy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
+    const component = fixture.componentInstance as any;
+    component.scrollAnchor = { element: anchorElement, top: 120, scrollY: 500 };
+    setWindowScrollY(530);
+
+    component.restoreScrollAnchor();
+
+    expect(scrollBySpy).not.toHaveBeenCalled();
+    anchorElement.remove();
+  });
+
+  it('sizes unloaded skeleton months to their virtual height', async () => {
+    await configureBrowserTestingModule();
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    fixture.componentRef.setInput('dayGroups', []);
+    fixture.componentRef.setInput('timeline', [{ year: 2026, month: 3, count: 500 }]);
+    fixture.detectChanges();
+
+    const section = fixture.nativeElement.querySelector('.media-browser__month') as HTMLElement;
+    const metric = fixture.componentInstance.virtualMonthMetrics()[0]!;
+    expect(section.classList).toContain('media-browser__month--skeleton');
+    expect(section.style.height).toBe(`${metric.height}px`);
+  });
+
+  it('loads a story item and reveals its card in the timeline', async () => {
+    await configureBrowserTestingModule();
+    const ensureMediaLoaded = vi.fn(() => of(true));
+    (galleryStoreMock as any).ensureMediaLoaded = ensureMediaLoaded;
+
+    const fixture = TestBed.createComponent(MediaBrowserComponent);
+    const media = makeMedia('story-1', 100, 100);
+    fixture.componentRef.setInput('dayGroups', [
+      { date: '2026-03-28', label: 'March 28, 2026', items: [media] },
+    ] satisfies DayGroup[]);
+    fixture.componentRef.setInput('timeline', [{ year: 2026, month: 3, count: 1 }]);
+    fixture.detectChanges();
+
+    const revealSpy = vi.spyOn(fixture.componentInstance, 'revealMedia');
+    fixture.componentInstance.onStoryReveal({
+      ...media,
+      yearsAgo: 1,
+      yearsAgoLabel: '1 year ago',
+      capturedDateLabel: 'March 28, 2025',
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(ensureMediaLoaded).toHaveBeenCalled();
+    expect(revealSpy).toHaveBeenCalledWith('story-1', true, '2026-03');
+    const card = fixture.nativeElement.querySelector('zukan-media-card[data-media-id="story-1"]');
+    expect(card.classList).toContain('media-browser__card--highlight');
   });
 
   it('packs media into justified rows', async () => {

@@ -9,6 +9,7 @@ import {
   QueryList,
   ViewChild,
   ViewChildren,
+  afterEveryRender,
   afterNextRender,
   computed,
   effect,
@@ -27,6 +28,7 @@ import { MatToolbarModule } from '@angular/material/toolbar';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { NavigationEnd, Router } from '@angular/router';
 import { EMPTY, catchError } from 'rxjs';
+import { TodayStoryItem } from '../../models/today-stories';
 import { GalleryTimelineMonth, GalleryTimelineYear } from '../../models/gallery-browser';
 import { MediaRead } from '../../models/media';
 import { ConfirmDialogService } from '../../services/confirm-dialog.service';
@@ -81,6 +83,13 @@ interface JustifiedMonthGroup {
   month: number;
   label: string;
   days: JustifiedDayGroup[];
+  skeletonHeight?: number | null;
+}
+
+interface ScrollAnchor {
+  element: HTMLElement;
+  top: number;
+  scrollY: number;
 }
 
 interface MonthMetric {
@@ -102,7 +111,11 @@ const COMPACT_ROW_HEIGHT = 168;
 const WIDTH_FALLBACK = 1200;
 const SKELETON_ASPECT_RATIO = 4 / 3;
 const VIRTUAL_OVERSCAN_PX = 1400;
-const SKELETON_RENDER_LIMIT = 80;
+const SKELETON_RENDER_LIMIT = 240;
+const HIGHLIGHT_DURATION_MS = 1600;
+const REVEAL_MAX_FRAMES = 60;
+const MIN_ESTIMATE_SCALE = 0.5;
+const MAX_ESTIMATE_SCALE = 3;
 const DAY_HEADER_ESTIMATE = 42;
 const DAY_SECTION_MARGIN = 28;
 const MONTH_SECTION_MARGIN = 40;
@@ -161,6 +174,9 @@ export class MediaBrowserComponent {
   @ViewChild('contentPane', { read: ElementRef })
   private readonly contentPane?: ElementRef<HTMLElement>;
 
+  @ViewChild('virtualList', { read: ElementRef })
+  private readonly virtualList?: ElementRef<HTMLElement>;
+
   readonly activeYear = signal<number | null>(null);
   readonly activeMonthKey = signal<string | null>(null);
   readonly activeTimelineProgress = signal<number | null>(null);
@@ -215,6 +231,10 @@ export class MediaBrowserComponent {
   private readonly scrollTop = signal(0);
   private readonly viewportHeight = signal(900);
   private readonly measuredMonthHeights = signal<Record<string, number>>({});
+  private readonly estimateScale = signal(1);
+  private scrollAnchor: ScrollAnchor | null = null;
+  private previousMetrics: MonthMetric[] = [];
+  private highlightTimer?: ReturnType<typeof setTimeout>;
 
   private static readonly MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
     year: 'numeric',
@@ -247,6 +267,13 @@ export class MediaBrowserComponent {
       });
     });
 
+    effect(() => {
+      const metrics = this.virtualMonthMetrics();
+      untracked(() => this.compensateMetricShift(metrics));
+    });
+
+    afterEveryRender({ write: () => this.restoreScrollAnchor() });
+
     this.router.events.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event instanceof NavigationEnd) {
         this.onNavigationEnd(event.urlAfterRedirects);
@@ -273,6 +300,7 @@ export class MediaBrowserComponent {
     }
     clearTimeout(this.pendingJumpRetryTimer);
     clearTimeout(this.pendingJumpFinalizeTimer);
+    clearTimeout(this.highlightTimer);
   }
 
   sectionId(date: string): string {
@@ -291,6 +319,59 @@ export class MediaBrowserComponent {
     this.mediaSelected.emit(media);
     this.openPoint = this.captureOpenPoint(media.id, parseMediaUrl(this.router.url).query);
     this.mediaNavigator.open(media.id);
+  }
+
+  onStoryReveal(item: TodayStoryItem): void {
+    this.galleryStore.ensureMediaLoaded(item)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((found) => {
+        if (!found) {
+          this.snackBar.open('Could not find this memory in the timeline.', 'Close', { duration: 3500 });
+          return;
+        }
+        const monthKey = (item.metadata.captured_at || item.uploaded_at).slice(0, 7);
+        afterNextRender(() => this.revealMedia(item.id, true, monthKey), { injector: this.injector });
+      });
+  }
+
+  onStoryOpen(item: TodayStoryItem): void {
+    this.galleryStore.ensureMediaLoaded(item)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.onMediaActivated(item));
+  }
+
+  revealMedia(mediaId: string, highlight = true, monthKey?: string): void {
+    const card = this.findMediaCardElement(mediaId);
+    if (card) {
+      this.centerCard(card, highlight);
+      return;
+    }
+
+    const key = monthKey ?? this.dayGroups()
+      .find((group) => group.items.some((item) => item.id === mediaId))
+      ?.date.slice(0, 7);
+    const metric = this.virtualMonthMetrics().find((candidate) => candidate.key === key);
+    if (!metric) {
+      return;
+    }
+
+    this.scrollDocumentToLocalTop(metric.offset);
+    this.scrollTop.set(this.readLocalScrollTop());
+    this.ensureRenderedMonthsLoaded();
+    this.centerCardWhenRendered(mediaId, highlight, REVEAL_MAX_FRAMES);
+  }
+
+  private centerCardWhenRendered(mediaId: string, highlight: boolean, framesLeft: number): void {
+    requestAnimationFrame(() => {
+      const target = this.findMediaCardElement(mediaId);
+      if (target) {
+        this.centerCard(target, highlight);
+        return;
+      }
+      if (framesLeft > 0) {
+        this.centerCardWhenRendered(mediaId, highlight, framesLeft - 1);
+      }
+    });
   }
 
   onFavoriteToggled(media: MediaRead): void {
@@ -590,6 +671,7 @@ export class MediaBrowserComponent {
           return;
         }
         this.contentWidth.set(nextWidth);
+        this.measuredMonthHeights.set({});
         this.scheduleLayoutSync();
       }, 60);
     });
@@ -638,6 +720,7 @@ export class MediaBrowserComponent {
       const delta = card.getBoundingClientRect().top - openPoint.viewportTop;
       if (Math.abs(delta) > 0.5) {
         window.scrollBy({ top: delta, behavior: 'instant' });
+        this.recordScrollAnchor();
       }
       this.focusCard(card);
       return;
@@ -648,26 +731,80 @@ export class MediaBrowserComponent {
       return;
     }
 
-    const monthKey = this.dayGroups()
-      .find((group) => group.items.some((item) => item.id === mediaId))
-      ?.date.slice(0, 7);
-    const metric = this.virtualMonthMetrics().find((candidate) => candidate.key === monthKey);
-    if (!metric) {
+    this.revealMedia(mediaId, false);
+  }
+
+  private centerCard(card: HTMLElement, highlight: boolean): void {
+    if (typeof card.scrollIntoView === 'function') {
+      card.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+    this.scrollTop.set(this.readLocalScrollTop());
+    this.recordScrollAnchor();
+    this.focusCard(card);
+    if (highlight) {
+      this.highlightCard(card);
+    }
+  }
+
+  private highlightCard(card: HTMLElement): void {
+    clearTimeout(this.highlightTimer);
+    document
+      .querySelectorAll('.media-browser__card--highlight')
+      .forEach((element) => element.classList.remove('media-browser__card--highlight'));
+    card.classList.add('media-browser__card--highlight');
+    this.highlightTimer = setTimeout(
+      () => card.classList.remove('media-browser__card--highlight'),
+      HIGHLIGHT_DURATION_MS,
+    );
+  }
+
+  private recordScrollAnchor(): void {
+    this.scrollAnchor = this.findScrollAnchor();
+  }
+
+  private findScrollAnchor(): ScrollAnchor | null {
+    const list = this.virtualList?.nativeElement;
+    if (!list || typeof document === 'undefined' || typeof document.elementFromPoint !== 'function') {
+      return null;
+    }
+
+    const listRect = list.getBoundingClientRect();
+    if (listRect.top >= 0 || listRect.bottom <= 0) {
+      return null;
+    }
+
+    const probeX = listRect.left + Math.min(24, listRect.width / 2);
+    for (const probeY of [8, 64, 160]) {
+      const hit = document.elementFromPoint(probeX, probeY);
+      const element = hit?.closest<HTMLElement>(
+        'zukan-media-card, .media-browser__day-header, .media-browser__month',
+      );
+      if (element && list.contains(element)) {
+        return {
+          element,
+          top: element.getBoundingClientRect().top,
+          scrollY: this.readDocumentScrollTop(),
+        };
+      }
+    }
+
+    return null;
+  }
+
+  private restoreScrollAnchor(): void {
+    const anchor = this.scrollAnchor;
+    if (!anchor || !anchor.element.isConnected) {
+      this.recordScrollAnchor();
       return;
     }
 
-    this.scrollDocumentToLocalTop(metric.offset);
-    this.scrollTop.set(this.readLocalScrollTop());
-    afterNextRender(
-      () => {
-        const target = this.findMediaCardElement(mediaId);
-        if (target) {
-          target.scrollIntoView({ block: 'center', behavior: 'instant' });
-          this.focusCard(target);
-        }
-      },
-      { injector: this.injector },
-    );
+    const expectedTop = anchor.top - (this.readDocumentScrollTop() - anchor.scrollY);
+    const delta = anchor.element.getBoundingClientRect().top - expectedTop;
+    if (Math.abs(delta) > 1) {
+      window.scrollBy({ top: delta, behavior: 'instant' });
+      this.scrollTop.set(this.readLocalScrollTop());
+    }
+    this.recordScrollAnchor();
   }
 
   private isInViewport(element: HTMLElement): boolean {
@@ -704,6 +841,7 @@ export class MediaBrowserComponent {
       const onScroll = () => {
         this.scrollTop.set(this.readLocalScrollTop());
         this.viewportHeight.set(this.readViewportHeight());
+        this.recordScrollAnchor();
         this.scheduleActiveSectionSync();
         this.ensureRenderedMonthsLoaded();
       };
@@ -727,17 +865,96 @@ export class MediaBrowserComponent {
     }
 
     const heights: Record<string, number> = { ...this.measuredMonthHeights() };
+    const loadedCounts = this.loadedCountsByMonth();
+    const buckets = new Map(
+      this.timeline().map((bucket) => [this.monthKey(bucket.year, bucket.month), bucket] as const),
+    );
     for (const ref of sections) {
       const el = ref.nativeElement;
       const key = el.dataset['month'];
-      if (key && !el.querySelector('.media-browser__day--skeleton')) {
-        heights[key] = el.offsetHeight + MONTH_SECTION_MARGIN;
+      if (!key || el.querySelector('.media-browser__day--skeleton')) {
+        continue;
       }
+
+      const measured = el.getBoundingClientRect().height || el.offsetHeight;
+      if (measured <= 0) {
+        continue;
+      }
+      const total = buckets.get(key)?.count ?? 0;
+      const loaded = loadedCounts.get(key) ?? 0;
+      const partial = this.galleryStore.monthMap().get(key)?.hasMore && loaded > 0 && total > loaded;
+      heights[key] = partial ? measured * (total / loaded) : measured;
     }
 
     this.measuredMonthHeights.set(heights);
+    this.updateEstimateScale(heights, loadedCounts);
     this.monthMetrics.set(this.renderedMonthMetrics());
     this.updateVirtualScrollBounds();
+  }
+
+  private compensateMetricShift(metrics: MonthMetric[]): void {
+    const previous = this.previousMetrics;
+    this.previousMetrics = metrics;
+    const scrollTop = this.scrollTop();
+    if (previous.length === 0 || scrollTop <= 0) {
+      return;
+    }
+
+    const anchorBefore = this.findActiveMonthMetric(previous, scrollTop);
+    const anchorAfter = anchorBefore
+      ? metrics.find((metric) => metric.key === anchorBefore.key)
+      : undefined;
+    if (!anchorBefore || !anchorAfter) {
+      return;
+    }
+
+    const shift = anchorAfter.offset - anchorBefore.offset;
+    if (Math.abs(shift) <= 0.5) {
+      return;
+    }
+
+    this.scrollTop.set(Math.max(scrollTop + shift, 0));
+    if (shift < 0 && typeof window !== 'undefined') {
+      window.scrollBy({ top: shift, behavior: 'instant' });
+      if (this.scrollAnchor) {
+        this.scrollAnchor = { ...this.scrollAnchor, scrollY: this.readDocumentScrollTop() };
+      }
+    }
+  }
+
+  private loadedCountsByMonth(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const group of this.dayGroups()) {
+      const key = group.date.slice(0, 7);
+      counts.set(key, (counts.get(key) ?? 0) + group.items.length);
+    }
+    return counts;
+  }
+
+  private updateEstimateScale(heights: Record<string, number>, loadedCounts: Map<string, number>): void {
+    const contentWidth = this.contentWidth();
+    const rowHeight = this.preferredRowHeight(contentWidth);
+    const gap = this.gridGap(contentWidth);
+    let measuredSum = 0;
+    let estimatedSum = 0;
+    for (const bucket of this.timeline()) {
+      const key = this.monthKey(bucket.year, bucket.month);
+      const height = heights[key];
+      if (height === undefined || (loadedCounts.get(key) ?? 0) < bucket.count) {
+        continue;
+      }
+      measuredSum += height;
+      estimatedSum += this.estimateBucketHeight(bucket, contentWidth, rowHeight, gap);
+    }
+
+    if (estimatedSum <= 0) {
+      return;
+    }
+
+    const next = this.clamp(measuredSum / estimatedSum, MIN_ESTIMATE_SCALE, MAX_ESTIMATE_SCALE);
+    if (Math.abs(next - this.estimateScale()) / this.estimateScale() > 0.02) {
+      this.estimateScale.set(next);
+    }
   }
 
   private scheduleActiveSectionSync(): void {
@@ -775,11 +992,8 @@ export class MediaBrowserComponent {
     const scrollTop = this.readLocalScrollTop();
     this.scrollTop.set(scrollTop);
     const activeMetric = this.findActiveMonthMetric(metrics, scrollTop);
-    const maxScrollTop = this.maxScrollTop();
-    const scrollProgress =
-      maxScrollTop <= 0 ? 0 : this.clamp(scrollTop / maxScrollTop, 0, 1);
 
-    this.activeTimelineProgress.set(scrollProgress * 100);
+    this.activeTimelineProgress.set(this.localTopToProgress(scrollTop) * 100);
     this.activeYear.set(activeMetric?.year ?? null);
     this.activeMonthKey.set(activeMetric?.key ?? null);
   }
@@ -790,35 +1004,17 @@ export class MediaBrowserComponent {
       return [];
     }
 
-    const metrics = new Map(
-      this.virtualMonthMetrics().map((metric) => [metric.key, metric] as const),
-    );
-    const maxScrollTop = this.maxScrollTop();
-    const monthGroups = this.virtualMonthGroups();
-
     const renderedMonthKeys = new Set(
-      monthGroups
+      this.virtualMonthGroups()
         .filter((mg) => mg.days.some((d) => !d.isSkeleton))
         .map((mg) => this.monthKey(mg.year, mg.month)),
     );
-
-    let totalHeight = 0;
-    const monthHeightList: { key: string; h: number; bucket: TimelineBucket }[] = [];
-
-    for (const bucket of buckets) {
-      const key = this.monthKey(bucket.year, bucket.month);
-      const measured = metrics.get(key)?.height;
-      const estimated = this.estimateBucketHeight(bucket, this.contentWidth(), this.preferredRowHeight(this.contentWidth()), this.gridGap(this.contentWidth()));
-      const h = measured ?? estimated;
-      monthHeightList.push({ key, h, bucket });
-      totalHeight += h;
-    }
-
+    const totalCount = buckets.reduce((sum, bucket) => sum + Math.max(bucket.count, 0), 0);
     const years: GalleryTimelineYear[] = [];
     const yearMap = new Map<number, GalleryTimelineYear>();
-    let cumulativeHeight = 0;
+    let cumulativeCount = 0;
 
-    for (const { key, h, bucket } of monthHeightList) {
+    for (const bucket of buckets) {
       let entry = yearMap.get(bucket.year);
       if (!entry) {
         entry = { year: bucket.year, count: 0, months: [] };
@@ -827,26 +1023,77 @@ export class MediaBrowserComponent {
       }
 
       entry.count += bucket.count;
-      const offset = metrics.get(key)?.offset;
-      const position =
-        offset !== undefined && maxScrollTop > 0
-          ? this.clamp((Math.min(offset, maxScrollTop) / maxScrollTop) * 100, 0, 100)
-          : totalHeight > 0
-            ? (cumulativeHeight / totalHeight) * 100
-            : 0;
       entry.months.push({
         year: bucket.year,
         month: bucket.month,
         count: bucket.count,
-        position,
-        rendered: renderedMonthKeys.has(key),
+        position: totalCount > 0 ? (cumulativeCount / totalCount) * 100 : 0,
+        rendered: renderedMonthKeys.has(this.monthKey(bucket.year, bucket.month)),
         anchorId: this.monthSectionId(bucket.year, bucket.month),
       });
-
-      cumulativeHeight += h;
+      cumulativeCount += Math.max(bucket.count, 0);
     }
 
     return years;
+  }
+
+  private progressToLocalTop(progress: number): number {
+    const metrics = this.virtualMonthMetrics();
+    const buckets = this.timeline();
+    const totalHeight = this.totalVirtualHeight();
+    const maxScrollTop = this.maxScrollTop();
+    const totalCount = buckets.reduce((sum, bucket) => sum + Math.max(bucket.count, 0), 0);
+    const clamped = this.clamp(progress, 0, 1);
+    if (metrics.length !== buckets.length || totalCount <= 0 || totalHeight <= 0) {
+      return clamped * maxScrollTop;
+    }
+
+    const targetCount = clamped * totalCount;
+    let cumulative = 0;
+    let y = totalHeight;
+    for (let index = 0; index < metrics.length; index += 1) {
+      const count = Math.max(buckets[index]!.count, 0);
+      if (targetCount <= cumulative + count || index === metrics.length - 1) {
+        const fraction = count > 0 ? this.clamp((targetCount - cumulative) / count, 0, 1) : 0;
+        y = metrics[index]!.offset + fraction * metrics[index]!.height;
+        break;
+      }
+      cumulative += count;
+    }
+
+    return (y / totalHeight) * maxScrollTop;
+  }
+
+  private localTopToProgress(localTop: number): number {
+    const metrics = this.virtualMonthMetrics();
+    const buckets = this.timeline();
+    const totalHeight = this.totalVirtualHeight();
+    const maxScrollTop = this.maxScrollTop();
+    const totalCount = buckets.reduce((sum, bucket) => sum + Math.max(bucket.count, 0), 0);
+    if (maxScrollTop <= 0) {
+      return 0;
+    }
+    if (metrics.length !== buckets.length || totalCount <= 0 || totalHeight <= 0) {
+      return this.clamp(localTop / maxScrollTop, 0, 1);
+    }
+
+    const y = this.clamp(localTop / maxScrollTop, 0, 1) * totalHeight;
+    const metric = this.findActiveMonthMetric(metrics, y - 1);
+    if (!metric) {
+      return 0;
+    }
+
+    let cumulative = 0;
+    for (let index = 0; index < metrics.length; index += 1) {
+      const count = Math.max(buckets[index]!.count, 0);
+      if (metrics[index]!.key === metric.key) {
+        const fraction = metric.height > 0 ? this.clamp((y - metric.offset) / metric.height, 0, 1) : 0;
+        return this.clamp((cumulative + fraction * count) / totalCount, 0, 1);
+      }
+      cumulative += count;
+    }
+
+    return 1;
   }
 
   private tryResolvePendingJump(): void {
@@ -905,7 +1152,7 @@ export class MediaBrowserComponent {
   }
 
   private scrollToAnchor(anchorId: string): boolean {
-    const content = this.contentPane?.nativeElement;
+    const content = this.scrollOrigin();
     if (!content) {
       return false;
     }
@@ -931,11 +1178,12 @@ export class MediaBrowserComponent {
     if (typeof target.scrollIntoView === 'function') {
       target.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'auto' });
     } else {
-      const content = this.contentPane?.nativeElement;
+      const content = this.scrollOrigin();
       if (content) {
         this.scrollDocumentToLocalTop(this.measureOffsetWithinContent(target, content));
       }
     }
+    this.recordScrollAnchor();
     this.scrollTop.set(this.readLocalScrollTop());
     this.scheduleActiveSectionSync();
     this.ensureRenderedMonthsLoaded();
@@ -998,7 +1246,8 @@ export class MediaBrowserComponent {
       return this.buildJustifiedMonthGroups();
     }
 
-    const rendered = new Set(this.renderedMonthMetrics().map((metric) => metric.key));
+    const metricsByKey = new Map(this.renderedMonthMetrics().map((metric) => [metric.key, metric] as const));
+    const rendered = new Set(metricsByKey.keys());
     const loadedGroups = new Map(
       this.buildJustifiedMonthGroups().map((group) => [this.monthKey(group.year, group.month), group] as const),
     );
@@ -1014,16 +1263,18 @@ export class MediaBrowserComponent {
       }
 
       const loaded = loadedGroups.get(key);
-      if (loaded) {
+      if (loaded && loaded.days.some((day) => !day.isSkeleton)) {
         result.push(loaded);
         continue;
       }
 
+      const skeletonHeight = metricsByKey.get(key)?.height ?? null;
       result.push({
         year: bucket.year,
         month: bucket.month,
         label: this.formatMonthLabel(bucket.year, bucket.month),
-        days: [this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap)],
+        days: [this.buildSkeletonGroup(bucket, contentWidth, rowHeight, gap, skeletonHeight)],
+        skeletonHeight,
       });
     }
 
@@ -1050,14 +1301,23 @@ export class MediaBrowserComponent {
     }
 
     const groups = new Map(
-      this.buildJustifiedMonthGroups().map((group) => [this.monthKey(group.year, group.month), group] as const),
+      this.buildJustifiedMonthGroups()
+        .filter((group) => group.days.some((day) => !day.isSkeleton))
+        .map((group) => [this.monthKey(group.year, group.month), group] as const),
     );
+    const loadedCounts = this.loadedCountsByMonth();
+    const scale = this.estimateScale();
     let offset = 0;
     return buckets.map((bucket) => {
       const key = this.monthKey(bucket.year, bucket.month);
       const group = groups.get(key);
+      const loaded = loadedCounts.get(key) ?? 0;
+      const groupHeight = group && loaded > 0
+        ? this.estimateMonthGroupHeight(group) * Math.max(bucket.count / loaded, 1)
+        : null;
       const height = measured[key]
-        ?? (group ? this.estimateMonthGroupHeight(group) : this.estimateBucketHeight(bucket, contentWidth, rowHeight, gap));
+        ?? groupHeight
+        ?? this.estimateBucketHeight(bucket, contentWidth, rowHeight, gap) * scale;
       const metric = { key, year: bucket.year, month: bucket.month, offset, height };
       offset += height;
       return metric;
@@ -1070,8 +1330,11 @@ export class MediaBrowserComponent {
       return [];
     }
 
-    const from = Math.max(this.scrollTop() - VIRTUAL_OVERSCAN_PX, 0);
-    const to = this.scrollTop() + this.viewportHeight() + VIRTUAL_OVERSCAN_PX;
+    const last = metrics[metrics.length - 1]!;
+    const maxTop = Math.max(last.offset + last.height - this.viewportHeight(), 0);
+    const top = Math.min(this.scrollTop(), maxTop);
+    const from = Math.max(top - VIRTUAL_OVERSCAN_PX, 0);
+    const to = top + this.viewportHeight() + VIRTUAL_OVERSCAN_PX;
     return metrics.filter((metric) => metric.offset + metric.height >= from && metric.offset <= to);
   }
 
@@ -1154,12 +1417,19 @@ export class MediaBrowserComponent {
     contentWidth: number,
     rowHeight: number,
     gap: number,
+    fillHeight: number | null = null,
   ): JustifiedDayGroup {
+    const itemsPerRow = Math.max(
+      1,
+      Math.floor((contentWidth + gap) / (rowHeight * SKELETON_ASPECT_RATIO + gap)),
+    );
+    const rowsToFill = fillHeight ? Math.ceil(fillHeight / (rowHeight + gap)) : Infinity;
+    const count = Math.min(bucket.count, SKELETON_RENDER_LIMIT, rowsToFill * itemsPerRow);
     return {
       date: this.monthKey(bucket.year, bucket.month),
       label: this.formatMonthLabel(bucket.year, bucket.month),
       itemCount: bucket.count,
-      rows: this.justifySkeletonRows(Math.min(bucket.count, SKELETON_RENDER_LIMIT), contentWidth, rowHeight, gap),
+      rows: this.justifySkeletonRows(count, contentWidth, rowHeight, gap),
       isSkeleton: true,
     };
   }
@@ -1314,7 +1584,7 @@ export class MediaBrowserComponent {
       return;
     }
 
-    this.scrollDocumentToLocalTop(progress * this.maxScrollTop());
+    this.scrollDocumentToLocalTop(this.progressToLocalTop(progress));
     this.scrollTop.set(this.readLocalScrollTop());
     this.scheduleActiveSectionSync();
     this.ensureRenderedMonthsLoaded();
@@ -1428,12 +1698,16 @@ export class MediaBrowserComponent {
   }
 
   private browserDocumentTop(): number {
-    const content = this.contentPane?.nativeElement;
-    if (!content || typeof document === 'undefined') {
+    const origin = this.scrollOrigin();
+    if (!origin || typeof document === 'undefined') {
       return 0;
     }
 
-    return content.getBoundingClientRect().top + this.readDocumentScrollTop();
+    return origin.getBoundingClientRect().top + this.readDocumentScrollTop();
+  }
+
+  private scrollOrigin(): HTMLElement | null {
+    return this.virtualList?.nativeElement ?? this.contentPane?.nativeElement ?? null;
   }
 
   private readLocalScrollTop(): number {
@@ -1447,6 +1721,7 @@ export class MediaBrowserComponent {
 
     const top = this.browserDocumentTop() + Math.max(localTop, 0);
     window.scrollTo({ top, behavior: 'auto' });
+    this.recordScrollAnchor();
   }
 
   private areMonthMetricsEqual(current: MonthMetric[], next: MonthMetric[]): boolean {

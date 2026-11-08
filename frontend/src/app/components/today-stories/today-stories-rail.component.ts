@@ -8,12 +8,13 @@ import {
   inject,
   signal,
   input,
+  output,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatDialog } from '@angular/material/dialog';
 import { LazyViewportDirective } from '../../directives/lazy-viewport.directive';
 import { MediaType } from '../../models/media';
-import { TodayStoryItem } from '../../models/today-stories';
+import { TodayStoriesViewerResult, TodayStoryItem } from '../../models/today-stories';
 import { MediaSearchParams } from '../../services/web/media-client.service';
 import { MediaService } from '../../services/media.service';
 import { TodayStoriesStore } from './today-stories.store';
@@ -30,6 +31,8 @@ import { TodayStoriesViewerComponent } from './today-stories-viewer.component';
 })
 export class TodayStoriesRailComponent {
   readonly params = input.required<MediaSearchParams>();
+  readonly revealRequested = output<TodayStoryItem>();
+  readonly openRequested = output<TodayStoryItem>();
 
   private readonly destroyRef = inject(DestroyRef);
   private readonly dialog = inject(MatDialog);
@@ -73,7 +76,7 @@ export class TodayStoriesRailComponent {
       return;
     }
 
-    this.dialog.open(TodayStoriesViewerComponent, {
+    const dialogRef = this.dialog.open<TodayStoriesViewerComponent, unknown, TodayStoriesViewerResult>(TodayStoriesViewerComponent, {
       data: { yearsAgo, initialIndex: 0 },
       width: '100vw',
       height: '100vh',
@@ -86,5 +89,15 @@ export class TodayStoriesRailComponent {
         parent: this.injector,
       }),
     });
+
+    dialogRef.afterClosed()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((result) => {
+        if (result?.action === 'reveal') {
+          this.revealRequested.emit(result.item);
+        } else if (result?.action === 'open') {
+          this.openRequested.emit(result.item);
+        }
+      });
   }
 }

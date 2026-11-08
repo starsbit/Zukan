@@ -1,7 +1,12 @@
 <div class="media-browser" [class.media-browser--compact]="isCompactLayout()">
   <div #contentPane class="media-browser__content">
     @if (showStories() && storyParams(); as params) {
-      <zukan-today-stories-rail class="media-browser__stories" [params]="params">
+      <zukan-today-stories-rail
+        class="media-browser__stories"
+        [params]="params"
+        (revealRequested)="onStoryReveal($event)"
+        (openRequested)="onStoryOpen($event)"
+      >
       </zukan-today-stories-rail>
     }
 
@@ -93,6 +98,7 @@
         </mat-card-content>
       </mat-card>
     } @else {
+      <div #virtualList class="media-browser__list">
       @if (topSpacerHeight() > 0) {
         <div
           class="media-browser__virtual-spacer"
@@ -107,6 +113,8 @@
           class="media-browser__month"
           [id]="monthSectionId(monthGroup.year, monthGroup.month)"
           [attr.data-month]="monthKey(monthGroup.year, monthGroup.month)"
+          [class.media-browser__month--skeleton]="monthGroup.skeletonHeight != null"
+          [style.height.px]="monthGroup.skeletonHeight ?? null"
         >
           @for (group of monthGroup.days; track group.date) {
             <section
@@ -194,6 +202,7 @@
           aria-hidden="true"
         ></div>
       }
+      </div>
     }
 
     @if (loading()) {

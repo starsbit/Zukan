@@ -98,12 +98,24 @@
 }
 
 .stories-viewer__favorite-button,
+.stories-viewer__action-button,
 .stories-viewer__header-spacer {
   width: 40px;
   height: 40px;
 }
 
-.stories-viewer__favorite-button {
+.stories-viewer__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stories-viewer__media--clickable {
+  cursor: zoom-in;
+}
+
+.stories-viewer__favorite-button,
+.stories-viewer__action-button {
   color: rgba(255, 255, 255, 0.96);
   background: rgba(255, 255, 255, 0.06);
   backdrop-filter: blur(12px);

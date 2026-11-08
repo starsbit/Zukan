@@ -213,6 +213,56 @@ describe('GalleryStore', () => {
     });
   });
 
+  describe('ensureMediaLoaded()', () => {
+    function loadBuckets() {
+      store.loadTimeline().subscribe();
+      http.expectOne(r => r.url === '/api/v1/media/timeline').flush({
+        buckets: [
+          { year: 2026, month: 3, count: 10 },
+          { year: 2025, month: 3, count: 3 },
+        ],
+      });
+    }
+
+    it('loads the media month and pages until the item is present', () => {
+      loadBuckets();
+      const target = makeMedia('target', '2025-03-02T12:00:00Z');
+      let result: boolean | undefined;
+
+      store.ensureMediaLoaded(target).subscribe((found) => (result = found));
+      const first = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(first.request.params.get('captured_year')).toBe('2025');
+      expect(first.request.params.get('captured_month')).toBe('3');
+      first.flush(makePage([makeMedia('a', '2025-03-20T12:00:00Z')], true, 'cur1'));
+
+      const second = http.expectOne(r => r.url === '/api/v1/media/search');
+      expect(second.request.params.get('after')).toBe('cur1');
+      second.flush(makePage([target, makeMedia('b', '2025-03-01T12:00:00Z')], true, 'cur2'));
+
+      expect(result).toBe(true);
+      expect(store.items().some((item) => item.id === 'target')).toBe(true);
+    });
+
+    it('resolves false when the month is exhausted without the item', () => {
+      loadBuckets();
+      let result: boolean | undefined;
+
+      store.ensureMediaLoaded(makeMedia('missing', '2025-03-02T12:00:00Z')).subscribe((found) => (result = found));
+      http.expectOne(r => r.url === '/api/v1/media/search').flush(makePage([makeMedia('a', '2025-03-20T12:00:00Z')]));
+
+      expect(result).toBe(false);
+    });
+
+    it('resolves false without requests when the month has no timeline bucket', () => {
+      loadBuckets();
+      let result: boolean | undefined;
+
+      store.ensureMediaLoaded(makeMedia('x', '2019-01-02T12:00:00Z')).subscribe((found) => (result = found));
+
+      expect(result).toBe(false);
+    });
+  });
+
   describe('setParams()', () => {
     it('updates params and resets list state', () => {
       store.load().subscribe();

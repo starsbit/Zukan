@@ -6,6 +6,7 @@ import {
   expand,
   forkJoin,
   from,
+  last,
   map,
   merge,
   Observable,
@@ -14,6 +15,7 @@ import {
   switchMap,
   tap,
   throwError,
+  timer,
 } from 'rxjs';
 import { MediaClientService, MediaSearchParams } from './web/media-client.service';
 import { groupByDay, groupTimelineByYear } from '../utils/gallery-grouping.utils';
@@ -263,6 +265,33 @@ export class GalleryStore {
         this.upsertMonthState(monthKey, { loading: false });
         return throwError(() => err);
       }),
+    );
+  }
+
+  ensureMediaLoaded(media: MediaRead): Observable<boolean> {
+    const key = this.monthKeyForMedia(media);
+    const isLoaded = () => this._months().get(key)?.items.some((item) => item.id === media.id) ?? false;
+    if (isLoaded()) {
+      return of(true);
+    }
+    if (!this.bucketForMonthKey(key)) {
+      return of(false);
+    }
+
+    return this.ensureMonthWindow(key).pipe(
+      expand(() => {
+        const state = this._months().get(key);
+        if (isLoaded() || !state) {
+          return EMPTY;
+        }
+        if (state.loading) {
+          return timer(50).pipe(map(() => null));
+        }
+        return state.hasMore ? this.loadMoreForMonth(key) : EMPTY;
+      }),
+      last(null, null),
+      map(() => isLoaded()),
+      catchError(() => of(isLoaded())),
     );
   }
 

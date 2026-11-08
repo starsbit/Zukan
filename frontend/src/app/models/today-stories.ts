@@ -18,3 +18,8 @@ export interface TodayStoriesViewerData {
   yearsAgo: number;
   initialIndex: number;
 }
+
+export interface TodayStoriesViewerResult {
+  action: 'open' | 'reveal';
+  item: TodayStoryItem;
+}
