@@ -163,13 +163,15 @@ async def test_similar_returns_404_for_unknown_media(client):
 
 
 @pytest.mark.asyncio
-async def test_similar_returns_403_when_the_target_is_hidden(client, make_media, embed):
+async def test_similar_allows_nsfw_target_when_user_hides_nsfw(client, make_media, embed):
+    # show_nsfw only filters default listings; an NSFW item reached through an
+    # explicit nsfw=include|only search must still open (detail, similar, files).
     target = await make_media(tagging_status=TaggingStatus.DONE, is_nsfw=True)
     await embed(target, 1.0, 0.0)
 
     response = await client.get(f"/api/v1/media/{target.id}/similar")
 
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
