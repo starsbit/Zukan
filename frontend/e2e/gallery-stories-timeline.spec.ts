@@ -288,4 +288,34 @@ test.describe('Gallery stories and timeline stability', () => {
       expect(visible, `cards visible after jumping to ${fraction}`).not.toBeNull();
     }
   });
+
+  test('lands in the month shown by the scrubber label', async ({ page }) => {
+    test.setTimeout(90_000);
+    await seedAuthenticatedSession(page);
+    await registerRoutes(page, 100, buildMonths(60, true));
+    await page.goto('/gallery');
+    const rail = page.locator('.media-timeline__rail');
+    await expect(rail).toBeVisible();
+
+    for (const fraction of [0.12, 0.43, 0.71]) {
+      const box = (await rail.boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height * fraction;
+      await page.mouse.move(x, y);
+      const label = (await page.locator('.media-timeline__chip').textContent())!.trim();
+      await page.mouse.click(x, y);
+      await page.mouse.move(box.x - 300, y);
+      await page.waitForTimeout(2000);
+
+      const visibleMonth = await page.evaluate(() => {
+        const sections = Array.from(document.querySelectorAll<HTMLElement>('section.media-browser__month'));
+        const section = sections.find((el) => el.getBoundingClientRect().bottom > 120);
+        return section?.dataset['month'] ?? null;
+      });
+      const [monthName, year] = label.split(' ');
+      const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(monthName!) + 1;
+      expect(visibleMonth, `label ${label} at ${fraction}`).toBe(`${year}-${String(month).padStart(2, '0')}`);
+    }
+  });
 });
+

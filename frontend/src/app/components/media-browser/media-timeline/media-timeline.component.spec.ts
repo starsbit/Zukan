@@ -38,6 +38,12 @@ describe('MediaTimelineComponent', () => {
     fixture.componentInstance.pointerProgress.set(0);
     fixture.detectChanges();
     expect(element.querySelector('.media-timeline__chip')?.textContent).toContain('Mar 2026');
+    fixture.componentInstance.pointerProgress.set(0.9);
+    fixture.detectChanges();
+    expect(element.querySelector('.media-timeline__chip')?.textContent).toContain('Mar 2026');
+    fixture.componentInstance.pointerProgress.set(1);
+    fixture.detectChanges();
+    expect(element.querySelector('.media-timeline__chip')?.textContent).toContain('Feb 2026');
 
     (monthButtons[1] as HTMLButtonElement).click();
     expect(emitted).toEqual(['2026-02']);

@@ -940,12 +940,21 @@ export class MediaBrowserComponent {
       return;
     }
 
-    const shift = anchorAfter.offset - anchorBefore.offset;
+    const within = scrollTop - anchorBefore.offset;
+    const proportional = anchorBefore.height > 0
+      && this.isUnloadedPosition(anchorBefore.key, within, anchorBefore.height);
+    const nextTop = proportional
+      ? anchorAfter.offset + within * (anchorAfter.height / anchorBefore.height)
+      : anchorAfter.offset + within;
+    const shift = nextTop - scrollTop;
     if (Math.abs(shift) <= 0.5) {
       return;
     }
 
     this.scrollTop.set(Math.max(scrollTop + shift, 0));
+    if (proportional) {
+      this.scrollAnchor = null;
+    }
     if (shift > 0 || typeof window === 'undefined') {
       this.pendingScrollShift += shift;
       return;
@@ -955,6 +964,19 @@ export class MediaBrowserComponent {
     if (this.scrollAnchor) {
       this.scrollAnchor = { ...this.scrollAnchor, scrollY: this.readDocumentScrollTop() };
     }
+  }
+
+  private isUnloadedPosition(monthKey: string, within: number, height: number): boolean {
+    const state = this.galleryStore.monthMap().get(monthKey);
+    if (!state?.loaded) {
+      return true;
+    }
+    if (!state.hasMore) {
+      return false;
+    }
+
+    const total = Math.max(state.estimatedCount, state.items.length, 1);
+    return within > height * (state.items.length / total);
   }
 
   private loadedCountsByMonth(): Map<string, number> {
@@ -1083,6 +1105,10 @@ export class MediaBrowserComponent {
       return clamped * maxScrollTop;
     }
 
+    if (clamped >= 1) {
+      return maxScrollTop;
+    }
+
     const targetCount = clamped * totalCount;
     let cumulative = 0;
     let y = totalHeight;
@@ -1096,7 +1122,7 @@ export class MediaBrowserComponent {
       cumulative += count;
     }
 
-    return (y / totalHeight) * maxScrollTop;
+    return Math.min(y, maxScrollTop);
   }
 
   private localTopToProgress(localTop: number): number {
@@ -1112,7 +1138,11 @@ export class MediaBrowserComponent {
       return this.clamp(localTop / maxScrollTop, 0, 1);
     }
 
-    const y = this.clamp(localTop / maxScrollTop, 0, 1) * totalHeight;
+    if (localTop >= maxScrollTop - 1) {
+      return 1;
+    }
+
+    const y = Math.max(localTop, 0);
     const metric = this.findActiveMonthMetric(metrics, y - 1);
     if (!metric) {
       return 0;

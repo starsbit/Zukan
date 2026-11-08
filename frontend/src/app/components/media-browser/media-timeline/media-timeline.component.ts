@@ -53,7 +53,7 @@ export class MediaTimelineComponent {
     const pos = p * 100;
     const months = this.flatMonths();
     return months.reduce<GalleryTimelineMonth | null>(
-      (best, m) => best === null || Math.abs(m.position - pos) < Math.abs(best.position - pos) ? m : best,
+      (containing, m) => m.position <= pos || containing === null ? m : containing,
       null,
     );
   });
