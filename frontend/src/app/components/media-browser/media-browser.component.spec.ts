@@ -527,7 +527,7 @@ describe('MediaBrowserComponent', () => {
     setWindowScrollY(500);
     const scrollBySpy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
     const component = fixture.componentInstance as any;
-    component.scrollAnchor = { element: anchorElement, top: 120, scrollY: 500 };
+    component.scrollAnchor = { element: anchorElement, top: 120, month: null, monthTop: 0, scrollY: 500 };
 
     anchorTop = 300;
     component.restoreScrollAnchor();
@@ -552,7 +552,7 @@ describe('MediaBrowserComponent', () => {
     });
     const scrollBySpy = vi.spyOn(window, 'scrollBy').mockImplementation(() => {});
     const component = fixture.componentInstance as any;
-    component.scrollAnchor = { element: anchorElement, top: 120, scrollY: 500 };
+    component.scrollAnchor = { element: anchorElement, top: 120, month: null, monthTop: 0, scrollY: 500 };
     setWindowScrollY(530);
 
     component.restoreScrollAnchor();

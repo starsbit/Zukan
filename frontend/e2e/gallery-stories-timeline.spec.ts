@@ -11,12 +11,15 @@ const CURRENT_YEAR = NOW.getFullYear();
 const CURRENT_MONTH = NOW.getMonth() + 1;
 const STORY_YEAR = CURRENT_YEAR - 1;
 
-function buildMonths(): { year: number; month: number; count: number }[] {
+function buildMonths(total = 14, uneven = false): { year: number; month: number; count: number }[] {
   const months = [];
   let year = CURRENT_YEAR;
   let month = CURRENT_MONTH;
-  for (let index = 0; index < 14; index += 1) {
-    months.push({ year, month, count: 180 + ((index * 53) % 220) });
+  for (let index = 0; index < total; index += 1) {
+    const count = uneven
+      ? [3, 900, 12, 1, 450, 60, 2000, 7, 300, 25][index % 10]!
+      : 180 + ((index * 53) % 220);
+    months.push({ year, month, count });
     month -= 1;
     if (month === 0) {
       month = 12;
@@ -66,9 +69,9 @@ function mediaItem(year: number, month: number, index: number, total: number) {
   };
 }
 
-async function registerRoutes(page: Page, monthDelayMs = 0) {
+async function registerRoutes(page: Page, monthDelayMs = 0, months = MONTHS) {
   const library = new Map(
-    MONTHS.map(({ year, month, count }) => [
+    months.map(({ year, month, count }) => [
       `${year}-${month}`,
       Array.from({ length: count }, (_, index) => mediaItem(year, month, index, count)),
     ]),
@@ -104,7 +107,7 @@ async function registerRoutes(page: Page, monthDelayMs = 0) {
   });
 
   await page.route('**/api/v1/media/timeline**', async (route: Route) => {
-    await route.fulfill({ json: { buckets: MONTHS } });
+    await route.fulfill({ json: { buckets: months } });
   });
 
   await page.route('**/api/v1/media/*/thumbnail', async (route: Route) => {
@@ -130,7 +133,7 @@ async function registerRoutes(page: Page, monthDelayMs = 0) {
   await page.route(/\/api\/v1\/media\/s-\d+-\d+-\d+$/, async (route: Route) => {
     const id = route.request().url().split('/').pop()!;
     const [, year, month, index] = id.split('-');
-    const count = MONTHS.find((m) => m.year === Number(year) && m.month === Number(month))?.count ?? 1;
+    const count = months.find((m) => m.year === Number(year) && m.month === Number(month))?.count ?? 1;
     await route.fulfill({
       json: {
         ...mediaItem(Number(year), Number(month), Number(index), count),
@@ -265,5 +268,24 @@ test.describe('Gallery stories and timeline stability', () => {
     }, settledAt!.id);
     expect(top).not.toBeNull();
     expect(Math.abs(top! - settledAt!.top)).toBeLessThanOrEqual(2);
+  });
+
+  test('renders media after jumping into the middle of a large uneven library', async ({ page }) => {
+    test.setTimeout(90_000);
+    await seedAuthenticatedSession(page);
+    const months = buildMonths(120, true);
+    months.push(...MONTHS.filter((m) => !months.some((o) => o.year === m.year && o.month === m.month)));
+    await registerRoutes(page, 300, months);
+    await page.goto('/gallery');
+    const rail = page.locator('.media-timeline__rail');
+    await expect(rail).toBeVisible();
+
+    for (const fraction of [0.5, 0.35, 0.8]) {
+      const box = (await rail.boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height * fraction);
+      await page.waitForTimeout(2500);
+      const visible = await firstVisibleCard(page);
+      expect(visible, `cards visible after jumping to ${fraction}`).not.toBeNull();
+    }
   });
 });

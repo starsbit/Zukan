@@ -89,6 +89,8 @@ interface JustifiedMonthGroup {
 interface ScrollAnchor {
   element: HTMLElement;
   top: number;
+  month: HTMLElement | null;
+  monthTop: number;
   scrollY: number;
 }
 
@@ -234,6 +236,7 @@ export class MediaBrowserComponent {
   private readonly estimateScale = signal(1);
   private scrollAnchor: ScrollAnchor | null = null;
   private previousMetrics: MonthMetric[] = [];
+  private pendingScrollShift = 0;
   private highlightTimer?: ReturnType<typeof setTimeout>;
 
   private static readonly MONTH_FORMAT = new Intl.DateTimeFormat('en-US', {
@@ -352,6 +355,7 @@ export class MediaBrowserComponent {
       ?.date.slice(0, 7);
     const metric = this.virtualMonthMetrics().find((candidate) => candidate.key === key);
     if (!metric) {
+      this.centerCardWhenRendered(mediaId, highlight, REVEAL_MAX_FRAMES);
       return;
     }
 
@@ -773,16 +777,24 @@ export class MediaBrowserComponent {
       return null;
     }
 
+    const focused = document.activeElement?.closest<HTMLElement>('zukan-media-card') ?? null;
     const probeX = listRect.left + Math.min(24, listRect.width / 2);
-    for (const probeY of [8, 64, 160]) {
-      const hit = document.elementFromPoint(probeX, probeY);
-      const element = hit?.closest<HTMLElement>(
-        'zukan-media-card, .media-browser__day-header, .media-browser__month',
-      );
+    const candidates = [
+      focused && list.contains(focused) && this.isInViewport(focused) ? focused : null,
+      ...[8, 64, 160].map((probeY) =>
+        document.elementFromPoint(probeX, probeY)?.closest<HTMLElement>(
+          'zukan-media-card, .media-browser__day-header, .media-browser__month',
+        ) ?? null,
+      ),
+    ];
+    for (const element of candidates) {
       if (element && list.contains(element)) {
+        const month = element.closest<HTMLElement>('.media-browser__month');
         return {
           element,
           top: element.getBoundingClientRect().top,
+          month,
+          monthTop: month?.getBoundingClientRect().top ?? 0,
           scrollY: this.readDocumentScrollTop(),
         };
       }
@@ -791,17 +803,37 @@ export class MediaBrowserComponent {
     return null;
   }
 
-  private restoreScrollAnchor(): void {
-    const anchor = this.scrollAnchor;
-    if (!anchor || !anchor.element.isConnected) {
-      this.recordScrollAnchor();
-      return;
+  private viewportShowsList(): boolean {
+    const list = this.virtualList?.nativeElement;
+    if (!list || typeof document.elementFromPoint !== 'function') {
+      return false;
     }
 
-    const expectedTop = anchor.top - (this.readDocumentScrollTop() - anchor.scrollY);
-    const delta = anchor.element.getBoundingClientRect().top - expectedTop;
-    if (Math.abs(delta) > 1) {
-      window.scrollBy({ top: delta, behavior: 'instant' });
+    const listRect = list.getBoundingClientRect();
+    const hit = document.elementFromPoint(listRect.left + Math.min(24, listRect.width / 2), 160);
+    return !!hit && list.contains(hit);
+  }
+
+  private restoreScrollAnchor(): void {
+    const anchor = this.scrollAnchor;
+    const pendingShift = this.pendingScrollShift;
+    this.pendingScrollShift = 0;
+    const scrolledSince = anchor ? this.readDocumentScrollTop() - anchor.scrollY : 0;
+    if (anchor?.element.isConnected) {
+      const delta = anchor.element.getBoundingClientRect().top - (anchor.top - scrolledSince);
+      if (Math.abs(delta) > 1) {
+        window.scrollBy({ top: delta, behavior: 'instant' });
+      }
+    } else if (anchor?.month?.isConnected) {
+      const delta = anchor.month.getBoundingClientRect().top - (anchor.monthTop - scrolledSince);
+      if (Math.abs(delta) > 1) {
+        window.scrollBy({ top: delta, behavior: 'instant' });
+      }
+    } else if (pendingShift !== 0 && this.viewportShowsList()) {
+      window.scrollBy({ top: pendingShift, behavior: 'instant' });
+    }
+
+    if (this.virtualList) {
       this.scrollTop.set(this.readLocalScrollTop());
     }
     this.recordScrollAnchor();
@@ -914,11 +946,14 @@ export class MediaBrowserComponent {
     }
 
     this.scrollTop.set(Math.max(scrollTop + shift, 0));
-    if (shift < 0 && typeof window !== 'undefined') {
-      window.scrollBy({ top: shift, behavior: 'instant' });
-      if (this.scrollAnchor) {
-        this.scrollAnchor = { ...this.scrollAnchor, scrollY: this.readDocumentScrollTop() };
-      }
+    if (shift > 0 || typeof window === 'undefined') {
+      this.pendingScrollShift += shift;
+      return;
+    }
+
+    window.scrollBy({ top: shift, behavior: 'instant' });
+    if (this.scrollAnchor) {
+      this.scrollAnchor = { ...this.scrollAnchor, scrollY: this.readDocumentScrollTop() };
     }
   }
 
@@ -1264,6 +1299,24 @@ export class MediaBrowserComponent {
 
       const loaded = loadedGroups.get(key);
       if (loaded && loaded.days.some((day) => !day.isSkeleton)) {
+        const loadedCount = loaded.days.reduce((sum, day) => sum + day.itemCount, 0);
+        const remaining = bucket.count - loadedCount;
+        if (this.galleryStore.monthMap().get(key)?.hasMore && remaining > 0) {
+          const metric = metricsByKey.get(key);
+          result.push({
+            ...loaded,
+            days: [
+              ...loaded.days,
+              {
+                ...this.buildSkeletonGroup({ ...bucket, count: remaining }, contentWidth, rowHeight, gap, metric?.height ?? null),
+                date: `${key}-more`,
+                label: 'Loading more…',
+              },
+            ],
+            skeletonHeight: metric?.height ?? null,
+          });
+          continue;
+        }
         result.push(loaded);
         continue;
       }
@@ -1615,8 +1668,10 @@ export class MediaBrowserComponent {
         continue;
       }
       const monthState = this.galleryStore.monthMap().get(metric.key);
+      const total = Math.max(monthState?.estimatedCount ?? 0, monthState?.items.length ?? 0, 1);
+      const loadedBottom = metric.offset + metric.height * ((monthState?.items.length ?? 0) / total);
       const request = monthState?.loaded && monthState.hasMore
-        && this.scrollTop() + this.viewportHeight() + 800 > metric.offset + metric.height
+        && this.scrollTop() + this.viewportHeight() + 800 > loadedBottom
         ? this.galleryStore.loadMoreForMonth(metric.key)
         : this.galleryStore.ensureMonthWindow(metric.key);
 

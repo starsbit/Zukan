@@ -78,10 +78,10 @@ export class TodayStoriesRailComponent {
 
     const dialogRef = this.dialog.open<TodayStoriesViewerComponent, unknown, TodayStoriesViewerResult>(TodayStoriesViewerComponent, {
       data: { yearsAgo, initialIndex: 0 },
-      width: '100vw',
-      height: '100vh',
-      maxWidth: '100vw',
-      maxHeight: '100vh',
+      width: '100%',
+      height: '100%',
+      maxWidth: '100%',
+      maxHeight: '100%',
       autoFocus: false,
       panelClass: 'today-stories-viewer-panel',
       injector: Injector.create({
