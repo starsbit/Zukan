@@ -56,6 +56,16 @@ zukan-layout:has(~ zukan-media-inspector-page) {
   visibility: hidden;
 }
 
+@media (min-width: 1200px) {
+  html:has(.media-browser__timeline) {
+    scrollbar-width: none;
+  }
+
+  html:has(.media-browser__timeline)::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 .upload-confirm-dialog .mat-mdc-dialog-content {
   overflow: hidden;
 }
