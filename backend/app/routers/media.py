@@ -863,7 +863,7 @@ async def get_media(media_id: uuid.UUID, user: User = Depends(current_user), db:
     "/{media_id:uuid}/similar",
     response_model=SimilarMediaPage,
     summary="List Similar Media",
-    description="Return accessible media ordered by visual similarity, up to 200 results in total.",
+    description="Return accessible media ordered by visual similarity, paginated with a cursor until the library is exhausted.",
     responses=error_responses(403, 404),
 )
 async def list_similar_media(

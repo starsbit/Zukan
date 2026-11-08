@@ -41,8 +41,6 @@ ranked AS (
         :show_sensitive
         OR COALESCE(candidate.is_sensitive_override, candidate.is_sensitive) IS FALSE
       )
-    ORDER BY distance, media_id
-    LIMIT :max_results
 )
 SELECT media_id, distance
 FROM ranked
@@ -175,7 +173,6 @@ class MediaEmbeddingRepository:
             media_id=media_id,
             user=user,
             limit=limit,
-            max_results=limit,
             model_version=model_version,
         )
 
@@ -185,7 +182,6 @@ class MediaEmbeddingRepository:
         media_id: uuid.UUID,
         user: User,
         limit: int,
-        max_results: int,
         model_version: str,
         after: tuple[float, uuid.UUID] | None = None,
     ) -> list[MediaNeighbor]:
@@ -198,7 +194,6 @@ class MediaEmbeddingRepository:
                         "show_nsfw": bool(user.show_nsfw),
                         "show_sensitive": bool(user.show_sensitive),
                         "limit": limit,
-                        "max_results": max_results,
                         "model_version": model_version,
                         "after_distance": after[0] if after else None,
                         "after_id": after[1] if after else None,

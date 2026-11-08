@@ -7,8 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.config import settings
 from backend.app.errors.error import AppError
 from backend.app.errors.auth import invalid_credentials, invalid_refresh_token
+from backend.app.errors.media import media_not_found
 from backend.app.errors.upload import version_conflict
 from backend.app.models.auth import APIKey, RefreshToken, User, AuthSession
+from backend.app.repositories.media import MediaRepository
 from backend.app.services.owner_auth import auth_fingerprint
 from sqlalchemy import select
 from backend.app.repositories.auth import (
@@ -244,4 +246,21 @@ class AuthService:
             body.library_classification_enabled is not None,
             body.password is not None,
         )
+        return user
+
+    async def set_avatar(self, user: User, media_id: uuid.UUID) -> User:
+        media = await MediaRepository(self._db).get_by_id(media_id)
+        if media is None or media.deleted_at is not None:
+            raise AppError(status_code=404, code=media_not_found, detail="Media not found")
+        user.avatar_media_id = media.id
+        await self._db.commit()
+        await self._db.refresh(user)
+        logger.info("Updated avatar user_id=%s media_id=%s", user.id, media.id)
+        return user
+
+    async def clear_avatar(self, user: User) -> User:
+        user.avatar_media_id = None
+        await self._db.commit()
+        await self._db.refresh(user)
+        logger.info("Cleared avatar user_id=%s", user.id)
         return user

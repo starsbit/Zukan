@@ -20,6 +20,7 @@ from .albums import (
 from .auth import (
     APIKeyCreateResponse,
     APIKeyStatusResponse,
+    AvatarUpdate,
     RefreshTokenRequest,
     TokenResponse,
     UserLogin,
@@ -217,5 +218,6 @@ __all__ = [
     "UserRead",
     "UserSelfReadLite",
     "UserUpdate",
+    "AvatarUpdate",
     "error_responses",
 ]

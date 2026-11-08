@@ -27,6 +27,7 @@ describe('NavbarActionsComponent', () => {
           provide: UserStore,
           useValue: {
             currentUser: () => ({ username: 'stars', email: 'stars@example.com' }),
+            avatarMediaId: () => null,
           },
         },
       ],

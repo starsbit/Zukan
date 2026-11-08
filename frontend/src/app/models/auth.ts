@@ -6,6 +6,7 @@ export interface UserRead {
   show_sensitive?: boolean;
   tag_confidence_threshold: number;
   library_classification_enabled?: boolean;
+  avatar_media_id?: string | null;
   version: number;
   created_at: string;
   storage_used_mb: number;

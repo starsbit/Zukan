@@ -16,6 +16,8 @@ import { MediaEntityType } from '../../../models/relations';
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
+import { UserStore } from '../../../services/user.store';
+import { signal } from '@angular/core';
 import { MediaInspectorDialogComponent } from './media-inspector-dialog.component';
 
 function makePasteEvent(text: string): ClipboardEvent & { preventDefault: ReturnType<typeof vi.fn> } {
@@ -152,6 +154,19 @@ describe('MediaInspectorDialogComponent', () => {
       observe: vi.fn(() => of({ matches: overrides?.isMobile ?? false, breakpoints: {} })),
     };
 
+    const avatarMediaId = signal<string | null>(null);
+    const userStore = {
+      avatarMediaId,
+      setAvatar: vi.fn((id: string) => {
+        avatarMediaId.set(id);
+        return of({});
+      }),
+      clearAvatar: vi.fn(() => {
+        avatarMediaId.set(null);
+        return of({});
+      }),
+    };
+
     const items = overrides?.items ?? [makeMedia('m1'), makeMedia('m2', { media_type: MediaType.GIF })];
 
     await TestBed.configureTestingModule({
@@ -160,6 +175,7 @@ describe('MediaInspectorDialogComponent', () => {
         { provide: MediaService, useValue: mediaService },
         { provide: GalleryStore, useValue: galleryStore },
         { provide: TagsClientService, useValue: tagsClient },
+        { provide: UserStore, useValue: userStore },
         { provide: BreakpointObserver, useValue: breakpointObserver },
         { provide: MatDialogRef, useValue: dialogRef },
         { provide: MAT_DIALOG_DATA, useValue: { items, activeMediaId: 'm1' } },
@@ -177,6 +193,7 @@ describe('MediaInspectorDialogComponent', () => {
       galleryStore,
       dialogRef,
       tagsClient,
+      userStore,
       items,
       breakpointObserver,
     };
@@ -451,6 +468,24 @@ describe('MediaInspectorDialogComponent', () => {
 
     expect(galleryStore.toggleFavorite).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1' }));
     expect(fixture.componentInstance.isFavorited()).toBe(true);
+  });
+
+  it('sets and removes the current media as the profile picture', async () => {
+    const { fixture, userStore } = await createComponent();
+    const host = fixture.nativeElement as HTMLElement;
+
+    (host.querySelector('button[aria-label="Set as profile picture"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    expect(userStore.setAvatar).toHaveBeenCalledWith('m1');
+    const removeButton = host.querySelector('button[aria-label="Remove profile picture"]') as HTMLButtonElement;
+    expect(removeButton.getAttribute('aria-pressed')).toBe('true');
+
+    removeButton.click();
+    fixture.detectChanges();
+
+    expect(userStore.clearAvatar).toHaveBeenCalled();
+    expect(host.querySelector('button[aria-label="Set as profile picture"]')).not.toBeNull();
   });
 
   it('hides viewer chrome after inactivity and toggles it on surface taps', async () => {

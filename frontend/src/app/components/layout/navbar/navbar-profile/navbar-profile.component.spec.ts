@@ -5,10 +5,13 @@ import { provideRouter } from '@angular/router';
 import { of } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
 import { UserStore } from '../../../../services/user.store';
+import { MediaService } from '../../../../services/media.service';
 import { NavbarProfileComponent } from './navbar-profile.component';
 
 describe('NavbarProfileComponent', () => {
-  const makeUserStore = (isAdmin: boolean) => ({
+  const mediaService = { getThumbnailUrl: (id: string) => of(`blob:${id}`) };
+  const makeUserStore = (isAdmin: boolean, avatarMediaId: string | null = null) => ({
+    avatarMediaId: () => avatarMediaId,
     currentUser: () => ({
       id: 'u1',
       username: 'stars',
@@ -27,6 +30,7 @@ describe('NavbarProfileComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: MediaService, useValue: mediaService },
         { provide: UserStore, useValue: makeUserStore(false) },
       ],
     }).compileComponents();
@@ -53,6 +57,7 @@ describe('NavbarProfileComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: MediaService, useValue: mediaService },
         { provide: UserStore, useValue: makeUserStore(true) },
       ],
     }).compileComponents();
@@ -79,6 +84,7 @@ describe('NavbarProfileComponent', () => {
       providers: [
         provideRouter([]),
         { provide: AuthService, useValue: { logout } },
+        { provide: MediaService, useValue: mediaService },
         { provide: UserStore, useValue: makeUserStore(true) },
       ],
     }).compileComponents();
@@ -97,5 +103,24 @@ describe('NavbarProfileComponent', () => {
 
     (overlay.querySelector('.sign-out-button') as HTMLButtonElement).click();
     expect(logout).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the chosen profile picture instead of the avatar letter', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavbarProfileComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: MediaService, useValue: mediaService },
+        { provide: UserStore, useValue: makeUserStore(false, 'm1') },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(NavbarProfileComponent);
+    fixture.detectChanges();
+
+    const button = (fixture.nativeElement as HTMLElement).querySelector('button[aria-label="Profile"]')!;
+    expect(button.querySelector('img')?.getAttribute('src')).toBe('blob:m1');
+    expect(button.textContent?.trim()).toBe('');
   });
 });

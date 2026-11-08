@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+import uuid
 from unittest.mock import AsyncMock, patch
 import pytest
 from backend.app.errors.error import AppError
@@ -110,3 +111,39 @@ async def test_update_current_user_checks_version_and_updates(fake_db, user):
     assert updated.show_nsfw is True
     assert updated.tag_confidence_threshold == 0.6
     assert updated.hashed_password == "hashed"
+
+
+@pytest.mark.asyncio
+async def test_set_avatar_uses_active_media(fake_db, user):
+    service = AuthService(fake_db)
+    media = SimpleNamespace(id=uuid.uuid4(), deleted_at=None)
+
+    with patch("backend.app.services.auth.MediaRepository") as repo_cls:
+        repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        updated = await service.set_avatar(user, media.id)
+
+    assert updated.avatar_media_id == media.id
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media", [None, SimpleNamespace(id=uuid.uuid4(), deleted_at=datetime.now(UTC))])
+async def test_set_avatar_rejects_missing_or_trashed_media(fake_db, user, media):
+    service = AuthService(fake_db)
+    user.avatar_media_id = None
+
+    with patch("backend.app.services.auth.MediaRepository") as repo_cls:
+        repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        with pytest.raises(AppError) as exc:
+            await service.set_avatar(user, uuid.uuid4())
+
+    assert exc.value.status_code == 404
+    assert user.avatar_media_id is None
+
+
+@pytest.mark.asyncio
+async def test_clear_avatar(fake_db, user):
+    user.avatar_media_id = uuid.uuid4()
+
+    updated = await AuthService(fake_db).clear_avatar(user)
+
+    assert updated.avatar_media_id is None

@@ -45,6 +45,18 @@
             <mat-icon aria-hidden="true">{{ isFavorited() ? 'favorite' : 'favorite_border' }}</mat-icon>
           </button>
         }
+        <button
+          class="toolbar-button"
+          mat-icon-button
+          type="button"
+          [disabled]="avatarPending()"
+          [attr.aria-label]="isAvatar() ? 'Remove profile picture' : 'Set as profile picture'"
+          [attr.title]="isAvatar() ? 'Remove profile picture' : 'Set as profile picture'"
+          [attr.aria-pressed]="isAvatar()"
+          (click)="toggleAvatar()"
+        >
+          <mat-icon aria-hidden="true">{{ isAvatar() ? 'account_circle' : 'person_outline' }}</mat-icon>
+        </button>
         @if (!editing()) {
           <button class="toolbar-pill" mat-stroked-button type="button" (click)="beginEdit()">
             <mat-icon aria-hidden="true">edit</mat-icon>

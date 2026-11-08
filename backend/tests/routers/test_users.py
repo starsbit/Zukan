@@ -145,3 +145,35 @@ def test_me_rejects_invalid_api_key(monkeypatch):
     payload = response.json()
     assert payload['code'] == 'not_authenticated'
     assert response.headers['x-request-id'] == payload['request_id']
+
+def test_set_avatar_contract(api_client, monkeypatch):
+    media_id = uuid.uuid4()
+
+    async def _fake_set(self, user, received_id):
+        assert received_id == media_id
+        user.avatar_media_id = received_id
+        return user
+
+    monkeypatch.setattr(AuthService, "set_avatar", _fake_set)
+
+    response = api_client.put("/api/v1/me/avatar", json={"media_id": str(media_id)})
+
+    assert response.status_code == 200
+    assert response.json()["avatar_media_id"] == str(media_id)
+
+def test_set_avatar_rejects_invalid_media_id(api_client):
+    response = api_client.put("/api/v1/me/avatar", json={"media_id": "nope"})
+
+    assert response.status_code == 422
+
+def test_clear_avatar_contract(api_client, monkeypatch):
+    async def _fake_clear(self, user):
+        user.avatar_media_id = None
+        return user
+
+    monkeypatch.setattr(AuthService, "clear_avatar", _fake_clear)
+
+    response = api_client.delete("/api/v1/me/avatar")
+
+    assert response.status_code == 200
+    assert response.json()["avatar_media_id"] is None

@@ -160,10 +160,14 @@ export class MediaInspectorPageComponent {
 
   @HostListener('scroll')
   onScroll(): void {
-    const { scrollTop, clientHeight, scrollHeight } = this.host.nativeElement;
-    if (scrollTop + clientHeight >= scrollHeight - SIMILAR_LOAD_MARGIN_PX) {
+    if (this.isNearSimilarEnd()) {
       this.loadSimilar();
     }
+  }
+
+  private isNearSimilarEnd(): boolean {
+    const { scrollTop, clientHeight, scrollHeight } = this.host.nativeElement;
+    return scrollTop + clientHeight >= scrollHeight - SIMILAR_LOAD_MARGIN_PX;
   }
 
   onMediaUpdated(media: MediaRead): void {
@@ -248,6 +252,16 @@ export class MediaInspectorPageComponent {
           hasMore: page.has_more,
           loaded: true,
         }));
+        if (page.has_more && entry.cursor !== null) {
+          afterNextRender(
+            () => {
+              if (this.similarEntry()?.mediaId === entry.mediaId && this.isNearSimilarEnd()) {
+                this.loadSimilar();
+              }
+            },
+            { injector: this.injector },
+          );
+        }
       });
   }
 

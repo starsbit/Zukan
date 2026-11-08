@@ -44,6 +44,7 @@ import { CharacterSuggestion, SeriesSuggestion, TagRead } from '../../../models/
 import { GalleryStore } from '../../../services/gallery.store';
 import { MediaService } from '../../../services/media.service';
 import { TagsClientService } from '../../../services/web/tags-client.service';
+import { UserStore } from '../../../services/user.store';
 import {
   MetadataFilterChipComponent,
   MetadataFilterSelection,
@@ -150,6 +151,7 @@ export class MediaInspectorDialogComponent {
   private readonly mediaService = inject(MediaService);
   private readonly snackBar = inject(MatSnackBar);
   private readonly tagsClient = inject(TagsClientService);
+  private readonly userStore = inject(UserStore);
   private readonly zoomStage = viewChild<ElementRef<HTMLElement>>('zoomStage');
   readonly activeMediaId = input<string | null>(null);
   readonly pageScrollEnabled = input(false);
@@ -172,6 +174,7 @@ export class MediaInspectorDialogComponent {
   readonly editing = signal(false);
   readonly saving = signal(false);
   readonly favoritePending = signal(false);
+  readonly avatarPending = signal(false);
   readonly favoriteFeedback = signal<FavoriteFeedback | null>(null);
   readonly isMobile = signal(false);
   readonly chromeVisible = signal(true);
@@ -215,6 +218,7 @@ export class MediaInspectorDialogComponent {
     this.mobileDetailsOpen() ? 'Hide details' : 'Details',
   );
   readonly isFavorited = computed(() => this.media().is_favorited);
+  readonly isAvatar = computed(() => this.userStore.avatarMediaId() === this.media().id);
   readonly favoriteCount = computed(() => this.media().favorite_count ?? 0);
   readonly imageTransform = computed(
     () => `translate(${this.panX()}px, ${this.panY()}px) scale(${this.zoom()})`,
@@ -461,6 +465,31 @@ export class MediaInspectorDialogComponent {
 
   toggleFavorite(): void {
     this.commitFavoriteToggle(false);
+  }
+
+  toggleAvatar(): void {
+    const removing = this.isAvatar();
+    const request = removing
+      ? this.userStore.clearAvatar()
+      : this.userStore.setAvatar(this.media().id);
+
+    this.avatarPending.set(true);
+    request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: () => {
+        this.avatarPending.set(false);
+        this.snackBar.open(
+          removing ? 'Profile picture removed.' : 'Profile picture updated.',
+          'Close',
+          { duration: 3000 },
+        );
+      },
+      error: () => {
+        this.avatarPending.set(false);
+        this.snackBar.open('Could not update profile picture. Please try again.', 'Close', {
+          duration: 4000,
+        });
+      },
+    });
   }
 
   onSheetHandlePointerDown(event: PointerEvent): void {

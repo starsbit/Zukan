@@ -8,6 +8,7 @@ from backend.app.schemas import (
     APIKeyCreateResponse,
     APIKeyStatusResponse,
     AUTHENTICATED_ERROR_RESPONSES,
+    AvatarUpdate,
     UserRead,
     UserUpdate,
     error_responses,
@@ -45,6 +46,34 @@ async def update_me(
     db: AsyncSession = Depends(get_db),
 ):
     return await AuthService(db).update_current_user(user, body)
+
+
+@router.put(
+    "/avatar",
+    response_model=UserRead,
+    summary="Set Current User Avatar",
+    description="Use one of the library's media items as the authenticated user's profile picture.",
+    responses=error_responses(404, 422),
+)
+async def set_avatar(
+    body: AvatarUpdate,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AuthService(db).set_avatar(user, body.media_id)
+
+
+@router.delete(
+    "/avatar",
+    response_model=UserRead,
+    summary="Clear Current User Avatar",
+    description="Remove the authenticated user's profile picture.",
+)
+async def clear_avatar(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    return await AuthService(db).clear_avatar(user)
 
 
 @router.get(

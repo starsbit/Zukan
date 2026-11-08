@@ -17,6 +17,14 @@ export class UsersClientService {
     return this.http.patch<UserRead>(`${this.base}/api/v1/me`, body);
   }
 
+  setAvatar(mediaId: string): Observable<UserRead> {
+    return this.http.put<UserRead>(`${this.base}/api/v1/me/avatar`, { media_id: mediaId });
+  }
+
+  clearAvatar(): Observable<UserRead> {
+    return this.http.delete<UserRead>(`${this.base}/api/v1/me/avatar`);
+  }
+
   getApiKeyStatus(): Observable<ApiKeyStatusResponse> {
     return this.http.get<ApiKeyStatusResponse>(`${this.base}/api/v1/me/api-key`);
   }

@@ -493,6 +493,34 @@ test.describe('Media navigation position', () => {
     await expect(cards).toHaveCount(80);
   });
 
+  test('keeps loading similar images until the list is exhausted', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+    await registerRoutes(page);
+    const similarRequests: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/similar')) {
+        similarRequests.push(request.url());
+      }
+    });
+    await page.goto('/gallery/media/n-2026-3-2');
+
+    const cards = page.locator('zukan-similar-media-grid zukan-media-card');
+    await expect(cards).toHaveCount(40);
+    for (const expected of [80, 120]) {
+      await layerScroller(page).evaluate((node) => {
+        node.scrollTop = node.scrollHeight;
+      });
+      await expect(cards).toHaveCount(expected);
+    }
+
+    await layerScroller(page).evaluate((node) => {
+      node.scrollTop = node.scrollHeight;
+    });
+    await page.waitForTimeout(500);
+    await expect(cards).toHaveCount(120);
+    expect(similarRequests).toHaveLength(3);
+  });
+
   test('stepping with arrows fetches each detail once', async ({ page }) => {
     await seedAuthenticatedSession(page);
     await registerRoutes(page);

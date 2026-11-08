@@ -1,12 +1,26 @@
-<button mat-mini-fab type="button" [matMenuTriggerFor]="profileMenu" aria-label="Profile">
-  <span>{{ avatarLetter() }}</span>
+<button
+  mat-mini-fab
+  type="button"
+  class="avatar-button"
+  [matMenuTriggerFor]="profileMenu"
+  aria-label="Profile"
+>
+  @if (avatarUrl(); as url) {
+    <img class="avatar-image" [src]="url" alt="" />
+  } @else {
+    <span>{{ avatarLetter() }}</span>
+  }
 </button>
 
 <mat-menu #profileMenu="matMenu" xPosition="before" panelClass="zukan-profile-menu">
   <div class="profile-panel" (click)="$event.stopPropagation()">
     <div class="profile-header">
-      <button mat-fab type="button" disabled aria-label="User avatar">
-        <span>{{ avatarLetter() }}</span>
+      <button mat-fab type="button" class="avatar-button" disabled aria-label="User avatar">
+        @if (avatarUrl(); as url) {
+          <img class="avatar-image" [src]="url" alt="" />
+        } @else {
+          <span>{{ avatarLetter() }}</span>
+        }
       </button>
       <div class="profile-copy">
         <div>{{ user()?.username }}</div>

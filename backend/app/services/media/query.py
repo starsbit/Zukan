@@ -58,7 +58,6 @@ from backend.app.utils.pagination import (
 
 class MediaQueryService:
     RELATED_POST_LIMIT = 8
-    SIMILAR_MEDIA_MAX_RESULTS = 200
     SORT_FIELDS: dict[str, Any] = {
         "captured_at": captured_timestamp_expr(),
         "uploaded_at": Media.uploaded_at,
@@ -257,7 +256,6 @@ class MediaQueryService:
             media_id=media_id,
             user=user,
             limit=page_size + 1,
-            max_results=self.SIMILAR_MEDIA_MAX_RESULTS,
             model_version=EMBEDDING_MODEL_VERSION,
             after=self._decode_similar_cursor(after),
         )

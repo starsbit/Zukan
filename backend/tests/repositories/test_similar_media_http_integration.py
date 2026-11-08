@@ -14,7 +14,6 @@ from backend.app.ml.embedding import EMBEDDING_DIMENSIONS, EMBEDDING_MODEL_VERSI
 from backend.app.models.media import TaggingStatus
 from backend.app.repositories.embeddings import MediaEmbeddingRepository
 from backend.app.routers.deps import current_user
-from backend.app.services.media.query import MediaQueryService
 
 
 def _vector(*values: float) -> list[float]:
@@ -131,8 +130,7 @@ async def test_similar_shows_hidden_media_when_the_viewer_allows_it(
 
 
 @pytest.mark.asyncio
-async def test_similar_is_capped_across_pages(client, make_media, embed, monkeypatch):
-    monkeypatch.setattr(MediaQueryService, "SIMILAR_MEDIA_MAX_RESULTS", 3)
+async def test_similar_pages_through_the_whole_library(client, make_media, embed):
     target = await make_media(tagging_status=TaggingStatus.DONE)
     await embed(target, 1.0, 0.0)
     for index in range(5):
@@ -140,7 +138,10 @@ async def test_similar_is_capped_across_pages(client, make_media, embed, monkeyp
 
     pages = await _walk(client, target.id, page_size=2)
 
-    assert sum(len(page["items"]) for page in pages) == 3
+    ids = [item["id"] for page in pages for item in page["items"]]
+    assert len(ids) == 5
+    assert len(set(ids)) == 5
+    assert pages[-1]["has_more"] is False
 
 
 @pytest.mark.asyncio

@@ -197,7 +197,7 @@ describe('UserSettingsDialogComponent', () => {
           useValue: { configuration: () => of({ mode: 'local', setup_required: false }) },
         },
         provideRouter([]),
-        { provide: UserStore, useValue: { currentUser: () => user, isAdmin: () => true } },
+        { provide: UserStore, useValue: { currentUser: () => user, avatarMediaId: () => null, isAdmin: () => true } },
         {
           provide: UsersClientService,
           useValue: baseUsersClient({ updateMe: vi.fn().mockReturnValue(of(user)) }),

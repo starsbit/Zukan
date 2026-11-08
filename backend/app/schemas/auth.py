@@ -17,6 +17,7 @@ class UserSelfReadLite(BaseModel):
     show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     library_classification_enabled: bool
+    avatar_media_id: uuid.UUID | None = None
     version: int
     created_at: datetime
 
@@ -46,6 +47,7 @@ class UserRead(BaseModel):
     show_sensitive: bool
     tag_confidence_threshold: float = Field(ge=0.0, le=1.0)
     library_classification_enabled: bool
+    avatar_media_id: uuid.UUID | None = None
     version: int
     created_at: datetime
     storage_used_mb: int = 0
@@ -84,6 +86,16 @@ class UserUpdate(BaseModel):
                 "library_classification_enabled": True,
                 "version": 3,
             }
+        }
+    }
+
+
+class AvatarUpdate(BaseModel):
+    media_id: uuid.UUID
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {"media_id": "3f2b1c9e-4d5a-4b6c-8e7f-9a0b1c2d3e4f"}
         }
     }
 

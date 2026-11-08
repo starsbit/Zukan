@@ -53,6 +53,11 @@ class User(Base):
         ForeignKey("app_announcements.id", ondelete="SET NULL"),
         nullable=True,
     )
+    avatar_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("media.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         "RefreshToken", back_populates="user", cascade="all, delete-orphan"
     )
