@@ -43,7 +43,7 @@ export class NavbarProfileComponent {
   readonly avatarUrl = toSignal(
     toObservable(this.userStore.avatarMediaId).pipe(
       switchMap(id =>
-        id ? this.mediaService.getThumbnailUrl(id).pipe(catchError(() => of(null))) : of(null),
+        id ? this.mediaService.getAvatarUrl(id).pipe(catchError(() => of(null))) : of(null),
       ),
     ),
     { initialValue: null },

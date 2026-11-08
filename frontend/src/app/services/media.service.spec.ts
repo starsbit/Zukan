@@ -291,6 +291,44 @@ describe('MediaService', () => {
     });
   });
 
+  describe('getAvatarUrl()', () => {
+    it('keeps the avatar URL out of the thumbnail cache and reuses it', () => {
+      const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:http://localhost/avatar');
+
+      let first: string | undefined;
+      service.getAvatarUrl('m1').subscribe(url => (first = url));
+      http.expectOne('/api/v1/media/m1/thumbnail').flush(new Blob(['img'], { type: 'image/jpeg' }));
+      expect(first).toBe('blob:http://localhost/avatar');
+
+      let second: string | undefined;
+      service.getAvatarUrl('m1').subscribe(url => (second = url));
+      http.expectNone('/api/v1/media/m1/thumbnail');
+      expect(second).toBe('blob:http://localhost/avatar');
+
+      // A gallery thumbnail for the same media gets its own URL.
+      create.mockReturnValue('blob:http://localhost/thumb');
+      let thumb: string | undefined;
+      service.getThumbnailUrl('m1').subscribe(url => (thumb = url));
+      http.expectOne('/api/v1/media/m1/thumbnail').flush(new Blob(['img'], { type: 'image/jpeg' }));
+      expect(thumb).toBe('blob:http://localhost/thumb');
+    });
+
+    it('revokes the previous avatar URL when the avatar changes', () => {
+      vi.spyOn(URL, 'createObjectURL')
+        .mockReturnValueOnce('blob:http://localhost/a1')
+        .mockReturnValueOnce('blob:http://localhost/a2');
+      const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+
+      service.getAvatarUrl('m1').subscribe();
+      http.expectOne('/api/v1/media/m1/thumbnail').flush(new Blob(['img']));
+      expect(revoke).not.toHaveBeenCalled();
+
+      service.getAvatarUrl('m2').subscribe();
+      http.expectOne('/api/v1/media/m2/thumbnail').flush(new Blob(['img']));
+      expect(revoke).toHaveBeenCalledWith('blob:http://localhost/a1');
+    });
+  });
+
   describe('getThumbnailUrl()', () => {
     it('fetches blob and returns object URL', () => {
       const mockUrl = 'blob:http://localhost/thumb1';

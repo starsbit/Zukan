@@ -9,7 +9,7 @@ import { MediaService } from '../../../../services/media.service';
 import { NavbarProfileComponent } from './navbar-profile.component';
 
 describe('NavbarProfileComponent', () => {
-  const mediaService = { getThumbnailUrl: (id: string) => of(`blob:${id}`) };
+  const mediaService = { getAvatarUrl: (id: string) => of(`blob:${id}`) };
   const makeUserStore = (isAdmin: boolean, avatarMediaId: string | null = null) => ({
     avatarMediaId: () => avatarMediaId,
     currentUser: () => ({

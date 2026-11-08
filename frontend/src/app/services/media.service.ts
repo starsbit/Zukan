@@ -7,6 +7,7 @@ import {
   finalize,
   map,
   Observable,
+  of,
   shareReplay,
   tap,
   throwError,
@@ -47,6 +48,10 @@ export class MediaService implements OnDestroy {
   private readonly posterCache = new BlobUrlCache(120);
   private readonly thumbnailRequests = new Map<string, Observable<string>>();
   private readonly posterRequests = new Map<string, Observable<string>>();
+  // The profile avatar gets its own object URL outside the thumbnail LRU, so
+  // gallery scrolling can never evict (and revoke) it while the navbar shows it.
+  private avatar: { id: string; url: string } | null = null;
+  private avatarRequest: { id: string; request: Observable<string> } | null = null;
 
   readonly items = this._items.asReadonly();
   readonly hasMore = this._hasMore.asReadonly();
@@ -240,6 +245,31 @@ export class MediaService implements OnDestroy {
     return request;
   }
 
+  getAvatarUrl(id: string): Observable<string> {
+    if (this.avatar?.id === id) return of(this.avatar.url);
+    if (this.avatarRequest?.id === id) return this.avatarRequest.request;
+
+    const request = this.client.getThumbnail(id).pipe(
+      map(blob => {
+        const url = URL.createObjectURL(blob);
+        if (this.avatarRequest?.id !== id) {
+          // A newer avatar was requested meanwhile; don't keep this one.
+          URL.revokeObjectURL(url);
+          return url;
+        }
+        if (this.avatar) URL.revokeObjectURL(this.avatar.url);
+        this.avatar = { id, url };
+        return url;
+      }),
+      finalize(() => {
+        if (this.avatarRequest?.id === id) this.avatarRequest = null;
+      }),
+      shareReplay(1),
+    );
+    this.avatarRequest = { id, request };
+    return request;
+  }
+
   getPosterUrl(id: string): Observable<string> {
     const cached = this.posterCache.get(id);
     if (cached) return new Observable(s => { s.next(cached); s.complete(); });
@@ -267,6 +297,8 @@ export class MediaService implements OnDestroy {
   ngOnDestroy(): void {
     this.thumbnailCache.clear();
     this.posterCache.clear();
+    if (this.avatar) URL.revokeObjectURL(this.avatar.url);
+    this.avatar = null;
   }
 
   private _patchItem(updated: MediaRead): void {
