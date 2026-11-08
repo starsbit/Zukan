@@ -178,49 +178,12 @@ async def test_upload_service_build_upload_response_proxies_upload_files(fake_db
     upload_files.assert_awaited_once()
 
 @pytest.mark.asyncio
-async def test_upload_service_upload_files_with_annotations_passes_annotation_fields(fake_db, stub_query):
-    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
-    expected = SimpleNamespace(batch_id=uuid.uuid4())
-
-    with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
-        response = await service.upload_files_with_annotations(
-            SimpleNamespace(id=uuid.uuid4()),
-            [],
-            tags=["safe"],
-            character_names=["Saber"],
-            series_names=["Fate/stay night"],
-        )
-
-    assert response is expected
-    run.assert_awaited_once()
-    kwargs = run.await_args.kwargs
-    assert kwargs["tags"] == ["safe"]
-    assert kwargs["character_names"] == ["Saber"]
-    assert kwargs["series_names"] == ["Fate/stay night"]
-
-@pytest.mark.asyncio
 async def test_upload_service_upload_files_passes_external_refs(fake_db, stub_query):
     service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
     expected = SimpleNamespace(batch_id=uuid.uuid4())
 
     with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
         response = await service.upload_files(
-            SimpleNamespace(id=uuid.uuid4()),
-            [],
-            external_refs_values=[[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")]],
-        )
-
-    assert response is expected
-    run.assert_awaited_once()
-    assert run.await_args.kwargs["external_refs_values"][0][0].provider == "twitter"
-
-@pytest.mark.asyncio
-async def test_upload_service_upload_files_with_annotations_passes_external_refs(fake_db, stub_query):
-    service = MediaUploadService(fake_db, processing=SimpleNamespace(), query=stub_query)
-    expected = SimpleNamespace(batch_id=uuid.uuid4())
-
-    with patch.object(MediaUploadWorkflow, "run", AsyncMock(return_value=expected)) as run:
-        response = await service.upload_files_with_annotations(
             SimpleNamespace(id=uuid.uuid4()),
             [],
             external_refs_values=[[ExternalRefCreate(provider="twitter", url="https://x.com/example/status/1")]],

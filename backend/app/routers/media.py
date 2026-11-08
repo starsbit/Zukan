@@ -30,7 +30,6 @@ from backend.app.schemas import (
     BatchUploadResponse,
     BulkResult,
     CharacterSuggestion,
-    MediaAnnotatedUploadRequest,
     MediaEntityBatchUpdate,
     MediaIdsRequest,
     MediaBatchUpdate,
@@ -239,109 +238,6 @@ async def upload(
         body.files,
         album_id=body.album_id,
         tags=body.tags,
-        captured_at_override=body.captured_at,
-        captured_at_values=body.captured_at_values,
-        external_refs_values=body.external_refs_values,
-    )
-    await idempotency_store.remember(
-        scope=scope,
-        idempotency_key=idempotency_key,
-        body_hash=body_hash,
-        status_code=status.HTTP_202_ACCEPTED,
-        payload=jsonable_encoder(payload),
-    )
-    return payload
-
-
-@router.post(
-    "/annotated",
-    response_model=BatchUploadResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload Media With Predefined Tags And Entities",
-    description=f"Upload media for third-party clients with predefined manual annotations. Accepted tags, character names, and series names are stored as authoritative manual metadata, and automatic AI tagging is skipped for the uploaded files.\n\n{IDEMPOTENCY_BEHAVIOR_DOC}",
-    responses={
-        202: {
-            "description": "Upload accepted with manual annotations applied and AI tagging skipped.",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "batch_id": "9bf70018-9d3f-4f14-b5a9-d0c77f532f7a",
-                        "batch_url": "/api/v1/me/import-batches/9bf70018-9d3f-4f14-b5a9-d0c77f532f7a",
-                        "batch_items_url": "/api/v1/me/import-batches/9bf70018-9d3f-4f14-b5a9-d0c77f532f7a/items",
-                        "poll_after_seconds": 2,
-                        "webhooks_supported": False,
-                        "accepted": 1,
-                        "duplicates": 0,
-                        "errors": 0,
-                        "results": [
-                            {
-                                "id": "0f729258-8c26-4d04-aa95-d33f0bcfb6b8",
-                                "batch_item_id": "4a7d8d3a-2f57-4ab0-81be-852eb95b6a23",
-                                "original_filename": "sakura.webp",
-                                "status": "accepted",
-                                "message": None,
-                            }
-                        ],
-                    }
-                }
-            },
-        },
-        **error_responses(400, 403, 404, 409, 422, 429),
-    },
-    dependencies=[
-        Depends(
-            rate_limit(
-                max_requests=settings.upload_rate_limit_requests,
-                window_seconds=settings.upload_rate_limit_window_seconds,
-                scope="media_upload",
-            )
-        )
-    ],
-)
-async def upload_with_annotations(
-    request: Request,
-    idempotency_key: str | None = Header(
-        default=None, alias="Idempotency-Key", description=IDEMPOTENCY_HEADER_DOC
-    ),
-    user: User = Depends(current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    body = await MediaAnnotatedUploadRequest.from_request(
-        request, max_files=settings.upload_multipart_max_files
-    )
-    scope = idempotency_scope(method="POST", path="/media/annotated")
-    upload_signature = {
-        "files": [
-            {"filename": f.filename, "content_type": f.content_type} for f in body.files
-        ],
-        "album_id": str(body.album_id) if body.album_id else None,
-        "tags": body.tags or [],
-        "character_names": body.character_names or [],
-        "series_names": body.series_names or [],
-        "captured_at": body.captured_at.isoformat() if body.captured_at else None,
-        "captured_at_values": [
-            captured.isoformat() for captured in body.captured_at_values or []
-        ],
-        "external_refs_values": [
-            [ref.model_dump(mode="json") for ref in refs]
-            for refs in body.external_refs_values or []
-        ],
-    }
-    body_hash = idempotency_body_hash(upload_signature)
-    replay = await idempotency_store.get_replay(
-        scope=scope, idempotency_key=idempotency_key, body_hash=body_hash
-    )
-    if replay is not None:
-        _, payload = replay
-        return payload
-    _, _, _, _, upload_service, _ = _media_services(db)
-    payload = await upload_service.upload_files_with_annotations(
-        user,
-        body.files,
-        album_id=body.album_id,
-        tags=body.tags,
-        character_names=body.character_names,
-        series_names=body.series_names,
         captured_at_override=body.captured_at,
         captured_at_values=body.captured_at_values,
         external_refs_values=body.external_refs_values,

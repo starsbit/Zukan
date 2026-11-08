@@ -20,14 +20,12 @@ from backend.app.models.processing import (
     ItemStatus,
     ProcessingStep,
 )
-from backend.app.models.relations import MediaEntity, MediaEntityType
-from backend.app.repositories.relations import MediaEntityRepository
+from backend.app.models.relations import MediaEntity
 from backend.app.repositories.tags import TagRepository
 from backend.app.schemas import BatchUploadResponse, ExternalRefCreate, UploadResult
 from backend.app.utils.media_common import (
     build_tag_payloads,
     limit_error_message,
-    normalize_manual_entity_names,
     normalize_manual_tags,
 )
 from backend.app.services.media import get_tag_queue
@@ -111,8 +109,6 @@ class MediaUploadWorkflow:
         album_id: uuid.UUID | None,
         tags: list[str] | None,
         captured_at_override: datetime | None = None,
-        character_names: list[str] | None = None,
-        series_names: list[str] | None = None,
         captured_at_values: list[datetime] | None = None,
         external_refs_values: list[list[ExternalRefCreate]] | None = None,
     ) -> BatchUploadResponse:
@@ -130,8 +126,6 @@ class MediaUploadWorkflow:
                 upload=upload,
                 user=user,
                 tags=tags,
-                character_names=character_names,
-                series_names=series_names,
                 captured_at_override=per_file_override,
                 external_refs=per_file_external_refs,
                 ctx=ctx,
@@ -171,8 +165,6 @@ class MediaUploadWorkflow:
         user: User,
         tags: list[str] | None,
         captured_at_override: datetime | None,
-        character_names: list[str] | None = None,
-        series_names: list[str] | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
@@ -205,8 +197,6 @@ class MediaUploadWorkflow:
                 captured_at=captured_at,
                 saved_path=str(saved.path),
                 tags=tags,
-                character_names=character_names,
-                series_names=series_names,
                 external_refs=external_refs,
                 ctx=ctx,
             )
@@ -218,8 +208,6 @@ class MediaUploadWorkflow:
             saved=saved,
             file_metadata=file_metadata,
             tags=tags,
-            character_names=character_names,
-            series_names=series_names,
             external_refs=external_refs,
             captured_at=captured_at_override or captured_at,
             ctx=ctx,
@@ -270,8 +258,6 @@ class MediaUploadWorkflow:
         captured_at: datetime,
         saved_path: str,
         tags: list[str] | None = None,
-        character_names: list[str] | None = None,
-        series_names: list[str] | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
@@ -303,9 +289,7 @@ class MediaUploadWorkflow:
         existing.deleted_at = None
         existing.original_filename = original_name
         normalized_tags = normalize_manual_tags(tags) if tags else []
-        normalized_characters = _normalize_entity_names(character_names)
-        normalized_series = _normalize_entity_names(series_names)
-        has_manual_annotations = bool(normalized_tags or normalized_characters or normalized_series)
+        has_manual_annotations = bool(normalized_tags)
         existing.tagging_status = "done" if has_manual_annotations else "pending"
         existing.tagging_error = None
         existing.captured_at = existing.captured_at or captured_at
@@ -313,8 +297,6 @@ class MediaUploadWorkflow:
             await self._apply_manual_annotations(
                 media=existing,
                 normalized_tags=normalized_tags,
-                normalized_characters=normalized_characters,
-                normalized_series=normalized_series,
             )
         if external_refs is not None:
             await self._replace_external_refs(existing, external_refs)
@@ -354,8 +336,6 @@ class MediaUploadWorkflow:
         file_metadata: Any,
         tags: list[str] | None,
         captured_at: datetime,
-        character_names: list[str] | None = None,
-        series_names: list[str] | None = None,
         external_refs: list[ExternalRefCreate] | None = None,
         ctx: UploadBatchContext,
     ) -> None:
@@ -363,11 +343,7 @@ class MediaUploadWorkflow:
             generate_poster_and_thumbnail, str(saved.path), saved.media_type
         )
         normalized_tags = normalize_manual_tags(tags) if tags else []
-        normalized_characters = _normalize_entity_names(character_names)
-        normalized_series = _normalize_entity_names(series_names)
-        has_manual_annotations = bool(
-            normalized_tags or normalized_characters or normalized_series
-        )
+        has_manual_annotations = bool(normalized_tags)
         media = Media(
             id=uuid.UUID(saved.path.stem)
             if len(saved.path.stem) == 32
@@ -399,8 +375,6 @@ class MediaUploadWorkflow:
             await self._apply_manual_annotations(
                 media=media,
                 normalized_tags=normalized_tags,
-                normalized_characters=normalized_characters,
-                normalized_series=normalized_series,
             )
         if external_refs is not None:
             await self._replace_external_refs(media, external_refs)
@@ -421,12 +395,10 @@ class MediaUploadWorkflow:
         ctx.queued_media_ids.append(media.id)
         ctx.processing_media_ids.append(media.id)
         logger.info(
-            "Upload accepted media_id=%s original_name=%s manual_tags=%s manual_characters=%s manual_series=%s",
+            "Upload accepted media_id=%s original_name=%s manual_tags=%s",
             media.id,
             original_name,
             len(normalized_tags),
-            len(normalized_characters),
-            len(normalized_series),
         )
         ctx.results.append(
             UploadResult(
@@ -442,8 +414,6 @@ class MediaUploadWorkflow:
         *,
         media: Media,
         normalized_tags: list[str],
-        normalized_characters: list[str],
-        normalized_series: list[str],
     ) -> None:
         if normalized_tags:
             await self._tags_repo.set_media_tag_links(media, build_tag_payloads(normalized_tags))
@@ -468,25 +438,6 @@ class MediaUploadWorkflow:
             await self._db.delete(entity)
         await self._db.flush()
 
-        entity_repo = MediaEntityRepository(self._db)
-        if normalized_characters:
-            await entity_repo.add_media_entities(
-                media,
-                entity_type=MediaEntityType.character,
-                names=normalized_characters,
-                source="manual",
-                confidence=1.0,
-                replace_existing_type=False,
-            )
-        if normalized_series:
-            await entity_repo.add_media_entities(
-                media,
-                entity_type=MediaEntityType.series,
-                names=normalized_series,
-                source="manual",
-                confidence=1.0,
-                replace_existing_type=False,
-            )
 
     async def _replace_external_refs(self, media: Media, external_refs: list[ExternalRefCreate]) -> None:
         await RelationService(self._db).replace_external_refs(media, external_refs)
@@ -607,8 +558,6 @@ class MediaUploadWorkflow:
                 captured_at=captured_at,
                 saved_path=str(saved.path),
                 tags=tags,
-                character_names=None,
-                series_names=None,
                 external_refs=external_refs,
                 ctx=ctx,
             )
@@ -620,8 +569,6 @@ class MediaUploadWorkflow:
             saved=saved,
             file_metadata=file_metadata,
             tags=tags,
-            character_names=None,
-            series_names=None,
             external_refs=external_refs,
             captured_at=captured_at,
             ctx=ctx,
@@ -754,8 +701,6 @@ class MediaUploadService:
             files=files,
             album_id=album_id,
             tags=tags,
-            character_names=None,
-            series_names=None,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             external_refs_values=external_refs_values,
@@ -777,37 +722,6 @@ class MediaUploadService:
             files,
             album_id=album_id,
             tags=tags,
-            captured_at_override=captured_at_override,
-            captured_at_values=captured_at_values,
-            external_refs_values=external_refs_values,
-        )
-
-    async def upload_files_with_annotations(
-        self,
-        user: User,
-        files: list[UploadFile],
-        *,
-        album_id: uuid.UUID | None = None,
-        tags: list[str] | None = None,
-        character_names: list[str] | None = None,
-        series_names: list[str] | None = None,
-        captured_at_override: datetime | None = None,
-        captured_at_values: list[datetime] | None = None,
-        external_refs_values: list[list[ExternalRefCreate]] | None = None,
-    ) -> BatchUploadResponse:
-        workflow = MediaUploadWorkflow(
-            db=self._db,
-            query=self._query,
-            tags_repo=self._tags,
-            post_processor=self._post_processor,
-        )
-        return await workflow.run(
-            user=user,
-            files=files,
-            album_id=album_id,
-            tags=tags,
-            character_names=character_names,
-            series_names=series_names,
             captured_at_override=captured_at_override,
             captured_at_values=captured_at_values,
             external_refs_values=external_refs_values,
@@ -910,6 +824,3 @@ def _normalize_utc(value: datetime) -> datetime:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
 
-
-def _normalize_entity_names(values: list[str] | None) -> list[str]:
-    return normalize_manual_entity_names(values)

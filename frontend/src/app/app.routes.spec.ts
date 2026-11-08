@@ -46,7 +46,6 @@ describe('routes', () => {
   it('protects the authenticated pages', () => {
     const protectedPaths = [
       'media/:mediaId',
-      'graph/characters',
       'album',
       'album/:albumId',
       'favorites',

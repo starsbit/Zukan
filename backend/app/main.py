@@ -49,7 +49,6 @@ from backend.app.routers import (
     auth,
     batches,
     config,
-    graphs,
     media,
     notifications,
     tags,
@@ -109,7 +108,6 @@ OPENAPI_TAGS = [
         "auth",
         "users",
         "media",
-        "graphs",
         "albums",
         "tags",
         "admin",
@@ -854,7 +852,6 @@ v1_router.include_router(auth.router)
 v1_router.include_router(users.router)
 v1_router.include_router(config.router)
 v1_router.include_router(media.router)
-v1_router.include_router(graphs.router)
 v1_router.include_router(tags.router)
 v1_router.include_router(albums.router)
 v1_router.include_router(admin.router)

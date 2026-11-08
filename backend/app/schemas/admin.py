@@ -131,14 +131,3 @@ class AdminTaggerStatus(BaseModel):
 
 class AdminTaggerUpdate(BaseModel):
     backend: TaggerBackendName
-
-
-class AdminServiceNotificationCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
-    body: str = Field(min_length=1, max_length=2048)
-    link_url: str | None = Field(default=None, max_length=2048)
-    data: dict | None = None
-
-
-class AdminServiceNotificationResult(BaseModel):
-    notified: int = Field(ge=0)

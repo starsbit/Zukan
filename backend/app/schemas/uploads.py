@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 from fastapi.exceptions import RequestValidationError
 from fastapi import File, Form, Request, UploadFile
-from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError, model_validator
+from pydantic import BaseModel, HttpUrl, TypeAdapter, ValidationError
 from backend.app.schemas.relations import ExternalRefCreate
 
 _external_ref_list_adapter = TypeAdapter(list[ExternalRefCreate])
@@ -133,78 +133,6 @@ class MediaUploadRequest(BaseModel):
                 files=files or None,
                 album_id=form.get("album_id"),
                 tags=form.getlist("tags") or None,
-                captured_at=form.get("captured_at"),
-                captured_at_values=form.getlist("captured_at_values") or None,
-                external_refs_values=parse_external_refs_values(
-                    form.getlist("external_refs_values") or None,
-                    expected_count=len(files),
-                ),
-            )
-        except ValidationError as exc:
-            raise RequestValidationError(exc.errors()) from exc
-
-
-class MediaAnnotatedUploadRequest(BaseModel):
-    files: list[UploadFile]
-    album_id: uuid.UUID | None = None
-    tags: list[str] | None = None
-    character_names: list[str] | None = None
-    series_names: list[str] | None = None
-    captured_at: datetime | None = None
-    captured_at_values: list[datetime] | None = None
-    external_refs_values: list[list[ExternalRefCreate]] | None = None
-    model_config = {
-        "title": "MediaAnnotatedUploadRequest",
-        "arbitrary_types_allowed": True,
-    }
-
-    @model_validator(mode="after")
-    def validate_annotations_present(self):
-        if not any((self.tags, self.character_names, self.series_names)):
-            raise ValueError("At least one of tags, character_names, or series_names must be provided")
-        return self
-
-    @classmethod
-    def as_form(
-        cls,
-        files: list[UploadFile] = File(...),
-        album_id: uuid.UUID | None = Form(default=None),
-        tags: list[str] | None = Form(default=None),
-        character_names: list[str] | None = Form(default=None),
-        series_names: list[str] | None = Form(default=None),
-        captured_at: datetime | None = Form(default=None),
-        captured_at_values: list[datetime] | None = Form(default=None),
-        external_refs_values: list[str] | None = Form(default=None),
-    ) -> "MediaAnnotatedUploadRequest":
-        try:
-            return cls(
-                files=files,
-                album_id=album_id,
-                tags=tags,
-                character_names=character_names,
-                series_names=series_names,
-                captured_at=captured_at,
-                captured_at_values=captured_at_values,
-                external_refs_values=parse_external_refs_values(
-                    external_refs_values, expected_count=len(files)
-                ),
-            )
-        except ValidationError as exc:
-            raise RequestValidationError(exc.errors()) from exc
-
-    @classmethod
-    async def from_request(
-        cls, request: Request, *, max_files: int
-    ) -> "MediaAnnotatedUploadRequest":
-        form = await request.form(max_files=max_files, max_fields=max_files * 2 + 20)
-        files = form.getlist("files")
-        try:
-            return cls(
-                files=files or None,
-                album_id=form.get("album_id"),
-                tags=form.getlist("tags") or None,
-                character_names=form.getlist("character_names") or None,
-                series_names=form.getlist("series_names") or None,
                 captured_at=form.get("captured_at"),
                 captured_at_values=form.getlist("captured_at_values") or None,
                 external_refs_values=parse_external_refs_values(

@@ -52,14 +52,6 @@ export const routes: Routes = [
     children: mediaDetailChildren,
   },
   {
-    path: 'graph/characters',
-    loadComponent: () =>
-      import('./pages/character-graph/character-graph.component').then(
-        (m) => m.CharacterGraphPageComponent,
-      ),
-    canActivate: [authGuard],
-  },
-  {
     path: 'admin',
     component: AdminDashboardPageComponent,
     canActivate: [authGuard],

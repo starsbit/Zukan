@@ -166,24 +166,6 @@ def test_admin_create_announcement_contract(api_client):
     assert payload["severity"] == "warning"
     notification_service_cls.return_value.publish_announcement.assert_awaited_once()
 
-def test_admin_create_service_notification_contract(api_client):
-    with patch("backend.app.routers.admin.NotificationService") as notification_service_cls:
-        notification_service_cls.return_value.publish_admin_notification = AsyncMock(return_value=2)
-
-        response = api_client.post(
-            "/api/v1/admin/service-notifications",
-            json={
-                "title": "Automation alert",
-                "body": "Background sync failed",
-                "link_url": None,
-                "data": {"kind": "automation_alert", "category": "sync_error"},
-            },
-        )
-
-    assert response.status_code == 201
-    assert response.json() == {"notified": 2}
-    notification_service_cls.return_value.publish_admin_notification.assert_awaited_once()
-
 def test_admin_app_config_contract(api_client):
     response = api_client.get("/api/v1/admin/app-config")
 
@@ -195,6 +177,13 @@ def test_admin_app_config_contract(api_client):
 def test_update_endpoints_removed(api_client):
     assert api_client.post("/api/v1/admin/update").status_code == 404
     assert api_client.post("/api/v1/admin/check-updates").status_code == 404
+
+
+def test_unused_endpoints_removed(api_client):
+    assert api_client.post("/api/v1/admin/service-notifications", json={"title": "t", "body": "b"}).status_code == 404
+    assert api_client.post("/api/v1/media/annotated").status_code in {404, 405}
+    assert api_client.get("/api/v1/graphs/characters").status_code == 404
+    assert api_client.get("/api/v1/graphs/characters/search", params={"q": "a"}).status_code == 404
 
 def test_admin_app_config_patch_updates_runtime_settings(api_client, monkeypatch):
     original_login_limit = settings.auth_login_rate_limit_requests
