@@ -17,9 +17,19 @@
   overflow: hidden;
 }
 
-.avatar-image {
+// Material wraps button content in a position:relative .mdc-button__label span
+// that shrinks to its content. Stretch it over the whole button so the avatar
+// image has a box to fill (otherwise the absolutely positioned img is 0x0).
+.avatar-button ::ng-deep .mdc-button__label {
   position: absolute;
   inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-image {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
