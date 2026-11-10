@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     library_mount_types: str = ""
     processing_temp_dir: Path | None = None
     generated_files_dir: str = ".zukan"
+    ingest_dir: str = "ingest"
     library_paths_relative: bool = False
     library_root_identity: str | None = None
     tagger_backend: str = "wd_v3"

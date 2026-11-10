@@ -17,7 +17,8 @@ media_queue = None
 class StorageSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     generated_dir: str | None = Field(default=None, min_length=1, max_length=512)
-    scan_interval_seconds: int | None = Field(default=None, ge=0)
+    ingest_dir: str | None = Field(default=None, min_length=1, max_length=512)
+    ingest_interval_seconds: int | None = Field(default=None, ge=0)
 
 
 class Destination(BaseModel):
@@ -65,8 +66,9 @@ async def update_storage(
     changes = body.model_dump(exclude_unset=True)
     if "generated_dir" in changes and changes["generated_dir"] is None:
         raise HTTPException(422, "Generated directory cannot be null")
-    if "scan_interval_seconds" in changes and changes["scan_interval_seconds"] is None:
-        raise HTTPException(422, "Scan interval cannot be null")
+    for key in ("ingest_dir", "ingest_interval_seconds"):
+        if key in changes and changes[key] is None:
+            raise HTTPException(422, f"{key} cannot be null")
     return await call(service.update_storage_settings(db, changes))
 
 
@@ -108,6 +110,11 @@ async def resume(job_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 @router.post('/scan')
 async def scan():
     return await call(service.scan_library(media_queue))
+
+
+@router.post('/ingest')
+async def ingest():
+    return await call(service.ingest_library(media_queue))
 
 
 @router.post('/conflicts/{media_id}/accept')

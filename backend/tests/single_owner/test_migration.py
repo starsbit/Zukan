@@ -13,7 +13,7 @@ async def test_empty_install_and_second_start(isolated_database):
         assert await db.scalar(text("SELECT count(*) FROM users")) == 0
         assert (
             await db.scalar(text("SELECT version_num FROM alembic_version"))
-            == "0025_user_avatar"
+            == "0026_library_ingest"
         )
 
         def schema(c):

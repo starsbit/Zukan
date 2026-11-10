@@ -8,10 +8,12 @@ import { API_BASE_URL } from '../../services/web/api.config';
 const status = {
   root: '/library',
   generated_dir: '.zukan',
-  scan_interval_seconds: 3600,
+  ingest_dir: 'ingest',
+  ingest_interval_seconds: 60,
   available: true,
   scanning: false,
   last_scan: null,
+  last_ingest: null,
   conflicts: [],
 };
 
@@ -47,6 +49,8 @@ describe('StoragePanelComponent', () => {
     const text = fixture.nativeElement.textContent as string;
     expect(text).toContain('/library');
     expect(text).toContain('Scan now');
+    expect(text).toContain('Ingest now');
+    expect(text).toContain('/library/ingest');
     expect(text).not.toContain('Move library');
     expect(text).not.toContain('Validate destination');
     fixture.destroy();

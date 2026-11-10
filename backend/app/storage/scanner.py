@@ -2,6 +2,7 @@
 
 import os
 import stat
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,8 +37,18 @@ class ScannedAsset:
     mtime: float
 
 
-def discover_paths(root: Path, generated_dir: str):
-    generated = Path(generated_dir)
+@dataclass(frozen=True)
+class IngestCandidate:
+    path: Path
+    size: int
+    sha256: str | None
+    supported: SupportedMediaType | None
+    mtime_ns: int
+    mtime: float
+
+
+def discover_paths(root: Path, generated_dir: str, *excluded: str):
+    skipped = {Path(generated_dir), *(Path(x) for x in excluded if x)}
 
     def walk_error(error):
         raise error
@@ -46,7 +57,7 @@ def discover_paths(root: Path, generated_dir: str):
         dirs[:] = [
             d
             for d in dirs
-            if (Path(base) / d).relative_to(root) != generated
+            if (Path(base) / d).relative_to(root) not in skipped
             and not (Path(base) / d).is_symlink()
         ]
         for name in files:
@@ -68,10 +79,11 @@ def scan_files(
     derivatives: set[str],
     *,
     verify_contents: bool,
+    ingest_dir: str | None = None,
 ):
     snapshot = filesystem.snapshot()
     discovered = []
-    for path in discover_paths(filesystem.root, generated_dir):
+    for path in discover_paths(filesystem.root, generated_dir, ingest_dir):
         relative = str(filesystem.relative(path))
         if relative in derivatives:
             continue
@@ -128,3 +140,31 @@ def scan_files(
     # No database changes occur if enumeration/read errors or mount loss occur.
     filesystem.verify(snapshot)
     return discovered
+
+
+def ingest_candidates(
+    filesystem: LibraryFilesystem,
+    ingest_dir: str,
+    rejected_dir: str,
+    *,
+    settle_seconds: float,
+):
+    snapshot = filesystem.snapshot()
+    root = filesystem.path(ingest_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    cutoff = time.time() - settle_seconds
+    candidates = []
+    for path in discover_paths(root, rejected_dir):
+        info = path.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_mtime > cutoff:
+            continue
+        with path.open("rb") as stream:
+            header = stream.read(65536)
+        supported = resolve_supported_media_type(header, source_name=path.name)
+        if supported is None:
+            candidates.append(IngestCandidate(path, info.st_size, None, None, info.st_mtime_ns, info.st_mtime))
+            continue
+        size, digest = file_digest(path)
+        candidates.append(IngestCandidate(path, size, digest, supported, info.st_mtime_ns, info.st_mtime))
+    filesystem.verify(snapshot)
+    return candidates

@@ -313,3 +313,56 @@ async def test_disconnect_during_discovery_commits_no_catalog_changes(library, d
     assert (await db_session.scalars(select(Media))).all() == []
     config = await db_session.get(LibraryStorage, 1, populate_existing=True)
     assert config.last_scan is None
+
+
+@pytest.mark.asyncio
+async def test_ingest_moves_new_files_into_library_and_rejects_duplicates(library, db_session, monkeypatch):
+    source, _ = library
+    monkeypatch.setattr(service, 'INGEST_SETTLE_SECONDS', 0)
+    await service.initialize_library()
+    inbox = source / 'ingest' / 'batch'
+    inbox.mkdir(parents=True)
+    Image.new('RGB', (20, 30), 'red').save(inbox / 'a.png')
+    (inbox / 'copy.png').write_bytes((inbox / 'a.png').read_bytes())
+    (inbox / 'notes.txt').write_text('not media')
+    queue = asyncio.Queue()
+    result = await service.ingest_library(queue)
+    assert result['added'] == 1 and queue.qsize() == 1
+    assert len(result['duplicates']) == 1 and result['rejected'] == ['ingest/batch/notes.txt']
+    record = await db_session.scalar(select(Media))
+    assert record.filepath.startswith('uploads/') and (source / record.filepath).is_file()
+    assert record.original_filename in ('a.png', 'copy.png')
+    assert not list(inbox.iterdir())
+    assert sorted(p.name for p in (source / 'ingest' / 'rejected').iterdir()) == sorted(
+        ['notes.txt', 'copy.png' if record.original_filename == 'a.png' else 'a.png']
+    )
+    again = await service.ingest_library(queue)
+    assert again['added'] == 0 and again['rejected'] == [] and again['duplicates'] == []
+    scan = await service.scan_library(asyncio.Queue())
+    assert scan['added'] == 0 and scan['missing'] == 0
+
+
+@pytest.mark.asyncio
+async def test_ingest_waits_for_files_to_settle(library, db_session, monkeypatch):
+    source, _ = library
+    monkeypatch.setattr(service, 'INGEST_SETTLE_SECONDS', 3600)
+    await service.initialize_library()
+    (source / 'ingest').mkdir()
+    Image.new('RGB', (20, 30), 'red').save(source / 'ingest' / 'a.png')
+    result = await service.ingest_library(asyncio.Queue())
+    assert result['added'] == 0 and (source / 'ingest' / 'a.png').exists()
+
+
+@pytest.mark.asyncio
+async def test_ingest_folder_cannot_overlap_cataloged_files(library, db_session):
+    source, _ = library
+    await service.initialize_library()
+    (source / 'photos').mkdir()
+    Image.new('RGB', (20, 30), 'red').save(source / 'photos' / 'a.png')
+    await service.scan_library(asyncio.Queue())
+    with pytest.raises(ValueError):
+        await service.update_storage_settings(db_session, {'ingest_dir': 'photos'})
+    with pytest.raises(ValueError):
+        await service.update_storage_settings(db_session, {'ingest_dir': 'uploads/in'})
+    status = await service.update_storage_settings(db_session, {'ingest_dir': 'inbox'})
+    assert status['ingest_dir'] == 'inbox'

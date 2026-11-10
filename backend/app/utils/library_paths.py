@@ -35,3 +35,13 @@ def validate_generated_dir(value: str) -> str:
         raise ValueError("Generated files must use a hidden subfolder, such as .zukan")
     contained_path(root_path(), value)
     return value
+
+
+def validate_ingest_dir(value: str, generated_dir: str) -> str:
+    raw = Path(value)
+    if raw.is_absolute() or not raw.parts or ".." in raw.parts:
+        raise ValueError("The ingest folder must be a subfolder of the library")
+    if raw.parts[0] in ("uploads", Path(generated_dir).parts[0]):
+        raise ValueError("The ingest folder cannot be inside the uploads or generated files folders")
+    contained_path(root_path(), value)
+    return value

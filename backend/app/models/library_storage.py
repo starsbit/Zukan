@@ -15,11 +15,15 @@ class LibraryStorage(Base):
     generated_dir: Mapped[str] = mapped_column(
         String(512), nullable=False, default=".zukan"
     )
-    scan_interval_seconds: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=3600
+    ingest_dir: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="ingest", server_default="ingest"
+    )
+    ingest_interval_seconds: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=60, server_default="60"
     )
     root_identity: Mapped[str | None] = mapped_column(String(36), nullable=True)
     last_scan: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    last_ingest: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
 
 class StorageMigration(Base):

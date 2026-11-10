@@ -19,6 +19,13 @@ interface ScanResult {
   changed: number;
   duplicates: string[];
 }
+interface IngestResult {
+  ingested_at: string;
+  added: number;
+  duplicates: string[];
+  rejected: string[];
+  errors: string[];
+}
 interface MaintenanceReport {
   root: string;
   root_identity: string | null;
@@ -29,10 +36,12 @@ interface StorageStatus {
   folder_configured?: boolean;
   root: string;
   generated_dir: string;
-  scan_interval_seconds: number;
+  ingest_dir: string;
+  ingest_interval_seconds: number;
   available: boolean;
   scanning: boolean;
   last_scan: ScanResult | null;
+  last_ingest: IngestResult | null;
   conflicts: { id: string; path: string; status: string }[];
 }
 
@@ -95,9 +104,13 @@ interface StorageStatus {
               <input matInput [(ngModel)]="generatedDir" />
             </mat-form-field>
             <mat-form-field subscriptSizing="dynamic">
-              <mat-label>Scan interval (seconds)</mat-label>
-              <input matInput type="number" min="0" [(ngModel)]="scanInterval" />
-              <mat-hint>0 = manual scans only</mat-hint>
+              <mat-label>Ingest subfolder</mat-label>
+              <input matInput [(ngModel)]="ingestDir" />
+            </mat-form-field>
+            <mat-form-field subscriptSizing="dynamic">
+              <mat-label>Ingest interval (seconds)</mat-label>
+              <input matInput type="number" min="0" [(ngModel)]="ingestInterval" />
+              <mat-hint>0 = manual ingest only</mat-hint>
             </mat-form-field>
             <button mat-stroked-button type="button" (click)="save()" [disabled]="busy()">
               Save settings
@@ -108,8 +121,50 @@ interface StorageStatus {
         <div class="section">
           <div class="section__head">
             <div>
-              <h3>Library scan</h3>
-              <p>Picks up new, moved and changed files. Missing files keep their metadata.</p>
+              <h3>Ingest folder</h3>
+              <p>
+                Drop files into <code>{{ s.root }}/{{ s.ingest_dir }}</code>. They are imported and
+                moved into the library. Duplicates and unsupported files go to
+                <code>{{ s.ingest_dir }}/rejected</code>.
+              </p>
+            </div>
+            <button
+              mat-stroked-button
+              type="button"
+              (click)="ingest()"
+              [disabled]="busy() || !s.available || s.scanning"
+            >
+              {{ s.scanning ? 'Working…' : 'Ingest now' }}
+            </button>
+          </div>
+          @if (s.last_ingest; as run) {
+            <p class="muted">Last import {{ run.ingested_at | date: 'medium' }}</p>
+            <div class="counts">
+              <span><strong>{{ run.added | number }}</strong> added</span>
+              <span><strong>{{ run.duplicates.length | number }}</strong> duplicates</span>
+              <span><strong>{{ run.rejected.length | number }}</strong> unsupported</span>
+              <span><strong>{{ run.errors.length | number }}</strong> failed</span>
+            </div>
+            @if (run.errors.length) {
+              <ul class="item-list">
+                @for (message of run.errors; track message) {
+                  <li><span>Failed</span><code>{{ message }}</code></li>
+                }
+              </ul>
+            }
+          } @else {
+            <p class="muted">Nothing has been imported yet.</p>
+          }
+        </div>
+
+        <div class="section">
+          <div class="section__head">
+            <div>
+              <h3>Full library scan</h3>
+              <p>
+                Walks every folder to pick up moved, changed and missing files. Slow on large
+                libraries; run it only after reorganizing files by hand.
+              </p>
             </div>
             <button
               mat-stroked-button
@@ -411,7 +466,8 @@ export class StoragePanelComponent {
   readonly maintenanceResult = signal<string | null>(null);
   maintenanceConfirmed = false;
   generatedDir = '.zukan';
-  scanInterval = 3600;
+  ingestDir = 'ingest';
+  ingestInterval = 60;
 
   constructor() {
     this.refresh(true);
@@ -428,7 +484,8 @@ export class StoragePanelComponent {
           this.status.set(s);
           if (initial) {
             this.generatedDir = s.generated_dir;
-            this.scanInterval = s.scan_interval_seconds;
+            this.ingestDir = s.ingest_dir;
+            this.ingestInterval = s.ingest_interval_seconds;
           }
         },
         error: (e) => this.error.set(e.error?.detail ?? 'Unable to load storage status.'),
@@ -444,12 +501,17 @@ export class StoragePanelComponent {
   save() {
     this.request(
       '',
-      { generated_dir: this.generatedDir, scan_interval_seconds: this.scanInterval },
+      {
+        generated_dir: this.generatedDir,
+        ingest_dir: this.ingestDir,
+        ingest_interval_seconds: this.ingestInterval,
+      },
       'patch',
     );
   }
   confirmFolder() { this.request('/confirm', {root: this.status()?.root}); }
   scan() { this.request('/scan'); }
+  ingest() { this.request('/ingest'); }
   accept(id: string) { this.request('/conflicts/' + id + '/accept'); }
   missingLabel(item: MaintenanceReport['items'][number]): string {
     const names: Record<string, string> = {

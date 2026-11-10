@@ -13,10 +13,13 @@ from backend.app.config import settings
 from backend.app.storage.filesystem import (
     MARKER as MARKER, current_filesystem, configured_filesystem,
     prepare_library_root, ensure_marker as initialize_marker, file_digest,
+    publish_without_overwrite, StorageUnavailable,
 )
 from backend.app.storage.io import run_storage_io
 from backend.app.storage.migration import copy_verified, cleanup_verified_source
-from backend.app.storage.scanner import KnownAsset, scan_files, discover_paths as walk_library
+from backend.app.storage.scanner import (
+    KnownAsset, IngestCandidate, ingest_candidates, scan_files, discover_paths as walk_library,
+)
 from backend.app.database import AsyncSessionLocal, engine
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.models.library_storage import LibraryStorage, StorageMigration
@@ -26,6 +29,7 @@ from backend.app.utils.library_paths import (
     contained_path,
     root_path,
     validate_generated_dir,
+    validate_ingest_dir,
 )
 from backend.app.utils.media_detection import resolve_supported_media_type
 from backend.app.utils.media_metadata import extract_media_metadata
@@ -33,6 +37,8 @@ from backend.app.utils.thumbnails import generate_poster_and_thumbnail
 
 logger = logging.getLogger(__name__)
 PATH_FIELDS = ("filepath", "thumbnail_path", "poster_path")
+REJECTED_DIR = "rejected"
+INGEST_SETTLE_SECONDS = 10
 job_tasks: set[asyncio.Task] = set()
 scan_lock = asyncio.Lock()
 control_lock = asyncio.Lock()
@@ -60,6 +66,7 @@ def legacy_relative(value: str, root: Path) -> str:
 def apply_config(config: LibraryStorage):
     settings.storage_dir = Path(config.root)
     settings.generated_files_dir = config.generated_dir
+    settings.ingest_dir = config.ingest_dir
     settings.library_root_identity = config.root_identity
     settings.library_paths_relative = True
 
@@ -107,7 +114,7 @@ async def initialize_library():
             root = settings.storage_dir.absolute()
             identity = await run_storage_io(prepare_library_root, root, settings.library_mount_path,
                                             tuple(x.strip() for x in settings.library_mount_types.split(",") if x.strip()))
-            config = LibraryStorage(id=1, root=str(root), generated_dir='.zukan', scan_interval_seconds=3600)
+            config = LibraryStorage(id=1, root=str(root), generated_dir='.zukan', ingest_dir='ingest', ingest_interval_seconds=60)
             config.root_identity = identity
             paused = await pause_version_trigger(db)
             for media in (await db.scalars(select(Media))).all():
@@ -146,12 +153,14 @@ async def get_storage_status(db):
         "root": config.root,
         "generated_dir": config.generated_dir,
         "folder_configured": config.folder_configured,
-        "scan_interval_seconds": config.scan_interval_seconds,
+        "ingest_dir": config.ingest_dir,
+        "ingest_interval_seconds": config.ingest_interval_seconds,
         "available": available,
         "availability_error": availability_error,
         "mount_path": str(settings.library_mount_path) if settings.library_mount_path else None,
         "scanning": scan_lock.locked(),
         "last_scan": config.last_scan,
+        "last_ingest": config.last_ingest,
         "migration": job_status(latest) if latest else None,
         "conflicts": [
             {"id": str(m.id), "path": m.filepath, "status": m.file_status}
@@ -193,6 +202,15 @@ async def update_storage_settings(db, changes):
         generated = changes.get("generated_dir")
         if generated is not None:
             validate_generated_dir(generated)
+        ingest = changes.get("ingest_dir")
+        if ingest is not None:
+            validate_ingest_dir(ingest, generated or config.generated_dir)
+            prefix = ingest.rstrip("/") + "/"
+            cataloged = await db.scalar(
+                select(Media.id).where(Media.filepath.startswith(prefix, autoescape=True)).limit(1)
+            )
+            if cataloged:
+                raise ValueError("The ingest folder must not contain files already in the library")
         for key, value in changes.items():
             setattr(config, key, value)
         await db.commit()
@@ -435,7 +453,39 @@ async def resume_migrations():
 
 
 def discover_paths(root: Path):
-    return walk_library(root, settings.generated_files_dir)
+    return walk_library(root, settings.generated_files_dir, settings.ingest_dir)
+
+
+async def build_media(
+    media_id, path: Path, relative: str, supported, size, digest, mtime_ns, mtime, original_filename,
+):
+    metadata = await run_storage_io(extract_media_metadata, str(path), supported.media_type)
+    poster, thumb = await run_storage_io(
+        generate_poster_and_thumbnail, str(path), supported.media_type, media_id
+    )
+    root = root_path()
+    return Media(
+        id=media_id,
+        filename=Path(relative).name,
+        original_filename=original_filename,
+        filepath=relative,
+        file_size=size,
+        source_mtime_ns=mtime_ns,
+        sha256=digest,
+        mime_type=supported.canonical_mime_type,
+        media_type=supported.media_type,
+        width=metadata.width,
+        height=metadata.height,
+        duration_seconds=metadata.duration_seconds,
+        frame_count=metadata.frame_count,
+        captured_at=datetime.fromtimestamp(mtime, timezone.utc),
+        tagging_status=TaggingStatus.PENDING,
+        thumbnail_path=str(thumb.relative_to(root)) if thumb else None,
+        poster_path=str(poster.relative_to(root)) if poster else None,
+        thumbnail_status=ProcessingStatus.DONE if thumb else ProcessingStatus.FAILED,
+        poster_status=ProcessingStatus.DONE if poster else ProcessingStatus.NOT_APPLICABLE,
+        file_status="available",
+    )
 
 
 async def scan_library(queue, *, verify_contents: bool = True):
@@ -454,11 +504,11 @@ async def scan_library(queue, *, verify_contents: bool = True):
                 for m in records
                 for f in ("thumbnail_path", "poster_path")
             }
-            root = root_path()
             discovered = await run_storage_io(
                 scan_files, current_filesystem(), settings.generated_files_dir,
                 {m.filepath: KnownAsset(m.file_size, m.source_mtime_ns, m.sha256, m.file_status == 'available') for m in records},
                 derivative_paths, verify_contents=verify_contents,
+                ingest_dir=settings.ingest_dir,
             )
             if not await run_storage_io(storage_available):
                 raise ValueError("NAS disconnected during scan; changes discarded")
@@ -513,42 +563,9 @@ async def scan_library(queue, *, verify_contents: bool = True):
                     result["moved"] += 1
                     continue
                 media_id = uuid.uuid4()
-                metadata = await run_storage_io(
-                    extract_media_metadata, str(path), supported.media_type
-                )
-                poster, thumb = await run_storage_io(
-                    generate_poster_and_thumbnail,
-                    str(path),
-                    supported.media_type,
-                    media_id,
-                )
-                media = Media(
-                    id=media_id,
-                    filename=path.name,
-                    original_filename=path.name,
-                    filepath=relative,
-                    file_size=size,
-                    source_mtime_ns=item.mtime_ns,
-                    sha256=digest,
-                    mime_type=supported.canonical_mime_type,
-                    media_type=supported.media_type,
-                    width=metadata.width,
-                    height=metadata.height,
-                    duration_seconds=metadata.duration_seconds,
-                    frame_count=metadata.frame_count,
-                    captured_at=datetime.fromtimestamp(
-                        item.mtime, timezone.utc
-                    ),
-                    tagging_status=TaggingStatus.PENDING,
-                    thumbnail_path=str(thumb.relative_to(root)) if thumb else None,
-                    poster_path=str(poster.relative_to(root)) if poster else None,
-                    thumbnail_status=ProcessingStatus.DONE
-                    if thumb
-                    else ProcessingStatus.FAILED,
-                    poster_status=ProcessingStatus.DONE
-                    if poster
-                    else ProcessingStatus.NOT_APPLICABLE,
-                    file_status="available",
+                media = await build_media(
+                    media_id, path, relative, supported, size, digest,
+                    item.mtime_ns, item.mtime, path.name,
                 )
                 db.add(media)
                 records.append(media)
@@ -624,24 +641,114 @@ async def accept_changed_file(db, media_id, queue):
         await queue.put(media.id)
 
 
+def reject_ingest_file(filesystem, ingest_dir: str, path: Path) -> str:
+    folder = filesystem.path(Path(ingest_dir) / REJECTED_DIR)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = folder / path.name
+    if target.exists():
+        target = folder / f"{path.stem}-{uuid.uuid4().hex[:8]}{path.suffix}"
+    publish_without_overwrite(path, target)
+    return str(filesystem.relative(target))
+
+
+def move_into_library(filesystem, item: IngestCandidate, relative: str):
+    snapshot = filesystem.snapshot()
+    info = item.path.stat()
+    if (info.st_size, info.st_mtime_ns) != (item.size, item.mtime_ns):
+        raise OSError(f"File changed during ingest: {item.path}")
+    target = filesystem.path(relative)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    publish_without_overwrite(item.path, target)
+    filesystem.verify(snapshot)
+    with target.open("rb") as stream:
+        stream.read(1)
+
+
+async def ingest_library(queue):
+    if scan_lock.locked() or storage_gate.paused:
+        raise ValueError("A scan or migration is already running")
+    async with scan_lock, storage_gate.operation():
+        async with AsyncSessionLocal() as db:
+            config = await db.get(LibraryStorage, 1)
+            if not await run_storage_io(storage_available):
+                storage_gate.available = False
+                raise ValueError("NAS library is unavailable")
+            filesystem = current_filesystem()
+            ingest_dir = config.ingest_dir
+            candidates = await run_storage_io(
+                ingest_candidates, filesystem, ingest_dir, REJECTED_DIR,
+                settle_seconds=INGEST_SETTLE_SECONDS,
+            )
+            result = {
+                "ingested_at": datetime.now(timezone.utc).isoformat(),
+                "added": 0,
+                "duplicates": [],
+                "rejected": [],
+                "errors": [],
+            }
+            if not candidates:
+                return result
+            imported_hashes = set()
+            queued = []
+            for item in candidates:
+                name = str(filesystem.relative(item.path))
+                try:
+                    if item.supported is None:
+                        await run_storage_io(reject_ingest_file, filesystem, ingest_dir, item.path)
+                        result["rejected"].append(name)
+                        continue
+                    duplicate = item.sha256 in imported_hashes or await db.scalar(
+                        select(Media.id).where(Media.sha256 == item.sha256).limit(1)
+                    )
+                    if duplicate:
+                        await run_storage_io(reject_ingest_file, filesystem, ingest_dir, item.path)
+                        result["duplicates"].append(name)
+                        continue
+                    media_id = uuid.uuid4()
+                    relative = f"uploads/{media_id.hex[:2]}/{media_id.hex}{item.supported.extension}"
+                    media = await build_media(
+                        media_id, item.path, relative, item.supported, item.size, item.sha256,
+                        item.mtime_ns, item.mtime, item.path.name,
+                    )
+                    await run_storage_io(move_into_library, filesystem, item, relative)
+                    db.add(media)
+                    await db.commit()
+                    imported_hashes.add(item.sha256)
+                    queued.append(media_id)
+                    result["added"] += 1
+                except StorageUnavailable:
+                    await db.rollback()
+                    raise
+                except Exception as exc:
+                    await db.rollback()
+                    logger.exception("Ingest failed for %s", name)
+                    result["errors"].append(f"{name}: {exc}")
+            config = await db.get(LibraryStorage, 1)
+            config.last_ingest = result
+            await db.commit()
+            for media_id in queued:
+                await queue.put(media_id)
+            return result
+
+
 async def library_worker(queue):
-    last_scan = 0.0
+    last_ingest = 0.0
     while True:
         try:
             storage_gate.available = await run_storage_io(storage_available)
             async with AsyncSessionLocal() as db:
                 config = await db.get(LibraryStorage, 1)
-                interval = config.scan_interval_seconds
+                interval = config.ingest_interval_seconds
             now = asyncio.get_running_loop().time()
             if (
                 storage_gate.available
                 and interval
-                and (now - last_scan >= interval)
-                and (not storage_gate.paused)
+                and (now - last_ingest >= interval)
+                and not storage_gate.paused
+                and not scan_lock.locked()
             ):
-                await scan_library(queue, verify_contents=False)
-                last_scan = now
+                last_ingest = now
+                await ingest_library(queue)
         except Exception:
-            logger.exception("Library scan failed; metadata retained")
-            last_scan = asyncio.get_running_loop().time()
-        await asyncio.sleep(30)
+            logger.exception("Library ingest failed; metadata retained")
+        await asyncio.sleep(10)
