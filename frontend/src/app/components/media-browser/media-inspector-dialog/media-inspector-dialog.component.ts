@@ -61,6 +61,7 @@ import {
   humanizeBackendLabel,
 } from '../../../utils/media-display.utils';
 import { commaSeparatedPasteValues } from '../../../utils/comma-separated-paste.utils';
+import { populateMediaDragData } from '../../../utils/media-drag.utils';
 
 export interface MediaInspectorDialogData {
   items: MediaRead[];
@@ -213,6 +214,9 @@ export class MediaInspectorDialogComponent {
   readonly hasNext = computed(() => this.activeIndex() < this.items().length - 1);
   readonly loading = computed(() => this.loadingDetail() || this.loadingFile());
   readonly mediaLoadError = computed(() => this.fileError() || '');
+  readonly mediaDraggable = computed(
+    () => this.isImage() && !this.isMobile() && this.zoom() <= 1 && !!this.mediaUrl(),
+  );
   readonly detailsVisible = computed(() => !this.isMobile() || this.mobileDetailsOpen());
   readonly mobileDetailsLabel = computed(() =>
     this.mobileDetailsOpen() ? 'Hide details' : 'Details',
@@ -692,6 +696,16 @@ export class MediaInspectorDialogComponent {
     this.applyZoom(this.zoom() + -event.deltaY * 0.0015, event.clientX, event.clientY);
   }
 
+  onMediaDragStart(event: DragEvent): void {
+    const url = this.mediaUrl();
+    if (!this.mediaDraggable() || !url) {
+      event.preventDefault();
+      return;
+    }
+
+    populateMediaDragData(event.dataTransfer, this.media(), url);
+  }
+
   onStagePointerDown(event: PointerEvent): void {
     if (!this.isImage() || this.loading() || !this.mediaUrl()) {
       return;
@@ -702,6 +716,10 @@ export class MediaInspectorDialogComponent {
     }
 
     if (this.isEditableTarget(event.target)) {
+      return;
+    }
+
+    if (event.pointerType === 'mouse' && this.mediaDraggable() && this.isMediaTarget(event.target)) {
       return;
     }
 

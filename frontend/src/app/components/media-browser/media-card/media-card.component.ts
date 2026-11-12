@@ -19,6 +19,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { MediaRead, MediaType, ProcessingStatus, TaggingStatus } from '../../../models/media';
 import { BadgeVisibilityService } from '../../../services/badge-visibility.service';
 import { MediaService } from '../../../services/media.service';
+import { populateMediaDragData } from '../../../utils/media-drag.utils';
 
 @Component({
   selector: 'zukan-media-card',
@@ -30,6 +31,7 @@ import { MediaService } from '../../../services/media.service';
 export class MediaCardComponent {
   private static readonly LONG_PRESS_DELAY_MS = 1000;
   private static readonly LONG_PRESS_MOVE_TOLERANCE_PX = 12;
+  private static readonly ORIGINAL_PREFETCH_DELAY_MS = 250;
 
   readonly media = input.required<MediaRead>();
   readonly selectable = input(false);
@@ -47,7 +49,7 @@ export class MediaCardComponent {
   private readonly badgeVisibility = inject(BadgeVisibilityService);
 
   readonly previewUrl = signal<string | null>(null);
-  readonly animatedPreviewUrl = signal<string | null>(null);
+  readonly originalUrl = signal<string | null>(null);
   readonly loading = signal(false);
   readonly hovered = signal(false);
   readonly focused = signal(false);
@@ -104,15 +106,15 @@ export class MediaCardComponent {
       return this.media().client_preview_url;
     }
 
-    if (this.hovered() && this.animatedPreviewUrl()) {
-      return this.animatedPreviewUrl();
+    if (this.hovered() && this.originalUrl()) {
+      return this.originalUrl();
     }
     return this.previewUrl();
   });
 
   readonly showVideoPreview = computed(
     () =>
-      this.media().media_type === MediaType.VIDEO && this.hovered() && !!this.animatedPreviewUrl(),
+      this.media().media_type === MediaType.VIDEO && this.hovered() && !!this.originalUrl(),
   );
   readonly showSelectionControl = computed(
     () => this.selectable() && (this.selectionMode() || this.hovered()),
@@ -125,11 +127,12 @@ export class MediaCardComponent {
 
   private previewObserver?: IntersectionObserver;
   private hasRequestedPreview = false;
-  private hasRequestedAnimatedPreview = false;
+  private hasRequestedOriginal = false;
   private lastMediaId: string | null = null;
   private ownedPrimaryPreviewUrl: string | null = null;
-  private ownedAnimatedPreviewUrl: string | null = null;
+  private ownedOriginalUrl: string | null = null;
   private longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  private originalPrefetchTimer: ReturnType<typeof setTimeout> | null = null;
   private pressedPointerId: number | null = null;
   private pressStartX = 0;
   private pressStartY = 0;
@@ -142,10 +145,10 @@ export class MediaCardComponent {
       if (media.id !== this.lastMediaId) {
         this.lastMediaId = media.id;
         this.hasRequestedPreview = false;
-        this.hasRequestedAnimatedPreview = false;
+        this.hasRequestedOriginal = false;
         this.revokeOwnedPreviewUrls();
         this.previewUrl.set(null);
-        this.animatedPreviewUrl.set(null);
+        this.originalUrl.set(null);
         this.failed.set(false);
         this.loading.set(false);
       }
@@ -193,6 +196,7 @@ export class MediaCardComponent {
   ngOnDestroy(): void {
     this.previewObserver?.disconnect();
     this.clearLongPress();
+    this.clearOriginalPrefetch();
     this.revokeOwnedPreviewUrls();
   }
 
@@ -282,9 +286,33 @@ export class MediaCardComponent {
 
   onHover(active: boolean): void {
     this.hovered.set(active);
-    if (active) {
-      this.loadAnimatedPreview();
+    this.clearOriginalPrefetch();
+    if (!active) {
+      return;
     }
+
+    if (this.media().media_type === MediaType.IMAGE) {
+      this.originalPrefetchTimer = setTimeout(() => {
+        this.originalPrefetchTimer = null;
+        this.loadOriginal();
+      }, MediaCardComponent.ORIGINAL_PREFETCH_DELAY_MS);
+      return;
+    }
+
+    this.loadOriginal();
+  }
+
+  onDragStart(event: DragEvent): void {
+    this.clearLongPress();
+    const media = this.media();
+    const url = this.originalUrl();
+    if (this.interactionDisabled() || media.media_type === MediaType.VIDEO || !url) {
+      event.preventDefault();
+      this.loadOriginal();
+      return;
+    }
+
+    populateMediaDragData(event.dataTransfer, media, url);
   }
 
   onFocusIn(): void {
@@ -314,6 +342,13 @@ export class MediaCardComponent {
       !(target instanceof HTMLElement) ||
       target.closest('button, a, input, textarea, select') == null
     );
+  }
+
+  private clearOriginalPrefetch(): void {
+    if (this.originalPrefetchTimer != null) {
+      clearTimeout(this.originalPrefetchTimer);
+      this.originalPrefetchTimer = null;
+    }
   }
 
   private clearLongPress(): void {
@@ -354,32 +389,28 @@ export class MediaCardComponent {
       });
   }
 
-  private loadAnimatedPreview(): void {
-    if (!this.visible() || this.hasRequestedAnimatedPreview || this.animatedPreviewUrl()) {
+  private loadOriginal(): void {
+    if (!this.visible() || this.hasRequestedOriginal || this.originalUrl()) {
       return;
     }
 
     const media = this.media();
-    if (media.media_type !== MediaType.GIF && media.media_type !== MediaType.VIDEO) {
-      return;
-    }
-
-    this.hasRequestedAnimatedPreview = true;
+    this.hasRequestedOriginal = true;
     this.mediaService
       .getFileUrl(media.id)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (url) => {
-          this.revokeOwnedAnimatedPreviewUrl();
-          this.ownedAnimatedPreviewUrl = url;
-          this.animatedPreviewUrl.set(url);
+          this.revokeOwnedOriginalUrl();
+          this.ownedOriginalUrl = url;
+          this.originalUrl.set(url);
         },
       });
   }
 
   private revokeOwnedPreviewUrls(): void {
     this.revokeOwnedPrimaryPreviewUrl();
-    this.revokeOwnedAnimatedPreviewUrl();
+    this.revokeOwnedOriginalUrl();
   }
 
   private revokeOwnedPrimaryPreviewUrl(): void {
@@ -390,12 +421,12 @@ export class MediaCardComponent {
     this.ownedPrimaryPreviewUrl = null;
   }
 
-  private revokeOwnedAnimatedPreviewUrl(): void {
-    if (!this.ownedAnimatedPreviewUrl) {
+  private revokeOwnedOriginalUrl(): void {
+    if (!this.ownedOriginalUrl) {
       return;
     }
-    URL.revokeObjectURL(this.ownedAnimatedPreviewUrl);
-    this.ownedAnimatedPreviewUrl = null;
+    URL.revokeObjectURL(this.ownedOriginalUrl);
+    this.ownedOriginalUrl = null;
   }
 
   private primaryPreviewRequest() {

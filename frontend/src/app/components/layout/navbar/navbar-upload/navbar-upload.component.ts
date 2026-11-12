@@ -47,6 +47,7 @@ import {
   UrlIngestDialogResult,
 } from './url-ingest-dialog/url-ingest-dialog.component';
 import { extractApiError } from '../../../../utils/api-error.utils';
+import { isInternalMediaDrag } from '../../../../utils/media-drag.utils';
 
 const ALLOWED_MIME_TYPES = new Set([
   'image/avif',
@@ -406,7 +407,7 @@ export class NavbarUploadComponent {
   }
 
   private hasFiles(dataTransfer: DataTransfer | null): boolean {
-    if (!dataTransfer) {
+    if (!dataTransfer || isInternalMediaDrag(dataTransfer)) {
       return false;
     }
 

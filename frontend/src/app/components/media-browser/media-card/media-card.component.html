@@ -18,6 +18,7 @@
   (pointerup)="onPointerRelease($event)"
   (pointercancel)="onPointerRelease($event)"
   (pointerleave)="onPointerRelease($event)"
+  (dragstart)="onDragStart($event)"
 >
   <div class="media-card__surface">
     @if (showSelectionControl()) {
@@ -59,7 +60,7 @@
       }
     </div>
 
-    @if (showVideoPreview() && animatedPreviewUrl(); as videoUrl) {
+    @if (showVideoPreview() && originalUrl(); as videoUrl) {
       <video
         #videoPreview
         class="media-card__image"
