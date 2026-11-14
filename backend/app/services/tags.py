@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from backend.app.config import settings
 from backend.app.errors.error import AppError
-from backend.app.errors.tags import tag_not_found
+from backend.app.errors.media import media_not_found
+from backend.app.errors.tags import tag_not_found, tagging_job_already_queued
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag
 from backend.app.models.relations import MediaEntityType
@@ -338,8 +339,28 @@ class TagService:
         assert last_error is not None
         raise last_error
 
+    async def import_tagging_result(
+        self, media_id: uuid.UUID, tagging_result: TaggingResult
+    ) -> Media:
+        media = await MediaRepository(self._db).get_by_id(media_id)
+        if media is None or media.deleted_at is not None:
+            raise AppError(status_code=404, code=media_not_found, detail="Media not found")
+        if media.tagging_status in ("pending", "processing"):
+            raise AppError(
+                status_code=409,
+                code=tagging_job_already_queued,
+                detail="Tagging job is already queued or running",
+            )
+        media.tagging_started_at = datetime.now(timezone.utc)
+        await self._store_tagging_result(media, tagging_result, fallback_entities=True)
+        return media
+
     async def _store_tagging_result(
-        self, media: Media, tagging_result: TaggingResult
+        self,
+        media: Media,
+        tagging_result: TaggingResult,
+        *,
+        fallback_entities: bool = False,
     ) -> None:
         uploader = await self._db.scalar(select(User))
         tag_threshold = (
@@ -391,22 +412,21 @@ class TagService:
             for entity_type, prediction in entity_predictions
             if entity_type == MediaEntityType.series
         ]
-        await entity_repo.add_media_entities(
-            media,
-            entity_type=MediaEntityType.character,
-            names=character_names,
-            source="tagger",
-            confidence=None,
-            replace_existing_type=True,
-        )
-        await entity_repo.add_media_entities(
-            media,
-            entity_type=MediaEntityType.series,
-            names=series_names,
-            source="tagger",
-            confidence=None,
-            replace_existing_type=True,
-        )
+        for entity_type, names in (
+            (MediaEntityType.character, character_names),
+            (MediaEntityType.series, series_names),
+        ):
+            if fallback_entities and not names:
+                continue
+            await entity_repo.add_media_entities(
+                media,
+                entity_type=entity_type,
+                names=names,
+                source="tagger",
+                confidence=None,
+                replace_existing_type=True,
+                preserve_manual=not fallback_entities,
+            )
         if character_names or series_names:
             by_name = {
                 prediction.name: prediction.confidence
@@ -420,6 +440,9 @@ class TagService:
                     continue
                 if entity.source == "tagger":
                     entity.confidence = by_name.get(entity.name, entity.confidence)
+        if fallback_entities and not await _has_character_or_series(entity_repo, media.id):
+            media.tagging_status = "failed"
+            media.tagging_error = "No character or series found"
         await self._db.commit()
         logger.info(
             "Tagging finished media_id=%s filtered_tags=%s entities=%s is_nsfw=%s is_sensitive=%s",
@@ -429,6 +452,14 @@ class TagService:
             media.is_nsfw,
             media.is_sensitive,
         )
+
+
+async def _has_character_or_series(entity_repo: MediaEntityRepository, media_id: uuid.UUID) -> bool:
+    return any(
+        entity.entity_type in {MediaEntityType.character, MediaEntityType.series}
+        and entity.name.strip()
+        for entity in await entity_repo.get_by_media(media_id)
+    )
 
 
 def _manageable_media_stmt(user):

@@ -11,6 +11,7 @@ from backend.app.utils.frame_sampling import (
     _sample_indexes,
     _sample_timestamps,
     cleanup_sampled_frames,
+    sample_frames_from_path,
     sample_media_frames,
 )
 
@@ -31,6 +32,12 @@ def test_sample_media_frames_image_and_cleanup(tmp_path):
     extra.write_text("x")
     cleanup_sampled_frames([extra])
     assert extra.exists()  # Cleanup cannot remove files outside its workspace.
+
+
+def test_sample_frames_from_path_image_returns_given_path(tmp_path):
+    img = tmp_path / "b.png"
+    Image.new("RGB", (8, 8), color="blue").save(img)
+    assert sample_frames_from_path(img, MediaType.IMAGE) == [img]
 
 
 def test_sample_media_frames_gif(tmp_path):

@@ -742,3 +742,43 @@ def test_queue_bulk_media_tagging_jobs_contract(api_client, monkeypatch):
 
     assert response.status_code == 202
     assert response.json() == {"queued": 2}
+
+def test_import_media_tagging_result_contract(api_client, monkeypatch):
+    from backend.app.services.tags import TagService
+
+    media_id = uuid.uuid4()
+    captured = {}
+
+    async def _fake_import(self, requested_media_id, result):
+        captured["media_id"] = requested_media_id
+        captured["result"] = result
+
+    async def _fake_get(self, requested_media_id, user):
+        payload = _media_read_payload(str(requested_media_id))
+        payload["tag_details"] = []
+        payload["external_refs"] = []
+        payload["entities"] = []
+        return payload
+
+    monkeypatch.setattr(TagService, "import_tagging_result", _fake_import)
+    monkeypatch.setattr(MediaQueryService, "get_media_detail", _fake_get)
+
+    response = api_client.put(
+        f"/api/v1/media/{media_id}/tagging-result",
+        json={"predictions": [{"name": "saber", "category": 4, "confidence": 0.9}], "is_nsfw": False},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["id"] == str(media_id)
+    assert captured["media_id"] == media_id
+    assert captured["result"].predictions[0].name == "saber"
+    assert captured["result"].predictions[0].category == 4
+    assert captured["result"].is_sensitive is False
+
+def test_import_media_tagging_result_rejects_invalid_confidence(api_client):
+    response = api_client.put(
+        f"/api/v1/media/{uuid.uuid4()}/tagging-result",
+        json={"predictions": [{"name": "saber", "category": 4, "confidence": 1.5}], "is_nsfw": False},
+    )
+
+    assert response.status_code == 422

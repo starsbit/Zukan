@@ -229,6 +229,20 @@ class MediaListState(str, Enum):
     TRASHED = "trashed"
 
 
+class TagPredictionImport(BaseModel):
+    name: str = Field(min_length=1, max_length=512)
+    category: int
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class TaggingResultImport(BaseModel):
+    predictions: list[TagPredictionImport] = Field(
+        description="Raw tagger predictions. The server applies the owner's confidence threshold; rating predictions (category 9) are always kept."
+    )
+    is_nsfw: bool
+    is_sensitive: bool = False
+
+
 class MediaUpdate(BaseModel):
     tags: list[str] | None = Field(
         default=None,

@@ -197,8 +197,8 @@ async def test_store_tagging_result_sets_status_and_persists_all_character_and_s
     assert media.tagging_status == 'done'
     assert media.tagging_error is None
     assert media.is_sensitive is False
-    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.character, names=['Saber', 'Rin Tohsaka'], source='tagger', confidence=None, replace_existing_type=True)
-    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.series, names=['Fate/stay night'], source='tagger', confidence=None, replace_existing_type=True)
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.character, names=['Saber', 'Rin Tohsaka'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=True)
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.series, names=['Fate/stay night'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=True)
 
 @pytest.mark.asyncio
 async def test_store_tagging_result_derives_series_from_character_suffix_when_no_copyright_tag(fake_db, user, media):
@@ -211,8 +211,99 @@ async def test_store_tagging_result_derives_series_from_character_suffix_when_no
         entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=[])
         fake_db.get = AsyncMock(return_value=user)
         await TagService(fake_db)._store_tagging_result(media, result)
-    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.character, names=['kanna_(blue_archive)', 'hoshino_(blue_archive)'], source='tagger', confidence=None, replace_existing_type=True)
-    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.series, names=['blue_archive'], source='tagger', confidence=None, replace_existing_type=True)
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.character, names=['kanna_(blue_archive)', 'hoshino_(blue_archive)'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=True)
+    entity_repo_cls.return_value.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.series, names=['blue_archive'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=True)
+
+def _entity(media_id, entity_type, name, source):
+    return MediaEntity(id=uuid.uuid4(), media_id=media_id, entity_type=entity_type, name=name, role='primary', source=source, confidence=None)
+
+
+async def _store_with_fallback(fake_db, user, media, result, entities_after):
+    with patch('backend.app.services.tags.TagRepository') as tag_repo_cls, patch('backend.app.services.tags.MediaEntityRepository') as entity_repo_cls:
+        tag_repo_cls.return_value.set_media_tag_links = AsyncMock()
+        entity_repo_cls.return_value.add_media_entities = AsyncMock()
+        entity_repo_cls.return_value.get_by_media = AsyncMock(return_value=entities_after)
+        fake_db.get = AsyncMock(return_value=user)
+        await TagService(fake_db)._store_tagging_result(media, result, fallback_entities=True)
+    return tag_repo_cls.return_value, entity_repo_cls.return_value
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_fallback_overrides_manual_when_tagger_finds_character(fake_db, user, media):
+    media.id = uuid.uuid4()
+    result = TaggingResult(predictions=[TagPrediction('saber', 4, 0.95), TagPrediction('safe', 0, 0.8)], is_nsfw=False)
+    after = [_entity(media.id, MediaEntityType.character, 'saber', 'tagger'), _entity(media.id, MediaEntityType.series, 'fate', 'manual')]
+    _, entity_repo = await _store_with_fallback(fake_db, user, media, result, after)
+    entity_repo.add_media_entities.assert_awaited_once_with(media, entity_type=MediaEntityType.character, names=['saber'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=False)
+    assert media.tagging_status == 'done'
+    assert media.tagging_error is None
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_fallback_keeps_existing_entities_without_predictions(fake_db, user, media):
+    media.id = uuid.uuid4()
+    result = TaggingResult(predictions=[TagPrediction('safe', 0, 0.8)], is_nsfw=False)
+    after = [_entity(media.id, MediaEntityType.character, 'Rin', 'manual')]
+    tag_repo, entity_repo = await _store_with_fallback(fake_db, user, media, result, after)
+    entity_repo.add_media_entities.assert_not_awaited()
+    tag_repo.set_media_tag_links.assert_awaited_once()
+    assert media.tagging_status == 'done'
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_fallback_fails_when_nothing_found_but_keeps_tags(fake_db, user, media):
+    media.id = uuid.uuid4()
+    result = TaggingResult(predictions=[TagPrediction('safe', 0, 0.8)], is_nsfw=False)
+    tag_repo, entity_repo = await _store_with_fallback(fake_db, user, media, result, [])
+    entity_repo.add_media_entities.assert_not_awaited()
+    tag_repo.set_media_tag_links.assert_awaited_once_with(media, [('safe', 0, 0.8)])
+    assert media.tagging_status == 'failed'
+    assert media.tagging_error == 'No character or series found'
+
+
+@pytest.mark.asyncio
+async def test_store_tagging_result_fallback_series_from_character_suffix_counts(fake_db, user, media):
+    media.id = uuid.uuid4()
+    result = TaggingResult(predictions=[TagPrediction('kanna_(blue_archive)', 4, 0.9)], is_nsfw=False)
+    after = [_entity(media.id, MediaEntityType.character, 'kanna_(blue_archive)', 'tagger'), _entity(media.id, MediaEntityType.series, 'blue_archive', 'tagger')]
+    _, entity_repo = await _store_with_fallback(fake_db, user, media, result, after)
+    entity_repo.add_media_entities.assert_any_await(media, entity_type=MediaEntityType.series, names=['blue_archive'], source='tagger', confidence=None, replace_existing_type=True, preserve_manual=False)
+    assert media.tagging_status == 'done'
+
+
+@pytest.mark.asyncio
+async def test_import_tagging_result_rejects_queued_media(fake_db, media):
+    media.tagging_status = 'pending'
+    media.deleted_at = None
+    with patch('backend.app.services.tags.MediaRepository') as media_repo_cls:
+        media_repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        with pytest.raises(AppError) as exc:
+            await TagService(fake_db).import_tagging_result(media.id, TaggingResult(predictions=[], is_nsfw=False))
+    assert exc.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_import_tagging_result_missing_media(fake_db):
+    with patch('backend.app.services.tags.MediaRepository') as media_repo_cls:
+        media_repo_cls.return_value.get_by_id = AsyncMock(return_value=None)
+        with pytest.raises(AppError) as exc:
+            await TagService(fake_db).import_tagging_result(uuid.uuid4(), TaggingResult(predictions=[], is_nsfw=False))
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_import_tagging_result_stores_with_fallback(fake_db, media):
+    media.tagging_status = 'done'
+    media.deleted_at = None
+    service = TagService(fake_db)
+    result = TaggingResult(predictions=[], is_nsfw=False)
+    with patch('backend.app.services.tags.MediaRepository') as media_repo_cls, patch.object(service, '_store_tagging_result', AsyncMock()) as store_fn:
+        media_repo_cls.return_value.get_by_id = AsyncMock(return_value=media)
+        returned = await service.import_tagging_result(media.id, result)
+    store_fn.assert_awaited_once_with(media, result, fallback_entities=True)
+    assert returned is media
+    assert media.tagging_started_at is not None
+
 
 @pytest.mark.asyncio
 async def test_store_tagging_result_marks_sensitive_from_curated_tags(fake_db, user, media):

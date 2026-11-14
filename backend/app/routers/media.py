@@ -53,6 +53,7 @@ from backend.app.schemas import (
     SeriesSuggestion,
     TagFilterMode,
     TaggingJobQueuedResponse,
+    TaggingResultImport,
     error_responses,
 )
 from backend.app.services.media.interactions import MediaInteractionService
@@ -61,6 +62,8 @@ from backend.app.services.media.metadata import MediaMetadataService
 from backend.app.services.media.processing import MediaProcessingService
 from backend.app.services.media.query import MediaQueryService
 from backend.app.services.media.upload import MediaUploadService
+from backend.app.services.tags import TagService
+from backend.app.utils.tagging import TagPrediction, TaggingResult
 from backend.app.services.library_classification import MediaLibraryEnrichmentService
 from backend.app.utils.idempotency import (
     idempotency_body_hash,
@@ -1061,3 +1064,26 @@ async def queue_media_tagging_job(media_id: uuid.UUID, user: User = Depends(curr
     _, _, _, processing, _, _ = _media_services(db)
     queued = await processing.retag_media(media_id, user)
     return {"queued": queued}
+
+
+@router.put(
+    "/{media_id:uuid}/tagging-result",
+    response_model=MediaDetail,
+    summary="Import Tagging Result",
+    description="Store tagger predictions computed elsewhere. Tags are replaced. Predicted characters and series replace existing ones, including manual values; types without predictions keep their current values. Tagging is marked failed when the media ends up with neither a character nor a series.",
+    responses=error_responses(404, 409, 422),
+)
+async def import_media_tagging_result(
+    media_id: uuid.UUID,
+    body: TaggingResultImport,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = TaggingResult(
+        predictions=[TagPrediction(name=p.name, category=p.category, confidence=p.confidence) for p in body.predictions],
+        is_nsfw=body.is_nsfw,
+        is_sensitive=body.is_sensitive,
+    )
+    await TagService(db).import_tagging_result(media_id, result)
+    query, _, _, _, _, _ = _media_services(db)
+    return await query.get_media_detail(media_id, user)

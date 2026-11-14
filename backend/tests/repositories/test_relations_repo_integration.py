@@ -32,6 +32,17 @@ async def test_media_entity_repository_queries(db_session, make_user, make_media
     assert series_suggestions[0]['media_count'] == 1
 
 @pytest.mark.asyncio
+async def test_tagger_entities_preserve_manual_unless_disabled(db_session, make_user, make_media):
+    await make_user()
+    media = await make_media()
+    repo = MediaEntityRepository(db_session)
+    await repo.add_media_entities(media, entity_type=MediaEntityType.character, names=['Rin'], source='manual')
+    await repo.add_media_entities(media, entity_type=MediaEntityType.character, names=['Saber'], source='tagger', replace_existing_type=True)
+    assert sorted(e.name for e in await repo.get_by_media(media.id)) == ['Rin', 'Saber']
+    await repo.add_media_entities(media, entity_type=MediaEntityType.character, names=['Artoria'], source='tagger', replace_existing_type=True, preserve_manual=False)
+    assert [(e.name, e.source) for e in await repo.get_by_media(media.id)] == [('Artoria', 'tagger')]
+
+@pytest.mark.asyncio
 async def test_media_entity_queries_support_fuzzy_matching(db_session, make_user, make_media):
     viewer = await make_user()
     media = await make_media()

@@ -56,6 +56,8 @@ from .media import (
     MediaTimeline,
     MediaUpdate,
     RelatedMediaRead,
+    TaggingResultImport,
+    TagPredictionImport,
     TimelineBucket,
 )
 from .notifications import (
@@ -186,6 +188,8 @@ __all__ = [
     "MediaRead",
     "MediaTimeline",
     "MediaUpdate",
+    "TaggingResultImport",
+    "TagPredictionImport",
     "MediaUploadRequest",
     "MetadataListScope",
     "MetadataNameListResponse",

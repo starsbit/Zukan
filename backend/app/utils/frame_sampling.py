@@ -15,11 +15,15 @@ from backend.app.utils.storage import ffmpeg_available
 
 
 def sample_media_frames(filepath: str, media_type: MediaType, sample_count: int = 5) -> list[Path]:
+    return sample_frames_from_path(resolve_media_path(filepath), media_type, sample_count)
+
+
+def sample_frames_from_path(path: Path, media_type: MediaType, sample_count: int = 5) -> list[Path]:
     if media_type == MediaType.IMAGE:
-        return [resolve_media_path(filepath)]
+        return [path]
     if media_type == MediaType.GIF:
-        return _sample_gif_frames(resolve_media_path(filepath), sample_count)
-    return _sample_video_frames(resolve_media_path(filepath), sample_count)
+        return _sample_gif_frames(path, sample_count)
+    return _sample_video_frames(path, sample_count)
 
 
 def cleanup_sampled_frames(frames: list[Path]) -> None:

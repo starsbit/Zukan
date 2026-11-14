@@ -177,6 +177,7 @@ class MediaEntityRepository:
         source: str,
         confidence: float | None = None,
         replace_existing_type: bool = False,
+        preserve_manual: bool = True,
     ) -> None:
         owned_repo = OwnedEntityRepository(self.db)
         touched_entity_ids = set()
@@ -198,7 +199,7 @@ class MediaEntityRepository:
                 entity.entity_id for entity in existing if entity.entity_id is not None
             }
             for entity in existing:
-                if source == "tagger" and entity.source != "tagger":
+                if preserve_manual and source == "tagger" and entity.source != "tagger":
                     preserved_names.add(entity.name.casefold())
                     continue
                 await self.db.delete(entity)
