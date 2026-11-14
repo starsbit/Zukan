@@ -704,6 +704,57 @@ describe('MediaInspectorDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
+  it('zooms with the wheel and pans with the mouse when page scrolling is enabled', async () => {
+    const { fixture } = await createComponent();
+    fixture.componentRef.setInput('pageScrollEnabled', true);
+    fixture.detectChanges();
+    setStageBounds(fixture);
+    const image = fixture.nativeElement.querySelector('img') as HTMLImageElement;
+    const wheel = new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -400,
+      clientX: 160,
+      clientY: 240,
+    });
+
+    image.dispatchEvent(wheel);
+    fixture.detectChanges();
+
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(fixture.componentInstance.zoom()).toBeCloseTo(1.6);
+    expect(image.draggable).toBe(false);
+
+    fixture.componentInstance.onStagePointerDown(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 160, clientY: 240 }),
+    );
+    fixture.componentInstance.onPointerMove(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 260 }),
+    );
+    fixture.componentInstance.stopPointerInteraction(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 260 }),
+    );
+
+    expect(fixture.componentInstance.panX()).toBe(30);
+    expect(fixture.componentInstance.panY()).toBe(20);
+    expect(fixture.componentInstance.activeIndex()).toBe(0);
+    expect(fixture.componentInstance.dragging()).toBe(false);
+
+    image.dispatchEvent(new WheelEvent('wheel', {
+      bubbles: true,
+      cancelable: true,
+      deltaY: 400,
+      clientX: 160,
+      clientY: 240,
+    }));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.zoom()).toBe(1);
+    expect(fixture.componentInstance.panX()).toBe(0);
+    expect(fixture.componentInstance.panY()).toBe(0);
+    expect(image.draggable).toBe(true);
+  });
+
   it('swipes left and right between items at base zoom', async () => {
     const { fixture } = await createComponent();
     const image = fixture.nativeElement.querySelector('img') as HTMLImageElement;

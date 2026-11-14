@@ -687,10 +687,6 @@ export class MediaInspectorDialogComponent {
       return;
     }
 
-    if (this.pageScrollEnabled() && this.zoom() <= 1 && !event.ctrlKey) {
-      return;
-    }
-
     this.revealChrome();
     event.preventDefault();
     this.applyZoom(this.zoom() + -event.deltaY * 0.0015, event.clientX, event.clientY);

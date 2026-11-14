@@ -384,6 +384,46 @@ test.describe('Media viewer', () => {
     }
   });
 
+  test('zooms and pans the image while similar media page scrolling is enabled', async ({ page }) => {
+    await seedAuthenticatedSession(page);
+    await registerViewerRoutes(page);
+    await page.route('**/api/v1/media/m1/file', async (route) => {
+      await route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800"><rect width="1200" height="800" fill="steelblue"/></svg>',
+      });
+    });
+    await page.goto('/gallery/media/m1');
+
+    const viewer = page.locator('zukan-media-inspector-dialog');
+    await expect(viewer).toHaveClass(/inspector--page-scroll/);
+    const image = viewer.locator('.inspector-media--image');
+    await expect(image).toBeVisible();
+    const transform = () => image.evaluate((element) => {
+      const matrix = new DOMMatrix(getComputedStyle(element).transform);
+      return { zoom: matrix.a, x: matrix.e, y: matrix.f };
+    });
+
+    await image.hover();
+    await page.mouse.wheel(0, -400);
+    await expect.poll(async () => (await transform()).zoom).toBeCloseTo(1.6);
+    await expect(image).toHaveAttribute('draggable', 'false');
+
+    const before = await transform();
+    await page.mouse.down();
+    await page.mouse.move(400, 350, { steps: 5 });
+    await page.mouse.up();
+    await expect.poll(async () => {
+      const after = await transform();
+      return Math.abs(after.x - before.x) + Math.abs(after.y - before.y);
+    }).toBeGreaterThan(10);
+    await expect(page).toHaveURL('/gallery/media/m1');
+
+    await page.mouse.wheel(0, 400);
+    await expect.poll(transform).toEqual({ zoom: 1, x: 0, y: 0 });
+    await expect(image).toHaveAttribute('draggable', 'true');
+  });
+
   test('opens a shared media URL directly for an authenticated user', async ({ page }) => {
     await seedAuthenticatedSession(page);
     await registerViewerRoutes(page);
