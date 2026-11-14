@@ -288,6 +288,7 @@ export class MediaInspectorDialogComponent {
   private pointerStartY = 0;
   private panStartX = 0;
   private panStartY = 0;
+  private suppressMediaClick = false;
   private gestureMode: GestureMode = 'idle';
   private activePointers = new Map<number, PointerTracker>();
   private swipePointerId: number | null = null;
@@ -456,6 +457,17 @@ export class MediaInspectorDialogComponent {
 
     if (this.isMobile() && this.isImage() && this.isMediaTarget(event.target)) {
       this.handleMobileMediaTap(event);
+      return;
+    }
+
+    if (!this.isMobile() && this.isImage() && this.isMediaTarget(event.target)) {
+      if (this.suppressMediaClick) {
+        this.suppressMediaClick = false;
+        return;
+      }
+      const mouseEvent = event as MouseEvent;
+      this.revealChrome();
+      this.applyZoom(this.zoom() > 1 ? 1 : 2, mouseEvent.clientX, mouseEvent.clientY);
       return;
     }
 
@@ -699,6 +711,7 @@ export class MediaInspectorDialogComponent {
       return;
     }
 
+    this.suppressMediaClick = true;
     populateMediaDragData(event.dataTransfer, this.media(), url);
   }
 
@@ -714,6 +727,8 @@ export class MediaInspectorDialogComponent {
     if (this.isEditableTarget(event.target)) {
       return;
     }
+
+    this.suppressMediaClick = false;
 
     if (event.pointerType === 'mouse' && this.mediaDraggable() && this.isMediaTarget(event.target)) {
       return;
@@ -776,6 +791,10 @@ export class MediaInspectorDialogComponent {
 
     if (this.gestureMode !== 'pan' || this.panPointerId !== event.pointerId) {
       return;
+    }
+
+    if (Math.hypot(event.clientX - this.pointerStartX, event.clientY - this.pointerStartY) > 4) {
+      this.suppressMediaClick = true;
     }
 
     this.dragging.set(true);

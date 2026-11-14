@@ -201,6 +201,10 @@
   transition: none;
 }
 
+.inspector-media--zoomable {
+  cursor: zoom-in;
+}
+
 video.inspector-media {
   width: 100%;
   max-width: 100%;

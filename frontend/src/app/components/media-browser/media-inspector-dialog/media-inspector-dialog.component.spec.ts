@@ -491,7 +491,7 @@ describe('MediaInspectorDialogComponent', () => {
   it('hides viewer chrome after inactivity and toggles it on surface taps', async () => {
     vi.useFakeTimers();
     const { fixture } = await createComponent();
-    const image = fixture.nativeElement.querySelector('img') as HTMLImageElement;
+    const surface = fixture.nativeElement.querySelector('.inspector-media-pane') as HTMLElement;
 
     expect(fixture.componentInstance.chromeVisible()).toBe(true);
 
@@ -500,14 +500,14 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.componentInstance.chromeVisible()).toBe(false);
 
     fixture.componentInstance.onViewerSurfaceClick({
-      target: image,
+      target: surface,
       preventDefault: vi.fn(),
     } as unknown as Event);
     fixture.detectChanges();
     expect(fixture.componentInstance.chromeVisible()).toBe(true);
 
     fixture.componentInstance.onViewerSurfaceClick({
-      target: image,
+      target: surface,
       preventDefault: vi.fn(),
     } as unknown as Event);
     fixture.detectChanges();
@@ -746,6 +746,13 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.componentInstance.zoom()).toBeCloseTo(1.6);
     expect(image.draggable).toBe(false);
 
+    for (const deltaY of [-100, 100]) {
+      const ordinaryScroll = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY });
+      image.dispatchEvent(ordinaryScroll);
+      expect(ordinaryScroll.defaultPrevented).toBe(false);
+      expect(fixture.componentInstance.zoom()).toBeCloseTo(1.6);
+    }
+
     fixture.componentInstance.onStagePointerDown(
       makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 160, clientY: 240 }),
     );
@@ -774,6 +781,39 @@ describe('MediaInspectorDialogComponent', () => {
     expect(fixture.componentInstance.zoom()).toBe(1);
     expect(fixture.componentInstance.panX()).toBe(0);
     expect(fixture.componentInstance.panY()).toBe(0);
+    expect(image.draggable).toBe(true);
+  });
+
+  it('clicks to zoom in and reset, without resetting zoom after panning', async () => {
+    const { fixture } = await createComponent();
+    setStageBounds(fixture);
+    const image = fixture.nativeElement.querySelector('img') as HTMLImageElement;
+    const click = () => image.dispatchEvent(new MouseEvent('click', {
+      bubbles: true, clientX: 160, clientY: 240,
+    }));
+
+    click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.zoom()).toBe(2);
+    expect(image.draggable).toBe(false);
+
+    fixture.componentInstance.onStagePointerDown(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 160, clientY: 240 }),
+    );
+    fixture.componentInstance.onPointerMove(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 260 }),
+    );
+    fixture.componentInstance.stopPointerInteraction(
+      makePointerEvent(image, { pointerId: 1, pointerType: 'mouse', clientX: 190, clientY: 260 }),
+    );
+    click();
+    expect(fixture.componentInstance.zoom()).toBe(2);
+    expect(fixture.componentInstance.panX()).toBe(30);
+
+    click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.zoom()).toBe(1);
+    expect(fixture.componentInstance.panX()).toBe(0);
     expect(image.draggable).toBe(true);
   });
 

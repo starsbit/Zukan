@@ -125,6 +125,8 @@
               [class.inspector-media--dragging]="dragging()"
               [src]="mediaUrl()!"
               [alt]="title()"
+              [attr.title]="isMobile() ? null : zoom() > 1 ? 'Drag to pan. Click to reset zoom. Ctrl + scroll to zoom.' : 'Click to zoom in. Ctrl + scroll to zoom.'"
+              [class.inspector-media--zoomable]="!isMobile() && zoom() <= 1"
               [attr.draggable]="mediaDraggable()"
               (dragstart)="onMediaDragStart($event)"
               [style.transform]="imageTransform()"

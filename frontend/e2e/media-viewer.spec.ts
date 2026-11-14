@@ -413,6 +413,8 @@ test.describe('Media viewer', () => {
     await page.keyboard.up('Control');
     await expect(image).toHaveAttribute('draggable', 'false');
 
+    await page.mouse.wheel(0, -100);
+
     const before = await transform();
     await page.mouse.down();
     await page.mouse.move(400, 350, { steps: 5 });
@@ -422,12 +424,19 @@ test.describe('Media viewer', () => {
       return Math.abs(after.x - before.x) + Math.abs(after.y - before.y);
     }).toBeGreaterThan(10);
     await expect(page).toHaveURL('/gallery/media/m1');
+    await expect.poll(async () => (await transform()).zoom).toBeCloseTo(1.6);
 
     await page.keyboard.down('Control');
     await page.mouse.wheel(0, 400);
     await expect.poll(transform).toEqual({ zoom: 1, x: 0, y: 0 });
     await page.keyboard.up('Control');
     await expect(image).toHaveAttribute('draggable', 'true');
+    await expect(image).toHaveCSS('cursor', 'zoom-in');
+    await image.click();
+    await expect.poll(async () => (await transform()).zoom).toBe(2);
+    await expect(image).toHaveCSS('cursor', 'grab');
+    await image.click();
+    await expect.poll(transform).toEqual({ zoom: 1, x: 0, y: 0 });
   });
 
   test('opens a shared media URL directly for an authenticated user', async ({ page }) => {
