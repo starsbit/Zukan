@@ -6,7 +6,8 @@ import pytest
 from sqlalchemy import text
 
 from backend.app.config import settings
-from backend.app.demo_sanitize import sanitize_demo_connection
+from backend.app import demo_sanitize
+from backend.app.demo_sanitize import DemoAlbum, demo_album_id, sanitize_demo_connection
 from backend.app.models.albums import Album, AlbumMedia
 from backend.app.models.auth import AuthSession, RefreshToken
 from backend.app.models.library_storage import LibraryStorage, StorageMigration  # noqa: F401
@@ -20,6 +21,12 @@ async def test_sanitize_keeps_only_safe_media_and_scrubs_private_data(
     db_engine, db_session, make_user, make_media, monkeypatch
 ):
     monkeypatch.setattr(settings, "demo_mode", True)
+    smiles = DemoAlbum("Smiles", "Smiling faces.", ("smile",), "sunset")
+    monkeypatch.setattr(
+        demo_sanitize,
+        "DEMO_ALBUMS",
+        (smiles, DemoAlbum("Plain", "Default cover.", ("smile",)), DemoAlbum("Nothing", "No matches.", ("missing_tag",))),
+    )
     user = await make_user(username="real-owner", email="owner@example.com", show_nsfw=True, show_sensitive=True)
     safe = await make_media()
     nsfw = await make_media(is_nsfw=True)
@@ -30,11 +37,15 @@ async def test_sanitize_keeps_only_safe_media_and_scrubs_private_data(
 
     shared_tag = Tag(name="smile", category=0, media_count=0)
     nsfw_tag = Tag(name="explicit_only", category=0, media_count=0)
-    db_session.add_all([shared_tag, nsfw_tag])
+    cover_tag = Tag(name="sunset", category=0, media_count=0)
+    db_session.add_all([shared_tag, nsfw_tag, cover_tag])
     await db_session.flush()
     db_session.add_all(
         [
             MediaTag(media_id=safe.id, tag_id=shared_tag.id, confidence=0.9),
+            MediaTag(media_id=unflagged_override.id, tag_id=shared_tag.id, confidence=0.9),
+            MediaTag(media_id=safe.id, tag_id=cover_tag.id, confidence=0.8),
+            MediaTag(media_id=unflagged_override.id, tag_id=cover_tag.id, confidence=0.8),
             MediaTag(media_id=nsfw.id, tag_id=shared_tag.id, confidence=0.9),
             MediaTag(media_id=nsfw.id, tag_id=nsfw_tag.id, confidence=0.9),
         ]
@@ -70,20 +81,37 @@ async def test_sanitize_keeps_only_safe_media_and_scrubs_private_data(
     async with db_engine.begin() as conn:
         removed = await sanitize_demo_connection(conn)
         assert removed["media"] == 4
-        assert removed["albums"] == 1
+        assert removed["albums"] == 2
 
         remaining = set((await conn.execute(text("SELECT id FROM media"))).scalars())
         assert remaining == {safe.id, unflagged_override.id}
         assert flagged_override.id not in remaining
         tags = dict((await conn.execute(text("SELECT name, media_count FROM tags"))).all())
-        assert tags == {"smile": 1}
+        assert tags == {"smile": 2, "sunset": 2}
         entity_names = set((await conn.execute(text("SELECT name FROM owned_entities"))).scalars())
         assert entity_names == {"Saber"}
-        albums = (await conn.execute(text("SELECT name, cover_media_id FROM albums"))).all()
-        assert albums == [("Mixed", safe.id)]
+        albums = {
+            name: (album_id, cover)
+            for album_id, name, cover in (await conn.execute(text("SELECT id, name, cover_media_id FROM albums"))).all()
+        }
+        assert set(albums) == {"Smiles", "Plain"}
+        assert albums["Smiles"][0] == demo_album_id(smiles)
+        ordered = list(
+            (
+                await conn.execute(
+                    text("SELECT media_id FROM album_media WHERE album_id = :id ORDER BY position"),
+                    {"id": albums["Smiles"][0]},
+                )
+            ).scalars()
+        )
+        assert set(ordered) == {safe.id, unflagged_override.id}
+        assert albums["Smiles"][1] == ordered[1]
+        assert albums["Plain"][1] == ordered[0]
         for table in ("refresh_tokens", "auth_sessions"):
             assert (await conn.execute(text(f"SELECT count(*) FROM {table}"))).scalar_one() == 0
         owner = (await conn.execute(text("SELECT username, email, show_nsfw, show_sensitive FROM users"))).one()
         assert tuple(owner) == ("demo", "demo@localhost", False, False)
 
-        assert (await sanitize_demo_connection(conn))["media"] == 0
+        again = await sanitize_demo_connection(conn)
+        assert again["media"] == 0
+        assert again["albums"] == 2

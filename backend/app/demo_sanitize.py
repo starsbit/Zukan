@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import uuid
+from dataclasses import dataclass
 from sqlalchemy import text
 from backend.app.config import settings
 from backend.app.database.session import engine
@@ -19,16 +21,13 @@ COUNTED_STEPS: tuple[tuple[str, str], ...] = (
         """DELETE FROM owned_entities
 WHERE NOT EXISTS (SELECT 1 FROM media_entities WHERE media_entities.entity_id = owned_entities.id)""",
     ),
-    ("albums", "DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM album_media WHERE album_media.album_id = albums.id)"),
+    ("albums", "DELETE FROM albums"),
 )
 
 STEPS: tuple[str, ...] = (
     "UPDATE tags SET media_count = (SELECT count(*) FROM media_tags WHERE media_tags.tag_id = tags.id)",
     """UPDATE owned_entities SET media_count = (
     SELECT count(DISTINCT media_id) FROM media_entities WHERE media_entities.entity_id = owned_entities.id)""",
-    """UPDATE albums SET cover_media_id = (
-    SELECT media_id FROM album_media WHERE album_media.album_id = albums.id ORDER BY position, media_id LIMIT 1)
-WHERE cover_media_id IS NULL""",
     """UPDATE media SET review_suggested_characters = NULL, review_suggested_series = NULL,
     review_suggestions_computed_at = NULL""",
     "DELETE FROM auth_exchanges",
@@ -43,6 +42,68 @@ WHERE cover_media_id IS NULL""",
     show_nsfw = false, show_sensitive = false, avatar_media_id = NULL, last_seen_announcement_id = NULL""",
     "UPDATE library_storage SET ingest_interval_seconds = 0, last_scan = NULL, last_ingest = NULL",
 )
+
+
+DEMO_ALBUM_NAMESPACE = uuid.UUID("5f0c3f4e-2a8b-4c1e-9d47-6b1f0a7e3c21")
+DEMO_ALBUM_SIZE = 48
+
+
+@dataclass(frozen=True)
+class DemoAlbum:
+    name: str
+    description: str
+    tags: tuple[str, ...]
+    cover_tag: str | None = None
+
+
+DEMO_ALBUMS: tuple[DemoAlbum, ...] = (
+    DemoAlbum("Skies & Clouds", "Open skies, drifting clouds and the occasional sunset.", ("sky", "cloud"), "sunset"),
+    DemoAlbum("School Days", "Uniforms, classrooms and after-school moments.", ("school_uniform",)),
+    DemoAlbum("Kemonomimi", "Characters with animal ears.", ("animal_ears",)),
+    DemoAlbum("Kimono", "Traditional Japanese outfits.", ("kimono",)),
+    DemoAlbum("Snack Break", "Food, sweets and tea time.", ("food",)),
+    DemoAlbum("Winter", "Snowy scenes and cold days.", ("snow",)),
+)
+
+CREATE_ALBUM_SQL = "INSERT INTO albums (id, name, description, version) VALUES (:id, :name, :description, 1)"
+
+FILL_ALBUM_SQL = """INSERT INTO album_media (album_id, media_id, position)
+SELECT CAST(:id AS uuid), picked.id, row_number() OVER (ORDER BY picked.captured_at DESC, picked.id) - 1
+FROM (
+    SELECT media.id, media.captured_at FROM media
+    WHERE (
+        SELECT count(DISTINCT tags.name) FROM media_tags JOIN tags ON tags.id = media_tags.tag_id
+        WHERE media_tags.media_id = media.id AND tags.name = ANY(:tags)
+    ) = cardinality(CAST(:tags AS text[]))
+    ORDER BY media.captured_at DESC, media.id
+    LIMIT :size
+) AS picked"""
+
+SET_ALBUM_COVER_SQL = """UPDATE albums SET cover_media_id = COALESCE(
+    (SELECT album_media.media_id FROM album_media
+     JOIN media_tags ON media_tags.media_id = album_media.media_id
+     JOIN tags ON tags.id = media_tags.tag_id
+     WHERE album_media.album_id = :id AND album_media.position > 0 AND tags.name = :cover_tag
+     ORDER BY media_tags.confidence DESC, album_media.media_id LIMIT 1),
+    (SELECT media_id FROM album_media WHERE album_id = :id ORDER BY position, media_id LIMIT 1))
+WHERE id = :id"""
+
+DROP_EMPTY_ALBUMS_SQL = "DELETE FROM albums WHERE NOT EXISTS (SELECT 1 FROM album_media WHERE album_media.album_id = albums.id)"
+
+
+def demo_album_id(album: DemoAlbum) -> uuid.UUID:
+    return uuid.uuid5(DEMO_ALBUM_NAMESPACE, album.name)
+
+
+async def create_demo_albums(conn) -> None:
+    for album in DEMO_ALBUMS:
+        album_id = demo_album_id(album)
+        await conn.execute(
+            text(CREATE_ALBUM_SQL), {"id": album_id, "name": album.name, "description": album.description}
+        )
+        await conn.execute(text(FILL_ALBUM_SQL), {"id": album_id, "tags": list(album.tags), "size": DEMO_ALBUM_SIZE})
+        await conn.execute(text(SET_ALBUM_COVER_SQL), {"id": album_id, "cover_tag": album.cover_tag})
+    await conn.execute(text(DROP_EMPTY_ALBUMS_SQL))
 
 
 class DemoSanitizeError(RuntimeError):
@@ -61,6 +122,7 @@ async def sanitize_demo_connection(conn) -> dict[str, int]:
         removed[name] = (await conn.execute(text(statement))).rowcount
     for statement in STEPS[2:]:
         await conn.execute(text(statement))
+    await create_demo_albums(conn)
     return removed
 
 
