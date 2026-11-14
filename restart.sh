@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Pull the latest commits, then rebuild and restart the current checkout.
+# If a demo checkout exists next to it (../zukan-demo, or ZUKAN_DEMO_DIR), it is
+# pulled and refreshed from this instance's database afterwards.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
@@ -10,6 +12,7 @@ fi
 
 if [[ -f compose.homeserver.yml ]]; then
   compose_file="docker-compose.selfhost.yml"
+  project_name="zukan"
   compose() { ./deploy.sh "$@"; }
 else
   compose_file="${COMPOSE_FILE:-docker-compose.selfhost.yml}"
@@ -32,3 +35,10 @@ require_secret SECRET_KEY
 compose build api frontend
 compose stop api
 compose up -d --remove-orphans
+
+demo_dir="${ZUKAN_DEMO_DIR:-$(dirname -- "$PWD")/zukan-demo}"
+if [[ -f "$demo_dir/docker-compose.demo.yml" && -f "$demo_dir/.env" ]]; then
+  echo "==> Updating demo instance in $demo_dir"
+  git -C "$demo_dir" pull --ff-only
+  SOURCE_PROJECT="$project_name" "$demo_dir/scripts/demo-refresh.sh"
+fi
