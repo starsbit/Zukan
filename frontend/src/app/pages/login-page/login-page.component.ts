@@ -11,6 +11,7 @@ import {
   SetupFormValue,
 } from '../../components/auth/setup-wizard/setup-wizard.component';
 import { AuthService } from '../../services/auth.service';
+import { DemoModeService } from '../../services/demo-mode.service';
 import { extractApiError } from '../../utils/api-error.utils';
 
 @Component({
@@ -23,7 +24,9 @@ import { extractApiError } from '../../utils/api-error.utils';
         @if (error()) {
           <p role="alert">{{ error() }}</p>
         }
-        @if (ready()) {
+        @if (demo()) {
+          <p role="status">Opening demo…</p>
+        } @else if (ready()) {
           @if (setupRequired()) {
             <zukan-setup-wizard [loading]="loading()" (submitted)="onSetup($event)" />
           } @else if (mode() === 'oidc') {
@@ -42,6 +45,7 @@ import { extractApiError } from '../../utils/api-error.utils';
 })
 export class LoginPageComponent implements OnInit {
   private readonly auth = inject(AuthService);
+  private readonly demoMode = inject(DemoModeService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly loginForm = viewChild(LoginFormComponent);
@@ -51,6 +55,7 @@ export class LoginPageComponent implements OnInit {
   readonly error = signal<string | null>(null);
   readonly mode = signal('local');
   readonly setupRequired = signal(false);
+  readonly demo = signal(false);
 
   private returnUrl(): string {
     const value = this.route.snapshot.queryParamMap.get('returnUrl') ?? '/';
@@ -63,6 +68,11 @@ export class LoginPageComponent implements OnInit {
     const ssoFailed = this.route.snapshot.queryParamMap.get('sso') === 'failed';
     this.auth.configuration().subscribe({
       next: (config) => {
+        this.demoMode.set(!!config.demo);
+        if (config.demo) {
+          this.enterDemo();
+          return;
+        }
         this.mode.set(config.mode);
         this.setupRequired.set(config.setup_required);
         this.ready.set(true);
@@ -83,6 +93,17 @@ export class LoginPageComponent implements OnInit {
         }
       },
       error: (e) => this.failed(e),
+    });
+  }
+  private enterDemo(): void {
+    this.demo.set(true);
+    this.auth.demo().subscribe({
+      next: () => this.router.navigateByUrl(this.returnUrl(), { replaceUrl: true }),
+      error: (e) => {
+        this.demo.set(false);
+        this.ready.set(true);
+        this.failed(e);
+      },
     });
   }
   sso(): void {

@@ -6,6 +6,7 @@ Its in the repository domain because it relates closely to SQL related logic.
 import re
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import extract, func, or_, select
+from backend.app.config import settings
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, MediaType
 from backend.app.models.relations import MediaEntity, MediaEntityType
@@ -158,6 +159,8 @@ def _date_part_range(year: int | None, month: int | None, day: int | None) -> tu
 
 def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
     nsfw_expr = effective_nsfw_expr()
+    if settings.demo_mode:
+        return stmt.where(nsfw_expr.is_(False))
     if nsfw == NsfwFilter.DEFAULT:
         if not user.show_nsfw:
             stmt = stmt.where(nsfw_expr.is_(False))
@@ -169,6 +172,8 @@ def apply_nsfw_list_filter(stmt, user: User, nsfw: NsfwFilter):
 
 def apply_sensitive_list_filter(stmt, user: User, sensitive: SensitiveFilter):
     sensitive_expr = effective_sensitive_expr()
+    if settings.demo_mode:
+        return stmt.where(sensitive_expr.is_(False))
     if sensitive == SensitiveFilter.DEFAULT:
         if not user.show_sensitive:
             stmt = stmt.where(sensitive_expr.is_(False))

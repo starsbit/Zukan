@@ -1,0 +1,36 @@
+.demo-notice__intro {
+  margin: 0 0 16px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.demo-notice__heading {
+  margin: 16px 0 8px;
+  font: var(--mat-sys-title-small);
+  color: var(--mat-sys-on-surface);
+}
+
+.demo-notice__list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+}
+
+.demo-notice__icon {
+  flex: none;
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.demo-notice__icon--ok {
+  color: var(--mat-sys-primary);
+}

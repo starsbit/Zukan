@@ -1,0 +1,25 @@
+<h2 mat-dialog-title>Welcome to the Zukan demo</h2>
+
+<mat-dialog-content>
+  <p class="demo-notice__intro">
+    This is a read-only demo running on a curated, safe-for-work copy of a real Zukan library.
+  </p>
+
+  <h3 class="demo-notice__heading">Try it out</h3>
+  <ul class="demo-notice__list">
+    @for (item of available; track item) {
+      <li><mat-icon class="demo-notice__icon demo-notice__icon--ok" aria-hidden="true">check_circle</mat-icon>{{ item }}</li>
+    }
+  </ul>
+
+  <h3 class="demo-notice__heading">Disabled in the demo</h3>
+  <ul class="demo-notice__list">
+    @for (item of disabled; track item) {
+      <li><mat-icon class="demo-notice__icon" aria-hidden="true">block</mat-icon>{{ item }}</li>
+    }
+  </ul>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-flat-button mat-dialog-close type="button">Start exploring</button>
+</mat-dialog-actions>

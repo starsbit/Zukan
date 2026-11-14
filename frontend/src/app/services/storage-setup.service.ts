@@ -4,6 +4,7 @@ import { MatDialog, MatDialogRef } from '@angular/material/dialog';
 import { NavigationEnd, Router } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
+import { DemoModeService } from './demo-mode.service';
 import { UserStore } from './user.store';
 import { API_BASE_URL } from './web/api.config';
 import { StorageSetupDialogComponent } from '../components/admin/storage-setup-dialog.component';
@@ -16,6 +17,7 @@ export class StorageSetupService {
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
   private readonly base = inject(API_BASE_URL);
+  private readonly demo = inject(DemoModeService);
   private readonly url = toSignal(
     this.router.events.pipe(
       filter((event): event is NavigationEnd => event instanceof NavigationEnd),
@@ -39,7 +41,7 @@ export class StorageSetupService {
         return;
       }
       // First-time credential setup lives on the login page; prompt afterward.
-      if (url.startsWith('/login') || this.checkedUser === user.id) return;
+      if (url.startsWith('/login') || this.checkedUser === user.id || this.demo.enabled()) return;
       this.dialogRef?.close();
       this.dialogRef = null;
       const generation = ++this.requestGeneration;

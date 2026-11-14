@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
+from backend.app.config import settings
 from sqlalchemy.orm import selectinload
 from backend.app.models.auth import User
 from backend.app.models.media import Media, MediaTag, TaggingStatus
@@ -254,6 +255,8 @@ def _media_has_named_entity(entity_type: MediaEntityType):
 
 
 def _user_classification_filters():
+    if settings.demo_mode:
+        return (effective_nsfw_expr().is_(False), effective_sensitive_expr().is_(False))
     return (
         or_(User.show_nsfw.is_(True), effective_nsfw_expr().is_(False)),
         or_(User.show_sensitive.is_(True), effective_sensitive_expr().is_(False)),

@@ -19,6 +19,8 @@ from sqlalchemy import select
 from backend.app.errors.error import AppError, build_error_response
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
+from backend.app.demo import demo_read_only_middleware
+from backend.app.demo_sanitize import sanitize_demo_database
 from backend.app.logging_config import configure_logging
 from backend.app.models.auth import User
 from backend.app.models.media import Media, TaggingStatus
@@ -549,54 +551,61 @@ async def lifespan(_api: FastAPI):
         logger.info("Startup phase: running database auto repair")
         await repair_database_after_migrations()
         logger.info("Startup phase complete: database auto repair")
+        if settings.demo_mode:
+            logger.info("Startup phase: sanitizing demo database")
+            await sanitize_demo_database()
+            logger.info("Startup phase complete: sanitizing demo database")
         logger.info("Startup phase: initializing owner authentication")
         await initialize_authentication()
         logger.info("Startup phase complete: initializing owner authentication")
         storage_lease = await acquire_storage_lease()
         await initialize_library()
-        await resume_migrations()
+        if not settings.demo_mode:
+            await resume_migrations()
         storage.media_queue = tag_queue
         storage_worker = asyncio.create_task(library_worker(tag_queue))
-        logger.info("Startup phase: scheduling background ML initialization")
-        ml_worker = asyncio.create_task(_initialize_ml_services())
-        logger.info("Startup phase complete: scheduling background ML initialization")
-        logger.info("Startup phase: wiring background services")
         set_tag_queue(tag_queue)
         set_embedding_backfill_queue(embedding_backfill_queue)
-        recovered_count = await _recover_pending_media_jobs(tag_queue)
-        recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(
-            embedding_backfill_queue
-        )
-        workers = [
-            asyncio.create_task(tagging_worker())
-            for _ in range(settings.tagging_worker_count)
-        ]
-        post_tag_workers = [
-            asyncio.create_task(post_tag_worker())
-            for _ in range(settings.post_tag_worker_count)
-        ]
-        embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
-        purge_worker = asyncio.create_task(trash_purge_worker())
-        failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
-        logger.info(
-            "Background tagging workers started count=%s", settings.tagging_worker_count
-        )
-        logger.info(
-            "Background post-tag workers started count=%s",
-            settings.post_tag_worker_count,
-        )
-        logger.info("Background embedding backfill worker started count=1")
-        if recovered_count:
-            logger.info(
-                "Recovered %s pending media jobs after startup", recovered_count
+        if settings.demo_mode:
+            logger.info("Demo mode enabled; ML services and background processing workers are disabled")
+        else:
+            logger.info("Startup phase: scheduling background ML initialization")
+            ml_worker = asyncio.create_task(_initialize_ml_services())
+            logger.info("Startup phase complete: scheduling background ML initialization")
+            recovered_count = await _recover_pending_media_jobs(tag_queue)
+            recovered_embedding_count = await _recover_pending_embedding_backfill_jobs(
+                embedding_backfill_queue
             )
-        if recovered_embedding_count:
+            workers = [
+                asyncio.create_task(tagging_worker())
+                for _ in range(settings.tagging_worker_count)
+            ]
+            post_tag_workers = [
+                asyncio.create_task(post_tag_worker())
+                for _ in range(settings.post_tag_worker_count)
+            ]
+            embedding_workers = [asyncio.create_task(embedding_backfill_worker())]
+            purge_worker = asyncio.create_task(trash_purge_worker())
+            failed_retry_worker = asyncio.create_task(failed_tagging_retry_worker())
             logger.info(
-                "Recovered %s pending embedding backfill jobs after startup",
-                recovered_embedding_count,
+                "Background tagging workers started count=%s", settings.tagging_worker_count
             )
-        logger.info("Background trash purge worker started")
-        logger.info("Background failed tagging retry worker started")
+            logger.info(
+                "Background post-tag workers started count=%s",
+                settings.post_tag_worker_count,
+            )
+            logger.info("Background embedding backfill worker started count=1")
+            if recovered_count:
+                logger.info(
+                    "Recovered %s pending media jobs after startup", recovered_count
+                )
+            if recovered_embedding_count:
+                logger.info(
+                    "Recovered %s pending embedding backfill jobs after startup",
+                    recovered_embedding_count,
+                )
+            logger.info("Background trash purge worker started")
+            logger.info("Background failed tagging retry worker started")
         logger.info(
             "Application startup completed successfully; ML initialization continues in background"
         )
@@ -915,3 +924,6 @@ api.add_middleware(
     same_site="lax",
     https_only=settings.oidc_callback_url.startswith("https:"),
 )
+
+if settings.demo_mode:
+    api.middleware("http")(demo_read_only_middleware)

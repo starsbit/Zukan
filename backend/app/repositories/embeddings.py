@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.app.models.auth import User
 from backend.app.models.embeddings import MediaEmbedding
 from backend.app.database.vector import _vector_literal
+from backend.app.utils.media_classification import hides_nsfw, hides_sensitive
 
 
 @dataclass(frozen=True)
@@ -191,8 +192,8 @@ class MediaEmbeddingRepository:
                     text(ACCESSIBLE_NEIGHBOR_PAGE_SQL),
                     {
                         "media_id": media_id,
-                        "show_nsfw": bool(user.show_nsfw),
-                        "show_sensitive": bool(user.show_sensitive),
+                        "show_nsfw": not hides_nsfw(user),
+                        "show_sensitive": not hides_sensitive(user),
                         "limit": limit,
                         "model_version": model_version,
                         "after_distance": after[0] if after else None,

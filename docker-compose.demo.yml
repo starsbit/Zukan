@@ -1,0 +1,66 @@
+# Read-only public demo of an existing Zukan instance on the same host.
+# The demo database is a sanitized clone of the operational database (NSFW, sensitive,
+# trashed media and all private data removed), and the operational library is mounted
+# read-only, so no media files are copied. Fill / refresh it with scripts/demo-refresh.sh.
+#
+# Required in .env: DEMO_POSTGRES_PASSWORD, DEMO_SECRET_KEY, ZUKAN_LIBRARY_HOST_PATH
+# Optional: DEMO_PORT (8080), LIBRARY_MOUNT_PATH / LIBRARY_MOUNT_TYPES and EMBEDDING_BACKEND
+#           (must match the operational instance).
+
+name: zukan-demo
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "${DEMO_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      args:
+        REQUIREMENTS_FILE: requirements-cpu.txt
+    environment:
+      DATABASE_URL: postgresql+asyncpg://zukan:${DEMO_POSTGRES_PASSWORD:?Set DEMO_POSTGRES_PASSWORD}@db:5432/zukan
+      SECRET_KEY: ${DEMO_SECRET_KEY:?Set DEMO_SECRET_KEY}
+      AUTH_MODE: local
+      DEMO_MODE: "true"
+      LIBRARY_ROOT: /library
+      LIBRARY_MOUNT_PATH: ${LIBRARY_MOUNT_PATH:-}
+      LIBRARY_MOUNT_TYPES: ${LIBRARY_MOUNT_TYPES:-}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-clip_onnx_v1}
+      LOG_LEVEL: INFO
+    volumes:
+      - type: bind
+        source: ${ZUKAN_LIBRARY_HOST_PATH:?Set ZUKAN_LIBRARY_HOST_PATH to the operational library directory}
+        target: /library
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: zukan
+      POSTGRES_PASSWORD: ${DEMO_POSTGRES_PASSWORD:?Set DEMO_POSTGRES_PASSWORD}
+      POSTGRES_DB: zukan
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zukan"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

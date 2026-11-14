@@ -9,4 +9,16 @@
     src="/assets/starsbit-logo-white.webp"
     alt="Zukan"
   />
+  @if (demo()) {
+    <button
+      type="button"
+      class="demo-badge"
+      matTooltip="Read-only demo. Click for details."
+      aria-label="Read-only demo. Show details."
+      (click)="showNotice()"
+    >
+      <mat-icon aria-hidden="true">visibility</mat-icon>
+      <span>Demo</span>
+    </button>
+  }
 </div>

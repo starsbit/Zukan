@@ -22,6 +22,7 @@ from backend.app.models.processing import (
 from backend.app.repositories import media_filters
 from backend.app.repositories.embeddings import MediaEmbeddingRepository, MediaNeighbor
 from backend.app.repositories.media import MediaRepository
+from backend.app.utils.media_classification import hidden_in_demo
 from backend.app.repositories.media_interactions import UserFavoriteRepository
 from backend.app.repositories.relations import (
     MediaEntityRepository,
@@ -660,6 +661,8 @@ class MediaQueryService:
         # show_nsfw / show_sensitive are list preferences (applied by the "default"
         # NSFW/sensitive list filters), not access rules. Search can explicitly ask for
         # nsfw=include|only, so the items it returns must stay loadable here.
+        if hidden_in_demo(media):
+            raise AppError(status_code=404, code=media_not_found, detail="Not found")
         if media.deleted_at is not None and not self._can_manage_media(media, user):
             raise AppError(status_code=404, code=media_not_found, detail="Not found")
         if media.deleted_at is None and not await self._media_repo.is_accessible(media.id, user):

@@ -8,6 +8,7 @@ import { MatMenuModule } from '@angular/material/menu';
 import { RouterLink } from '@angular/router';
 import { catchError, of, switchMap } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
+import { DemoModeService } from '../../../../services/demo-mode.service';
 import { MediaService } from '../../../../services/media.service';
 import { UserStore } from '../../../../services/user.store';
 import { UserSettingsDialogComponent } from '../user-settings-dialog/user-settings-dialog.component';
@@ -33,6 +34,7 @@ export class NavbarProfileComponent {
   private readonly userStore = inject(UserStore);
   private readonly mediaService = inject(MediaService);
 
+  readonly demo = inject(DemoModeService).enabled;
   readonly user = this.userStore.currentUser;
   readonly authenticated = this.userStore.currentUser;
   readonly avatarLetter = computed(() => {

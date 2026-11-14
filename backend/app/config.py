@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     cobalt_api_key: str = ""
     cobalt_request_timeout_seconds: float = 20.0
     auth_mode: str = "local"
+    demo_mode: bool = False
     setup_token: str = ""
     single_user_owner_id: str = ""
     oidc_discovery_url: str = ""

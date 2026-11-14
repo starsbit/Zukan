@@ -8,6 +8,7 @@ import { provideServiceWorker } from '@angular/service-worker';
 import { routes } from './app.routes';
 import { environment } from '../environments/environment';
 import { authInterceptor } from './interceptors/auth.interceptor';
+import { demoInterceptor } from './interceptors/demo.interceptor';
 import { AuthSessionService } from './services/auth-session.service';
 import { ScrollPolicy } from './services/scroll-policy.service';
 
@@ -18,7 +19,7 @@ export const appConfig: ApplicationConfig = {
     provideAppInitializer(() => inject(AuthSessionService).restore()),
     provideRouter(routes, withInMemoryScrolling({ scrollPositionRestoration: 'disabled', anchorScrolling: 'enabled' })),
     provideAppInitializer(() => inject(ScrollPolicy).init()),
-    provideHttpClient(withInterceptors([authInterceptor])),
+    provideHttpClient(withInterceptors([authInterceptor, demoInterceptor])),
     provideServiceWorker('ngsw-worker.js', {
       enabled: environment.production,
       registrationStrategy: 'registerImmediately',

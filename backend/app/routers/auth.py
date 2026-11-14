@@ -132,6 +132,7 @@ from authlib.integrations.starlette_client import OAuth
 from backend.app.models.auth import AuthExchange, User
 from backend.app.services.owner_auth import auth_fingerprint
 from backend.app.utils.passwords import hash_password, hash_token
+from backend.app.errors.error import AppError
 
 oauth = OAuth()
 
@@ -202,8 +203,28 @@ async def authentication_config(db: AsyncSession = Depends(get_db)):
     return {
         "mode": settings.auth_mode,
         "setup_required": settings.auth_mode == "local"
+        and not settings.demo_mode
         and await db.scalar(select(User.id)) is None,
+        "demo": settings.demo_mode,
     }
+
+
+@router.post(
+    "/demo",
+    response_model=TokenResponse,
+    dependencies=[
+        Depends(rate_limit(max_requests=20, window_seconds=60, scope="demo_login"))
+    ],
+)
+async def demo_login(response: Response, db: AsyncSession = Depends(get_db)):
+    if not settings.demo_mode:
+        raise AppError(status_code=404, code="not_found", detail="Not found")
+    user = await db.scalar(select(User))
+    if user is None:
+        raise AppError(status_code=503, code="demo_not_ready", detail="Demo library is not set up")
+    tokens = await AuthService(db).issue_session(user)
+    docs_cookie(response, tokens)
+    return tokens
 
 
 @router.post(

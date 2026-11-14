@@ -110,6 +110,8 @@ async def restore_version_trigger(db, paused):
 async def initialize_library():
     async with AsyncSessionLocal() as db:
         config = await db.get(LibraryStorage, 1)
+        if config is None and settings.demo_mode:
+            raise RuntimeError("Demo mode requires a database cloned from an initialized Zukan instance")
         if config is None:
             root = settings.storage_dir.absolute()
             identity = await run_storage_io(prepare_library_root, root, settings.library_mount_path,
@@ -742,6 +744,7 @@ async def library_worker(queue):
             now = asyncio.get_running_loop().time()
             if (
                 storage_gate.available
+                and not settings.demo_mode
                 and interval
                 and (now - last_ingest >= interval)
                 and not storage_gate.paused

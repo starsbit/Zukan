@@ -49,6 +49,9 @@ export class AuthService {
   setup(username: string, password: string, setupToken: string) {
     return this.establish(this.client.setup(username, password, setupToken), false);
   }
+  demo() {
+    return this.establish(this.client.demo(), false);
+  }
   exchange(code: string) {
     return this.establish(this.client.exchange(code), false);
   }

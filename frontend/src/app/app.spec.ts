@@ -1,3 +1,4 @@
+import { DemoNoticeService } from './services/demo-notice.service';
 import { StorageSetupService } from './services/storage-setup.service';
 import { TestBed } from '@angular/core/testing';
 import { App } from './app';
@@ -9,6 +10,7 @@ describe('App', () => {
       imports: [App],
       providers: [
         { provide: StorageSetupService, useValue: {} },
+        { provide: DemoNoticeService, useValue: {} },
         { provide: ThemeService, useValue: { preference: () => 'system', cycle: () => {} } },
       ],
     }).compileComponents();

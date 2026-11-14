@@ -24,6 +24,32 @@
   display: none;
 }
 
+.demo-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 4px 10px 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--mat-sys-tertiary-container);
+  color: var(--mat-sys-on-tertiary-container);
+  font: var(--mat-sys-label-large);
+  cursor: pointer;
+
+  mat-icon {
+    font-size: 18px;
+    width: 18px;
+    height: 18px;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mat-sys-primary);
+    outline-offset: 2px;
+  }
+}
+
 :host-context(html.theme-dark) .brand-logo-light {
   display: none;
 }
@@ -57,5 +83,10 @@
 
   .brand-logo {
     height: 36px;
+  }
+
+  .demo-badge {
+    margin-left: 6px;
+    padding: 4px 8px 4px 6px;
   }
 }

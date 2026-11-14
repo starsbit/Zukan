@@ -19,5 +19,6 @@ async def get_upload_config() -> UploadConfigResponse:
 async def get_setup_required(db: AsyncSession = Depends(get_db)):
     return SetupRequiredResponse(
         setup_required=settings.auth_mode == "local"
+        and not settings.demo_mode
         and await db.scalar(select(User.id)) is None
     )

@@ -25,6 +25,8 @@ from backend.app.schemas import (
 from backend.app.utils.media_classification import (
     effective_nsfw_expr,
     effective_sensitive_expr,
+    hides_nsfw,
+    hides_sensitive,
 )
 from backend.app.utils.media_projections import enrich_media
 from backend.app.utils.pagination import (
@@ -173,9 +175,9 @@ class AlbumService:
             .join(AlbumMedia, AlbumMedia.media_id == Media.id)
             .where(AlbumMedia.album_id == album_id, Media.deleted_at.is_(None))
         )
-        if not user.show_nsfw:
+        if hides_nsfw(user):
             stmt = stmt.where(effective_nsfw_expr().is_(False))
-        if not user.show_sensitive:
+        if hides_sensitive(user):
             stmt = stmt.where(effective_sensitive_expr().is_(False))
         stmt = media_filters.apply_tag_filters(stmt, tags, exclude_tags, mode)
         if after:

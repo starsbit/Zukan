@@ -1,4 +1,5 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { DemoModeService } from '../../../../services/demo-mode.service';
 import { MatButtonModule } from '@angular/material/button';
 import { NavbarNotificationsComponent } from '../navbar-notifications/navbar-notifications.component';
 import { NavbarProfileComponent } from '../navbar-profile/navbar-profile.component';
@@ -17,4 +18,6 @@ import { NavbarUploadComponent } from '../navbar-upload/navbar-upload.component'
   templateUrl: './navbar-actions.component.html',
   styleUrl: './navbar-actions.component.scss',
 })
-export class NavbarActionsComponent {}
+export class NavbarActionsComponent {
+  readonly demo = inject(DemoModeService).enabled;
+}

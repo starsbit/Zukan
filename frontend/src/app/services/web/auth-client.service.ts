@@ -6,15 +6,22 @@ import { API_BASE_URL } from './api.config';
 import { TokenResponse, UserLogin } from '../../models/auth';
 import { RefreshTokenRequest } from '../../models/auth';
 
+export interface AuthConfiguration {
+  mode: 'local' | 'oidc';
+  setup_required: boolean;
+  demo?: boolean;
+}
+
 @Injectable({ providedIn: 'root' })
 export class AuthClientService {
   private readonly http = inject(HttpClient);
   private readonly base = inject(API_BASE_URL);
 
-  configuration(): Observable<{ mode: 'local' | 'oidc'; setup_required: boolean }> {
-    return this.http.get<{ mode: 'local' | 'oidc'; setup_required: boolean }>(
-      `${this.base}/api/v1/auth/config`,
-    );
+  configuration(): Observable<AuthConfiguration> {
+    return this.http.get<AuthConfiguration>(`${this.base}/api/v1/auth/config`);
+  }
+  demo(): Observable<TokenResponse> {
+    return this.http.post<TokenResponse>(`${this.base}/api/v1/auth/demo`, {});
   }
   setup(username: string, password: string, setup_token: string): Observable<TokenResponse> {
     return this.http.post<TokenResponse>(`${this.base}/api/v1/auth/setup`, {

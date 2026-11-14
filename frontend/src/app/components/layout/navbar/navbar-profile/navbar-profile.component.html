@@ -29,10 +29,12 @@
     </div>
 
     <div class="profile-actions">
-      <button mat-stroked-button type="button" (click)="openSettings()">
-        <mat-icon>settings</mat-icon>
-        <span>Owner preferences</span>
-      </button>
+      @if (!demo()) {
+        <button mat-stroked-button type="button" (click)="openSettings()">
+          <mat-icon>settings</mat-icon>
+          <span>Owner preferences</span>
+        </button>
+      }
 
       @if (authenticated()) {
         <a mat-stroked-button routerLink="/admin">
@@ -49,10 +51,12 @@
       <span>Contact</span>
     </button>
 
-    <button mat-button type="button" class="sign-out-button" (click)="signOut()">
-      <mat-icon>logout</mat-icon>
-      <span>Sign Out</span>
-    </button>
+    @if (!demo()) {
+      <button mat-button type="button" class="sign-out-button" (click)="signOut()">
+        <mat-icon>logout</mat-icon>
+        <span>Sign Out</span>
+      </button>
+    }
 
     <a
       mat-button
