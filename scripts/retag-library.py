@@ -22,7 +22,12 @@ sys.path.insert(0, str(REPO_ROOT))
 from backend.app.config import settings  # noqa: E402
 
 DEFAULT_BACKEND = "pixai_v1_336_int8"
-DEFAULT_STATE = ".retag-state.jsonl"
+PIXAI_VARIANTS = {
+    "336-int8": ("336-ft/onnx/int8_dyn.onnx", "336-ft/onnx/config.json"),
+    "672-ft": ("672-ft/onnx/fp32.onnx", "672-ft/onnx/config.json"),
+    "1008": ("tagger_1008_fp32.onnx", "config.json"),
+}
+DEFAULT_VARIANT = "672-ft"
 PAGE_SIZE = 500
 MAX_ATTEMPTS = 5
 FINAL_STATUSES = {"done", "failed"}
@@ -58,17 +63,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--url", required=True, help="Zukan base URL, e.g. https://zukan.example")
     parser.add_argument("--api-key", default=os.environ.get("ZUKAN_API_KEY"), help="Zukan API key (or ZUKAN_API_KEY).")
     parser.add_argument("--backend", default=DEFAULT_BACKEND, help=f"Tagger backend. Default: {DEFAULT_BACKEND}")
-    parser.add_argument("--state", default=DEFAULT_STATE, help=f"Resume file (JSONL). Default: {DEFAULT_STATE}")
+    parser.add_argument(
+        "--pixai-variant",
+        choices=sorted(PIXAI_VARIANTS),
+        default=DEFAULT_VARIANT,
+        help=f"PixAI model variant. Default: {DEFAULT_VARIANT}",
+    )
+    parser.add_argument("--state", default=None, help="Resume file (JSONL). Default: .retag-state-<variant>.jsonl")
     parser.add_argument("--model-cache", default=str(settings.model_cache_dir), help="Model download cache directory.")
     parser.add_argument("--concurrency", type=int, default=4, help="Parallel downloads. Default: 4")
-    parser.add_argument("--threads", type=int, default=os.cpu_count() or 4, help="ONNX inference threads.")
+    parser.add_argument("--workers", type=int, default=2, help="Parallel inference sessions. Default: 2")
+    parser.add_argument(
+        "--threads", type=int, default=os.cpu_count() or 4, help="Total ONNX threads, split across workers."
+    )
     parser.add_argument("--limit", type=int, default=None, help="Stop after processing this many items.")
     parser.add_argument("--dry-run", action="store_true", help="Run inference and print results without importing.")
     parser.add_argument("--retry-failed", action="store_true", help="Reprocess items that previously ended as failed.")
+    parser.add_argument("--ca-cert", default=None, help="CA bundle used to verify the server certificate.")
     parser.add_argument("--timeout", type=float, default=120.0, help="HTTP timeout in seconds. Default: 120")
     args = parser.parse_args()
     if not args.api_key:
         parser.error("--api-key or ZUKAN_API_KEY is required")
+    if args.state is None:
+        args.state = f".retag-state-{args.pixai_variant}.jsonl"
     return args
 
 
@@ -163,7 +180,7 @@ async def run_tagger(tagger, path: Path, media_type: str):
     if not frames:
         raise RuntimeError("no frames could be sampled (is ffmpeg installed?)")
     try:
-        return aggregate_tagging_results([await tagger.predict(str(frame)) for frame in frames])
+        return aggregate_tagging_results([await asyncio.to_thread(tagger._predict_sync, str(frame)) for frame in frames])
     finally:
         await asyncio.to_thread(cleanup_sampled_frames, [frame for frame in frames if frame != path])
 
@@ -186,11 +203,8 @@ async def downloader(
     ready: asyncio.Queue,
     workdir: Path,
 ) -> None:
-    while True:
-        item = await pending.get()
-        if item is None:
-            await ready.put(None)
-            return
+    while not pending.empty():
+        item = pending.get_nowait()
         try:
             await ready.put((item, await download(client, item, workdir), None))
         except Exception as exc:
@@ -216,7 +230,7 @@ def print_progress(counters: Counters, total: int, started_at: float) -> None:
 
 async def process(args: argparse.Namespace) -> int:
     settings.model_cache_dir = Path(args.model_cache)
-    settings.tagger_executor_workers = max(1, args.threads)
+    settings.tagger_pixai_model_file, settings.tagger_pixai_config_file = PIXAI_VARIANTS[args.pixai_variant]
     settings.processing_temp_dir = None
     from backend.app.ml.tagger import create_tagger
 
@@ -225,7 +239,9 @@ async def process(args: argparse.Namespace) -> int:
     skip_statuses = {"done"} if args.retry_failed else FINAL_STATUSES
 
     headers = {"Authorization": f"Bearer {args.api_key}"}
-    async with httpx.AsyncClient(base_url=args.url.rstrip("/"), headers=headers, timeout=args.timeout) as client:
+    async with httpx.AsyncClient(
+        base_url=args.url.rstrip("/"), headers=headers, timeout=args.timeout, verify=args.ca_cert or True
+    ) as client:
         print("Listing media...", flush=True)
         all_items = await list_media(client)
         todo = [item for item in all_items if statuses.get(item.id) not in skip_statuses]
@@ -235,84 +251,98 @@ async def process(args: argparse.Namespace) -> int:
         if not todo:
             return 0
 
-        print(f"Loading tagger {args.backend}...", flush=True)
-        tagger = create_tagger(args.backend)
-        await asyncio.to_thread(tagger.load)
+        workers = max(1, args.workers)
+        threads_per_worker = max(1, args.threads // workers)
+        settings.tagger_executor_workers = threads_per_worker
+        print(
+            f"Loading {workers} x tagger {args.backend} ({args.pixai_variant}), {threads_per_worker} threads each...",
+            flush=True,
+        )
+        taggers = [create_tagger(args.backend) for _ in range(workers)]
+        for tagger in taggers:
+            await asyncio.to_thread(tagger.load)
 
         workdir = Path(tempfile.mkdtemp(prefix="zukan-retag-"))
         pending: asyncio.Queue = asyncio.Queue()
         ready: asyncio.Queue = asyncio.Queue(maxsize=max(2, args.concurrency * 2))
         for item in todo:
             pending.put_nowait(item)
-        workers = max(1, args.concurrency)
-        for _ in range(workers):
-            pending.put_nowait(None)
-        download_tasks = [asyncio.create_task(downloader(client, pending, ready, workdir)) for _ in range(workers)]
-
         counters = Counters()
         failed_ids: list[str] = []
         started_at = time.monotonic()
-        finished_workers = 0
-        try:
-            while finished_workers < workers:
-                entry = await ready.get()
-                if entry is None:
-                    finished_workers += 1
-                    continue
-                item, path, error = entry
-                record: dict[str, Any] = {"id": item.id, "filename": item.filename}
-                try:
-                    if error is not None:
-                        raise RuntimeError(error)
-                    result = await run_tagger(tagger, path, item.media_type)
+
+        async def handle(tagger, item: MediaItem, path: Path | None, error: str | None) -> None:
+            record: dict[str, Any] = {"id": item.id, "filename": item.filename}
+            try:
+                if error is not None:
+                    raise RuntimeError(error)
+                result = await run_tagger(tagger, path, item.media_type)
+                if args.dry_run:
                     characters, series = predicted_entities(result)
-                    if args.dry_run:
-                        print(f"\n{item.id} {item.filename} character={characters} series={series}", flush=True)
-                        counters.done += 1
-                        continue
-                    payload = {
-                        "predictions": [
-                            {"name": p.name, "category": p.category, "confidence": min(1.0, max(0.0, p.confidence))}
-                            for p in result.predictions
-                        ],
-                        "is_nsfw": result.is_nsfw,
-                        "is_sensitive": result.is_sensitive,
-                    }
-                    response = await request(client, "PUT", f"/api/v1/media/{item.id}/tagging-result", json=payload)
-                    if response.status_code == 409:
-                        counters.skipped += 1
-                        record.update(status="skipped", error="tagging job queued or running on server")
-                    elif response.status_code == 404:
-                        counters.skipped += 1
-                        record.update(status="skipped", error="media not found or trashed")
+                    print(f"\n{item.id} {item.filename} character={characters} series={series}", flush=True)
+                    counters.done += 1
+                    return
+                payload = {
+                    "predictions": [
+                        {"name": p.name, "category": p.category, "confidence": min(1.0, max(0.0, p.confidence))}
+                        for p in result.predictions
+                    ],
+                    "is_nsfw": result.is_nsfw,
+                    "is_sensitive": result.is_sensitive,
+                }
+                response = await request(client, "PUT", f"/api/v1/media/{item.id}/tagging-result", json=payload)
+                if response.status_code == 409:
+                    counters.skipped += 1
+                    record.update(status="skipped", error="tagging job queued or running on server")
+                elif response.status_code == 404:
+                    counters.skipped += 1
+                    record.update(status="skipped", error="media not found or trashed")
+                else:
+                    response.raise_for_status()
+                    detail = response.json()
+                    status = "failed" if detail.get("tagging_status") == "failed" else "done"
+                    record.update(
+                        status=status,
+                        character=entity_names(detail, "character"),
+                        series=entity_names(detail, "series"),
+                        error=detail.get("tagging_error"),
+                    )
+                    if status == "failed":
+                        counters.failed += 1
+                        failed_ids.append(item.id)
                     else:
-                        response.raise_for_status()
-                        detail = response.json()
-                        status = "failed" if detail.get("tagging_status") == "failed" else "done"
-                        record.update(
-                            status=status,
-                            character=entity_names(detail, "character"),
-                            series=entity_names(detail, "series"),
-                            error=detail.get("tagging_error"),
-                        )
-                        if status == "failed":
-                            counters.failed += 1
-                            failed_ids.append(item.id)
-                        else:
-                            counters.done += 1
-                except Exception as exc:
-                    counters.errors += 1
-                    record.update(status="error", error=f"{exc.__class__.__name__}: {exc}"[:500])
-                finally:
-                    if path is not None:
-                        path.unlink(missing_ok=True)
+                        counters.done += 1
+            except Exception as exc:
+                counters.errors += 1
+                record.update(status="error", error=f"{exc.__class__.__name__}: {exc}"[:500])
+            finally:
+                if path is not None:
+                    path.unlink(missing_ok=True)
                 if not args.dry_run:
                     append_state(state_path, record)
                 print_progress(counters, len(todo), started_at)
+
+        async def consumer(tagger) -> None:
+            while True:
+                entry = await ready.get()
+                if entry is None:
+                    return
+                await handle(tagger, *entry)
+
+        async def feed() -> None:
+            await asyncio.gather(
+                *(downloader(client, pending, ready, workdir) for _ in range(max(1, args.concurrency)))
+            )
+            for _ in taggers:
+                await ready.put(None)
+
+        feeder = asyncio.create_task(feed())
+        try:
+            await asyncio.gather(*(consumer(tagger) for tagger in taggers))
+            await feeder
         finally:
-            for task in download_tasks:
-                task.cancel()
-            await asyncio.gather(*download_tasks, return_exceptions=True)
+            feeder.cancel()
+            await asyncio.gather(feeder, return_exceptions=True)
             shutil.rmtree(workdir, ignore_errors=True)
 
     print()

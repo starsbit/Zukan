@@ -10,6 +10,7 @@ from collections.abc import Awaitable, Callable
 import numpy as np
 import pandas as pd
 from huggingface_hub import hf_hub_download
+from huggingface_hub.errors import EntryNotFoundError
 from PIL import Image
 
 from backend.app.config import settings
@@ -183,6 +184,7 @@ class PixAITagger(_OnnxTagger):
         self._tag_categories: list[int] = []
         self._floors: np.ndarray | None = None
         self._rating_indices: list[int] = []
+        self._input_dtype = np.float32
 
     def load(self):
         started_at = time.perf_counter()
@@ -199,6 +201,12 @@ class PixAITagger(_OnnxTagger):
         model_path = hf_hub_download(
             repo_id=repo, filename=settings.tagger_pixai_model_file, revision=revision, cache_dir=cache
         )
+        try:
+            hf_hub_download(
+                repo_id=repo, filename=f"{settings.tagger_pixai_model_file}.data", revision=revision, cache_dir=cache
+            )
+        except EntryNotFoundError:
+            pass
         config_path = hf_hub_download(
             repo_id=repo, filename=settings.tagger_pixai_config_file, revision=revision, cache_dir=cache
         )
@@ -208,6 +216,7 @@ class PixAITagger(_OnnxTagger):
         model_input = self._session.get_inputs()[0]
         self._input_name = model_input.name
         self._input_size = model_input.shape[2]
+        self._input_dtype = np.float16 if "float16" in model_input.type else np.float32
         logger.info(
             "Tagger load finished input_name=%s input_size=%s tag_rows=%s duration_seconds=%.2f",
             self._input_name,
@@ -249,12 +258,12 @@ class PixAITagger(_OnnxTagger):
         arr = np.zeros((size, size, 3), dtype=np.float32)
         arr[top : top + new_height, left : left + new_width] = np.asarray(resized, dtype=np.float32)
         arr = (arr / 255.0 - 0.5) / 0.5
-        return np.expand_dims(arr.transpose(2, 0, 1), 0)
+        return np.expand_dims(arr.transpose(2, 0, 1), 0).astype(self._input_dtype)
 
     def _predict_sync(self, image_path: str) -> TaggingResult:
         with Image.open(image_path) as image:
             arr = self._preprocess(image)
-        probs = self._session.run(None, {self._input_name: arr})[0][0]
+        probs = self._session.run(None, {self._input_name: arr})[0][0].astype(np.float32)
         if settings.tagger_pixai_outputs_logits:
             probs = 1.0 / (1.0 + np.exp(-probs))
 

@@ -260,6 +260,7 @@ def test_pixai_load_downloads_pinned_revision(monkeypatch, tmp_path):
     class _Input:
         name = "pixel_values"
         shape = ["batch", 3, 336, 336]
+        type = "tensor(float16)"
 
     class _Session:
         providers = ["CPUExecutionProvider"]
@@ -276,10 +277,16 @@ def test_pixai_load_downloads_pinned_revision(monkeypatch, tmp_path):
     monkeypatch.setitem(__import__("sys").modules, "onnxruntime", fake_rt)
     tagger = PixAITagger()
 
+    from huggingface_hub.errors import EntryNotFoundError
+
     with patch(
-        "backend.app.ml.tagger.hf_hub_download", side_effect=["/tmp/model.onnx", str(config_path)]
+        "backend.app.ml.tagger.hf_hub_download",
+        side_effect=["/tmp/model.onnx", EntryNotFoundError("no sidecar"), str(config_path)],
     ) as download:
         tagger.load()
+
+    assert download.call_args_list[1].kwargs["filename"].endswith(".onnx.data")
+    assert tagger._input_dtype is np.float16
 
     assert {call.kwargs["revision"] for call in download.call_args_list} == {
         "29c4dc4ade24556f69694ecbd9abdd9046363442"
