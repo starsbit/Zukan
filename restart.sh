@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
-# Rebuild and restart the current checkout. Pull source explicitly beforehand.
+# Pull the latest commits, then rebuild and restart the current checkout.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+
+if [[ -z "${ZUKAN_RESTART_PULLED:-}" ]]; then
+  git pull --ff-only
+  ZUKAN_RESTART_PULLED=1 exec "./$(basename -- "${BASH_SOURCE[0]}")" "$@"
+fi
 
 if [[ -f compose.homeserver.yml ]]; then
   compose_file="docker-compose.selfhost.yml"
