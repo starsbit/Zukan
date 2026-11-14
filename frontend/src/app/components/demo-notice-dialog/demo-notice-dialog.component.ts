@@ -15,7 +15,7 @@ export class DemoNoticeDialogComponent {
     'Browse the gallery, timeline and today stories',
     'Search by tags, characters, series and OCR text',
     'Explore similar images and albums',
-    'Inspect tags, metadata and admin statistics',
+    'Inspect tags and metadata',
   ];
-  readonly disabled = ['Uploading media', 'Editing, tagging and deleting', 'Changing settings'];
+  readonly disabled = ['Uploading media', 'Editing, tagging and deleting', 'Changing settings', 'Administration'];
 }
