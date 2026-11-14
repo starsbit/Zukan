@@ -2,6 +2,7 @@ import '@angular/compiler';
 import { describe, expect, it } from 'vitest';
 import { authGuard } from './guards/auth.guard';
 import { guestGuard } from './guards/guest.guard';
+import { noDemoGuard } from './guards/no-demo.guard';
 import { UrlSegment, UrlSegmentGroup } from '@angular/router';
 import { galleryMatcher, routes } from './app.routes';
 
@@ -65,10 +66,10 @@ describe('routes', () => {
     expect(loginRoute?.canActivate).toEqual([guestGuard]);
   });
 
-  it('protects admin with adminGuard', () => {
+  it('protects admin with authGuard and noDemoGuard', () => {
     const adminRoute = routes.find((route) => route.path === 'admin');
 
-    expect(adminRoute?.canActivate).toEqual([authGuard]);
+    expect(adminRoute?.canActivate).toEqual([authGuard, noDemoGuard]);
   });
 
   it('redirects unknown routes to the root gallery route', () => {

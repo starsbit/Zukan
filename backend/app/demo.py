@@ -11,6 +11,7 @@ ALLOWED_WRITE_PATHS = {
     "/api/v1/auth/logout",
 }
 BLOCKED_READ_PATHS = (
+    re.compile(r"^/api/v1/admin(/|$)"),
     re.compile(r"^/api/v1/albums/[^/]+/download$"),
     re.compile(r"^/api/v1/media/[^/]+/library-classification-suggestions$"),
     re.compile(r"^/api/v1/auth/oidc/"),

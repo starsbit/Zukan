@@ -45,6 +45,13 @@ def demo_mode(monkeypatch):
         ("GET", "/api/v1/auth/oidc/start", True),
         ("GET", "/api/v1/media/abc/library-classification-suggestions", True),
         ("GET", "/api/v1/me/import-batches", False),
+        ("GET", "/api/v1/admin", True),
+        ("GET", "/api/v1/admin/stats", True),
+        ("GET", "/api/v1/admin/tagger/", True),
+        ("GET", "/api/v1/admin/storage", True),
+        ("GET", "/api/v1/admin/announcements", True),
+        ("POST", "/api/v1/admin/tagging-jobs", True),
+        ("GET", "/api/v1/administrator", False),
     ],
 )
 def test_is_blocked_in_demo(method, path, blocked):

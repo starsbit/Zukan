@@ -36,7 +36,7 @@
         </button>
       }
 
-      @if (authenticated()) {
+      @if (authenticated() && !demo()) {
         <a mat-stroked-button routerLink="/admin">
           <mat-icon>build</mat-icon>
           <span>Administration</span>

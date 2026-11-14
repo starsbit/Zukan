@@ -6,6 +6,7 @@ import { of } from 'rxjs';
 import { AuthService } from '../../../../services/auth.service';
 import { UserStore } from '../../../../services/user.store';
 import { MediaService } from '../../../../services/media.service';
+import { DemoModeService } from '../../../../services/demo-mode.service';
 import { NavbarProfileComponent } from './navbar-profile.component';
 
 describe('NavbarProfileComponent', () => {
@@ -74,6 +75,31 @@ describe('NavbarProfileComponent', () => {
       .getContainerElement()
       .querySelector('a[routerlink="/admin"]');
     expect(adminLink).not.toBeNull();
+  });
+
+  it('hides the admin action in demo mode', async () => {
+    await TestBed.configureTestingModule({
+      imports: [NavbarProfileComponent, NoopAnimationsModule],
+      providers: [
+        provideRouter([]),
+        { provide: AuthService, useValue: { logout: () => of(void 0) } },
+        { provide: MediaService, useValue: mediaService },
+        { provide: UserStore, useValue: makeUserStore(true) },
+        { provide: DemoModeService, useValue: { enabled: () => true } },
+      ],
+    }).compileComponents();
+
+    const overlayContainer = TestBed.inject(OverlayContainer);
+    const fixture = TestBed.createComponent(NavbarProfileComponent);
+    fixture.detectChanges();
+
+    const host = fixture.nativeElement as HTMLElement;
+    (host.querySelector('button[aria-label="Profile"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+
+    const container = overlayContainer.getContainerElement();
+    expect(container.querySelector('a[routerlink="/admin"]')).toBeNull();
+    expect(container.textContent).not.toContain('Administration');
   });
 
   it('links help and feedback to the issue form and signs out from the menu', async () => {
