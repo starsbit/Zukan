@@ -683,7 +683,7 @@ export class MediaInspectorDialogComponent {
   }
 
   onWheelZoom(event: WheelEvent): void {
-    if (!this.isImage() || this.loading() || !this.mediaUrl()) {
+    if (!event.ctrlKey || !this.isImage() || this.loading() || !this.mediaUrl()) {
       return;
     }
 

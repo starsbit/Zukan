@@ -384,7 +384,7 @@ test.describe('Media viewer', () => {
     }
   });
 
-  test('zooms and pans the image while similar media page scrolling is enabled', async ({ page }) => {
+  test('zooms with Ctrl + scroll and pans the image while page scrolling is enabled', async ({ page }) => {
     await seedAuthenticatedSession(page);
     await registerViewerRoutes(page);
     await page.route('**/api/v1/media/m1/file', async (route) => {
@@ -406,7 +406,11 @@ test.describe('Media viewer', () => {
 
     await image.hover();
     await page.mouse.wheel(0, -400);
+    await expect.poll(transform).toEqual({ zoom: 1, x: 0, y: 0 });
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -400);
     await expect.poll(async () => (await transform()).zoom).toBeCloseTo(1.6);
+    await page.keyboard.up('Control');
     await expect(image).toHaveAttribute('draggable', 'false');
 
     const before = await transform();
@@ -419,8 +423,10 @@ test.describe('Media viewer', () => {
     }).toBeGreaterThan(10);
     await expect(page).toHaveURL('/gallery/media/m1');
 
+    await page.keyboard.down('Control');
     await page.mouse.wheel(0, 400);
     await expect.poll(transform).toEqual({ zoom: 1, x: 0, y: 0 });
+    await page.keyboard.up('Control');
     await expect(image).toHaveAttribute('draggable', 'true');
   });
 

@@ -704,7 +704,27 @@ describe('MediaInspectorDialogComponent', () => {
     expect(dialogRef.close).toHaveBeenCalled();
   });
 
-  it('zooms with the wheel and pans with the mouse when page scrolling is enabled', async () => {
+  it.each([false, true])('leaves ordinary scrolling alone at base and increased zoom (page scrolling: %s)', async (pageScrollEnabled) => {
+    const { fixture } = await createComponent();
+    fixture.componentRef.setInput('pageScrollEnabled', pageScrollEnabled);
+    fixture.detectChanges();
+    const image = fixture.nativeElement.querySelector('img') as HTMLImageElement;
+
+    for (const zoom of [1, 2]) {
+      fixture.componentInstance.zoom.set(zoom);
+      const wheel = new WheelEvent('wheel', {
+        bubbles: true,
+        cancelable: true,
+        deltaY: -400,
+      });
+      image.dispatchEvent(wheel);
+
+      expect(wheel.defaultPrevented).toBe(false);
+      expect(fixture.componentInstance.zoom()).toBe(zoom);
+    }
+  });
+
+  it('zooms with Ctrl + wheel and pans with the mouse when page scrolling is enabled', async () => {
     const { fixture } = await createComponent();
     fixture.componentRef.setInput('pageScrollEnabled', true);
     fixture.detectChanges();
@@ -713,6 +733,7 @@ describe('MediaInspectorDialogComponent', () => {
     const wheel = new WheelEvent('wheel', {
       bubbles: true,
       cancelable: true,
+      ctrlKey: true,
       deltaY: -400,
       clientX: 160,
       clientY: 240,
@@ -743,6 +764,7 @@ describe('MediaInspectorDialogComponent', () => {
     image.dispatchEvent(new WheelEvent('wheel', {
       bubbles: true,
       cancelable: true,
+      ctrlKey: true,
       deltaY: 400,
       clientX: 160,
       clientY: 240,
