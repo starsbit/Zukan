@@ -19,6 +19,7 @@ from sqlalchemy import select
 from backend.app.errors.error import AppError, build_error_response
 from backend.app.database import AsyncSessionLocal, init_db
 from backend.app.config import settings
+from backend.app.utils.memory import release_freed_memory
 from backend.app.demo import demo_read_only_middleware
 from backend.app.demo_sanitize import sanitize_demo_database
 from backend.app.logging_config import configure_logging
@@ -175,6 +176,7 @@ async def tagging_worker():
                     logger.exception("Tagging failed for media_id=%s", media_id)
             finally:
                 tag_queue.task_done()
+                release_freed_memory()
 
 
 async def _mark_tagging_job_failed(media_id: uuid.UUID, exc: Exception) -> None:
@@ -219,6 +221,7 @@ async def post_tag_worker():
                     logger.exception("Post-tag processing failed for media_id=%s", media_id)
             finally:
                 post_tag_queue.task_done()
+                release_freed_memory()
 
 
 async def _run_library_enrichment_after_post_tag(db, media_id: uuid.UUID) -> None:
@@ -258,6 +261,7 @@ async def embedding_backfill_worker():
                         logger.exception("Embedding backfill failed for item_id=%s", item_id)
                 finally:
                     embedding_backfill_queue.task_done()
+                    release_freed_memory()
 
 
 async def trash_purge_worker() -> None:
